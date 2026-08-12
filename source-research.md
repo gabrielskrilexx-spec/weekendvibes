@@ -84,3 +84,5 @@ A página pública mostra a imagem promocional oficial da edição White Party/H
 ## Atualização de mídia e preço — dois eventos
 A Festa do Branco usa a imagem `https://superticket-assets.s3.amazonaws.com/eventos/978c6dc4-3d2d-4b59-8c3a-e5cffbcb8ae8`, extraída do metadado `og:image` da página oficial Zig Tickets. A página exibe “A partir de R$ 0,00”, mantido como preço publicado.
 O Nosso After - MC Luuky usa a imagem `https://d106p58duwuiz5.cloudfront.net/event/cover/fbf75b0b9e695ff704bf0b9cc9b7fba9.png`, extraída do metadado `og:image` da página pública equivalente Blacktag. A página Ingresse atualmente retorna “Event not found” e a Blacktag consultada não expõe lote/preço no HTML; portanto o preço do Nosso After permanece não informado e não foi inventado.
+
+A página Blacktag do Nosso After confirma que as vendas estão encerradas; não há lotes ou preços públicos no HTML. O card passou a exibir “Vendas encerradas — preço não informado”, preservando a distinção entre indisponibilidade e gratuidade.

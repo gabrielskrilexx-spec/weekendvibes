@@ -57,7 +57,7 @@
 - [x] Confirmar eventos para Valluns Garden, Verilonguinho, Moby House e Meu Lugar ou documentar ausência de resultados
 
 - [x] Localizar imagens oficiais verificáveis da Festa do Branco e do Nosso After - MC Luuky
-- [ ] Localizar preços de ingressos verificáveis para os dois eventos
+- [x] Localizar preços de ingressos verificáveis; Festa do Branco com valor publicado e Nosso After sem preço público por vendas encerradas
 - [x] Atualizar os registros e validar a exibição pública de imagem e preço; preço do Nosso After sinalizado como não informado
 - [x] Exibir preço confirmado ou “Preço não informado” diretamente nos cards dos eventos
-- [ ] Confirmar o preço do Nosso After em uma fonte oficial antes de substituir o estado não informado
+- [x] Confirmar em fonte oficial que o Nosso After está com vendas encerradas e sem preço público; manter o estado não informado
