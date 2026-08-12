@@ -235,3 +235,12 @@
 - [x] Avaliar acessibilidade, desempenho, SEO, dados e confiabilidade operacional
 - [x] Priorizar oportunidades por impacto, esforço, risco e dependências
 - [x] Entregar diagnóstico completo com roadmap recomendado
+
+## Geocodificação e relatórios operacionais
+- [x] Criar fila assíncrona e idempotente de geocodificação para eventos do Instagram
+- [x] Persistir status, confiança, provedor e timestamp da geocodificação
+- [x] Integrar a execução ao fluxo seguro de jobs sem timers em processo
+- [x] Criar painel de relatórios de ingestão por execução e por fonte
+- [x] Permitir reprocessamento administrativo seguro de fontes com falha
+- [x] Cobrir autorização, concorrência, idempotência, erros e acessibilidade com testes
+- [x] Salvar e publicar checkpoint da geocodificação e dos relatórios operacionais

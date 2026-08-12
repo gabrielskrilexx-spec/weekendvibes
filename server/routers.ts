@@ -6,6 +6,8 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { deleteEvent, getEventBySlug, listEvents, listRecentInstagramAgendaEvents, listTodayEvents, listOperationalAlerts, resolveOperationalAlert, saveEvent, updateEvent, listFavoriteEventIds, toggleFavoriteEvent, setEventReminder, listUserReminders } from "./db";
 import { invokeLLM } from "./_core/llm";
 import { getTuesdayRoutineStatus, runTuesdayRoutineNow } from "./manual-ingestion";
+import { listIngestionReport, reprocessIngestionSource } from "./ingestion-reports";
+import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
 
 const eventInput = z.object({
   title: z.string().min(3),
@@ -45,6 +47,12 @@ export const appRouter = router({
   adminRoutine: router({
     status: adminOnly.query(() => getTuesdayRoutineStatus()),
     runNow: adminOnly.mutation(async () => runTuesdayRoutineNow()),
+  }),
+  ingestionReports: router({
+    summary: adminOnly.query(() => listIngestionReport()),
+    geocoding: adminOnly.query(() => listGeocodingSummary()),
+    reprocess: adminOnly.input(z.object({ sourceKey: z.enum(["public", "instagram"]) })).mutation(({ input }) => reprocessIngestionSource(input.sourceKey)),
+    geocodeNow: adminOnly.mutation(() => processPendingGeocoding(10)),
   }),
   operationalAlerts: router({
     list: publicProcedure.input(z.object({ size: z.number().int().min(1).max(20).optional() }).optional()).query(({ input }) => listOperationalAlerts(input ?? {})),

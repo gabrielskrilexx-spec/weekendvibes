@@ -96,3 +96,35 @@ export const eventReminders = mysqlTable("eventReminders", {
 
 export type EventReminder = typeof eventReminders.$inferSelect;
 export type InsertEventReminder = typeof eventReminders.$inferInsert;
+
+export const ingestionRuns = mysqlTable("ingestionRuns", {
+  id: int("id").autoincrement().primaryKey(),
+  routine: varchar("routine", { length: 64 }).notNull(),
+  sourceKey: varchar("sourceKey", { length: 255 }),
+  status: mysqlEnum("status", ["running", "succeeded", "failed", "partial"]).default("running").notNull(),
+  importedCount: int("importedCount").default(0).notNull(),
+  failedCount: int("failedCount").default(0).notNull(),
+  details: text("details"),
+  startedAt: timestamp("startedAt").defaultNow().notNull(),
+  finishedAt: timestamp("finishedAt"),
+});
+
+export type IngestionRun = typeof ingestionRuns.$inferSelect;
+export type InsertIngestionRun = typeof ingestionRuns.$inferInsert;
+
+export const geocodingJobs = mysqlTable("geocodingJobs", {
+  id: int("id").autoincrement().primaryKey(),
+  eventId: int("eventId").notNull().unique(),
+  addressHash: varchar("addressHash", { length: 64 }).notNull(),
+  status: mysqlEnum("status", ["pending", "processing", "succeeded", "failed"]).default("pending").notNull(),
+  attempts: int("attempts").default(0).notNull(),
+  provider: varchar("provider", { length: 64 }),
+  confidence: varchar("confidence", { length: 32 }),
+  lastError: text("lastError"),
+  processedAt: timestamp("processedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type GeocodingJob = typeof geocodingJobs.$inferSelect;
+export type InsertGeocodingJob = typeof geocodingJobs.$inferInsert;
