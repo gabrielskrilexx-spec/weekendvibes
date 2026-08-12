@@ -55,3 +55,9 @@
 - [x] Validar na API/feed público que os eventos importados aparecem para os usuários
 - [x] Adicionar e executar teste automatizado do pipeline em duas passagens e validar a identidade sourceUrl + data
 - [x] Confirmar eventos para Valluns Garden, Verilonguinho, Moby House e Meu Lugar ou documentar ausência de resultados
+
+- [x] Localizar imagens oficiais verificáveis da Festa do Branco e do Nosso After - MC Luuky
+- [ ] Localizar preços de ingressos verificáveis para os dois eventos
+- [x] Atualizar os registros e validar a exibição pública de imagem e preço; preço do Nosso After sinalizado como não informado
+- [x] Exibir preço confirmado ou “Preço não informado” diretamente nos cards dos eventos
+- [ ] Confirmar o preço do Nosso After em uma fonte oficial antes de substituir o estado não informado

@@ -76,3 +76,11 @@ Resultados públicos indicam 28 de agosto de 2026, 23:00, Lucky Scope, Guarujá,
 
 ## Validação do feed público
 A prévia pública do WeekendVibes carregou 2 rolês após a API responder: Festa do Branco, Guarujá, sábado 22 de agosto, Curvão Surf House, categoria balada e gênero House/Eletrônica; Nosso After - MC Luuky, Guarujá, sexta 28 de agosto, Lucky Scope, categoria balada e gênero Funk. O mapa também exibiu dois pins. Os filtros públicos de cidade, categoria, gênero e preço estavam visíveis.
+
+## Atualização de mídia e preço — Zig Tickets
+Fonte oficial: https://zig.tickets/eventos/festa-do-branco-22-08
+A página pública mostra a imagem promocional oficial da edição White Party/House Night, o evento em Avenida Miguel Estefno, 2435, Enseada, Guarujá, SP, em 22 de agosto de 2026, das 20:00 às 03:00. O preço exibido é “A partir de R$ 0,00”. A página não exibiu os lotes detalhados no conteúdo textual capturado; a imagem promocional está visualmente disponível na página oficial.
+
+## Atualização de mídia e preço — dois eventos
+A Festa do Branco usa a imagem `https://superticket-assets.s3.amazonaws.com/eventos/978c6dc4-3d2d-4b59-8c3a-e5cffbcb8ae8`, extraída do metadado `og:image` da página oficial Zig Tickets. A página exibe “A partir de R$ 0,00”, mantido como preço publicado.
+O Nosso After - MC Luuky usa a imagem `https://d106p58duwuiz5.cloudfront.net/event/cover/fbf75b0b9e695ff704bf0b9cc9b7fba9.png`, extraída do metadado `og:image` da página pública equivalente Blacktag. A página Ingresse atualmente retorna “Event not found” e a Blacktag consultada não expõe lote/preço no HTML; portanto o preço do Nosso After permanece não informado e não foi inventado.

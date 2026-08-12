@@ -79,3 +79,6 @@ O schedule `WeekendVibes — ingestão Articket e Blacktag` está configurado pa
 ## Fontes públicas adicionais
 
 O pipeline também consulta `https://zig.tickets/eventos/festa-do-branco-22-08` e `https://www.ingresse.com/nosso-after-mc-luuky/`, além das fontes Articket e Blacktag já configuradas. A ingestão renderizada aceita os domínios `zig.tickets` e `ingresse.com`, mas persiste somente eventos de Santos ou Guarujá, dos locais-alvo e dos gêneros musicais permitidos. As páginas podem ser dinâmicas; quando não expõem dados no HTML estático, a coleta deve usar navegação renderizada. Até esta atualização, foram confirmados eventos no Curvão Surf House e no Lucky Scope. Não foram inventados resultados para Valluns Garden, Verilonguinho, Moby House ou Meu Lugar.
+
+## Mídia e preços dos eventos
+Os cards públicos exibem a imagem oficial de cada fonte. A Festa do Branco mostra “A partir de R$ 0,00”, conforme a página Zig Tickets. O Nosso After mostra “Preço não informado” porque a página Ingresse retornou “Event not found” e a fonte equivalente Blacktag não expôs lotes ou valores no HTML público consultado. O campo `priceNote` diferencia esse estado de um evento gratuito.

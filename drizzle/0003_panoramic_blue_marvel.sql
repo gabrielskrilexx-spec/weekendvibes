@@ -1,0 +1,1 @@
+ALTER TABLE `events` ADD `priceNote` varchar(255);

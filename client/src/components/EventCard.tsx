@@ -29,6 +29,7 @@ export default function EventCard({ event }: { event: Event }) {
         <div className="space-y-2 text-sm text-zinc-300">
           <p className="flex items-center gap-2"><CalendarDays size={15} className="text-orange-300" />{date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p>
           <p className="flex items-center gap-2"><MapPin size={15} className="text-fuchsia-300" /><span className="line-clamp-1">{event.locationName}</span></p>
+          <p className="flex items-center gap-2"><Ticket size={15} className="text-yellow-300" />{event.priceNote ?? (event.priceCents > 0 ? `A partir de R$ ${(event.priceCents / 100).toFixed(2).replace(".", ",")}` : "A partir de R$ 0,00")}</p>
         </div>
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${categoryColors[event.category]}`}>{event.category === "evento_musical" ? "música" : event.category}</span>{event.genre && <span className="rounded-full border border-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-zinc-300">{genreLabels[event.genre] ?? event.genre}</span>}</div>

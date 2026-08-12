@@ -38,6 +38,7 @@ export const events = mysqlTable("events", {
   category: mysqlEnum("category", ["show", "balada", "evento_musical"]).notNull(),
   genre: varchar("genre", { length: 80 }),
   priceCents: int("priceCents").default(0).notNull(),
+  priceNote: varchar("priceNote", { length: 255 }),
   sourceUrl: varchar("sourceUrl", { length: 1000 }),
   imageUrl: varchar("imageUrl", { length: 1000 }),
   latitude: varchar("latitude", { length: 32 }),
