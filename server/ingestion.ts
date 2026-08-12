@@ -13,17 +13,21 @@ export async function runIngestionPipeline() {
   const structured = await invokeLLM({
     model: "gpt-4o-mini",
     messages: [
-      { role: "system", content: "Extraia eventos públicos exclusivamente da Baixada Santista. Retorne um array JSON com title, summary, eventDate ISO, locationName, address, city, category, priceCents, sourceUrl, imageUrl, latitude e longitude. Ignore eventos fora de Santos, São Vicente, Guarujá, Praia Grande, Cubatão, Bertioga, Mongaguá, Itanhaém e Peruíbe." },
+      { role: "system", content: "Extraia somente eventos musicais públicos de Santos e Guarujá. Retorne um array JSON com title, summary, eventDate ISO, locationName, address, city, category, genre, priceCents, sourceUrl, imageUrl, latitude e longitude. Ignore qualquer evento fora de Santos ou Guarujá e qualquer evento que não seja show, balada ou evento musical. Use genre como funk, house_eletronica, samba_pagode ou rap_trap." },
       { role: "user", content: rawText },
     ],
-    response_format: { type: "json_schema", json_schema: { name: "event_batch", strict: true, schema: { type: "object", properties: { events: { type: "array", items: { type: "object", properties: { title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string" }, category: { type: "string", enum: ["show", "festa", "gastronomia", "esporte", "cultura"] }, priceCents: { type: "integer" }, sourceUrl: { type: "string" }, imageUrl: { type: "string" }, latitude: { type: "string" }, longitude: { type: "string" } }, required: ["title", "summary", "eventDate", "locationName", "address", "city", "category", "priceCents", "sourceUrl", "imageUrl", "latitude", "longitude"], additionalProperties: false } } }, required: ["events"], additionalProperties: false } } },
+    response_format: { type: "json_schema", json_schema: { name: "event_batch", strict: true, schema: { type: "object", properties: { events: { type: "array", items: { type: "object", properties: { title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string" }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "samba_pagode", "rap_trap"] }, priceCents: { type: "integer" }, sourceUrl: { type: "string" }, imageUrl: { type: "string" }, latitude: { type: "string" }, longitude: { type: "string" } }, required: ["title", "summary", "eventDate", "locationName", "address", "city", "category", "genre", "priceCents", "sourceUrl", "imageUrl", "latitude", "longitude"], additionalProperties: false } } }, required: ["events"], additionalProperties: false } } },
   });
   const payload = JSON.parse(String(structured.choices?.[0]?.message?.content ?? "{\"events\":[]}")) as { events: Array<Record<string, string | number>> };
   for (const event of payload.events) {
     const date = new Date(String(event.eventDate));
     if (Number.isNaN(date.getTime())) continue;
     const sourceHash = crypto.createHash("md5").update(`${normalizeSlug(String(event.title))}${date.toISOString().slice(0, 10)}`).digest("hex");
-    await saveEvent({ title: String(event.title), slug: `${normalizeSlug(String(event.title))}-${date.getTime()}`, description: String(event.summary), eventDate: date, locationName: String(event.locationName), address: String(event.address), city: String(event.city), category: event.category as "show" | "festa" | "gastronomia" | "esporte" | "cultura", priceCents: Number(event.priceCents) || 0, sourceUrl: String(event.sourceUrl || sourceUrl), imageUrl: String(event.imageUrl || ""), latitude: String(event.latitude || ""), longitude: String(event.longitude || ""), sourceHash, isPublished: 1 });
+    const city = String(event.city);
+    if (city !== "Santos" && city !== "Guarujá") continue;
+    const category = String(event.category);
+    if (category !== "show" && category !== "balada" && category !== "evento_musical") continue;
+    await saveEvent({ title: String(event.title), slug: `${normalizeSlug(String(event.title))}-${date.getTime()}`, description: String(event.summary), eventDate: date, locationName: String(event.locationName), address: String(event.address), city, category: category as "show" | "balada" | "evento_musical", genre: String(event.genre || ""), priceCents: Number(event.priceCents) || 0, sourceUrl: String(event.sourceUrl || sourceUrl), imageUrl: String(event.imageUrl || ""), latitude: String(event.latitude || ""), longitude: String(event.longitude || ""), sourceHash, isPublished: 1 });
   }
   return { imported: payload.events.length, skipped: false };
 }

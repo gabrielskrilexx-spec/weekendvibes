@@ -89,12 +89,21 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-export async function listEvents(filters: { day?: string; city?: string; category?: string; maxPriceCents?: number; page?: number; size?: number } = {}) {
+export const ALLOWED_CITIES = ["Santos", "Guarujá"] as const;
+export const MUSICAL_CATEGORIES = ["show", "balada", "evento_musical"] as const;
+export const MUSICAL_GENRES = ["funk", "house_eletronica", "samba_pagode", "rap_trap"] as const;
+
+export function filterEventsForPublicFeed<T extends Pick<Event, "city" | "category" | "genre" | "priceCents" | "eventDate">>(items: T[], filters: { city?: string; category?: string; genre?: string; maxPriceCents?: number }) {
+  return items.filter(event => ALLOWED_CITIES.includes(event.city as typeof ALLOWED_CITIES[number]) && MUSICAL_CATEGORIES.includes(event.category as typeof MUSICAL_CATEGORIES[number]) && (!filters.city || filters.city === "Todas" || event.city === filters.city) && (!filters.category || filters.category === "Todas" || event.category === filters.category) && (!filters.genre || event.genre === filters.genre) && (filters.maxPriceCents === undefined || event.priceCents <= filters.maxPriceCents));
+}
+
+export async function listEvents(filters: { day?: string; city?: string; category?: string; genre?: string; maxPriceCents?: number; page?: number; size?: number } = {}) {
   const db = await getDb();
   if (!db) return [];
-  const conditions = [eq(events.isPublished, 1)];
-  if (filters.city && filters.city !== "Todas") conditions.push(eq(events.city, filters.city));
+  const conditions = [eq(events.isPublished, 1), sql`${events.city} IN (${sql.join(ALLOWED_CITIES.map(city => sql`${city}`), sql`, `)})`];
+  if (filters.city && filters.city !== "Todas" && ALLOWED_CITIES.includes(filters.city as typeof ALLOWED_CITIES[number])) conditions.push(eq(events.city, filters.city));
   if (filters.category && filters.category !== "Todas") conditions.push(eq(events.category, filters.category as Event["category"]));
+  if (filters.genre) conditions.push(eq(events.genre, filters.genre));
   if (filters.maxPriceCents !== undefined) conditions.push(sql`${events.priceCents} <= ${filters.maxPriceCents}`);
   if (filters.day === "sexta") conditions.push(sql`DAYOFWEEK(${events.eventDate}) = 6`);
   if (filters.day === "sabado") conditions.push(sql`DAYOFWEEK(${events.eventDate}) = 7`);
@@ -110,13 +119,15 @@ export async function getEventBySlug(slug: string) {
   return rows[0];
 }
 
-export async function saveEvent(input: InsertEvent) {
+export async function saveEvent(data: InsertEvent) {
+  if (!ALLOWED_CITIES.includes(data.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos em Santos e Guarujá");
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  await db.insert(events).values(input).onDuplicateKeyUpdate({ set: { ...input, updatedAt: new Date() } });
+  await db.insert(events).values(data).onDuplicateKeyUpdate({ set: { ...data, updatedAt: new Date() } });
 }
 
 export async function updateEvent(id: number, input: Partial<InsertEvent>) {
+  if (input.city && !ALLOWED_CITIES.includes(input.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos em Santos e Guarujá");
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   await db.update(events).set({ ...input, updatedAt: new Date() }).where(eq(events.id, id));

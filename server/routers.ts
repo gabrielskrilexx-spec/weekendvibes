@@ -15,7 +15,8 @@ const eventInput = z.object({
   locationName: z.string().min(2),
   address: z.string().optional(),
   city: z.string().min(2),
-  category: z.enum(["show", "festa", "gastronomia", "esporte", "cultura"]),
+  category: z.enum(["show", "balada", "evento_musical"]),
+  genre: z.enum(["funk", "house_eletronica", "samba_pagode", "rap_trap"]).optional(),
   priceCents: z.number().int().min(0).default(0),
   sourceUrl: z.string().url().optional().or(z.literal("")),
   imageUrl: z.string().url().optional().or(z.literal("")),
@@ -41,7 +42,7 @@ export const appRouter = router({
     }),
   }),
   events: router({
-    list: publicProcedure.input(z.object({ day: z.string().optional(), city: z.string().optional(), category: z.string().optional(), maxPriceCents: z.number().optional(), page: z.number().optional(), size: z.number().optional() }).optional()).query(({ input }) => listEvents(input ?? {})),
+    list: publicProcedure.input(z.object({ day: z.string().optional(), city: z.string().optional(), category: z.string().optional(), genre: z.string().optional(), maxPriceCents: z.number().optional(), page: z.number().optional(), size: z.number().optional() }).optional()).query(({ input }) => listEvents(input ?? {})),
     bySlug: publicProcedure.input(z.object({ slug: z.string() })).query(({ input }) => getEventBySlug(input.slug)),
     create: adminOnly.input(eventInput).mutation(({ input }) => saveEvent(input)),
     update: adminOnly.input(z.object({ id: z.number(), data: eventInput.partial() })).mutation(({ input }) => updateEvent(input.id, input.data)),
@@ -50,7 +51,7 @@ export const appRouter = router({
       const response = await invokeLLM({
         model: "gpt-4o-mini",
         messages: [
-          { role: "system", content: "Você normaliza dados de eventos da Baixada Santista. Responda apenas JSON válido com resumo atrativo, categoria, data ISO, horário, local, cidade e preço em centavos." },
+          { role: "system", content: "Você normaliza eventos musicais de Santos e Guarujá. Ignore qualquer evento fora dessas duas cidades. Aceite somente shows, baladas e eventos musicais. Sugira um gênero entre Funk, House/Eletrônica, Samba/Pagode e Rap/Trap. Responda apenas JSON válido com resumo atrativo, categoria, gênero, data ISO, horário, local, cidade e preço em centavos." },
           { role: "user", content: input.rawText },
         ],
         response_format: {
@@ -67,7 +68,8 @@ export const appRouter = router({
                 locationName: { type: "string" },
                 address: { type: "string" },
                 city: { type: "string" },
-                category: { type: "string", enum: ["show", "festa", "gastronomia", "esporte", "cultura"] },
+                category: { type: "string", enum: ["show", "balada", "evento_musical"] },
+                genre: { type: "string", enum: ["funk", "house_eletronica", "samba_pagode", "rap_trap"] },
                 priceCents: { type: "integer" },
               },
               required: ["title", "summary", "eventDate", "locationName", "address", "city", "category", "priceCents"],

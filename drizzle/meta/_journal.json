@@ -15,6 +15,13 @@
       "when": 1786534213221,
       "tag": "0001_oval_red_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1786536176392,
+      "tag": "0002_small_sunfire",
+      "breakpoints": true
     }
   ]
 }

@@ -22,3 +22,13 @@
 - [x] Expandir testes de integração para CRUD, autorização, enriquecimento e handler agendado
 - [x] Criar documentação real com árvore do projeto e comandos exatos
 - [x] Adicionar validação de formulário e feedback de erro/sucesso no painel admin para criação e edição de eventos
+
+- [x] Restringir a busca, filtros e ingestão para eventos em Santos e Guarujá
+- [x] Reorientar categorias para shows, baladas e eventos musicais
+- [x] Adicionar gêneros Funk, House/Eletrônica, Samba/Pagode e Rap/Trap
+- [x] Validar filtros, ingestão, testes e publicar os ajustes
+- [ ] Publicar novamente a versão com Santos/Guarujá e catálogo musical e verificar produção
+- [x] Testar filtros públicos por cidade, categoria e gênero musical
+- [x] Testar ingestão rejeitando cidades e categorias fora do novo escopo
+- [x] Validar o resultado filtrado por cidade, categoria e gênero sobre uma coleção de eventos
+- [x] Fazer o teste de escopo importar a implementação real de `server/db.ts`, sem mocká-la

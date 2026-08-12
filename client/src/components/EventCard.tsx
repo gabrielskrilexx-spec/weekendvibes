@@ -2,12 +2,12 @@ import { ArrowUpRight, CalendarDays, MapPin, Ticket } from "lucide-react";
 import { Link } from "wouter";
 import type { Event } from "../../../drizzle/schema";
 
+const genreLabels: Record<string, string> = { funk: "Funk", house_eletronica: "House/Eletrônica", samba_pagode: "Samba/Pagode", rap_trap: "Rap/Trap" };
+
 const categoryColors: Record<string, string> = {
   show: "bg-orange-400/15 text-orange-200 border-orange-300/20",
-  festa: "bg-fuchsia-400/15 text-fuchsia-200 border-fuchsia-300/20",
-  gastronomia: "bg-yellow-300/15 text-yellow-100 border-yellow-200/20",
-  esporte: "bg-cyan-400/15 text-cyan-100 border-cyan-300/20",
-  cultura: "bg-violet-400/15 text-violet-100 border-violet-300/20",
+  balada: "bg-fuchsia-400/15 text-fuchsia-200 border-fuchsia-300/20",
+  evento_musical: "bg-yellow-300/15 text-yellow-100 border-yellow-200/20",
 };
 
 export default function EventCard({ event }: { event: Event }) {
@@ -31,7 +31,7 @@ export default function EventCard({ event }: { event: Event }) {
           <p className="flex items-center gap-2"><MapPin size={15} className="text-fuchsia-300" /><span className="line-clamp-1">{event.locationName}</span></p>
         </div>
         <div className="flex items-center justify-between gap-3">
-          <span className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${categoryColors[event.category]}`}>{event.category}</span>
+          <div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${categoryColors[event.category]}`}>{event.category === "evento_musical" ? "música" : event.category}</span>{event.genre && <span className="rounded-full border border-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-zinc-300">{genreLabels[event.genre] ?? event.genre}</span>}</div>
           <Link href={`/eventos/${event.slug}`} className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-orange-400 to-fuchsia-500 px-4 py-2 text-xs font-black text-white transition hover:brightness-110"><Ticket size={14} /> Ver evento</Link>
         </div>
       </div>
