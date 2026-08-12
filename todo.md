@@ -192,3 +192,11 @@
 - [x] Adicionar botões para iniciar rotas até os locais dos eventos e clusters
 - [x] Validar fallback de localização, links de navegação, acessibilidade e responsividade
 - [x] Salvar e publicar checkpoint das melhorias do mapa
+
+## Distância, tempo e transporte no mapa
+- [x] Solicitar localização atual do usuário com estados de permissão e indisponibilidade
+- [x] Exibir distância e tempo estimado até os eventos localizados
+- [x] Adicionar seletor acessível de carro, transporte público, bicicleta e caminhada
+- [x] Gerar rotas com o meio de transporte selecionado e fallback seguro
+- [x] Testar cálculos, permissões, acessibilidade e responsividade
+- [ ] Salvar e publicar checkpoint das estimativas e transportes
