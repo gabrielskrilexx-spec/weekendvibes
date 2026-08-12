@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { MapPin, Search, Sparkles, WifiOff } from "lucide-react";
+import { MapPin, Search, Sparkles, WifiOff, SlidersHorizontal } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { getAgendaWeekState } from "@/lib/agendaState";
@@ -7,6 +7,7 @@ import { MapView } from "@/components/Map";
 import EventCard from "@/components/EventCard";
 import AgendaWeekHighlight from "@/components/AgendaWeekHighlight";
 import OperationalAlertCenter from "@/components/OperationalAlertCenter";
+import TodayEvents from "@/components/TodayEvents";
 
 const days = [{ label: "Todos", value: "" }, { label: "Sexta", value: "sexta" }, { label: "Sábado", value: "sabado" }];
 const cities = ["Todas", "Santos", "Guarujá"];
@@ -20,9 +21,15 @@ export default function Home() {
   const [genre, setGenre] = useState("");
   const [query, setQuery] = useState("");
   const [venue, setVenue] = useState("");
+  const [date, setDate] = useState("");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [timeFrom, setTimeFrom] = useState("");
+  const [timeTo, setTimeTo] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
-  const eventsQuery = trpc.events.list.useQuery({ day, city, category, genre, venue: venue.trim() || undefined, size: 40 });
+  const eventsQuery = trpc.events.list.useQuery({ day, city, category, genre, venue: venue.trim() || undefined, date: date || undefined, minPriceCents: minPrice ? Number(minPrice) * 100 : undefined, maxPriceCents: maxPrice ? Number(maxPrice) * 100 : undefined, timeFrom: timeFrom || undefined, timeTo: timeTo || undefined, size: 40 });
   const agendaQuery = trpc.events.recentInstagramAgenda.useQuery({ lookbackDays: 5, size: 8 });
   const agendaState = getAgendaWeekState({ isLoading: agendaQuery.isLoading, isError: agendaQuery.isError, events: agendaQuery.data });
   const agendaEvents = agendaQuery.data ?? [];
@@ -62,18 +69,21 @@ export default function Home() {
           <div className="mb-6 flex items-center gap-2 text-sm font-bold uppercase tracking-[0.22em] text-yellow-200"><Sparkles size={16} /> Seu fim de semana começa aqui</div>
           <h1 className="max-w-4xl text-5xl font-black leading-[.95] tracking-[-0.07em] text-white sm:text-7xl">O que vai <span className="text-transparent bg-gradient-to-r from-orange-300 via-yellow-200 to-fuchsia-400 bg-clip-text">rolar?</span></h1>
           <p className="mt-5 max-w-xl text-base leading-relaxed text-zinc-400">Shows, baladas e música para viver Santos e Guarujá do jeito que o seu fim de semana merece.</p>
-          <div className="mt-8 flex max-w-2xl items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 shadow-2xl shadow-fuchsia-950/20"><Search size={20} className="text-orange-300" /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Busque por evento ou local..." className="w-full bg-transparent text-sm text-white outline-none placeholder:text-zinc-500" /></div>
+          <div className="mt-8 flex max-w-2xl items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 shadow-2xl shadow-fuchsia-950/20"><Search size={20} className="text-orange-300" /><input aria-label="Buscar por evento ou local" value={query} onChange={e => setQuery(e.target.value)} placeholder="Busque por evento ou local..." className="w-full bg-transparent text-sm text-white outline-none placeholder:text-zinc-500 focus-visible:ring-2 focus-visible:ring-orange-300/70" /></div>
         </div>
       </section>
 
       <AgendaWeekHighlight state={agendaState} events={agendaEvents} />
+      <TodayEvents />
 
       <section className="mx-auto max-w-7xl px-4 pt-7 sm:px-6">
-        <div className="flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">{days.map(item => <button key={item.label} onClick={() => setDay(item.value)} className={`shrink-0 rounded-full border px-5 py-2.5 text-sm font-black transition ${day === item.value ? "border-orange-300 bg-orange-300 text-zinc-950" : "border-white/10 bg-white/[0.04] text-zinc-300 hover:border-orange-300/50"}`}>{item.label}</button>)}</div>
-        <div className="mt-5 flex items-center gap-3"><p className="shrink-0 text-[11px] font-black uppercase tracking-[0.18em] text-fuchsia-300">Explorar por cidade</p><div className="flex min-w-0 gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">{cities.map(item => <button key={item} aria-pressed={city === item} onClick={() => setCity(item)} className={`shrink-0 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wider transition ${city === item ? "border-fuchsia-300/60 bg-fuchsia-400/20 text-fuchsia-100" : "border-white/10 text-zinc-500 hover:text-zinc-200"}`}>{item}</button>)}</div></div>
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">{categories.map(item => <button key={item} onClick={() => setCategory(item)} className={`shrink-0 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wider transition ${category === item ? "border-yellow-200/60 bg-yellow-300/15 text-yellow-100" : "border-white/10 text-zinc-500 hover:text-zinc-200"}`}>{item === "evento_musical" ? "Música" : item}</button>)}</div>
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">{genres.map(item => <button key={item.value || "todos-generos"} onClick={() => setGenre(item.value)} className={`shrink-0 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wider transition ${genre === item.value ? "border-fuchsia-300/60 bg-fuchsia-400/20 text-fuchsia-100" : "border-white/10 text-zinc-500 hover:text-zinc-200"}`}>{item.label}</button>)}</div>
+        <div className="flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">{days.map(item => <button type="button" key={item.label} aria-pressed={day === item.value} onClick={() => setDay(item.value)} className={`shrink-0 rounded-full border px-5 py-2.5 text-sm font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 ${day === item.value ? "border-orange-300 bg-orange-300 text-zinc-950" : "border-white/10 bg-white/[0.04] text-zinc-300 hover:border-orange-300/50"}`}>{item.label}</button>)}</div>
+        <div className="mt-5 flex items-center gap-3"><p className="shrink-0 text-[11px] font-black uppercase tracking-[0.18em] text-fuchsia-300">Explorar por cidade</p><div className="flex min-w-0 gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">{cities.map(item => <button type="button" key={item} aria-pressed={city === item} onClick={() => setCity(item)} className={`shrink-0 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wider transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300 ${city === item ? "border-fuchsia-300/60 bg-fuchsia-400/20 text-fuchsia-100" : "border-white/10 text-zinc-500 hover:text-zinc-200"}`}>{item}</button>)}</div></div>
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">{categories.map(item => <button type="button" key={item} aria-pressed={category === item} onClick={() => setCategory(item)} className={`shrink-0 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wider transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-200 ${category === item ? "border-yellow-200/60 bg-yellow-300/15 text-yellow-100" : "border-white/10 text-zinc-500 hover:text-zinc-200"}`}>{item === "evento_musical" ? "Música" : item}</button>)}</div>
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">{genres.map(item => <button type="button" key={item.value || "todos-generos"} aria-pressed={genre === item.value} onClick={() => setGenre(item.value)} className={`shrink-0 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wider transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300 ${genre === item.value ? "border-fuchsia-300/60 bg-fuchsia-400/20 text-fuchsia-100" : "border-white/10 text-zinc-500 hover:text-zinc-200"}`}>{item.label}</button>)}</div>
         <label className="mt-4 flex max-w-xl items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-zinc-400 focus-within:border-orange-300/60"><MapPin size={17} className="shrink-0 text-orange-300" /><span className="sr-only">Filtrar por local ou estabelecimento</span><input value={venue} onChange={e => setVenue(e.target.value)} placeholder="Filtre por local ou estabelecimento..." className="w-full bg-transparent text-sm text-white outline-none placeholder:text-zinc-500" /></label>
+        <button type="button" aria-expanded={showAdvanced} onClick={() => setShowAdvanced(value => !value)} className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-300 hover:border-orange-300/50 hover:text-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"><SlidersHorizontal size={15} /> Filtros avançados</button>
+        {showAdvanced && <div className="mt-3 grid max-w-4xl gap-3 rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:grid-cols-2 lg:grid-cols-5"><label className="text-xs font-bold text-zinc-400">Data<input type="date" value={date} onChange={e => setDate(e.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-white" /></label><label className="text-xs font-bold text-zinc-400">Preço mínimo<input type="number" min="0" value={minPrice} onChange={e => setMinPrice(e.target.value)} placeholder="R$" className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-white" /></label><label className="text-xs font-bold text-zinc-400">Preço máximo<input type="number" min="0" value={maxPrice} onChange={e => setMaxPrice(e.target.value)} placeholder="R$" className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-white" /></label><label className="text-xs font-bold text-zinc-400">A partir de<input type="time" value={timeFrom} onChange={e => setTimeFrom(e.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-white" /></label><label className="text-xs font-bold text-zinc-400">Até<input type="time" value={timeTo} onChange={e => setTimeTo(e.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-white" /></label></div>}
 
         <div className="mt-8 grid gap-8 lg:grid-cols-[1.25fr_.75fr]">
           <div>

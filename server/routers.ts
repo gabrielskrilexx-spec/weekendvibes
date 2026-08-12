@@ -3,7 +3,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
-import { deleteEvent, getEventBySlug, listEvents, listRecentInstagramAgendaEvents, listOperationalAlerts, resolveOperationalAlert, saveEvent, updateEvent } from "./db";
+import { deleteEvent, getEventBySlug, listEvents, listRecentInstagramAgendaEvents, listTodayEvents, listOperationalAlerts, resolveOperationalAlert, saveEvent, updateEvent, listFavoriteEventIds, toggleFavoriteEvent, setEventReminder, listUserReminders } from "./db";
 import { invokeLLM } from "./_core/llm";
 import { getTuesdayRoutineStatus, runTuesdayRoutineNow } from "./manual-ingestion";
 
@@ -51,9 +51,14 @@ export const appRouter = router({
     resolve: adminOnly.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => resolveOperationalAlert(input.id)),
   }),
   events: router({
-    list: publicProcedure.input(z.object({ day: z.string().optional(), city: z.string().optional(), category: z.string().optional(), genre: z.string().optional(), venue: z.string().optional(), maxPriceCents: z.number().optional(), page: z.number().optional(), size: z.number().optional() }).optional()).query(({ input }) => listEvents(input ?? {})),
+    list: publicProcedure.input(z.object({ day: z.string().optional(), date: z.string().optional(), startDate: z.string().optional(), endDate: z.string().optional(), timeFrom: z.string().optional(), timeTo: z.string().optional(), city: z.string().optional(), category: z.string().optional(), genre: z.string().optional(), venue: z.string().optional(), minPriceCents: z.number().int().min(0).optional(), maxPriceCents: z.number().int().min(0).optional(), page: z.number().int().min(1).optional(), size: z.number().int().min(1).max(100).optional() }).optional()).query(({ input }) => listEvents(input ?? {})),
+    today: publicProcedure.input(z.object({ size: z.number().int().min(1).max(20).optional() }).optional()).query(({ input }) => listTodayEvents(input ?? {})),
     recentInstagramAgenda: publicProcedure.input(z.object({ lookbackDays: z.number().int().min(1).max(14).optional(), size: z.number().int().min(1).max(12).optional() }).optional()).query(({ input }) => listRecentInstagramAgendaEvents(input ?? {})),
     bySlug: publicProcedure.input(z.object({ slug: z.string() })).query(({ input }) => getEventBySlug(input.slug)),
+    favoriteIds: protectedProcedure.query(({ ctx }) => listFavoriteEventIds(ctx.user.id)),
+    toggleFavorite: protectedProcedure.input(z.object({ eventId: z.number().int().positive() })).mutation(({ ctx, input }) => toggleFavoriteEvent(ctx.user.id, input.eventId)),
+    reminders: protectedProcedure.query(({ ctx }) => listUserReminders(ctx.user.id)),
+    setReminder: protectedProcedure.input(z.object({ eventId: z.number().int().positive(), active: z.boolean(), hoursBefore: z.union([z.literal(3), z.literal(24), z.literal(72)]).optional() })).mutation(({ ctx, input }) => setEventReminder(ctx.user.id, input.eventId, input.active, input.hoursBefore ?? 24)),
     create: adminOnly.input(eventInput).mutation(({ input }) => saveEvent(input)),
     update: adminOnly.input(z.object({ id: z.number(), data: eventInput.partial() })).mutation(({ input }) => updateEvent(input.id, input.data)),
     remove: adminOnly.input(z.object({ id: z.number() })).mutation(({ input }) => deleteEvent(input.id)),

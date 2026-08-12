@@ -169,4 +169,13 @@
 - [x] Ler metadata do schedule ativo a partir da fonte autoritativa usada pela configuração publicada, sem taskUid hardcoded, expondo timezone, runMode, nextExecutionAt e estado reais
 - [x] Adicionar asserts explícitos no AdminRoutinePanel para nextExecutionAt, timezone e runMode vindos da integração
 - [x] Criar serviço compartilhado pelos handlers agendados e botão manual e testar equivalência ponta a ponta com arquivamento, fontes públicas e Instagram
-- [ ] Salvar checkpoint do painel administrativo com metadata real e disparo manual
+- [x] Salvar checkpoint do painel administrativo com metadata real e disparo manual
+
+## Prioridades altas de produto
+- [x] Criar seção “O que fazer hoje” com ordenação por data e horário, estados vazio/loading e links para detalhes
+- [x] Implementar filtros combináveis por cidade, gênero, local, data, preço e horário
+- [x] Implementar favoritos autenticados por usuário com persistência, toggle e lembretes configuráveis
+- [x] Adicionar testes de backend, frontend e integração para os três fluxos
+- [x] Validar responsividade, acessibilidade e publicar checkpoint
+- [x] Validar acessibilidade dos novos fluxos, incluindo foco, rótulos/ARIA e navegação por teclado
+- [x] Salvar e publicar novo checkpoint após concluir a validação final das prioridades altas

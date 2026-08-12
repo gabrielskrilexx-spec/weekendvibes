@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, uniqueIndex } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -68,3 +68,31 @@ export const operationalAlerts = mysqlTable("operationalAlerts", {
 
 export type OperationalAlert = typeof operationalAlerts.$inferSelect;
 export type InsertOperationalAlert = typeof operationalAlerts.$inferInsert;
+
+export const eventFavorites = mysqlTable("eventFavorites", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  eventId: int("eventId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => ({
+  userEventUnique: uniqueIndex("eventFavorites_user_event_unique").on(table.userId, table.eventId),
+}));
+
+export type EventFavorite = typeof eventFavorites.$inferSelect;
+export type InsertEventFavorite = typeof eventFavorites.$inferInsert;
+
+export const eventReminders = mysqlTable("eventReminders", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  eventId: int("eventId").notNull(),
+  hoursBefore: int("hoursBefore").default(24).notNull(),
+  remindAt: timestamp("remindAt").notNull(),
+  isActive: int("isActive").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => ({
+  userEventUnique: uniqueIndex("eventReminders_user_event_unique").on(table.userId, table.eventId),
+}));
+
+export type EventReminder = typeof eventReminders.$inferSelect;
+export type InsertEventReminder = typeof eventReminders.$inferInsert;

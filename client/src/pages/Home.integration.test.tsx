@@ -11,7 +11,7 @@ vi.mock("wouter", () => ({ Link: ({ href, children, ...props }: { href: string; 
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
-    useUtils: () => ({ operationalAlerts: { list: { invalidate: vi.fn() } } }),
+    useUtils: () => ({ operationalAlerts: { list: { invalidate: vi.fn() } }, events: { favoriteIds: { invalidate: vi.fn() }, reminders: { invalidate: vi.fn() } } }),
     auth: { me: { useQuery: () => ({ data: null }) } },
     operationalAlerts: {
       list: { useQuery: () => ({ data: [], isLoading: false, isError: false }) },
@@ -20,6 +20,11 @@ vi.mock("@/lib/trpc", () => ({
     events: {
       list: { useQuery: () => mocks.events },
       recentInstagramAgenda: { useQuery: () => mocks.agenda },
+      today: { useQuery: () => ({ data: [], isLoading: false, isError: false }) },
+      favoriteIds: { useQuery: () => ({ data: [], isLoading: false, isError: false }) },
+      reminders: { useQuery: () => ({ data: [], isLoading: false, isError: false }) },
+      toggleFavorite: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
+      setReminder: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
     },
   },
 }));

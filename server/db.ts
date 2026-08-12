@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Event, InsertEvent, InsertUser, events, users, operationalAlerts, InsertOperationalAlert, OperationalAlert } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -171,7 +171,15 @@ export async function listRecentInstagramAgendaEvents(options: { lookbackDays?: 
   )).orderBy(asc(events.eventDate), desc(events.createdAt)).limit(size);
 }
 
-export async function listEvents(filters: { day?: string; city?: string; category?: string; genre?: string; venue?: string; maxPriceCents?: number; page?: number; size?: number } = {}) {
+function saoPauloDateKey(date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+}
+
+export async function listTodayEvents(options: { size?: number } = {}) {
+  return listEvents({ date: saoPauloDateKey(), size: options.size ?? 12 });
+}
+
+export async function listEvents(filters: { day?: string; date?: string; startDate?: string; endDate?: string; timeFrom?: string; timeTo?: string; city?: string; category?: string; genre?: string; venue?: string; minPriceCents?: number; maxPriceCents?: number; page?: number; size?: number } = {}) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [eq(events.isPublished, 1), eq(events.isArchived, 0), sql`${events.city} IN (${sql.join(ALLOWED_CITIES.map(city => sql`${city}`), sql`, `)})`];
@@ -179,12 +187,65 @@ export async function listEvents(filters: { day?: string; city?: string; categor
   if (filters.category && filters.category !== "Todas") conditions.push(eq(events.category, filters.category as Event["category"]));
   if (filters.genre) conditions.push(eq(events.genre, filters.genre));
   if (filters.venue?.trim()) { const venueSearch = `%${filters.venue.trim()}%`; conditions.push(or(like(events.locationName, venueSearch), like(events.address, venueSearch))!); }
+  if (filters.minPriceCents !== undefined) conditions.push(sql`${events.priceCents} >= ${filters.minPriceCents}`);
   if (filters.maxPriceCents !== undefined) conditions.push(sql`${events.priceCents} <= ${filters.maxPriceCents}`);
+  if (filters.date) conditions.push(sql`DATE(${events.eventDate}) = ${filters.date}`);
+  if (filters.startDate) conditions.push(sql`DATE(${events.eventDate}) >= ${filters.startDate}`);
+  if (filters.endDate) conditions.push(sql`DATE(${events.eventDate}) <= ${filters.endDate}`);
+  if (filters.timeFrom) conditions.push(sql`TIME(${events.eventDate}) >= ${`${filters.timeFrom}:00`}`);
+  if (filters.timeTo) conditions.push(sql`TIME(${events.eventDate}) <= ${`${filters.timeTo}:59`}`);
   if (filters.day === "sexta") conditions.push(sql`DAYOFWEEK(${events.eventDate}) = 6`);
   if (filters.day === "sabado") conditions.push(sql`DAYOFWEEK(${events.eventDate}) = 7`);
   const page = Math.max(filters.page ?? 1, 1);
   const size = Math.min(Math.max(filters.size ?? 24, 1), 100);
   return db.select().from(events).where(and(...conditions)).orderBy(asc(events.eventDate)).limit(size).offset((page - 1) * size);
+}
+
+export async function listFavoriteEventIds(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({ eventId: eventFavorites.eventId }).from(eventFavorites).where(eq(eventFavorites.userId, userId));
+  return rows.map(row => row.eventId);
+}
+
+export async function toggleFavoriteEvent(userId: number, eventId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const event = await db.select({ id: events.id }).from(events).where(and(eq(events.id, eventId), eq(events.isPublished, 1), eq(events.isArchived, 0))).limit(1);
+  if (!event[0]) throw new Error("Evento indisponível");
+  const existing = await db.select({ id: eventFavorites.id }).from(eventFavorites).where(and(eq(eventFavorites.userId, userId), eq(eventFavorites.eventId, eventId))).limit(1);
+  if (existing[0]) {
+    await db.delete(eventFavorites).where(eq(eventFavorites.id, existing[0].id));
+    return { isFavorite: false } as const;
+  }
+  await db.insert(eventFavorites).values({ userId, eventId });
+  return { isFavorite: true } as const;
+}
+
+export async function setEventReminder(userId: number, eventId: number, active: boolean, hoursBefore = 24) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const event = await db.select({ eventDate: events.eventDate }).from(events).where(and(eq(events.id, eventId), eq(events.isPublished, 1), eq(events.isArchived, 0))).limit(1);
+  if (!event[0]) throw new Error("Evento indisponível");
+  const existing = await db.select({ id: eventReminders.id }).from(eventReminders).where(and(eq(eventReminders.userId, userId), eq(eventReminders.eventId, eventId))).limit(1);
+  if (!active) {
+    if (existing[0]) await db.delete(eventReminders).where(eq(eventReminders.id, existing[0].id));
+    return { active: false, hoursBefore } as const;
+  }
+  const normalizedHours = [3, 24, 72].includes(hoursBefore) ? hoursBefore : 24;
+  const remindAt = new Date(new Date(event[0].eventDate).getTime() - normalizedHours * 60 * 60 * 1000);
+  if (existing[0]) {
+    await db.update(eventReminders).set({ hoursBefore: normalizedHours, remindAt, isActive: 1, updatedAt: new Date() }).where(eq(eventReminders.id, existing[0].id));
+  } else {
+    await db.insert(eventReminders).values({ userId, eventId, hoursBefore: normalizedHours, remindAt, isActive: 1 });
+  }
+  return { active: true, hoursBefore: normalizedHours, remindAt } as const;
+}
+
+export async function listUserReminders(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ eventId: eventReminders.eventId, hoursBefore: eventReminders.hoursBefore, remindAt: eventReminders.remindAt }).from(eventReminders).where(and(eq(eventReminders.userId, userId), eq(eventReminders.isActive, 1)));
 }
 
 export const PUBLIC_EVENT_STATE = { isPublished: 1 as const, isArchived: 0 as const };
