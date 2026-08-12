@@ -122,3 +122,20 @@
 - [x] Simular clique no centro visual e comprovar mutate com o id correto
 - [x] Testar o contrato tRPC operationalAlerts.resolve com autorização admin
 - [x] Salvar novo checkpoint após os ajustes finais de alertas
+
+## Revisão de destaque Instagram enviado pelo usuário
+- [x] Consultar publicamente o destaque fornecido e registrar os dados realmente observados
+- [x] Validar eventos encontrados contra Santos/Guarujá, categorias e gêneros permitidos: o item observado era passado e gastronômico, portanto inelegível
+- [x] Persistir somente eventos elegíveis na Agenda da Semana com origem verificável: nenhum evento elegível confirmado; nenhuma inserção realizada
+- [x] Verificar idempotência da ingestão manual, consultar os três eventos elegíveis e preparar a publicação
+
+## Ingestão manual de capturas do Meu Lugar Bar
+- [x] Extrair e documentar os eventos visíveis nas quatro capturas enviadas
+- [x] Validar data futura, endereço do Meu Lugar Bar, cidade e gêneros musicais permitidos
+- [x] Persistir eventos elegíveis com origem manual verificável e imagem da captura quando aplicável
+- [x] Testar idempotência, consultar a Agenda da Semana e publicar a atualização
+- [x] Analisar explicitamente a captura 1000595737, registrar que é uma arte alternativa do mesmo Pagode do Mota e não um evento adicional
+- [x] Documentar a classificação principal samba/pagode do Pagode do Mota, mantendo DJ Babu como atração complementar de funk
+- [x] Repetir a inserção idêntica das capturas e comprovar ausência de duplicatas
+- [x] Consultar a query Agenda da Semana e verificar os três cards no frontend
+- [ ] Salvar novo checkpoint após a atualização dos eventos manuais
