@@ -16,11 +16,9 @@ export default function Home() {
   const [category, setCategory] = useState("Todas");
   const [genre, setGenre] = useState("");
   const [query, setQuery] = useState("");
-  const [price, setPrice] = useState("todos");
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
-  const maxPriceCents = price === "gratis" ? 0 : price === "ate50" ? 5000 : price === "ate150" ? 15000 : undefined;
-  const eventsQuery = trpc.events.list.useQuery({ day, city, category, genre, maxPriceCents, size: 40 });
+  const eventsQuery = trpc.events.list.useQuery({ day, city, category, genre, size: 40 });
   const events = useMemo(() => (eventsQuery.data ?? []).filter(event => event.title.toLowerCase().includes(query.toLowerCase()) || event.locationName.toLowerCase().includes(query.toLowerCase())), [eventsQuery.data, query]);
 
   const setupMarkers = (map: google.maps.Map) => {
@@ -65,7 +63,6 @@ export default function Home() {
         <div className="mt-3 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">{cities.map(item => <button key={item} onClick={() => setCity(item)} className={`shrink-0 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wider transition ${city === item ? "border-fuchsia-300/60 bg-fuchsia-400/20 text-fuchsia-100" : "border-white/10 text-zinc-500 hover:text-zinc-200"}`}>{item}</button>)}</div>
         <div className="mt-3 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">{categories.map(item => <button key={item} onClick={() => setCategory(item)} className={`shrink-0 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wider transition ${category === item ? "border-yellow-200/60 bg-yellow-300/15 text-yellow-100" : "border-white/10 text-zinc-500 hover:text-zinc-200"}`}>{item === "evento_musical" ? "Música" : item}</button>)}</div>
         <div className="mt-3 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">{genres.map(item => <button key={item.value || "todos-generos"} onClick={() => setGenre(item.value)} className={`shrink-0 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wider transition ${genre === item.value ? "border-fuchsia-300/60 bg-fuchsia-400/20 text-fuchsia-100" : "border-white/10 text-zinc-500 hover:text-zinc-200"}`}>{item.label}</button>)}</div>
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">{[{ label: "Qualquer preço", value: "todos" }, { label: "Grátis", value: "gratis" }, { label: "Até R$ 50", value: "ate50" }, { label: "Até R$ 150", value: "ate150" }].map(item => <button key={item.value} onClick={() => setPrice(item.value)} className={`shrink-0 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wider transition ${price === item.value ? "border-orange-300/60 bg-orange-300/15 text-orange-100" : "border-white/10 text-zinc-500 hover:text-zinc-200"}`}>{item.label}</button>)}</div>
 
         <div className="mt-8 grid gap-8 lg:grid-cols-[1.25fr_.75fr]">
           <div>

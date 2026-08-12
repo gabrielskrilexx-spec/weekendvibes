@@ -77,3 +77,4 @@
 - [x] Testar lookup por slug com registro arquivado preservado, comprovando que a condição isArchived/isPublished oculta o detalhe sem exclusão
 - [x] Repetir a ingestão dos dois eventos Ingresse e validar idempotência por sourceUrl e data para ambos
 - [x] Inspecionar no teste do lookup por slug as condições SQL isArchived=0 e isPublished=1, mantendo o registro arquivado preservado
+- [x] Remover a aba/seção de precificação do início do layout, preservando os demais filtros
