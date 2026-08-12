@@ -185,4 +185,4 @@
 - [x] Agrupar eventos próximos em clusters regionais e atualizar os grupos com filtros
 - [x] Integrar mapa ao feed, popups acessíveis e estados loading/vazio/erro
 - [x] Cobrir agrupamento, integração visual, acessibilidade e responsividade com testes
-- [ ] Salvar e publicar checkpoint do mapa interativo
+- [x] Salvar e publicar checkpoint do mapa interativo
