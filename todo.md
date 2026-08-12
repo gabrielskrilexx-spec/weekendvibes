@@ -86,3 +86,11 @@
 - [x] Ampliar o filtro público por local para buscar também no endereço do evento
 - [x] Adicionar teste de regressão do contrato tRPC encaminhando venue para a listagem
 - [x] Adicionar teste automatizado do fallback de compartilhamento via clipboard quando Web Share não estiver disponível
+- [x] Criar pipeline autônomo de ingestão Instagram com Apify, filtro estrito de agenda e OCR
+- [x] Extrair eventos aprovados com saída estruturada e fazer upsert no banco do WeekendVibes
+- [x] Configurar o schedule WeekendVibe — ingestão Instagram para quinta-feira às 10:00 em modo automático
+- [x] Validar o pipeline, o endpoint agendável, os segredos e o schedule sem confirmação manual
+- [x] Executar OCR também quando a legenda não passar no filtro e combinar legenda com OCR antes da decisão
+- [x] Adicionar testes do handler Instagram para autenticação cron-only, arquivamento e execução do pipeline
+- [x] Adicionar teste controlado do pipeline cobrindo Apify, aprovação por OCR, saída estruturada e upsert
+- [x] Adicionar teste mockado em que a legenda falha, o OCR contém a agenda aprovada e o evento é persistido

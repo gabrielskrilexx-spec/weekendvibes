@@ -112,3 +112,9 @@ Os dois registros foram inseridos de forma idempotente com `sourceHash`, cidade 
 ## Arquivamento automático
 
 Eventos com `priceNote` indicando “vendas encerradas” são arquivados quando `COALESCE(endDate, eventDate) < NOW()`. O arquivamento define `isArchived = 1` e `isPublished = 0`, preservando o registro para auditoria. A rotina roda no início dos endpoints agendados de ingestão estática e renderizada, portanto acompanha o ciclo automático existente.
+
+## Pesquisa pública — contas Instagram para ingestão
+
+Pesquisa realizada em 2026-08-12. Os resultados públicos associam Moby House à conta MOBY DICK SANTOS `@mobydicksantos` e a publicações que mencionam “MOBY HOUSE”; Projac Bar aparece como `@projac.bar`; Meu Lugar Bar como `@meulugar.bar`; Nosso After como `@nossoafterguaruja`; e Curvão Surf House como `@curvaosurfhouse`. A página direta do Instagram redirecionou para login no navegador, portanto o pipeline usa o Actor público do Apify sem login do Instagram e trata uma conta indisponível como fonte sem dados.
+
+A documentação pública do Apify confirma o Actor `apify~instagram-scraper`, o endpoint síncrono `/v2/actors/apify~instagram-scraper/run-sync-get-dataset-items` e o payload com `resultsType: posts`, `directUrls` e `resultsLimit`. O pipeline usa o header Bearer para o token e limita a janela processada a cinco dias no servidor.
