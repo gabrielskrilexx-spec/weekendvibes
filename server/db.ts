@@ -93,6 +93,10 @@ export const ALLOWED_CITIES = ["Santos", "Guarujá"] as const;
 export const MUSICAL_CATEGORIES = ["show", "balada", "evento_musical"] as const;
 export const MUSICAL_GENRES = ["funk", "house_eletronica", "samba_pagode", "rap_trap"] as const;
 
+export function eventIdentityKey(sourceUrl: string, eventDate: Date | string) {
+  return `${sourceUrl}|${new Date(eventDate).toISOString().slice(0, 10)}`;
+}
+
 export function filterEventsForPublicFeed<T extends Pick<Event, "city" | "category" | "genre" | "priceCents" | "eventDate">>(items: T[], filters: { city?: string; category?: string; genre?: string; maxPriceCents?: number }) {
   return items.filter(event => ALLOWED_CITIES.includes(event.city as typeof ALLOWED_CITIES[number]) && MUSICAL_CATEGORIES.includes(event.category as typeof MUSICAL_CATEGORIES[number]) && (!filters.city || filters.city === "Todas" || event.city === filters.city) && (!filters.category || filters.category === "Todas" || event.category === filters.category) && (!filters.genre || event.genre === filters.genre) && (filters.maxPriceCents === undefined || event.priceCents <= filters.maxPriceCents));
 }
@@ -123,6 +127,11 @@ export async function saveEvent(data: InsertEvent) {
   if (!ALLOWED_CITIES.includes(data.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos em Santos e Guarujá");
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
+  const existing = await db.select({ id: events.id }).from(events).where(and(sql`${events.sourceUrl} = ${data.sourceUrl}`, eq(events.eventDate, data.eventDate))).limit(1);
+  if (existing[0]) {
+    await db.update(events).set({ ...data, updatedAt: new Date() }).where(eq(events.id, existing[0].id));
+    return;
+  }
   await db.insert(events).values(data).onDuplicateKeyUpdate({ set: { ...data, updatedAt: new Date() } });
 }
 

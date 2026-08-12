@@ -12,7 +12,7 @@ export async function ingestAgentDocumentsHandler(req: Request, res: Response) {
     const normalized = documents.filter((document: unknown): document is AgentEventDocument => {
       if (!document || typeof document !== "object") return false;
       const candidate = document as Partial<AgentEventDocument>;
-      return typeof candidate.sourceUrl === "string" && /^https:\/\/(www\.)?(articket\.com\.br|blacktag\.com\.br)\//.test(candidate.sourceUrl) && typeof candidate.text === "string" && candidate.sourceUrl.length <= 500 && candidate.text.length <= 16000;
+      return typeof candidate.sourceUrl === "string" && /^https:\/\/(www\.)?(articket\.com\.br|blacktag\.com\.br|zig\.tickets|ingresse\.com)\//.test(candidate.sourceUrl) && typeof candidate.text === "string" && candidate.sourceUrl.length <= 500 && candidate.text.length <= 16000;
     });
     const result = await ingestAgentDocuments(normalized);
     return res.json({ ok: true, startedAt, finishedAt: new Date().toISOString(), result });

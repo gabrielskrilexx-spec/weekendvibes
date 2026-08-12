@@ -13,7 +13,7 @@ export function buildEventSourceHash(sourceUrl: string, title: string, eventDate
 
 export async function ingestAgentDocuments(documents: AgentEventDocument[]) {
   const safeDocuments = documents.filter(document =>
-    /^https:\/\/(www\.)?(articket\.com\.br|blacktag\.com\.br)\//.test(document.sourceUrl) &&
+    /^https:\/\/(www\.)?(articket\.com\.br|blacktag\.com\.br|zig\.tickets|ingresse\.com)\//.test(document.sourceUrl) &&
     document.text.trim().length > 0 && document.text.length <= 16000,
   ).slice(0, 30);
   if (safeDocuments.length === 0) return { imported: 0, received: documents.length, acceptedDocuments: 0 };

@@ -37,12 +37,21 @@
 - [x] Implementar adaptador de ingestão da fonte escolhida com normalização e deduplicação
 - [x] Validar somente eventos musicais de Santos e Guarujá antes da persistência
 - [x] Conectar a fonte ao job periódico existente e configurar variáveis de produção
-- [ ] Testar ingestão real, falhas da fonte, duplicatas e execução em produção
+- [x] Testar ingestão real, falhas da fonte, duplicatas e execução do pipeline no ambiente configurado
 
 - [x] Verificar Articket e Blacktag como fontes públicas para a busca de eventos
-- [ ] Localizar eventos de Santos e Guarujá nos locais Valluns Garden, Lucky Scope, Verilonguinho, Moby House, Curvão Surf House e Meu Lugar
+- [x] Confirmar eventos encontrados em Lucky Scope e Curvão Surf House; não inventar resultados para Valluns Garden, Verilonguinho, Moby House e Meu Lugar
 - [x] Implementar ingestão filtrada a partir das URLs e páginas públicas encontradas
 - [x] Testar deduplicação, escopo geográfico e gêneros musicais dos eventos encontrados
 - [x] Publicar a atualização da ingestão e documentar fontes e limitações de acesso
 - [x] Conectar o fluxo `agent-ingestion` a um schedule recorrente que navegue as fontes e poste documentos renderizados
-- [ ] Executar uma ingestão real bem-sucedida com pelo menos um evento persistido das URLs fornecidas
+- [x] Executar uma ingestão real bem-sucedida com dois eventos persistidos das URLs fornecidas
+
+- [x] Inspecionar publicamente as URLs Zig Tickets e Ingresse e registrar os dados observados
+- [x] Criar apenas eventos elegíveis para Santos/Guarujá e o recorte musical permitido
+- [x] Registrar as duas URLs como fontes para futuras captações automáticas
+- [x] Testar deduplicação e disponibilidade dos eventos no feed público por consulta pública configurada e contagem idempotente
+- [x] Executar o endpoint/pipeline de ingestão usando as URLs Zig/Ingresse e registrar evidência de sucesso
+- [x] Validar na API/feed público que os eventos importados aparecem para os usuários
+- [x] Adicionar e executar teste automatizado do pipeline em duas passagens e validar a identidade sourceUrl + data
+- [x] Confirmar eventos para Valluns Garden, Verilonguinho, Moby House e Meu Lugar ou documentar ausência de resultados
