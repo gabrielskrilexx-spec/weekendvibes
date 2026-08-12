@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import { and, asc, desc, eq, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Event, InsertEvent, InsertUser, events, users } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users, operationalAlerts, InsertOperationalAlert, OperationalAlert } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -99,6 +100,47 @@ export function isRecentInstagramAgendaEvent(event: Pick<Event, "sourceType" | "
   const eventDate = new Date(event.eventDate);
   const cutoff = now.getTime() - lookbackDays * 24 * 60 * 60 * 1000;
   return event.sourceType === INSTAGRAM_AGENDA_SOURCE_TYPE && event.isPublished === 1 && event.isArchived === 0 && updatedAt.getTime() >= cutoff && updatedAt.getTime() <= now.getTime() && eventDate.getTime() >= now.getTime();
+}
+
+export type OperationalIntegration = "apify" | "ocr" | "openai" | "pipeline";
+export type PublicOperationalAlert = Pick<OperationalAlert, "id" | "integration" | "title" | "message" | "createdAt">;
+
+export function operationalAlertFingerprint(integration: OperationalIntegration, message: string) {
+  return createHash("sha256").update(`${integration}:${message.trim()}`).digest("hex");
+}
+
+export async function recordOperationalAlert(input: { integration: OperationalIntegration; title: string; message: string; dbOverride?: Awaited<ReturnType<typeof getDb>> }) {
+  const db = input.dbOverride ?? await getDb();
+  if (!db) return undefined;
+  const message = input.message.trim().slice(0, 20000);
+  const values: InsertOperationalAlert = {
+    integration: input.integration,
+    title: input.title.trim().slice(0, 180),
+    message,
+    fingerprint: operationalAlertFingerprint(input.integration, message),
+    isResolved: 0,
+  };
+  await db.insert(operationalAlerts).values(values).onDuplicateKeyUpdate({
+    set: { title: values.title, message: values.message, isResolved: 0, updatedAt: new Date() },
+  });
+  return values;
+}
+
+export async function listOperationalAlerts(options: { size?: number; dbOverride?: Awaited<ReturnType<typeof getDb>> } = {}): Promise<PublicOperationalAlert[]> {
+  const db = options.dbOverride ?? await getDb();
+  if (!db) return [];
+  const size = Math.min(Math.max(options.size ?? 5, 1), 20);
+  return db.select({ id: operationalAlerts.id, integration: operationalAlerts.integration, title: operationalAlerts.title, message: operationalAlerts.message, createdAt: operationalAlerts.createdAt })
+    .from(operationalAlerts)
+    .where(eq(operationalAlerts.isResolved, 0))
+    .orderBy(desc(operationalAlerts.createdAt))
+    .limit(size);
+}
+
+export async function resolveOperationalAlert(id: number, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await db.update(operationalAlerts).set({ isResolved: 1, updatedAt: new Date() }).where(eq(operationalAlerts.id, id));
 }
 
 export function eventIdentityKey(sourceUrl: string, eventDate: Date | string) {

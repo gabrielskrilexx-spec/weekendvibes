@@ -1,13 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "./_core/sdk";
 import { ingestInstagramHandler } from "./scheduled-instagram";
-import { runInstagramPipeline } from "./instagram-pipeline";
-import { archiveExpiredSoldOutEvents, saveEvent } from "./db";
+import { runInstagramPipeline, InstagramIntegrationFailure } from "./instagram-pipeline";
+import { archiveExpiredSoldOutEvents, recordOperationalAlert, saveEvent } from "./db";
 
 vi.mock("./db", () => ({
   INSTAGRAM_AGENDA_SOURCE_TYPE: "instagram_agenda_weekend",
   archiveExpiredSoldOutEvents: vi.fn().mockResolvedValue(0),
+  recordOperationalAlert: vi.fn().mockResolvedValue(undefined),
   saveEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("./_core/notification", () => ({
+  notifyOwner: vi.fn().mockResolvedValue(true),
 }));
 
 describe("scheduled Instagram ingestion", () => {
@@ -15,6 +20,7 @@ describe("scheduled Instagram ingestion", () => {
     vi.restoreAllMocks();
     vi.mocked(saveEvent).mockClear();
     vi.mocked(archiveExpiredSoldOutEvents).mockClear();
+    vi.mocked(recordOperationalAlert).mockClear();
     process.env.APIFY_API_TOKEN = "test-apify";
     process.env.OPENAI_API_KEY = "test-openai";
   });
@@ -25,6 +31,29 @@ describe("scheduled Instagram ingestion", () => {
     await ingestInstagramHandler({} as never, res);
     expect((res as any).status).toHaveBeenCalledWith(403);
     expect(archiveExpiredSoldOutEvents).not.toHaveBeenCalled();
+  });
+
+  it("records an Apify failure and notifies the owner for cron callers", async () => {
+    vi.spyOn(sdk, "authenticateRequest").mockResolvedValue({ isCron: true } as never);
+    vi.spyOn(await import("./instagram-pipeline"), "runInstagramPipeline").mockRejectedValueOnce(new InstagramIntegrationFailure("apify", "Apify retornou HTTP 503"));
+    const res = { json: vi.fn().mockReturnThis(), status: vi.fn().mockReturnThis() } as never;
+
+    await ingestInstagramHandler({} as never, res);
+
+    expect(recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ integration: "apify", title: "Falha na captura do Instagram", message: expect.stringContaining("HTTP 503") }));
+    expect((res as any).status).toHaveBeenCalledWith(500);
+    expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: false, integration: "apify" }));
+  });
+
+  it.each(["ocr", "openai"] as const)("classifica falha de %s no alerta operacional", async (integration) => {
+    vi.spyOn(sdk, "authenticateRequest").mockResolvedValue({ isCron: true } as never);
+    vi.spyOn(await import("./instagram-pipeline"), "runInstagramPipeline").mockRejectedValueOnce(new InstagramIntegrationFailure(integration, `Falha simulada em ${integration}`));
+    const res = { json: vi.fn().mockReturnThis(), status: vi.fn().mockReturnThis() } as never;
+
+    await ingestInstagramHandler({} as never, res);
+
+    expect(recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ integration }));
+    expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: false, integration }));
   });
 
   it("archives first and executes the Instagram pipeline for cron callers", async () => {

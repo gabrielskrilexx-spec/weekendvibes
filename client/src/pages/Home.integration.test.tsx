@@ -11,6 +11,12 @@ vi.mock("wouter", () => ({ Link: ({ href, children, ...props }: { href: string; 
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
+    useUtils: () => ({ operationalAlerts: { list: { invalidate: vi.fn() } } }),
+    auth: { me: { useQuery: () => ({ data: null }) } },
+    operationalAlerts: {
+      list: { useQuery: () => ({ data: [], isLoading: false, isError: false }) },
+      resolve: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
+    },
     events: {
       list: { useQuery: () => mocks.events },
       recentInstagramAgenda: { useQuery: () => mocks.agenda },

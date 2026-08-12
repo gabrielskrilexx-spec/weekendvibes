@@ -107,3 +107,18 @@
 - [x] Testar o Home integrado com query recentInstagramAgenda mockada nos estados loading, empty e success
 - [x] Incluir arquivos client/**/*.test.tsx na configuração Vitest e executar os testes integrados do Home/carrossel
 - [x] Adicionar teste da consulta recentInstagramAgenda com banco mockado retornando itens controlados: excluir sourceType diferente e incluir createdAt antigo com updatedAt recente
+
+## Alertas de falha nas integrações
+- [x] Modelar alertas operacionais para falhas de Apify, OCR e OpenAI
+- [x] Capturar e persistir falhas do pipeline com deduplicação e estado de leitura
+- [x] Expor alertas ao frontend via contrato tRPC público e seguro
+- [x] Adicionar centro visual de notificações com badge, lista e ação de marcar como lido
+- [x] Cobrir falhas, consulta, leitura e estados visuais com testes Vitest
+- [x] Validar a interface em desktop/mobile e publicar checkpoint
+- [x] Implementar marcar alerta como lido/resolvido via mutation tRPC com atualização otimista e invalidação
+- [x] Testar o fluxo de resolução no frontend e o contrato operationalAlerts.resolve
+- [x] Adicionar estados de loading e erro ao centro de alertas
+- [x] Implementar atualização otimista com rollback no cache para resolver alertas
+- [x] Simular clique no centro visual e comprovar mutate com o id correto
+- [x] Testar o contrato tRPC operationalAlerts.resolve com autorização admin
+- [x] Salvar novo checkpoint após os ajustes finais de alertas

@@ -7,6 +7,15 @@ const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
 const LOOKBACK_DAYS = 5;
 
+export type InstagramIntegration = "apify" | "ocr" | "openai";
+
+export class InstagramIntegrationFailure extends Error {
+  constructor(public readonly integration: InstagramIntegration, message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "InstagramIntegrationFailure";
+  }
+}
+
 export const INSTAGRAM_TARGETS = [
   { name: "Moby House", username: "mobydicksantos", directUrl: "https://www.instagram.com/mobydicksantos/" },
   { name: "Projac Bar", username: "projac.bar", directUrl: "https://www.instagram.com/projac.bar/" },
@@ -84,50 +93,65 @@ async function openAiChat(body: Record<string, unknown>) {
 
 async function extractOcrText(imageUrl: string) {
   if (!imageUrl) return "";
-  const result = await openAiChat({
-    model: MODEL,
-    temperature: 0,
-    messages: [{ role: "user", content: [
-      { type: "text", text: "Transcreva literalmente todo o texto legível desta imagem. Não resuma, não corrija e não invente conteúdo." },
-      { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
-    ] }],
-  });
-  return String(result.choices?.[0]?.message?.content ?? "");
+  try {
+    const result = await openAiChat({
+      model: MODEL,
+      temperature: 0,
+      messages: [{ role: "user", content: [
+        { type: "text", text: "Transcreva literalmente todo o texto legível desta imagem. Não resuma, não corrija e não invente conteúdo." },
+        { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
+      ] }],
+    });
+    return String(result.choices?.[0]?.message?.content ?? "");
+  } catch (error) {
+    if (error instanceof InstagramIntegrationFailure) throw error;
+    throw new InstagramIntegrationFailure("ocr", error instanceof Error ? error.message : String(error), { cause: error });
+  }
 }
 
 export async function fetchInstagramPosts() {
-  const response = await fetch(APIFY_RUN_URL, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${requiredEnv("APIFY_API_TOKEN")}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      resultsType: "posts",
-      directUrls: INSTAGRAM_TARGETS.map(target => target.directUrl),
-      resultsLimit: 50,
-    }),
-  });
-  if (!response.ok) throw new Error(`Apify Instagram Scraper failed with ${response.status}: ${await response.text()}`);
-  const payload = await response.json();
-  return (Array.isArray(payload) ? payload : payload?.items ?? []) as InstagramPost[];
+  try {
+    const response = await fetch(APIFY_RUN_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${requiredEnv("APIFY_API_TOKEN")}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        resultsType: "posts",
+        directUrls: INSTAGRAM_TARGETS.map(target => target.directUrl),
+        resultsLimit: 50,
+      }),
+    });
+    if (!response.ok) throw new Error(`Apify Instagram Scraper failed with ${response.status}: ${await response.text()}`);
+    const payload = await response.json();
+    return (Array.isArray(payload) ? payload : payload?.items ?? []) as InstagramPost[];
+  } catch (error) {
+    if (error instanceof InstagramIntegrationFailure) throw error;
+    throw new InstagramIntegrationFailure("apify", error instanceof Error ? error.message : String(error), { cause: error });
+  }
 }
 
 async function extractStructuredEvents(approvedPosts: Array<{ post: InstagramPost; rawText: string }>) {
   if (approvedPosts.length === 0) return [] as StructuredEvent[];
   const raw = approvedPosts.map(({ post, rawText }) => `SOURCE_URL: ${postUrl(post)}\nACCOUNT: ${post.ownerUsername ?? post.username ?? ""}\nRAW_POST_TEXT: ${rawText}`).join("\n\n").slice(0, 48_000);
-  const result = await openAiChat({
-    model: MODEL,
-    temperature: 0,
-    messages: [
-      { role: "system", content: "Extraia somente eventos futuros de fim de semana, públicos e musicais, localizados exclusivamente em Santos ou Guarujá. Use apenas informações presentes no texto bruto. Se data, cidade, endereço ou gênero não forem verificáveis, descarte o evento. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Não invente preços; use 0 quando o texto não informar preço." },
-      { role: "user", content: raw },
-    ],
-    response_format: { type: "json_schema", json_schema: { name: "instagram_weekend_events", strict: true, schema: {
-      type: "object", properties: { events: { type: "array", items: { type: "object", properties: {
-        title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string", enum: ["Santos", "Guarujá"] }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "samba_pagode", "rap_trap"] }, priceCents: { type: "integer" }, imageUrl: { type: "string" }, sourceUrl: { type: "string" },
-      }, required: ["title", "summary", "eventDate", "locationName", "address", "city", "category", "genre", "priceCents", "imageUrl", "sourceUrl"], additionalProperties: false } } }, required: ["events"], additionalProperties: false,
-    } } },
-  });
-  const content = result.choices?.[0]?.message?.content ?? "{\"events\":[]}";
-  return (JSON.parse(content) as { events: StructuredEvent[] }).events;
+  try {
+    const result = await openAiChat({
+      model: MODEL,
+      temperature: 0,
+      messages: [
+        { role: "system", content: "Extraia somente eventos futuros de fim de semana, públicos e musicais, localizados exclusivamente em Santos ou Guarujá. Use apenas informações presentes no texto bruto. Se data, cidade, endereço ou gênero não forem verificáveis, descarte o evento. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Não invente preços; use 0 quando o texto não informar preço." },
+        { role: "user", content: raw },
+      ],
+      response_format: { type: "json_schema", json_schema: { name: "instagram_weekend_events", strict: true, schema: {
+        type: "object", properties: { events: { type: "array", items: { type: "object", properties: {
+          title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string", enum: ["Santos", "Guarujá"] }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "samba_pagode", "rap_trap"] }, priceCents: { type: "integer" }, imageUrl: { type: "string" }, sourceUrl: { type: "string" },
+        }, required: ["title", "summary", "eventDate", "locationName", "address", "city", "category", "genre", "priceCents", "imageUrl", "sourceUrl"], additionalProperties: false } } }, required: ["events"], additionalProperties: false,
+      } } },
+    });
+    const content = result.choices?.[0]?.message?.content ?? "{\"events\":[]}";
+    return (JSON.parse(content) as { events: StructuredEvent[] }).events;
+  } catch (error) {
+    if (error instanceof InstagramIntegrationFailure) throw error;
+    throw new InstagramIntegrationFailure("openai", error instanceof Error ? error.message : String(error), { cause: error });
+  }
 }
 
 export async function runInstagramPipeline() {

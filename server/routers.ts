@@ -3,7 +3,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
-import { deleteEvent, getEventBySlug, listEvents, listRecentInstagramAgendaEvents, saveEvent, updateEvent } from "./db";
+import { deleteEvent, getEventBySlug, listEvents, listRecentInstagramAgendaEvents, listOperationalAlerts, resolveOperationalAlert, saveEvent, updateEvent } from "./db";
 import { invokeLLM } from "./_core/llm";
 
 const eventInput = z.object({
@@ -40,6 +40,10 @@ export const appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
+  }),
+  operationalAlerts: router({
+    list: publicProcedure.input(z.object({ size: z.number().int().min(1).max(20).optional() }).optional()).query(({ input }) => listOperationalAlerts(input ?? {})),
+    resolve: adminOnly.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => resolveOperationalAlert(input.id)),
   }),
   events: router({
     list: publicProcedure.input(z.object({ day: z.string().optional(), city: z.string().optional(), category: z.string().optional(), genre: z.string().optional(), venue: z.string().optional(), maxPriceCents: z.number().optional(), page: z.number().optional(), size: z.number().optional() }).optional()).query(({ input }) => listEvents(input ?? {})),

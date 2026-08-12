@@ -54,3 +54,17 @@ export const events = mysqlTable("events", {
 
 export type Event = typeof events.$inferSelect;
 export type InsertEvent = typeof events.$inferInsert;
+
+export const operationalAlerts = mysqlTable("operationalAlerts", {
+  id: int("id").autoincrement().primaryKey(),
+  integration: mysqlEnum("integration", ["apify", "ocr", "openai", "pipeline"]).notNull(),
+  title: varchar("title", { length: 180 }).notNull(),
+  message: text("message").notNull(),
+  fingerprint: varchar("fingerprint", { length: 64 }).notNull().unique(),
+  isResolved: int("isResolved").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type OperationalAlert = typeof operationalAlerts.$inferSelect;
+export type InsertOperationalAlert = typeof operationalAlerts.$inferInsert;
