@@ -233,3 +233,51 @@
 .light .placeholder\:text-zinc-500::placeholder { color: oklch(0.52 0.035 42); }
 .light .placeholder\:text-zinc-600::placeholder { color: oklch(0.55 0.035 42); }
 .light .shadow-fuchsia-950\/20 { --tw-shadow-color: rgba(126, 34, 206, 0.12); }
+
+/* Mudança de tema suave, desativada para quem prefere reduzir movimento. */
+@media (prefers-reduced-motion: no-preference) {
+  html.theme-transitioning,
+  html.theme-transitioning body,
+  html.theme-transitioning body * {
+    transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, fill 180ms ease, stroke 180ms ease;
+  }
+}
+
+/* Alto contraste opcional para melhorar a leitura sem abandonar os acentos tropicais. */
+.high-contrast {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.08 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.08 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.08 0 0);
+  --primary: oklch(0.5 0.18 42);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.92 0 0);
+  --secondary-foreground: oklch(0.08 0 0);
+  --muted: oklch(0.9 0 0);
+  --muted-foreground: oklch(0.2 0 0);
+  --accent: oklch(0.9 0.2 95);
+  --accent-foreground: oklch(0.08 0 0);
+  --border: oklch(0.08 0 0);
+  --input: oklch(0.08 0 0);
+  --ring: oklch(0.45 0.2 270);
+}
+
+.high-contrast body { background-image: none; }
+.high-contrast .bg-zinc-950 { background-color: var(--background); }
+.high-contrast .bg-zinc-900 { background-color: var(--muted); }
+.high-contrast .text-white,
+.high-contrast .text-zinc-100 { color: var(--foreground); }
+.high-contrast .text-zinc-400,
+.high-contrast .text-zinc-500,
+.high-contrast .text-zinc-600 { color: var(--muted-foreground); }
+.high-contrast .border-white\/10,
+.high-contrast .border-white\/20 { border-color: var(--border); }
+.high-contrast .bg-white\/\[0\.03\],
+.high-contrast .bg-white\/\[0\.06\] { background-color: var(--card); }
+.high-contrast :focus-visible { outline: 3px solid var(--ring); outline-offset: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}

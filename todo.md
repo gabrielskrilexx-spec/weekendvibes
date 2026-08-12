@@ -207,3 +207,10 @@
 - [x] Ajustar componentes públicos e mapa para leitura correta no tema claro
 - [x] Validar contraste, foco, responsividade e alternância com testes e captura visual
 - [x] Salvar e publicar checkpoint do tema claro
+
+## Transição e alto contraste
+- [x] Adicionar transição suave entre temas com respeito a prefers-reduced-motion
+- [x] Criar tokens e sobrescritas de alto contraste para baixa visão
+- [x] Integrar controle acessível e persistente da paleta de alto contraste
+- [x] Validar foco, legibilidade, movimento, responsividade e testes
+- [ ] Salvar e publicar checkpoint de acessibilidade visual

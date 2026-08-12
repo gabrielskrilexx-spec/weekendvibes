@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { MapPin, Search, Sparkles, WifiOff, SlidersHorizontal, Moon, Sun } from "lucide-react";
+import { MapPin, Search, Sparkles, WifiOff, SlidersHorizontal, Moon, Sun, Contrast } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { getAgendaWeekState } from "@/lib/agendaState";
@@ -16,7 +16,7 @@ const categories = ["Todas", "show", "balada", "evento_musical"];
 const genres = [{ label: "Todos os gêneros", value: "" }, { label: "Funk", value: "funk" }, { label: "House/Eletrônica", value: "house_eletronica" }, { label: "Samba/Pagode", value: "samba_pagode" }, { label: "Rap/Trap", value: "rap_trap" }];
 
 export default function Home() {
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, highContrast, toggleContrast } = useTheme();
   const [day, setDay] = useState("");
   const [city, setCity] = useState("Todas");
   const [category, setCategory] = useState("Todas");
@@ -42,7 +42,7 @@ export default function Home() {
       <header className="sticky top-0 z-20 border-b border-white/10 bg-zinc-950/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
           <Link href="/" className="text-2xl font-black tracking-[-0.06em] text-transparent bg-gradient-to-r from-orange-300 via-yellow-200 to-fuchsia-400 bg-clip-text">WeekendVibes<span className="text-white">.</span></Link>
-          <div className="flex items-center gap-2"><button type="button" onClick={() => toggleTheme?.()} aria-pressed={theme === "light"} aria-label={theme === "dark" ? "Ativar tema claro tropical" : "Ativar tema escuro"} title={theme === "dark" ? "Ativar tema claro tropical" : "Ativar tema escuro"} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-yellow-200 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300">{theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</button><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-400"><MapPin size={15} className="text-orange-300" /> Baixada Santista</div></div>
+          <div className="flex items-center gap-2"><button type="button" onClick={() => toggleTheme?.()} aria-pressed={theme === "light"} aria-label={theme === "dark" ? "Ativar tema claro tropical" : "Ativar tema escuro"} title={theme === "dark" ? "Ativar tema claro tropical" : "Ativar tema escuro"} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-yellow-200 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300">{theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</button><button type="button" onClick={() => toggleContrast?.()} aria-pressed={highContrast} aria-label={highContrast ? "Desativar alto contraste" : "Ativar alto contraste"} title={highContrast ? "Desativar alto contraste" : "Ativar alto contraste"} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-yellow-200 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300"><Contrast size={17} /></button><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-400"><MapPin size={15} className="text-orange-300" /> Baixada Santista</div></div>
         </div>
       </header>
 
