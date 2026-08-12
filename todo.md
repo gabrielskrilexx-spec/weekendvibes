@@ -17,7 +17,7 @@
 - [x] Documentar árvore do projeto e comandos de execução
 - [x] Adicionar filtro visual de faixa de preço no frontend e conectá-lo à API
 - [x] Implementar formulários completos de criação e edição no painel admin
-- [ ] Ativar o cron real da plataforma após publicação do site
+- [x] Ativar o cron real da plataforma após publicação do site
 - [x] Corrigir gerenciamento de markers para evitar duplicação e adicionar pin no detalhe
 - [x] Expandir testes de integração para CRUD, autorização, enriquecimento e handler agendado
 - [x] Criar documentação real com árvore do projeto e comandos exatos
