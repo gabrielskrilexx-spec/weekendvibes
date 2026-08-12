@@ -206,4 +206,4 @@
 - [x] Integrar alternância clara/escura com rótulo e persistência acessíveis
 - [x] Ajustar componentes públicos e mapa para leitura correta no tema claro
 - [x] Validar contraste, foco, responsividade e alternância com testes e captura visual
-- [ ] Salvar e publicar checkpoint do tema claro
+- [x] Salvar e publicar checkpoint do tema claro
