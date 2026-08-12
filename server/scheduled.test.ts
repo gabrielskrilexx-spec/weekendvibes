@@ -14,6 +14,8 @@ describe("scheduled ingestion handler", () => {
 
   it("returns a safe result when ingestion source is not configured", async () => {
     vi.spyOn(sdk, "authenticateRequest").mockResolvedValue({ isCron: true } as never);
+    vi.stubEnv("INGESTION_SOURCE_URL", "");
+    vi.stubEnv("INGESTION_SOURCE_URLS", "");
     const res = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() } as never;
     await ingestEventsHandler({ originalUrl: "/api/scheduled/ingest-events" } as never, res);
     expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, result: expect.objectContaining({ skipped: true }) }));

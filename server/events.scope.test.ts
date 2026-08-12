@@ -4,7 +4,7 @@ import { runIngestionPipeline } from "./ingestion";
 const { listEvents, saveEvent, filterEventsForPublicFeed } = vi.hoisted(() => ({ listEvents: vi.fn(), saveEvent: vi.fn().mockResolvedValue(undefined), filterEventsForPublicFeed: (items: any[], filters: any) => items.filter(event => ["Santos", "Guarujá"].includes(event.city) && ["show", "balada", "evento_musical"].includes(event.category) && (!filters.city || filters.city === "Todas" || event.city === filters.city) && (!filters.category || filters.category === "Todas" || event.category === filters.category) && (!filters.genre || event.genre === filters.genre) && (filters.maxPriceCents === undefined || event.priceCents <= filters.maxPriceCents)) }));
 vi.mock("./db", () => ({ listEvents, saveEvent, filterEventsForPublicFeed, getDb: vi.fn(), getEventBySlug: vi.fn(), updateEvent: vi.fn(), deleteEvent: vi.fn(), upsertUser: vi.fn(), getUserByOpenId: vi.fn() }));
 vi.mock("./_core/llm", () => ({ invokeLLM: vi.fn().mockResolvedValue({ choices: [{ message: { content: JSON.stringify({ events: [
-  { title: "Santos Funk", summary: "Show", eventDate: "2026-08-14T20:00:00Z", locationName: "Arena", address: "Rua 1", city: "Santos", category: "show", genre: "funk", priceCents: 0, sourceUrl: "", imageUrl: "", latitude: "", longitude: "" },
+  { title: "Santos Funk", summary: "Show", eventDate: "2026-08-14T20:00:00Z", locationName: "Vallum Garden", address: "Rua Tuyuti, Santos", city: "Santos", category: "show", genre: "funk", priceCents: 0, sourceUrl: "", imageUrl: "", latitude: "", longitude: "" },
   { title: "Praia Cultural", summary: "Evento", eventDate: "2026-08-14T20:00:00Z", locationName: "Praia", address: "Rua 2", city: "Praia Grande", category: "evento_musical", genre: "funk", priceCents: 0, sourceUrl: "", imageUrl: "", latitude: "", longitude: "" },
   { title: "Guarujá Gastronomia", summary: "Evento", eventDate: "2026-08-14T20:00:00Z", locationName: "Casa", address: "Rua 3", city: "Guarujá", category: "gastronomia", genre: "funk", priceCents: 0, sourceUrl: "", imageUrl: "", latitude: "", longitude: "" },
 ] }) } }] }) }));
@@ -33,7 +33,7 @@ describe("event scope", () => {
   it("imports only Santos or Guarujá events with musical categories", async () => {
     const previous = process.env.INGESTION_SOURCE_URL;
     process.env.INGESTION_SOURCE_URL = "https://source.example/events";
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, text: async () => "agenda" }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, text: async () => "Vallum Garden Santos" }));
     await runIngestionPipeline();
     expect(saveEvent).toHaveBeenCalledTimes(1);
     expect(saveEvent).toHaveBeenCalledWith(expect.objectContaining({ city: "Santos", category: "show", genre: "funk" }));

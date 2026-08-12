@@ -8,6 +8,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { ingestEventsHandler } from "../scheduled";
+import { ingestAgentDocumentsHandler } from "../scheduled-agent";
 import { serveStatic, setupVite } from "./vite";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -38,6 +39,7 @@ async function startServer() {
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   app.post("/api/scheduled/ingest-events", ingestEventsHandler);
+  app.post("/api/scheduled/ingest-event-documents", ingestAgentDocumentsHandler);
   // tRPC API
   app.use(
     "/api/trpc",
