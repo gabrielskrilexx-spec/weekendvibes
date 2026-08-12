@@ -222,3 +222,10 @@
 - [x] Atualizar metadados sociais da página de evento para prévias de link
 - [x] Validar conteúdo, acessibilidade, responsividade e testes
 - [x] Salvar e publicar checkpoint do compartilhamento visual
+
+## Mensagem personalizada no WhatsApp
+- [x] Adicionar campo editável com mensagem padrão baseada no evento
+- [x] Integrar texto personalizado ao link de compartilhamento do WhatsApp
+- [x] Adicionar contador, limite e restauração da mensagem padrão
+- [x] Validar acessibilidade, conteúdo, estados e testes
+- [ ] Salvar e publicar checkpoint da mensagem personalizada
