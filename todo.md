@@ -179,3 +179,10 @@
 - [x] Validar responsividade, acessibilidade e publicar checkpoint
 - [x] Validar acessibilidade dos novos fluxos, incluindo foco, rótulos/ARIA e navegação por teclado
 - [x] Salvar e publicar novo checkpoint após concluir a validação final das prioridades altas
+
+## Mapa interativo por região
+- [x] Criar mapa público interativo de eventos com foco em Santos e Guarujá
+- [x] Agrupar eventos próximos em clusters regionais e atualizar os grupos com filtros
+- [x] Integrar mapa ao feed, popups acessíveis e estados loading/vazio/erro
+- [x] Cobrir agrupamento, integração visual, acessibilidade e responsividade com testes
+- [ ] Salvar e publicar checkpoint do mapa interativo

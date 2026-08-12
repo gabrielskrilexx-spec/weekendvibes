@@ -3,7 +3,7 @@ import { MapPin, Search, Sparkles, WifiOff, SlidersHorizontal } from "lucide-rea
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { getAgendaWeekState } from "@/lib/agendaState";
-import { MapView } from "@/components/Map";
+import RegionalEventMap from "@/components/RegionalEventMap";
 import EventCard from "@/components/EventCard";
 import AgendaWeekHighlight from "@/components/AgendaWeekHighlight";
 import OperationalAlertCenter from "@/components/OperationalAlertCenter";
@@ -27,31 +27,12 @@ export default function Home() {
   const [timeFrom, setTimeFrom] = useState("");
   const [timeTo, setTimeTo] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const eventsQuery = trpc.events.list.useQuery({ day, city, category, genre, venue: venue.trim() || undefined, date: date || undefined, minPriceCents: minPrice ? Number(minPrice) * 100 : undefined, maxPriceCents: maxPrice ? Number(maxPrice) * 100 : undefined, timeFrom: timeFrom || undefined, timeTo: timeTo || undefined, size: 40 });
   const agendaQuery = trpc.events.recentInstagramAgenda.useQuery({ lookbackDays: 5, size: 8 });
   const agendaState = getAgendaWeekState({ isLoading: agendaQuery.isLoading, isError: agendaQuery.isError, events: agendaQuery.data });
   const agendaEvents = agendaQuery.data ?? [];
   const events = useMemo(() => (eventsQuery.data ?? []).filter(event => event.title.toLowerCase().includes(query.toLowerCase()) || event.locationName.toLowerCase().includes(query.toLowerCase())), [eventsQuery.data, query]);
 
-  const setupMarkers = (map: google.maps.Map) => {
-    mapRef.current = map;
-  };
-
-  useEffect(() => {
-    markersRef.current.forEach(marker => { marker.map = null; });
-    markersRef.current = [];
-    if (!mapRef.current || !window.google?.maps?.marker) return;
-    events.forEach(event => {
-      const lat = Number(event.latitude);
-      const lng = Number(event.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng) || !window.google?.maps?.marker) return;
-      const marker = new window.google.maps.marker.AdvancedMarkerElement({ map: mapRef.current, position: { lat, lng }, title: event.title });
-      marker.addListener("click", () => { window.location.href = `/eventos/${event.slug}`; });
-      markersRef.current.push(marker);
-    });
-  }, [events]);
 
   return (
     <main className="min-h-screen bg-zinc-950 pb-16 text-zinc-100">
@@ -93,7 +74,7 @@ export default function Home() {
             {!eventsQuery.isLoading && !eventsQuery.isError && events.length === 0 && <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-10 text-center text-zinc-400">Nenhum evento encontrado com esses filtros.</div>}
             <div className="grid gap-5 sm:grid-cols-2">{events.map(event => <EventCard key={event.id} event={event} />)}</div>
           </div>
-          <aside className="lg:sticky lg:top-24 lg:self-start"><div className="mb-4"><p className="text-xs font-black uppercase tracking-[0.2em] text-fuchsia-300">Perto de você</p><h2 className="mt-1 text-3xl font-black tracking-tight text-white">Mapa dos rolês</h2></div><div className="overflow-hidden rounded-[24px] border border-white/10 bg-zinc-900"><MapView className="h-[460px]" initialCenter={{ lat: -23.96, lng: -46.33 }} initialZoom={11} onMapReady={setupMarkers} /></div></aside>
+          <aside className="lg:sticky lg:top-24 lg:self-start"><RegionalEventMap events={events} /></aside>
         </div>
       </section>
     </main>
