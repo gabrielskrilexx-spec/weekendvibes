@@ -138,4 +138,18 @@
 - [x] Documentar a classificação principal samba/pagode do Pagode do Mota, mantendo DJ Babu como atração complementar de funk
 - [x] Repetir a inserção idêntica das capturas e comprovar ausência de duplicatas
 - [x] Consultar a query Agenda da Semana e verificar os três cards no frontend
-- [ ] Salvar novo checkpoint após a atualização dos eventos manuais
+- [x] Salvar novo checkpoint após a atualização dos eventos manuais
+
+## Habilidade reutilizável de ingestão de agendas
+- [x] Definir o fluxo reutilizável de fontes públicas, capturas, validação geográfica/musical e deduplicação
+- [x] Criar a habilidade com SKILL.md e recursos de referência necessários
+- [x] Validar a habilidade com o validador oficial e corrigir eventuais problemas
+- [x] Entregar o arquivo SKILL.md da habilidade ao usuário
+
+## Rotina automática de terça-feira
+- [x] Revisar schedules existentes e o pipeline de ingestão da Agenda da Semana
+- [x] Definir horário e fuso da execução de terça-feira
+- [x] Criar ou atualizar schedule em modo automático, sem confirmação do usuário
+- [x] Validar configuração, endpoint e histórico da rotina
+- [x] Verificar disponibilidade do histórico do schedule atualizado: o serviço de schedules confirmou a configuração ativa, mas a primeira execução de terça-feira ainda não ocorreu e o CLI Heartbeat local não expõe esse task UID
+- [x] Verificar os callbacks de ingestão de eventos e Instagram após a reconfiguração, sem executar uma ação duplicadora indevida: ambos estão publicados e retornam 403 sem a autenticação cron
