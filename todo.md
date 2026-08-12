@@ -229,3 +229,9 @@
 - [x] Adicionar contador, limite e restauração da mensagem padrão
 - [x] Validar acessibilidade, conteúdo, estados e testes
 - [x] Salvar e publicar checkpoint da mensagem personalizada
+
+## Auditoria estratégica do produto
+- [x] Auditar produto, arquitetura, UX mobile e jornada de descoberta/compartilhamento
+- [x] Avaliar acessibilidade, desempenho, SEO, dados e confiabilidade operacional
+- [x] Priorizar oportunidades por impacto, esforço, risco e dependências
+- [x] Entregar diagnóstico completo com roadmap recomendado
