@@ -186,3 +186,9 @@
 - [x] Integrar mapa ao feed, popups acessíveis e estados loading/vazio/erro
 - [x] Cobrir agrupamento, integração visual, acessibilidade e responsividade com testes
 - [x] Salvar e publicar checkpoint do mapa interativo
+
+## Tela cheia e rotas do mapa
+- [x] Adicionar abertura do mapa em tela cheia no mobile com fechamento acessível
+- [x] Adicionar botões para iniciar rotas até os locais dos eventos e clusters
+- [x] Validar fallback de localização, links de navegação, acessibilidade e responsividade
+- [ ] Salvar e publicar checkpoint das melhorias do mapa
