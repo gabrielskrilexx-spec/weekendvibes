@@ -214,3 +214,11 @@
 - [x] Integrar controle acessível e persistente da paleta de alto contraste
 - [x] Validar foco, legibilidade, movimento, responsividade e testes
 - [x] Salvar e publicar checkpoint de acessibilidade visual
+
+## Compartilhamento visual social
+- [x] Criar card visual de compartilhamento com imagem oficial e dados reais do evento
+- [x] Adicionar ações para WhatsApp, compartilhamento nativo e redes sociais compatíveis
+- [x] Manter fallback acessível para copiar link e texto formatado
+- [x] Atualizar metadados sociais da página de evento para prévias de link
+- [x] Validar conteúdo, acessibilidade, responsividade e testes
+- [x] Salvar e publicar checkpoint do compartilhamento visual
