@@ -8,7 +8,7 @@ interface ThemeContextType {
   switchable: boolean;
 }
 
-const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+const ThemeContext = createContext<ThemeContextType>({ theme: "dark", switchable: false });
 
 interface ThemeProviderProps {
   children: React.ReactNode;
@@ -31,11 +31,8 @@ export function ThemeProvider({
 
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === "dark") {
-      root.classList.add("dark");
-    } else {
-      root.classList.remove("dark");
-    }
+    root.classList.toggle("dark", theme === "dark");
+    root.classList.toggle("light", theme === "light");
 
     if (switchable) {
       localStorage.setItem("theme", theme);
@@ -56,9 +53,5 @@ export function ThemeProvider({
 }
 
 export function useTheme() {
-  const context = useContext(ThemeContext);
-  if (!context) {
-    throw new Error("useTheme must be used within ThemeProvider");
-  }
-  return context;
+  return useContext(ThemeContext);
 }

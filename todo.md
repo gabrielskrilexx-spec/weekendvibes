@@ -200,3 +200,10 @@
 - [x] Gerar rotas com o meio de transporte selecionado e fallback seguro
 - [x] Testar cálculos, permissões, acessibilidade e responsividade
 - [x] Salvar e publicar checkpoint das estimativas e transportes
+
+## Tema claro tropical
+- [x] Criar tokens claros mantendo laranja, roxo e amarelo da identidade visual
+- [x] Integrar alternância clara/escura com rótulo e persistência acessíveis
+- [x] Ajustar componentes públicos e mapa para leitura correta no tema claro
+- [x] Validar contraste, foco, responsividade e alternância com testes e captura visual
+- [ ] Salvar e publicar checkpoint do tema claro
