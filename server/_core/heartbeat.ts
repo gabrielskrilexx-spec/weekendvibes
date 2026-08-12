@@ -38,6 +38,9 @@ export type HeartbeatJobInfo = {
   createdAt?: string | null;
   lastExecutedAt?: string | null;
   nextExecutionAt?: string | null;
+  timezone?: string | null;
+  runMode?: string | null;
+  status?: string | null;
 };
 
 const SERVICE = "webdevtoken.v1.WebDevService";

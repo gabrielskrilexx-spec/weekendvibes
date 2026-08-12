@@ -5,6 +5,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { deleteEvent, getEventBySlug, listEvents, listRecentInstagramAgendaEvents, listOperationalAlerts, resolveOperationalAlert, saveEvent, updateEvent } from "./db";
 import { invokeLLM } from "./_core/llm";
+import { getTuesdayRoutineStatus, runTuesdayRoutineNow } from "./manual-ingestion";
 
 const eventInput = z.object({
   title: z.string().min(3),
@@ -40,6 +41,10 @@ export const appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
+  }),
+  adminRoutine: router({
+    status: adminOnly.query(() => getTuesdayRoutineStatus()),
+    runNow: adminOnly.mutation(async () => runTuesdayRoutineNow()),
   }),
   operationalAlerts: router({
     list: publicProcedure.input(z.object({ size: z.number().int().min(1).max(20).optional() }).optional()).query(({ input }) => listOperationalAlerts(input ?? {})),

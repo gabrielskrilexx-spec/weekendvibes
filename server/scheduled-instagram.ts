@@ -1,8 +1,9 @@
 import type { Request, Response } from "express";
 import { sdk } from "./_core/sdk";
 import { notifyOwner } from "./_core/notification";
-import { runInstagramPipeline, InstagramIntegrationFailure } from "./instagram-pipeline";
-import { archiveExpiredSoldOutEvents, recordOperationalAlert, OperationalIntegration } from "./db";
+import { InstagramIntegrationFailure } from "./instagram-pipeline";
+import { recordOperationalAlert, OperationalIntegration } from "./db";
+import { runInstagramAgendaStep } from "./agenda-routine";
 
 const integrationTitles: Record<OperationalIntegration, string> = {
   apify: "Falha na captura do Instagram",
@@ -17,8 +18,7 @@ export async function ingestInstagramHandler(req: Request, res: Response) {
   if (!user.isCron) return res.status(403).json({ error: "cron-only" });
 
   try {
-    const archived = await archiveExpiredSoldOutEvents();
-    const result = await runInstagramPipeline();
+    const { archived, result } = await runInstagramAgendaStep();
     return res.json({ ok: true, startedAt, finishedAt: new Date().toISOString(), archived, result });
   } catch (error) {
     const integration: OperationalIntegration = error instanceof InstagramIntegrationFailure ? error.integration : "pipeline";

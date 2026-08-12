@@ -153,3 +153,20 @@
 - [x] Validar configuração, endpoint e histórico da rotina
 - [x] Verificar disponibilidade do histórico do schedule atualizado: o serviço de schedules confirmou a configuração ativa, mas a primeira execução de terça-feira ainda não ocorreu e o CLI Heartbeat local não expõe esse task UID
 - [x] Verificar os callbacks de ingestão de eventos e Instagram após a reconfiguração, sem executar uma ação duplicadora indevida: ambos estão publicados e retornam 403 sem a autenticação cron
+
+## Painel administrativo da rotina de terça-feira
+- [x] Exibir a próxima execução da rotina com data, horário e fuso local
+- [x] Criar endpoint protegido para disparo manual imediato da ingestão
+- [x] Adicionar botão administrativo com confirmação, loading, sucesso e erro
+- [x] Impedir disparos simultâneos e preservar idempotência do pipeline
+- [x] Cobrir contrato, autorização, estados visuais e publicar a atualização
+- [x] Conectar o painel administrativo ao metadata real do schedule ativo para exibir nextExecutionAt, fuso e estado reais
+- [x] Adicionar testes TSX do AdminRoutinePanel para loading, erro, sucesso, botão desabilitado e confirmação
+- [x] Validar por teste que o disparo manual reproduz a mesma composição da rotina automática de terça-feira
+- [x] Ler metadata autoritativa do schedule ativo, incluindo timezone, runMode, nextExecutionAt e estado, sem hardcode ou heurística por regex
+- [x] Testar que o painel exibe os campos reais retornados pela integração de metadata do schedule
+- [x] Testar que a execução manual usa exatamente o mesmo serviço e composição da rotina automática, incluindo arquivamento, fontes públicas e Instagram
+- [x] Ler metadata do schedule ativo a partir da fonte autoritativa usada pela configuração publicada, sem taskUid hardcoded, expondo timezone, runMode, nextExecutionAt e estado reais
+- [x] Adicionar asserts explícitos no AdminRoutinePanel para nextExecutionAt, timezone e runMode vindos da integração
+- [x] Criar serviço compartilhado pelos handlers agendados e botão manual e testar equivalência ponta a ponta com arquivamento, fontes públicas e Instagram
+- [ ] Salvar checkpoint do painel administrativo com metadata real e disparo manual
