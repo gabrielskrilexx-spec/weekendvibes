@@ -67,3 +67,11 @@ A expressão usa UTC e deve ser ajustada ao horário desejado. O serviço deve e
 ## Fluxos
 
 A home usa filtros de dia, cidade, categoria, faixa de preço e texto, além de mapa com pins clicáveis. `/eventos/:slug` exibe os dados completos e um pin individual. `/admin` exige usuário com `role=admin` e permite adicionar, editar, remover e enriquecer eventos a partir de texto livre.
+
+## Ingestão pública Articket/Blacktag
+
+A ingestão de fontes públicas usa as páginas-base do Articket (`https://articket.com.br/e/6784/plants-happy-hour` e `https://articket.com.br/`) e do Blacktag (`https://blacktag.com.br/`). Como essas plataformas podem renderizar dados no navegador sem expô-los no HTML inicial, o fluxo renderizado utiliza um schedule agente para abrir as páginas, localizar eventos futuros nos locais Valluns/Vallum Garden, Lucky Scope, Verilonguinho, Moby House/Moby Dick, Curvão Surf House e Meu Lugar, e enviar documentos ao endpoint protegido `/api/scheduled/ingest-event-documents`.
+
+O servidor aceita somente documentos provenientes de Articket ou Blacktag. Antes da persistência, o enriquecimento por LLM exige cidade Santos ou Guarujá, categoria show, balada ou evento musical, e gênero Funk, House/Eletrônica, Samba/Pagode ou Rap/Trap. Eventos sem cidade, local-alvo, gênero inferível ou data futura são descartados. A identidade usa fonte, título e data para manter a ingestão idempotente.
+
+O schedule `WeekendVibes — ingestão Articket e Blacktag` está configurado para repetir a cada 21.600 segundos, equivalente a seis horas, no fuso `America/Sao_Paulo`. A execução deve navegar as fontes e enviar apenas dados públicos reais, sem login, compra ou publicação. O primeiro carregamento pode não inserir registros quando as páginas não tiverem eventos elegíveis; isso é esperado e deve ser acompanhado pelo histórico do schedule e pelos logs do endpoint.

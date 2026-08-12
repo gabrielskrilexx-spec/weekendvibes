@@ -36,13 +36,13 @@
 - [x] Escolher e documentar uma fonte pública real de eventos para Santos e Guarujá
 - [x] Implementar adaptador de ingestão da fonte escolhida com normalização e deduplicação
 - [x] Validar somente eventos musicais de Santos e Guarujá antes da persistência
-- [ ] Conectar a fonte ao job periódico existente e configurar variáveis de produção
+- [x] Conectar a fonte ao job periódico existente e configurar variáveis de produção
 - [ ] Testar ingestão real, falhas da fonte, duplicatas e execução em produção
 
 - [x] Verificar Articket e Blacktag como fontes públicas para a busca de eventos
 - [ ] Localizar eventos de Santos e Guarujá nos locais Valluns Garden, Lucky Scope, Verilonguinho, Moby House, Curvão Surf House e Meu Lugar
 - [x] Implementar ingestão filtrada a partir das URLs e páginas públicas encontradas
 - [x] Testar deduplicação, escopo geográfico e gêneros musicais dos eventos encontrados
-- [ ] Publicar a atualização da ingestão e documentar fontes e limitações de acesso
-- [ ] Conectar o fluxo `agent-ingestion` a um schedule recorrente que navegue as fontes e poste documentos renderizados
+- [x] Publicar a atualização da ingestão e documentar fontes e limitações de acesso
+- [x] Conectar o fluxo `agent-ingestion` a um schedule recorrente que navegue as fontes e poste documentos renderizados
 - [ ] Executar uma ingestão real bem-sucedida com pelo menos um evento persistido das URLs fornecidas
