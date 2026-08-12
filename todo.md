@@ -228,4 +228,4 @@
 - [x] Integrar texto personalizado ao link de compartilhamento do WhatsApp
 - [x] Adicionar contador, limite e restauração da mensagem padrão
 - [x] Validar acessibilidade, conteúdo, estados e testes
-- [ ] Salvar e publicar checkpoint da mensagem personalizada
+- [x] Salvar e publicar checkpoint da mensagem personalizada
