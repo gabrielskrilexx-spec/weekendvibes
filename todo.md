@@ -61,3 +61,4 @@
 - [x] Atualizar os registros e validar a exibição pública de imagem e preço; preço do Nosso After sinalizado como não informado
 - [x] Exibir preço confirmado ou “Preço não informado” diretamente nos cards dos eventos
 - [x] Confirmar em fonte oficial que o Nosso After está com vendas encerradas e sem preço público; manter o estado não informado
+- [x] Adicionar selo visual de esgotado nos cards de eventos com vendas encerradas
