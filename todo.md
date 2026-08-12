@@ -199,4 +199,4 @@
 - [x] Adicionar seletor acessível de carro, transporte público, bicicleta e caminhada
 - [x] Gerar rotas com o meio de transporte selecionado e fallback seguro
 - [x] Testar cálculos, permissões, acessibilidade e responsividade
-- [ ] Salvar e publicar checkpoint das estimativas e transportes
+- [x] Salvar e publicar checkpoint das estimativas e transportes
