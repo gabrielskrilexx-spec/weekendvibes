@@ -27,7 +27,7 @@
 - [x] Reorientar categorias para shows, baladas e eventos musicais
 - [x] Adicionar gêneros Funk, House/Eletrônica, Samba/Pagode e Rap/Trap
 - [x] Validar filtros, ingestão, testes e publicar os ajustes
-- [ ] Publicar novamente a versão com Santos/Guarujá e catálogo musical e verificar produção
+- [x] Publicar novamente a versão com Santos/Guarujá e catálogo musical e verificar produção
 - [x] Testar filtros públicos por cidade, categoria e gênero musical
 - [x] Testar ingestão rejeitando cidades e categorias fora do novo escopo
 - [x] Validar o resultado filtrado por cidade, categoria e gênero sobre uma coleção de eventos
