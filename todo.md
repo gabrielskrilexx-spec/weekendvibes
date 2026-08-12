@@ -94,3 +94,16 @@
 - [x] Adicionar testes do handler Instagram para autenticação cron-only, arquivamento e execução do pipeline
 - [x] Adicionar teste controlado do pipeline cobrindo Apify, aprovação por OCR, saída estruturada e upsert
 - [x] Adicionar teste mockado em que a legenda falha, o OCR contém a agenda aprovada e o evento é persistido
+- [x] Criar carrossel destacado na página inicial exclusivo para eventos recentes da Agenda da Semana
+- [x] Expor e filtrar os eventos recentes capturados pela Agenda da Semana sem misturar outras fontes
+- [x] Validar carrossel em estados de carregamento/vazio e em mobile/desktop
+- [x] Adicionar marcador estruturado da origem Agenda da Semana e filtrar o carrossel por esse marcador
+- [x] Usar atualização/captura recente para manter no carrossel eventos reingeridos, sem depender de createdAt
+- [x] Cobrir consulta dedicada com evento Instagram não-Agenda excluído e evento reingerido incluído
+- [x] Cobrir explicitamente loading, empty e success states do carrossel
+- [x] Testar a consulta real recentInstagramAgenda com sourceType diferente excluído e updatedAt recente incluído apesar de createdAt antigo
+- [x] Adicionar teste de renderização do Home/carrossel com query mockada cobrindo loading, empty e success
+- [x] Testar a consulta/rota com itens mockados, excluindo sourceType diferente e mantendo evento com createdAt antigo e updatedAt recente
+- [x] Testar o Home integrado com query recentInstagramAgenda mockada nos estados loading, empty e success
+- [x] Incluir arquivos client/**/*.test.tsx na configuração Vitest e executar os testes integrados do Home/carrossel
+- [x] Adicionar teste da consulta recentInstagramAgenda com banco mockado retornando itens controlados: excluir sourceType diferente e incluir createdAt antigo com updatedAt recente

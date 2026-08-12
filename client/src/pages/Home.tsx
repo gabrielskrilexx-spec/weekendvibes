@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { MapPin, Search, Sparkles, WifiOff } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { getAgendaWeekState } from "@/lib/agendaState";
 import { MapView } from "@/components/Map";
 import EventCard from "@/components/EventCard";
+import AgendaWeekHighlight from "@/components/AgendaWeekHighlight";
 
 const days = [{ label: "Todos", value: "" }, { label: "Sexta", value: "sexta" }, { label: "Sábado", value: "sabado" }];
 const cities = ["Todas", "Santos", "Guarujá"];
@@ -20,6 +22,9 @@ export default function Home() {
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const eventsQuery = trpc.events.list.useQuery({ day, city, category, genre, venue: venue.trim() || undefined, size: 40 });
+  const agendaQuery = trpc.events.recentInstagramAgenda.useQuery({ lookbackDays: 5, size: 8 });
+  const agendaState = getAgendaWeekState({ isLoading: agendaQuery.isLoading, isError: agendaQuery.isError, events: agendaQuery.data });
+  const agendaEvents = agendaQuery.data ?? [];
   const events = useMemo(() => (eventsQuery.data ?? []).filter(event => event.title.toLowerCase().includes(query.toLowerCase()) || event.locationName.toLowerCase().includes(query.toLowerCase())), [eventsQuery.data, query]);
 
   const setupMarkers = (map: google.maps.Map) => {
@@ -58,6 +63,8 @@ export default function Home() {
           <div className="mt-8 flex max-w-2xl items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 shadow-2xl shadow-fuchsia-950/20"><Search size={20} className="text-orange-300" /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Busque por evento ou local..." className="w-full bg-transparent text-sm text-white outline-none placeholder:text-zinc-500" /></div>
         </div>
       </section>
+
+      <AgendaWeekHighlight state={agendaState} events={agendaEvents} />
 
       <section className="mx-auto max-w-7xl px-4 pt-7 sm:px-6">
         <div className="flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">{days.map(item => <button key={item.label} onClick={() => setDay(item.value)} className={`shrink-0 rounded-full border px-5 py-2.5 text-sm font-black transition ${day === item.value ? "border-orange-300 bg-orange-300 text-zinc-950" : "border-white/10 bg-white/[0.04] text-zinc-300 hover:border-orange-300/50"}`}>{item.label}</button>)}</div>

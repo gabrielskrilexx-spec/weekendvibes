@@ -41,6 +41,7 @@ export const events = mysqlTable("events", {
   priceNote: varchar("priceNote", { length: 255 }),
   ticketStatus: mysqlEnum("ticketStatus", ["available", "sold_out", "unknown"]).default("unknown").notNull(),
   sourceUrl: varchar("sourceUrl", { length: 1000 }),
+  sourceType: varchar("sourceType", { length: 64 }),
   imageUrl: varchar("imageUrl", { length: 1000 }),
   latitude: varchar("latitude", { length: 32 }),
   longitude: varchar("longitude", { length: 32 }),

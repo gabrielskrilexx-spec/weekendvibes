@@ -3,7 +3,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
-import { deleteEvent, getEventBySlug, listEvents, saveEvent, updateEvent } from "./db";
+import { deleteEvent, getEventBySlug, listEvents, listRecentInstagramAgendaEvents, saveEvent, updateEvent } from "./db";
 import { invokeLLM } from "./_core/llm";
 
 const eventInput = z.object({
@@ -43,6 +43,7 @@ export const appRouter = router({
   }),
   events: router({
     list: publicProcedure.input(z.object({ day: z.string().optional(), city: z.string().optional(), category: z.string().optional(), genre: z.string().optional(), venue: z.string().optional(), maxPriceCents: z.number().optional(), page: z.number().optional(), size: z.number().optional() }).optional()).query(({ input }) => listEvents(input ?? {})),
+    recentInstagramAgenda: publicProcedure.input(z.object({ lookbackDays: z.number().int().min(1).max(14).optional(), size: z.number().int().min(1).max(12).optional() }).optional()).query(({ input }) => listRecentInstagramAgendaEvents(input ?? {})),
     bySlug: publicProcedure.input(z.object({ slug: z.string() })).query(({ input }) => getEventBySlug(input.slug)),
     create: adminOnly.input(eventInput).mutation(({ input }) => saveEvent(input)),
     update: adminOnly.input(z.object({ id: z.number(), data: eventInput.partial() })).mutation(({ input }) => updateEvent(input.id, input.data)),

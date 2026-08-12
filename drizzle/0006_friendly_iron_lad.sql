@@ -1,0 +1,1 @@
+ALTER TABLE `events` ADD `sourceType` varchar(64);

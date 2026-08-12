@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { saveEvent } from "./db";
+import { INSTAGRAM_AGENDA_SOURCE_TYPE, saveEvent } from "./db";
 import { containsTargetVenue } from "./ingestion";
 
 const APIFY_RUN_URL = "https://api.apify.com/v2/actors/apify~instagram-scraper/run-sync-get-dataset-items";
@@ -154,7 +154,7 @@ export async function runInstagramPipeline() {
       description: event.summary, eventDate, locationName: event.locationName, address: event.address, city: event.city,
       category: event.category, genre: event.genre, priceCents: event.priceCents || 0, priceNote: event.priceCents ? undefined : "Preço não informado na agenda do Instagram",
       ticketStatus: event.priceCents ? "available" : "unknown", sourceUrl, imageUrl: event.imageUrl || undefined, latitude: undefined, longitude: undefined,
-      sourceHash, isPublished: 1, isArchived: 0,
+      sourceHash, sourceType: INSTAGRAM_AGENDA_SOURCE_TYPE, isPublished: 1, isArchived: 0,
     });
     imported += 1;
   }

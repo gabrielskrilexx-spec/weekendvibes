@@ -90,8 +90,16 @@ export async function getUserByOpenId(openId: string) {
 }
 
 export const ALLOWED_CITIES = ["Santos", "Guarujá"] as const;
+export const INSTAGRAM_AGENDA_SOURCE_TYPE = "instagram_agenda_weekend" as const;
 export const MUSICAL_CATEGORIES = ["show", "balada", "evento_musical"] as const;
 export const MUSICAL_GENRES = ["funk", "house_eletronica", "samba_pagode", "rap_trap"] as const;
+
+export function isRecentInstagramAgendaEvent(event: Pick<Event, "sourceType" | "isPublished" | "isArchived" | "updatedAt" | "eventDate">, now = new Date(), lookbackDays = 5) {
+  const updatedAt = new Date(event.updatedAt);
+  const eventDate = new Date(event.eventDate);
+  const cutoff = now.getTime() - lookbackDays * 24 * 60 * 60 * 1000;
+  return event.sourceType === INSTAGRAM_AGENDA_SOURCE_TYPE && event.isPublished === 1 && event.isArchived === 0 && updatedAt.getTime() >= cutoff && updatedAt.getTime() <= now.getTime() && eventDate.getTime() >= now.getTime();
+}
 
 export function eventIdentityKey(sourceUrl: string, eventDate: Date | string) {
   return `${sourceUrl}|${new Date(eventDate).toISOString().slice(0, 10)}`;
@@ -103,6 +111,22 @@ export function isPublicEventRecord(event: Pick<Event, "isArchived" | "isPublish
 
 export function filterEventsForPublicFeed<T extends Pick<Event, "city" | "category" | "genre" | "priceCents" | "eventDate" | "locationName"> & Partial<Pick<Event, "address" | "isArchived" | "isPublished">>>(items: T[], filters: { city?: string; category?: string; genre?: string; venue?: string; maxPriceCents?: number }) {
   return items.filter(event => ((event.isArchived === undefined && event.isPublished === undefined) || isPublicEventRecord(event as Pick<Event, "isArchived" | "isPublished">)) && ALLOWED_CITIES.includes(event.city as typeof ALLOWED_CITIES[number]) && MUSICAL_CATEGORIES.includes(event.category as typeof MUSICAL_CATEGORIES[number]) && (!filters.city || filters.city === "Todas" || event.city === filters.city) && (!filters.category || filters.category === "Todas" || event.category === filters.category) && (!filters.genre || event.genre === filters.genre) && (!filters.venue || event.locationName.toLowerCase().includes(filters.venue.toLowerCase()) || (event.address?.toLowerCase().includes(filters.venue.toLowerCase()) ?? false)) && (filters.maxPriceCents === undefined || event.priceCents <= filters.maxPriceCents));
+}
+
+export async function listRecentInstagramAgendaEvents(options: { lookbackDays?: number; size?: number; dbOverride?: Awaited<ReturnType<typeof getDb>> } = {}) {
+  const db = options.dbOverride ?? await getDb();
+  if (!db) return [];
+  const lookbackDays = Math.min(Math.max(options.lookbackDays ?? 5, 1), 14);
+  const size = Math.min(Math.max(options.size ?? 8, 1), 12);
+  const cutoff = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
+  return db.select().from(events).where(and(
+    eq(events.isPublished, 1),
+    eq(events.isArchived, 0),
+    eq(events.sourceType, INSTAGRAM_AGENDA_SOURCE_TYPE),
+    sql`${events.updatedAt} >= ${cutoff}`,
+    sql`${events.eventDate} >= NOW()`,
+    sql`${events.city} IN (${sql.join(ALLOWED_CITIES.map(city => sql`${city}`), sql`, `)})`,
+  )).orderBy(asc(events.eventDate), desc(events.createdAt)).limit(size);
 }
 
 export async function listEvents(filters: { day?: string; city?: string; category?: string; genre?: string; venue?: string; maxPriceCents?: number; page?: number; size?: number } = {}) {

@@ -5,6 +5,7 @@ import { runInstagramPipeline } from "./instagram-pipeline";
 import { archiveExpiredSoldOutEvents, saveEvent } from "./db";
 
 vi.mock("./db", () => ({
+  INSTAGRAM_AGENDA_SOURCE_TYPE: "instagram_agenda_weekend",
   archiveExpiredSoldOutEvents: vi.fn().mockResolvedValue(0),
   saveEvent: vi.fn().mockResolvedValue(undefined),
 }));
