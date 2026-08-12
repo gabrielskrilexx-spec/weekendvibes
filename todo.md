@@ -213,4 +213,4 @@
 - [x] Criar tokens e sobrescritas de alto contraste para baixa visão
 - [x] Integrar controle acessível e persistente da paleta de alto contraste
 - [x] Validar foco, legibilidade, movimento, responsividade e testes
-- [ ] Salvar e publicar checkpoint de acessibilidade visual
+- [x] Salvar e publicar checkpoint de acessibilidade visual
