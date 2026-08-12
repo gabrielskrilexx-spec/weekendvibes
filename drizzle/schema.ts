@@ -25,4 +25,27 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
+export const events = mysqlTable("events", {
+  id: int("id").autoincrement().primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 255 }).notNull().unique(),
+  description: text("description"),
+  eventDate: timestamp("eventDate").notNull(),
+  endDate: timestamp("endDate"),
+  locationName: varchar("locationName", { length: 255 }).notNull(),
+  address: varchar("address", { length: 500 }),
+  city: varchar("city", { length: 100 }).notNull(),
+  category: mysqlEnum("category", ["show", "festa", "gastronomia", "esporte", "cultura"]).notNull(),
+  priceCents: int("priceCents").default(0).notNull(),
+  sourceUrl: varchar("sourceUrl", { length: 1000 }),
+  imageUrl: varchar("imageUrl", { length: 1000 }),
+  latitude: varchar("latitude", { length: 32 }),
+  longitude: varchar("longitude", { length: 32 }),
+  sourceHash: varchar("sourceHash", { length: 64 }).unique(),
+  isPublished: int("isPublished").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Event = typeof events.$inferSelect;
+export type InsertEvent = typeof events.$inferInsert;

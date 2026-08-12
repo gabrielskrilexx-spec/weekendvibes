@@ -1,28 +1,84 @@
+import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
+import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { deleteEvent, getEventBySlug, listEvents, saveEvent, updateEvent } from "./db";
+import { invokeLLM } from "./_core/llm";
+
+const eventInput = z.object({
+  title: z.string().min(3),
+  slug: z.string().min(3),
+  description: z.string().optional(),
+  eventDate: z.coerce.date(),
+  endDate: z.coerce.date().optional(),
+  locationName: z.string().min(2),
+  address: z.string().optional(),
+  city: z.string().min(2),
+  category: z.enum(["show", "festa", "gastronomia", "esporte", "cultura"]),
+  priceCents: z.number().int().min(0).default(0),
+  sourceUrl: z.string().url().optional().or(z.literal("")),
+  imageUrl: z.string().url().optional().or(z.literal("")),
+  latitude: z.string().optional(),
+  longitude: z.string().optional(),
+  sourceHash: z.string().optional(),
+  isPublished: z.number().int().min(0).max(1).default(1),
+});
+
+const adminOnly = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== "admin") throw new Error("Acesso restrito ao painel administrativo");
+  return next();
+});
 
 export const appRouter = router({
-    // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
-      return {
-        success: true,
-      } as const;
+      return { success: true } as const;
     }),
   }),
-
-  // TODO: add feature routers here, e.g.
-  // todo: router({
-  //   list: protectedProcedure.query(({ ctx }) =>
-  //     db.getUserTodos(ctx.user.id)
-  //   ),
-  // }),
+  events: router({
+    list: publicProcedure.input(z.object({ day: z.string().optional(), city: z.string().optional(), category: z.string().optional(), maxPriceCents: z.number().optional(), page: z.number().optional(), size: z.number().optional() }).optional()).query(({ input }) => listEvents(input ?? {})),
+    bySlug: publicProcedure.input(z.object({ slug: z.string() })).query(({ input }) => getEventBySlug(input.slug)),
+    create: adminOnly.input(eventInput).mutation(({ input }) => saveEvent(input)),
+    update: adminOnly.input(z.object({ id: z.number(), data: eventInput.partial() })).mutation(({ input }) => updateEvent(input.id, input.data)),
+    remove: adminOnly.input(z.object({ id: z.number() })).mutation(({ input }) => deleteEvent(input.id)),
+    enrich: adminOnly.input(z.object({ rawText: z.string().min(20) })).mutation(async ({ input }) => {
+      const response = await invokeLLM({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "Você normaliza dados de eventos da Baixada Santista. Responda apenas JSON válido com resumo atrativo, categoria, data ISO, horário, local, cidade e preço em centavos." },
+          { role: "user", content: input.rawText },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "event_enrichment",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                summary: { type: "string" },
+                eventDate: { type: "string" },
+                locationName: { type: "string" },
+                address: { type: "string" },
+                city: { type: "string" },
+                category: { type: "string", enum: ["show", "festa", "gastronomia", "esporte", "cultura"] },
+                priceCents: { type: "integer" },
+              },
+              required: ["title", "summary", "eventDate", "locationName", "address", "city", "category", "priceCents"],
+              additionalProperties: false,
+            },
+          },
+        },
+      });
+      return JSON.parse(String(response.choices?.[0]?.message?.content ?? "{}"));
+    }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

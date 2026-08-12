@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { and, asc, desc, eq, like, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +89,41 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+export async function listEvents(filters: { day?: string; city?: string; category?: string; maxPriceCents?: number; page?: number; size?: number } = {}) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(events.isPublished, 1)];
+  if (filters.city && filters.city !== "Todas") conditions.push(eq(events.city, filters.city));
+  if (filters.category && filters.category !== "Todas") conditions.push(eq(events.category, filters.category as Event["category"]));
+  if (filters.maxPriceCents !== undefined) conditions.push(sql`${events.priceCents} <= ${filters.maxPriceCents}`);
+  if (filters.day === "sexta") conditions.push(sql`DAYOFWEEK(${events.eventDate}) = 6`);
+  if (filters.day === "sabado") conditions.push(sql`DAYOFWEEK(${events.eventDate}) = 7`);
+  const page = Math.max(filters.page ?? 1, 1);
+  const size = Math.min(Math.max(filters.size ?? 24, 1), 100);
+  return db.select().from(events).where(and(...conditions)).orderBy(asc(events.eventDate)).limit(size).offset((page - 1) * size);
+}
+
+export async function getEventBySlug(slug: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(events).where(eq(events.slug, slug)).limit(1);
+  return rows[0];
+}
+
+export async function saveEvent(input: InsertEvent) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await db.insert(events).values(input).onDuplicateKeyUpdate({ set: { ...input, updatedAt: new Date() } });
+}
+
+export async function updateEvent(id: number, input: Partial<InsertEvent>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await db.update(events).set({ ...input, updatedAt: new Date() }).where(eq(events.id, id));
+}
+
+export async function deleteEvent(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await db.delete(events).where(eq(events.id, id));
+}
