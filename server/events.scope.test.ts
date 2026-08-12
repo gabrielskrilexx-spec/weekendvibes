@@ -24,10 +24,10 @@ describe("event scope", () => {
     expect(result[0]?.city).toBe("Santos");
   });
 
-  it("passes city, category and genre filters to the public query", async () => {
+  it("passes city, category, genre and venue filters to the public query", async () => {
     listEvents.mockResolvedValueOnce([]);
-    await appRouter.createCaller(ctx).events.list({ city: "Guarujá", category: "balada", genre: "house_eletronica" });
-    expect(listEvents).toHaveBeenCalledWith(expect.objectContaining({ city: "Guarujá", category: "balada", genre: "house_eletronica" }));
+    await appRouter.createCaller(ctx).events.list({ city: "Guarujá", category: "balada", genre: "house_eletronica", venue: "Laroc" });
+    expect(listEvents).toHaveBeenCalledWith(expect.objectContaining({ city: "Guarujá", category: "balada", genre: "house_eletronica", venue: "Laroc" }));
   });
 
   it("imports only Santos or Guarujá events with musical categories", async () => {

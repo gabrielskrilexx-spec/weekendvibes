@@ -16,9 +16,10 @@ export default function Home() {
   const [category, setCategory] = useState("Todas");
   const [genre, setGenre] = useState("");
   const [query, setQuery] = useState("");
+  const [venue, setVenue] = useState("");
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
-  const eventsQuery = trpc.events.list.useQuery({ day, city, category, genre, size: 40 });
+  const eventsQuery = trpc.events.list.useQuery({ day, city, category, genre, venue: venue.trim() || undefined, size: 40 });
   const events = useMemo(() => (eventsQuery.data ?? []).filter(event => event.title.toLowerCase().includes(query.toLowerCase()) || event.locationName.toLowerCase().includes(query.toLowerCase())), [eventsQuery.data, query]);
 
   const setupMarkers = (map: google.maps.Map) => {
@@ -60,9 +61,10 @@ export default function Home() {
 
       <section className="mx-auto max-w-7xl px-4 pt-7 sm:px-6">
         <div className="flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">{days.map(item => <button key={item.label} onClick={() => setDay(item.value)} className={`shrink-0 rounded-full border px-5 py-2.5 text-sm font-black transition ${day === item.value ? "border-orange-300 bg-orange-300 text-zinc-950" : "border-white/10 bg-white/[0.04] text-zinc-300 hover:border-orange-300/50"}`}>{item.label}</button>)}</div>
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">{cities.map(item => <button key={item} onClick={() => setCity(item)} className={`shrink-0 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wider transition ${city === item ? "border-fuchsia-300/60 bg-fuchsia-400/20 text-fuchsia-100" : "border-white/10 text-zinc-500 hover:text-zinc-200"}`}>{item}</button>)}</div>
+        <div className="mt-5 flex items-center gap-3"><p className="shrink-0 text-[11px] font-black uppercase tracking-[0.18em] text-fuchsia-300">Explorar por cidade</p><div className="flex min-w-0 gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">{cities.map(item => <button key={item} aria-pressed={city === item} onClick={() => setCity(item)} className={`shrink-0 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wider transition ${city === item ? "border-fuchsia-300/60 bg-fuchsia-400/20 text-fuchsia-100" : "border-white/10 text-zinc-500 hover:text-zinc-200"}`}>{item}</button>)}</div></div>
         <div className="mt-3 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">{categories.map(item => <button key={item} onClick={() => setCategory(item)} className={`shrink-0 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wider transition ${category === item ? "border-yellow-200/60 bg-yellow-300/15 text-yellow-100" : "border-white/10 text-zinc-500 hover:text-zinc-200"}`}>{item === "evento_musical" ? "Música" : item}</button>)}</div>
         <div className="mt-3 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">{genres.map(item => <button key={item.value || "todos-generos"} onClick={() => setGenre(item.value)} className={`shrink-0 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wider transition ${genre === item.value ? "border-fuchsia-300/60 bg-fuchsia-400/20 text-fuchsia-100" : "border-white/10 text-zinc-500 hover:text-zinc-200"}`}>{item.label}</button>)}</div>
+        <label className="mt-4 flex max-w-xl items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-zinc-400 focus-within:border-orange-300/60"><MapPin size={17} className="shrink-0 text-orange-300" /><span className="sr-only">Filtrar por local ou estabelecimento</span><input value={venue} onChange={e => setVenue(e.target.value)} placeholder="Filtre por local ou estabelecimento..." className="w-full bg-transparent text-sm text-white outline-none placeholder:text-zinc-500" /></label>
 
         <div className="mt-8 grid gap-8 lg:grid-cols-[1.25fr_.75fr]">
           <div>

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, like, sql } from "drizzle-orm";
+import { and, asc, desc, eq, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { Event, InsertEvent, InsertUser, events, users } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -101,17 +101,18 @@ export function isPublicEventRecord(event: Pick<Event, "isArchived" | "isPublish
   return event.isArchived === 0 && event.isPublished === 1;
 }
 
-export function filterEventsForPublicFeed<T extends Pick<Event, "city" | "category" | "genre" | "priceCents" | "eventDate"> & Partial<Pick<Event, "isArchived" | "isPublished">>>(items: T[], filters: { city?: string; category?: string; genre?: string; maxPriceCents?: number }) {
-  return items.filter(event => ((event.isArchived === undefined && event.isPublished === undefined) || isPublicEventRecord(event as Pick<Event, "isArchived" | "isPublished">)) && ALLOWED_CITIES.includes(event.city as typeof ALLOWED_CITIES[number]) && MUSICAL_CATEGORIES.includes(event.category as typeof MUSICAL_CATEGORIES[number]) && (!filters.city || filters.city === "Todas" || event.city === filters.city) && (!filters.category || filters.category === "Todas" || event.category === filters.category) && (!filters.genre || event.genre === filters.genre) && (filters.maxPriceCents === undefined || event.priceCents <= filters.maxPriceCents));
+export function filterEventsForPublicFeed<T extends Pick<Event, "city" | "category" | "genre" | "priceCents" | "eventDate" | "locationName"> & Partial<Pick<Event, "address" | "isArchived" | "isPublished">>>(items: T[], filters: { city?: string; category?: string; genre?: string; venue?: string; maxPriceCents?: number }) {
+  return items.filter(event => ((event.isArchived === undefined && event.isPublished === undefined) || isPublicEventRecord(event as Pick<Event, "isArchived" | "isPublished">)) && ALLOWED_CITIES.includes(event.city as typeof ALLOWED_CITIES[number]) && MUSICAL_CATEGORIES.includes(event.category as typeof MUSICAL_CATEGORIES[number]) && (!filters.city || filters.city === "Todas" || event.city === filters.city) && (!filters.category || filters.category === "Todas" || event.category === filters.category) && (!filters.genre || event.genre === filters.genre) && (!filters.venue || event.locationName.toLowerCase().includes(filters.venue.toLowerCase()) || (event.address?.toLowerCase().includes(filters.venue.toLowerCase()) ?? false)) && (filters.maxPriceCents === undefined || event.priceCents <= filters.maxPriceCents));
 }
 
-export async function listEvents(filters: { day?: string; city?: string; category?: string; genre?: string; maxPriceCents?: number; page?: number; size?: number } = {}) {
+export async function listEvents(filters: { day?: string; city?: string; category?: string; genre?: string; venue?: string; maxPriceCents?: number; page?: number; size?: number } = {}) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [eq(events.isPublished, 1), eq(events.isArchived, 0), sql`${events.city} IN (${sql.join(ALLOWED_CITIES.map(city => sql`${city}`), sql`, `)})`];
   if (filters.city && filters.city !== "Todas" && ALLOWED_CITIES.includes(filters.city as typeof ALLOWED_CITIES[number])) conditions.push(eq(events.city, filters.city));
   if (filters.category && filters.category !== "Todas") conditions.push(eq(events.category, filters.category as Event["category"]));
   if (filters.genre) conditions.push(eq(events.genre, filters.genre));
+  if (filters.venue?.trim()) { const venueSearch = `%${filters.venue.trim()}%`; conditions.push(or(like(events.locationName, venueSearch), like(events.address, venueSearch))!); }
   if (filters.maxPriceCents !== undefined) conditions.push(sql`${events.priceCents} <= ${filters.maxPriceCents}`);
   if (filters.day === "sexta") conditions.push(sql`DAYOFWEEK(${events.eventDate}) = 6`);
   if (filters.day === "sabado") conditions.push(sql`DAYOFWEEK(${events.eventDate}) = 7`);

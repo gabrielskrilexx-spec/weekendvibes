@@ -78,3 +78,11 @@
 - [x] Repetir a ingestão dos dois eventos Ingresse e validar idempotência por sourceUrl e data para ambos
 - [x] Inspecionar no teste do lookup por slug as condições SQL isArchived=0 e isPublished=1, mantendo o registro arquivado preservado
 - [x] Remover a aba/seção de precificação do início do layout, preservando os demais filtros
+- [x] Adicionar atalho rápido para alternar entre Santos e Guarujá na interface principal
+- [x] Adicionar filtro por local ou estabelecimento no feed público
+- [x] Adicionar botão de compartilhamento na página de detalhes do evento
+- [x] Cobrir o filtro por estabelecimento no helper público e no contrato tRPC
+- [x] Cobrir o fallback de compartilhamento por cópia de link quando Web Share não estiver disponível
+- [x] Ampliar o filtro público por local para buscar também no endereço do evento
+- [x] Adicionar teste de regressão do contrato tRPC encaminhando venue para a listagem
+- [x] Adicionar teste automatizado do fallback de compartilhamento via clipboard quando Web Share não estiver disponível
