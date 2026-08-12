@@ -29,6 +29,20 @@
       "when": 1786546606606,
       "tag": "0003_panoramic_blue_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1786553238024,
+      "tag": "0004_loud_stranger",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1786553657808,
+      "tag": "0005_parched_random",
+      "breakpoints": true
     }
   ]
 }

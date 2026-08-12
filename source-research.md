@@ -86,3 +86,29 @@ A Festa do Branco usa a imagem `https://superticket-assets.s3.amazonaws.com/even
 O Nosso After - MC Luuky usa a imagem `https://d106p58duwuiz5.cloudfront.net/event/cover/fbf75b0b9e695ff704bf0b9cc9b7fba9.png`, extraída do metadado `og:image` da página pública equivalente Blacktag. A página Ingresse atualmente retorna “Event not found” e a Blacktag consultada não expõe lote/preço no HTML; portanto o preço do Nosso After permanece não informado e não foi inventado.
 
 A página Blacktag do Nosso After confirma que as vendas estão encerradas; não há lotes ou preços públicos no HTML. O card passou a exibir “Vendas encerradas — preço não informado”, preservando a distinção entre indisponibilidade e gratuidade.
+
+## Nova pesquisa: Ingresse — Réveillon Guarujá 2027
+
+A URL pública `https://www.ingresse.com/reveillon-guaruja-2027/` foi aberta em 12 de agosto de 2026 sem autenticação. A página permaneceu em estado de carregamento e não expôs título, data, local, preço ou imagem do evento no conteúdo visível extraído. O HTML renderizado foi salvo em `/home/ubuntu/browser_html/ingresse_com_reveillon-guaruja-2027_1786553311506.html` para análise passiva; nenhum login, CAPTCHA ou ação transacional foi realizado.
+
+## Nova pesquisa: Ingresse — Laroc Guarujá apresenta Meduza
+
+A URL pública `https://www.ingresse.com/laroc-guaruja-apresenta-meduza/` foi aberta em 12 de agosto de 2026 sem autenticação. Assim como a URL do Réveillon, a página permaneceu em estado de carregamento e não expôs título, data, local, preço ou imagem do evento no conteúdo visível extraído. O HTML renderizado foi salvo em `/home/ubuntu/browser_html/ingresse_com_laroc-guaruja-apresenta-meduza_1786553361797.html`. Não há dados públicos verificáveis suficientes para criar os eventos sem inventar informações; as duas URLs devem ser mantidas como fontes futuras para coleta renderizada.
+
+A análise passiva dos metadados Open Graph dos HTMLs encontrou:
+- Réveillon Guarujá 2027 — título oficial “Réveillon Guarujá 2027”; imagem oficial `https://kraken.ingresse.com/event/posters/104159/medium/1784840857.6594956.jpg`; URL canônica preservada.
+- Laroc Guarujá apresenta: Meduza — título oficial “Laroc Guarujá apresenta: Meduza”; imagem oficial `https://kraken.ingresse.com/event/posters/99344/medium/1781182279.1167538.jpg`; URL canônica preservada.
+Os metadados não informaram data, horário, endereço, preço ou disponibilidade; esses campos continuam sem confirmação pública suficiente para persistência.
+
+## Validação complementar e criação dos eventos eletrônicos
+
+A pesquisa pública complementar confirmou os campos necessários para persistência:
+
+- `Réveillon Guarujá 2027`: 31/12/2026, no Guarujá Golf Club, com open bar super premium e evento de virada. A página oficial Ingresse forneceu título e imagem; a data e o local foram confirmados por fonte editorial pública. O preço permanece não informado.
+- `Laroc Guarujá apresenta: Meduza`: sábado, 05/09/2026, abertura dos portões às 16h, no Laroc Club Guarujá, em Guarujá. A fonte editorial pública confirmou house/música eletrônica, preço a partir de R$ 120 para Pista e R$ 200 para Backstage no 3º lote, além de taxas. A imagem e a URL oficial foram obtidas dos metadados públicos do Ingresse.
+
+Os dois registros foram inseridos de forma idempotente com `sourceHash`, cidade Guarujá, categoria `balada`, gênero `house_eletronica`, publicação ativa e `isArchived = 0`. Latitude e longitude permanecem vazias porque não houve coordenadas públicas verificáveis nas páginas consultadas; o fluxo de geocodificação automática continua como melhoria futura.
+
+## Arquivamento automático
+
+Eventos com `priceNote` indicando “vendas encerradas” são arquivados quando `COALESCE(endDate, eventDate) < NOW()`. O arquivamento define `isArchived = 1` e `isPublished = 0`, preservando o registro para auditoria. A rotina roda no início dos endpoints agendados de ingestão estática e renderizada, portanto acompanha o ciclo automático existente.

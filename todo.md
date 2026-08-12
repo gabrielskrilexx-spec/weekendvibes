@@ -62,3 +62,18 @@
 - [x] Exibir preço confirmado ou “Preço não informado” diretamente nos cards dos eventos
 - [x] Confirmar em fonte oficial que o Nosso After está com vendas encerradas e sem preço público; manter o estado não informado
 - [x] Adicionar selo visual de esgotado nos cards de eventos com vendas encerradas
+- [x] Arquivar automaticamente eventos esgotados após a data de realização, sem excluir registros do banco
+- [x] Exibir o selo Esgotado também na página de detalhes do evento
+- [x] Inspecionar e adicionar eventos eletrônicos elegíveis das URLs Ingresse Réveillon Guarujá 2027 e Laroc Guarujá apresenta Meduza
+- [x] Adicionar status estruturado de venda e reutilizá-lo no card, detalhe e arquivamento automático
+- [x] Criar teste de integração do handler agendado arquivando evento vencido e removendo-o do feed/detalhe sem excluir o registro
+- [x] Incorporar as URLs Ingresse novas ao fluxo automatizado e ampliar a allowlist de venues com testes de regressão
+- [x] Criar teste de integração realista do arquivamento expirado, verificando estado persistido e ausência no feed/detalhe sem exclusão
+- [x] Atualizar agent-ingestion e a configuração agendada com as duas URLs Ingresse, venues e testes ponta a ponta
+- [x] Cobrir o fluxo completo de arquivamento com um adaptador de banco isolado, verificando atualização persistida e exclusão lógica do feed/detalhe
+- [x] Cobrir o handler renderizado encaminhando as duas URLs Ingresse e a persistência dos eventos correspondentes no agent-ingestion
+- [x] Testar que getEventBySlug não retorna evento arquivado e não exclui o registro
+- [x] Testar persistência via saveEvent para os dois eventos Ingresse novos, incluindo as URLs e idempotência por fonte/data
+- [x] Testar lookup por slug com registro arquivado preservado, comprovando que a condição isArchived/isPublished oculta o detalhe sem exclusão
+- [x] Repetir a ingestão dos dois eventos Ingresse e validar idempotência por sourceUrl e data para ambos
+- [x] Inspecionar no teste do lookup por slug as condições SQL isArchived=0 e isPublished=1, mantendo o registro arquivado preservado

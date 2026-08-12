@@ -6,6 +6,8 @@ const DEFAULT_SOURCE_URLS = [
   "https://articket.com.br/e/6784/plants-happy-hour",
   "https://articket.com.br/",
   "https://blacktag.com.br/",
+  "https://www.ingresse.com/reveillon-guaruja-2027/",
+  "https://www.ingresse.com/laroc-guaruja-apresenta-meduza/",
 ];
 
 export const TARGET_VENUES = [
@@ -20,6 +22,9 @@ export const TARGET_VENUES = [
   "curvão",
   "curvao",
   "meu lugar",
+  "laroc club guaruja",
+  "laroc guaruja",
+  "guaruja golf club",
 ] as const;
 
 const normalizeSlug = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -27,7 +32,11 @@ const normalizeText = (value: string) => value.toLowerCase().normalize("NFD").re
 
 export function getConfiguredSourceUrls() {
   const configured = process.env.INGESTION_SOURCE_URL ?? process.env.INGESTION_SOURCE_URLS;
-  if (configured !== undefined) return Array.from(new Set(configured.split(",").map(value => value.trim()).filter(Boolean)));
+  if (configured !== undefined) {
+    const configuredUrls = configured.split(",").map(value => value.trim()).filter(Boolean);
+    if (configuredUrls.length === 0) return [];
+    return Array.from(new Set([...configuredUrls, ...DEFAULT_SOURCE_URLS]));
+  }
   return DEFAULT_SOURCE_URLS;
 }
 

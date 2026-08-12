@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { sdk } from "./_core/sdk";
 import { ingestAgentDocuments, type AgentEventDocument } from "./agent-ingestion";
+import { archiveExpiredSoldOutEvents } from "./db";
 
 export async function ingestAgentDocumentsHandler(req: Request, res: Response) {
   const startedAt = new Date().toISOString();
@@ -14,8 +15,9 @@ export async function ingestAgentDocumentsHandler(req: Request, res: Response) {
       const candidate = document as Partial<AgentEventDocument>;
       return typeof candidate.sourceUrl === "string" && /^https:\/\/(www\.)?(articket\.com\.br|blacktag\.com\.br|zig\.tickets|ingresse\.com)\//.test(candidate.sourceUrl) && typeof candidate.text === "string" && candidate.sourceUrl.length <= 500 && candidate.text.length <= 16000;
     });
+    const archived = await archiveExpiredSoldOutEvents();
     const result = await ingestAgentDocuments(normalized);
-    return res.json({ ok: true, startedAt, finishedAt: new Date().toISOString(), result });
+    return res.json({ ok: true, startedAt, finishedAt: new Date().toISOString(), archived, result });
   } catch (error) {
     return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : String(error), startedAt, finishedAt: new Date().toISOString() });
   }

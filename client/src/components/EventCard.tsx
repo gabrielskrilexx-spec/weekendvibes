@@ -13,7 +13,7 @@ const categoryColors: Record<string, string> = {
 export default function EventCard({ event }: { event: Event }) {
   const date = new Date(event.eventDate);
   const image = event.imageUrl || "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=900&q=80";
-  const isSoldOut = event.priceNote?.toLowerCase().includes("vendas encerradas") ?? false;
+  const isSoldOut = event.ticketStatus === "sold_out" || (event.ticketStatus === undefined && (event.priceNote?.toLowerCase().includes("vendas encerradas") ?? false));
   return (
     <article className="group overflow-hidden rounded-[24px] border border-white/10 bg-zinc-900/90 shadow-[0_20px_60px_-30px_rgba(168,85,247,.55)] transition duration-200 hover:-translate-y-1 hover:border-orange-300/40">
       <div className="relative h-48 overflow-hidden">

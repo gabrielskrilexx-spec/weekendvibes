@@ -97,14 +97,18 @@ export function eventIdentityKey(sourceUrl: string, eventDate: Date | string) {
   return `${sourceUrl}|${new Date(eventDate).toISOString().slice(0, 10)}`;
 }
 
-export function filterEventsForPublicFeed<T extends Pick<Event, "city" | "category" | "genre" | "priceCents" | "eventDate">>(items: T[], filters: { city?: string; category?: string; genre?: string; maxPriceCents?: number }) {
-  return items.filter(event => ALLOWED_CITIES.includes(event.city as typeof ALLOWED_CITIES[number]) && MUSICAL_CATEGORIES.includes(event.category as typeof MUSICAL_CATEGORIES[number]) && (!filters.city || filters.city === "Todas" || event.city === filters.city) && (!filters.category || filters.category === "Todas" || event.category === filters.category) && (!filters.genre || event.genre === filters.genre) && (filters.maxPriceCents === undefined || event.priceCents <= filters.maxPriceCents));
+export function isPublicEventRecord(event: Pick<Event, "isArchived" | "isPublished">) {
+  return event.isArchived === 0 && event.isPublished === 1;
+}
+
+export function filterEventsForPublicFeed<T extends Pick<Event, "city" | "category" | "genre" | "priceCents" | "eventDate"> & Partial<Pick<Event, "isArchived" | "isPublished">>>(items: T[], filters: { city?: string; category?: string; genre?: string; maxPriceCents?: number }) {
+  return items.filter(event => ((event.isArchived === undefined && event.isPublished === undefined) || isPublicEventRecord(event as Pick<Event, "isArchived" | "isPublished">)) && ALLOWED_CITIES.includes(event.city as typeof ALLOWED_CITIES[number]) && MUSICAL_CATEGORIES.includes(event.category as typeof MUSICAL_CATEGORIES[number]) && (!filters.city || filters.city === "Todas" || event.city === filters.city) && (!filters.category || filters.category === "Todas" || event.category === filters.category) && (!filters.genre || event.genre === filters.genre) && (filters.maxPriceCents === undefined || event.priceCents <= filters.maxPriceCents));
 }
 
 export async function listEvents(filters: { day?: string; city?: string; category?: string; genre?: string; maxPriceCents?: number; page?: number; size?: number } = {}) {
   const db = await getDb();
   if (!db) return [];
-  const conditions = [eq(events.isPublished, 1), sql`${events.city} IN (${sql.join(ALLOWED_CITIES.map(city => sql`${city}`), sql`, `)})`];
+  const conditions = [eq(events.isPublished, 1), eq(events.isArchived, 0), sql`${events.city} IN (${sql.join(ALLOWED_CITIES.map(city => sql`${city}`), sql`, `)})`];
   if (filters.city && filters.city !== "Todas" && ALLOWED_CITIES.includes(filters.city as typeof ALLOWED_CITIES[number])) conditions.push(eq(events.city, filters.city));
   if (filters.category && filters.category !== "Todas") conditions.push(eq(events.category, filters.category as Event["category"]));
   if (filters.genre) conditions.push(eq(events.genre, filters.genre));
@@ -116,10 +120,12 @@ export async function listEvents(filters: { day?: string; city?: string; categor
   return db.select().from(events).where(and(...conditions)).orderBy(asc(events.eventDate)).limit(size).offset((page - 1) * size);
 }
 
-export async function getEventBySlug(slug: string) {
-  const db = await getDb();
+export const PUBLIC_EVENT_STATE = { isPublished: 1 as const, isArchived: 0 as const };
+
+export async function getEventBySlug(slug: string, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
   if (!db) return undefined;
-  const rows = await db.select().from(events).where(eq(events.slug, slug)).limit(1);
+  const rows = await db.select().from(events).where(and(eq(events.slug, slug), eq(events.isPublished, PUBLIC_EVENT_STATE.isPublished), eq(events.isArchived, PUBLIC_EVENT_STATE.isArchived))).limit(1);
   return rows[0];
 }
 
@@ -146,4 +152,24 @@ export async function deleteEvent(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   await db.delete(events).where(eq(events.id, id));
+}
+
+export function shouldArchiveExpiredSoldOutEvent(event: Pick<Event, "eventDate" | "endDate" | "priceNote" | "ticketStatus" | "isArchived" | "isPublished">, now = new Date()) {
+  const soldOut = event.ticketStatus === "sold_out" || (event.ticketStatus === undefined && (event.priceNote?.toLowerCase().includes("vendas encerradas") ?? false));
+  const eventEnd = event.endDate ?? event.eventDate;
+  return event.isArchived === 0 && event.isPublished === 1 && soldOut && new Date(eventEnd).getTime() < now.getTime();
+}
+
+export async function archiveExpiredSoldOutEvents(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const result = await db.update(events)
+    .set({ isArchived: 1, isPublished: 0, updatedAt: new Date() })
+    .where(and(
+      eq(events.isArchived, 0),
+      eq(events.isPublished, 1),
+      sql`COALESCE(${events.endDate}, ${events.eventDate}) < NOW()`,
+      eq(events.ticketStatus, "sold_out"),
+    ));
+  return Number((result as { affectedRows?: number }).affectedRows ?? 0);
 }
