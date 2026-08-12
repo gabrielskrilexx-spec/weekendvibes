@@ -1,0 +1,36 @@
+import { describe, expect, it, vi } from "vitest";
+import { appRouter } from "./routers";
+
+vi.mock("./db", () => ({
+  listEvents: vi.fn().mockResolvedValue([]),
+  getEventBySlug: vi.fn().mockResolvedValue(undefined),
+  saveEvent: vi.fn().mockResolvedValue(undefined),
+  updateEvent: vi.fn().mockResolvedValue(undefined),
+  deleteEvent: vi.fn().mockResolvedValue(undefined),
+  getDb: vi.fn(),
+  upsertUser: vi.fn(),
+  getUserByOpenId: vi.fn(),
+}));
+vi.mock("./_core/llm", () => ({
+  invokeLLM: vi.fn().mockResolvedValue({ choices: [{ message: { content: JSON.stringify({ title: "Festival de Verão", summary: "Uma noite tropical", eventDate: "2026-08-14T20:00:00Z", locationName: "Casa do Sol", address: "Av. Atlântica, 1", city: "Santos", category: "show", priceCents: 5000 }) } }] }),
+}));
+
+const base = { title: "Festival de Verão", slug: "festival-de-verao", description: "Uma noite tropical", eventDate: new Date("2026-08-14T20:00:00Z"), locationName: "Casa do Sol", address: "Av. Atlântica, 1", city: "Santos", category: "show" as const, priceCents: 5000, sourceUrl: "https://example.com/tickets", imageUrl: "", latitude: "-23.96", longitude: "-46.33", isPublished: 1 };
+const ctx = (role: "admin" | "user" = "admin") => ({ user: { id: 1, openId: "test", name: "Test", email: null, loginMethod: null, role, createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date() }, req: { protocol: "https", headers: {} } as any, res: {} as any });
+
+describe("events admin procedures", () => {
+  it("allows admin CRUD operations", async () => {
+    const caller = appRouter.createCaller(ctx());
+    await expect(caller.events.create(base)).resolves.toBeUndefined();
+    await expect(caller.events.update({ id: 1, data: { title: "Festival Atualizado" } })).resolves.toBeUndefined();
+    await expect(caller.events.remove({ id: 1 })).resolves.toBeUndefined();
+  });
+  it("rejects regular users", async () => {
+    const caller = appRouter.createCaller(ctx("user"));
+    await expect(caller.events.remove({ id: 1 })).rejects.toThrow();
+  });
+  it("returns the structured LLM enrichment contract", async () => {
+    const result = await appRouter.createCaller(ctx()).events.enrich({ rawText: "Festival de verão em Santos na sexta-feira, às 20h, na Casa do Sol, ingressos a R$ 50." });
+    expect(result).toMatchObject({ title: "Festival de Verão", city: "Santos", category: "show", priceCents: 5000 });
+  });
+});

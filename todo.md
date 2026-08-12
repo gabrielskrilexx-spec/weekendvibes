@@ -19,6 +19,6 @@
 - [x] Implementar formulários completos de criação e edição no painel admin
 - [ ] Ativar o cron real da plataforma após publicação do site
 - [x] Corrigir gerenciamento de markers para evitar duplicação e adicionar pin no detalhe
-- [ ] Expandir testes de integração para CRUD, enriquecimento e handler agendado
+- [x] Expandir testes de integração para CRUD, autorização, enriquecimento e handler agendado
 - [x] Criar documentação real com árvore do projeto e comandos exatos
 - [x] Adicionar validação de formulário e feedback de erro/sucesso no painel admin para criação e edição de eventos
