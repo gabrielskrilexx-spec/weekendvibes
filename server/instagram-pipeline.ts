@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { INSTAGRAM_AGENDA_SOURCE_TYPE, listActiveLocationAliasValues, saveEvent } from "./db";
+import { INSTAGRAM_AGENDA_SOURCE_TYPE, listActiveLocationAliasValues, recordOperationalAlert, saveEvent } from "./db";
 import { containsTargetVenue } from "./ingestion";
 
 const APIFY_RUN_URL = "https://api.apify.com/v2/actors/apify~instagram-scraper/run-sync-get-dataset-items";
@@ -84,29 +84,82 @@ function postUrl(post: InstagramPost) {
   return "";
 }
 
-async function openAiChat(body: Record<string, unknown>) {
-  const response = await fetch(OPENAI_CHAT_URL, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${requiredEnv("OPENAI_API_KEY")}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) throw new Error(`OpenAI request failed with ${response.status}: ${await response.text()}`);
-  return response.json() as Promise<{ choices?: Array<{ message?: { content?: string } }> }>;
+const OPENAI_RETRY_DELAYS_MS = [250, 750];
+
+export async function waitForOpenAiRetry(delayMs: number) {
+  await new Promise(resolve => setTimeout(resolve, delayMs));
 }
 
-async function extractOcrText(imageUrl: string) {
+async function openAiChat(body: Record<string, unknown>) {
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await fetch(OPENAI_CHAT_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${requiredEnv("OPENAI_API_KEY")}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (response.ok) return response.json() as Promise<{ choices?: Array<{ message?: { content?: string } }> }>;
+    const responseText = await response.text();
+    if (response.status === 429 && attempt < OPENAI_RETRY_DELAYS_MS.length) {
+      await waitForOpenAiRetry(OPENAI_RETRY_DELAYS_MS[attempt]);
+      continue;
+    }
+    throw new Error(`OpenAI request failed with ${response.status}: ${responseText}`);
+  }
+}
+
+export async function prepareImageForOcr(imageUrl: string) {
   if (!imageUrl) return "";
+  if (imageUrl.startsWith("data:image/")) return imageUrl;
+  const response = await fetch(imageUrl, { headers: { Accept: "image/*", "User-Agent": "WeekendVibes/1.0" } });
+  if (!response.ok) throw new Error(`Instagram image download failed with ${response.status}`);
+  const contentType = response.headers.get("content-type")?.split(";")[0] || "image/jpeg";
+  if (!contentType.startsWith("image/")) throw new Error(`Instagram image returned unsupported content type: ${contentType}`);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.length === 0) throw new Error("Instagram image download returned an empty body");
+  return `data:${contentType};base64,${bytes.toString("base64")}`;
+}
+
+export function isRecoverableOcrRateLimit(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("429") || message.includes("rate_limit_exceeded") || message.includes("Rate limit reached");
+}
+
+export async function extractOcrText(imageUrl: string) {
+  if (!imageUrl) return "";
+  let imagePayload = "";
+  try {
+    imagePayload = await prepareImageForOcr(imageUrl);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn("[Instagram OCR] Image unavailable; continuing with caption only:", message);
+    try {
+      await recordOperationalAlert({ integration: "ocr", title: "Imagem do Instagram indisponível", message });
+    } catch (alertError) {
+      console.warn("[Instagram OCR] Could not persist image alert:", alertError);
+    }
+    return "";
+  }
   try {
     const result = await openAiChat({
       model: MODEL,
       temperature: 0,
       messages: [{ role: "user", content: [
         { type: "text", text: "Transcreva literalmente todo o texto legível desta imagem. Não resuma, não corrija e não invente conteúdo." },
-        { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
+        { type: "image_url", image_url: { url: imagePayload, detail: "high" } },
       ] }],
     });
     return String(result.choices?.[0]?.message?.content ?? "");
   } catch (error) {
+    if (isRecoverableOcrRateLimit(error)) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[Instagram OCR] Rate limit reached; continuing with caption only:", message);
+      try {
+        await recordOperationalAlert({ integration: "ocr", title: "Limite temporário do OCR", message });
+      } catch (alertError) {
+        console.warn("[Instagram OCR] Could not persist rate-limit alert:", alertError);
+      }
+      return "";
+    }
     if (error instanceof InstagramIntegrationFailure) throw error;
     throw new InstagramIntegrationFailure("ocr", error instanceof Error ? error.message : String(error), { cause: error });
   }

@@ -341,3 +341,22 @@
 - [x] Criar interface administrativa para listar, adicionar, editar e remover aliases de locais
 - [x] Persistir aliases com autorização administrativa e aplicar os aliases no filtro de ingestão
 - [x] Adicionar testes, validar visualmente o painel e publicar checkpoint; a rota administrativa foi validada com sessão expirada e requer login admin para inspeção visual
+
+## Reexecução da ingestão após restauração dos créditos
+- [ ] Reexecutar a ingestão manual oficial dos oito perfis
+- [ ] Verificar eventos dos três novos perfis no feed e na Agenda da Semana
+- [ ] Registrar o resultado real e publicar o fechamento da tarefa
+
+## Resiliência do OCR para imagens CDN do Instagram
+- [x] Converter imagens CDN acessíveis para payload compatível com OCR antes da chamada OpenAI
+- [x] Não interromper o lote quando uma imagem estiver inacessível ou inválida; registrar alerta e continuar com legenda
+- [x] Adicionar testes para URL de imagem inválida, fallback de legenda e continuidade do lote
+- [ ] Reexecutar ingestão, validar eventos e publicar correção
+
+## Tolerância a rate limit do OCR
+- [x] Adicionar retry com backoff curto para respostas HTTP 429 da OpenAI
+- [x] Continuar o lote com fallback seguro quando o OCR não puder ser executado após retry
+- [x] Adicionar testes determinísticos para retry e fallback de rate limit
+- [ ] Reexecutar ingestão e registrar o resultado final dos novos perfis — bloqueado por HTTP 402 do Apify: saldo insuficiente do actor pago
+
+- [x] Tratar rate limit 429 do OCR por post, registrar alerta e continuar o lote com a legenda

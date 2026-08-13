@@ -72,6 +72,7 @@ describe("scheduled Instagram ingestion", () => {
     const sourceUrl = "https://www.instagram.com/p/ocr-agenda/";
     globalThis.fetch = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify([{ url: sourceUrl, caption: "Confira nossos próximos eventos", timestamp: "2026-08-11T12:00:00.000Z", displayUrl: "https://cdn.example/ocr-agenda.jpg" }]), { status: 200 }))
+      .mockResolvedValueOnce(new Response("fake-image", { status: 200, headers: { "content-type": "image/jpeg" } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "Agenda da semana\\n#Sábado\\nMoby House Santos" } }] }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "Sábado no Moby", summary: "Agenda musical aprovada por OCR", eventDate: "2026-08-15T22:00:00.000Z", locationName: "Moby House", address: "Av. Vicente de Carvalho, 30, Santos", city: "Santos", category: "balada", genre: "house_eletronica", priceCents: 0, imageUrl: "https://cdn.example/ocr-agenda.jpg", sourceUrl }] }) } }] }), { status: 200 }));
     try {
