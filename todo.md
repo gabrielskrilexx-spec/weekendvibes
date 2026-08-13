@@ -266,3 +266,10 @@
 - [x] Validar destino, impedir open redirect e usar fallback seguro para a Home
 - [x] Cobrir evento, painel, query string, acessibilidade e testes de regressão
 - [x] Salvar e publicar checkpoint do redirecionamento pós-login
+
+## Correção do Nosso After — MC Luuky
+- [x] Consultar a página oficial do Ingresse e registrar os dados confirmados
+- [x] Comparar status, preço, data, local, imagem e link com o evento persistido
+- [x] Corrigir o status incorreto de esgotado e demais informações divergentes confirmadas
+- [x] Validar feed, detalhe, compartilhamento e testes de idempotência
+- [x] Salvar e publicar checkpoint da correção do evento
