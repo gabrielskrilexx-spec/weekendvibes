@@ -252,3 +252,10 @@
 - [x] Proteger fluxos de ingestão, reprocessamento e geocodificação contra concorrência e abuso
 - [x] Adicionar testes de segurança e validar regressões
 - [x] Salvar e publicar checkpoint do reforço de segurança
+
+## Páginas de erro de autenticação
+- [x] Criar página personalizada para acesso negado com orientação e ações úteis
+- [x] Criar página personalizada para sessão expirada com retorno seguro ao login
+- [x] Integrar estados protegidos sem expor detalhes sensíveis
+- [x] Validar navegação, acessibilidade, responsividade e testes
+- [x] Salvar e publicar checkpoint das páginas de erro
