@@ -47,3 +47,17 @@ A causa operacional prioritária é a incompatibilidade entre o cookie/token ent
 4. Após uma execução bem-sucedida, revisar o Heartbeat diário e decidir se ele deve permanecer separado do schedule semanal ou ser consolidado para evitar ingestões redundantes.
 
 Nenhuma configuração foi alterada durante esta auditoria.
+
+## Verificação oficial pós-correção
+
+Após o usuário executar **Run Now** no painel, o Heartbeat `weekendvibes-ingest-events` retornou sucesso:
+
+- Run UID: `EQVPA2Mu7HAq5wmzA9HixS`
+- Status: `success`
+- HTTP: `200`
+- Duração: `4610 ms`
+- Resultado: `imported: 1`, `discovered: 60`, `matchedSources: 2`, `archived: 0`
+- Endpoint: `/api/scheduled/ingest-events`
+- Não houve novo erro `Invalid session cookie`; o log observado foi apenas a verificação de sessão associada à aceitação da identidade cron.
+
+Conclusão: a autenticação cron corrigida está funcionando em produção para a rotina pública. O Heartbeat diário permanece dedicado à ingestão pública; o schedule semanal permanece ativo em `full_auto` e dedicado exclusivamente ao Instagram, sem sobreposição.

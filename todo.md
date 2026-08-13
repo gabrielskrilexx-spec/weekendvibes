@@ -319,6 +319,6 @@
 - [x] Rejeitar chamadas sem autenticação cron válida com HTTP 403
 - [x] Adicionar testes de integração para sucesso 2xx, acesso negado 403 e erro interno 500 com stack
 - [x] Executar suíte completa, TypeScript e validação dos callbacks
-- [ ] Salvar checkpoint e publicar a correção antes de alterar schedules
-- [ ] Executar trigger manual controlado do Heartbeat e validar logs de produção
-- [ ] Avaliar e consolidar o Heartbeat diário com o schedule semanal sem duplicidade
+- [x] Salvar checkpoint e publicar a correção antes de alterar schedules
+- [x] Executar trigger manual controlado do Heartbeat e validar logs de produção
+- [x] Avaliar e consolidar o Heartbeat diário com o schedule semanal sem duplicidade
