@@ -128,3 +128,16 @@ export const geocodingJobs = mysqlTable("geocodingJobs", {
 
 export type GeocodingJob = typeof geocodingJobs.$inferSelect;
 export type InsertGeocodingJob = typeof geocodingJobs.$inferInsert;
+
+export const locationAliases = mysqlTable("locationAliases", {
+  id: int("id").autoincrement().primaryKey(),
+  alias: varchar("alias", { length: 180 }).notNull().unique(),
+  canonicalName: varchar("canonicalName", { length: 180 }).notNull(),
+  city: varchar("city", { length: 100 }).notNull(),
+  isActive: int("isActive").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type LocationAlias = typeof locationAliases.$inferSelect;
+export type InsertLocationAlias = typeof locationAliases.$inferInsert;

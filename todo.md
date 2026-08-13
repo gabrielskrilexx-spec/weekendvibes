@@ -334,3 +334,10 @@
 - [x] Adicionar @flamingomusicbar, @rocketseaclub e @ativahouse ao pipeline Apify
 - [x] Preservar filtros de 5 dias, “Agenda da semana”, hashtags e categorias musicais
 - [x] Executar testes, validar a configuração e publicar checkpoint
+
+## Ingestão manual e aliases de locais
+- [ ] Executar ingestão manual dos novos perfis Instagram e registrar o resultado real
+- [ ] Verificar se eventos importados aparecem corretamente no feed e na Agenda da Semana
+- [x] Criar interface administrativa para listar, adicionar, editar e remover aliases de locais
+- [x] Persistir aliases com autorização administrativa e aplicar os aliases no filtro de ingestão
+- [x] Adicionar testes, validar visualmente o painel e publicar checkpoint; a rota administrativa foi validada com sessão expirada e requer login admin para inspeção visual

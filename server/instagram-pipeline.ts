@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { INSTAGRAM_AGENDA_SOURCE_TYPE, saveEvent } from "./db";
+import { INSTAGRAM_AGENDA_SOURCE_TYPE, listActiveLocationAliasValues, saveEvent } from "./db";
 import { containsTargetVenue } from "./ingestion";
 
 const APIFY_RUN_URL = "https://api.apify.com/v2/actors/apify~instagram-scraper/run-sync-get-dataset-items";
@@ -158,6 +158,7 @@ async function extractStructuredEvents(approvedPosts: Array<{ post: InstagramPos
 }
 
 export async function runInstagramPipeline() {
+  const activeAliases = await listActiveLocationAliasValues();
   const posts = await fetchInstagramPosts();
   const approvedPosts: Array<{ post: InstagramPost; rawText: string }> = [];
   for (const post of posts) {
@@ -172,7 +173,7 @@ export async function runInstagramPipeline() {
   let imported = 0;
   for (const event of structuredEvents) {
     const eventDate = new Date(event.eventDate);
-    if (Number.isNaN(eventDate.getTime()) || !containsTargetVenue(`${event.locationName} ${event.address}`)) continue;
+    if (Number.isNaN(eventDate.getTime()) || !containsTargetVenue(`${event.locationName} ${event.address}`, activeAliases)) continue;
     const sourceUrl = event.sourceUrl.startsWith("https://www.instagram.com/") ? event.sourceUrl : "";
     if (!sourceUrl) continue;
     const sourceHash = crypto.createHash("md5").update(`${sourceUrl}|${eventDate.toISOString().slice(0, 10)}|${event.title}`).digest("hex");

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { invokeLLM } from "./_core/llm";
-import { saveEvent } from "./db";
+import { listActiveLocationAliasValues, saveEvent } from "./db";
 
 const DEFAULT_SOURCE_URLS = [
   "https://articket.com.br/e/6784/plants-happy-hour",
@@ -43,9 +43,9 @@ export function getConfiguredSourceUrls() {
   return DEFAULT_SOURCE_URLS;
 }
 
-export function containsTargetVenue(value: string) {
+export function containsTargetVenue(value: string, aliases: string[] = []) {
   const normalized = normalizeText(value);
-  return TARGET_VENUES.some(venue => normalized.includes(normalizeText(venue)));
+  return [...TARGET_VENUES, ...aliases].some(venue => normalized.includes(normalizeText(venue)));
 }
 
 export function extractPublicEventLinks(html: string, baseUrl: string) {
@@ -102,12 +102,14 @@ async function discoverCandidatePages() {
 }
 
 export async function runIngestionPipeline() {
+  const activeAliases = await listActiveLocationAliasValues();
+  const matchesTargetVenue = (value: string) => containsTargetVenue(value, activeAliases);
   const candidateUrls = await discoverCandidatePages();
   if (candidateUrls.length === 0) return { imported: 0, skipped: true, reason: "Nenhuma fonte de ingestão configurada" };
   const pages = await Promise.allSettled(candidateUrls.map(fetchPublicPage));
   const sourcePages = pages
     .filter((result): result is PromiseFulfilledResult<{ url: string; html: string; text: string; imageUrl: string }> => result.status === "fulfilled")
-    .filter(result => containsTargetVenue(result.value.text))
+    .filter(result => matchesTargetVenue(result.value.text))
     .map(result => result.value);
 
   if (sourcePages.length === 0) {
@@ -135,7 +137,7 @@ export async function runIngestionPipeline() {
     const city = String(event.city);
     const category = String(event.category);
     const genre = String(event.genre);
-    if (Number.isNaN(date.getTime()) || (city !== "Santos" && city !== "Guarujá") || !containsTargetVenue(`${event.locationName} ${event.address}`) || !["show", "balada", "evento_musical"].includes(category) || !["funk", "house_eletronica", "samba_pagode", "rap_trap"].includes(genre)) continue;
+    if (Number.isNaN(date.getTime()) || (city !== "Santos" && city !== "Guarujá") || !matchesTargetVenue(`${event.locationName} ${event.address}`) || !["show", "balada", "evento_musical"].includes(category) || !["funk", "house_eletronica", "samba_pagode", "rap_trap"].includes(genre)) continue;
     const sourceHash = crypto.createHash("md5").update(`${normalizeSlug(String(event.sourceUrl))}:${normalizeSlug(String(event.title))}:${date.toISOString().slice(0, 10)}`).digest("hex");
     const sourceUrl = String(event.sourceUrl);
     const sourceType = sourceUrl.includes("ingresse.com") ? "ingresse" : "public_source";

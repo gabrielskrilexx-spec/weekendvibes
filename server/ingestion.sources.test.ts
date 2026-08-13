@@ -24,5 +24,7 @@ describe("public event discovery", () => {
     expect(containsTargetVenue("Laroc Club Guarujá")).toBe(true);
     expect(containsTargetVenue("Guarujá Golf Club")).toBe(true);
     expect(containsTargetVenue("Arena desconhecida, Santos - SP")).toBe(false);
+    expect(containsTargetVenue("Flamingo Music Bar, Santos - SP", ["flamingo music bar"])).toBe(true);
+    expect(containsTargetVenue("Arena desconhecida, Santos - SP", ["Outro local"])).toBe(false);
   });
 });
