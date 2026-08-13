@@ -281,3 +281,25 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; }
 }
+
+@keyframes new-event-badge-pulse {
+  0%, 100% {
+    box-shadow: 0 6px 18px -10px rgba(217, 70, 239, 0.9);
+    transform: translateZ(0) scale(1);
+  }
+  50% {
+    box-shadow: 0 8px 22px -8px rgba(217, 70, 239, 0.95);
+    transform: translateZ(0) scale(1.04);
+  }
+}
+
+.new-event-badge {
+  animation: new-event-badge-pulse 2.8s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .new-event-badge {
+    animation: none;
+  }
+}

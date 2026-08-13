@@ -300,3 +300,9 @@
 - [x] Preservar a tag “Atualizado” e evitar sobreposição visual entre as tags
 - [x] Cobrir limites da janela temporal, eventos futuros e datas inválidas com testes
 - [x] Validar acessibilidade, responsividade, suíte completa e publicar checkpoint
+
+## Animação sutil da tag Novo
+- [x] Adicionar animação discreta de destaque à tag “Novo” na listagem
+- [x] Respeitar prefers-reduced-motion e manter acessibilidade visual
+- [x] Cobrir a classe/estilo da animação com teste e validar visualmente
+- [x] Executar Vitest e TypeScript e publicar checkpoint

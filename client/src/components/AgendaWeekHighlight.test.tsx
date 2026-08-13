@@ -21,6 +21,7 @@ describe("AgendaWeekHighlight", () => {
     const regularMarkup = renderToStaticMarkup(<AgendaWeekHighlight state="ready" events={[event]} />);
     expect(updatedMarkup).toContain("Novo");
     expect(updatedMarkup).toContain("aria-label=\"Evento novo\"");
+    expect(updatedMarkup).toContain("new-event-badge");
     expect(updatedMarkup).toContain("Atualizado");
     expect(updatedMarkup).toContain("aria-label=\"Evento atualizado\"");
     expect(regularMarkup).not.toContain("Novo");
