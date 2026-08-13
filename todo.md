@@ -288,3 +288,9 @@
 - [x] Persistir o Nosso After — 14/08 com deduplicação e origem Ingresse, somente se a cidade, data e categoria forem verificáveis
 - [x] Validar Agenda da Semana, feed, detalhe e idempotência da substituição
 - [x] Executar Vitest e TypeScript e publicar checkpoint da alteração
+
+## Tag visual de atualização na Agenda da Semana
+- [x] Adicionar tag visual “Atualizado” ao card do Nosso After — 14/08
+- [x] Garantir contraste, leitura por tecnologias assistivas e responsividade da tag
+- [x] Cobrir a renderização da tag com teste e validar visualmente a Home
+- [x] Executar Vitest e TypeScript e publicar checkpoint da melhoria

@@ -14,4 +14,13 @@ describe("AgendaWeekHighlight", () => {
     expect(renderToStaticMarkup(<AgendaWeekHighlight state="empty" events={[]} />)).toContain("Nenhum evento recente da Agenda da Semana");
     expect(renderToStaticMarkup(<AgendaWeekHighlight state="ready" events={[event]} />)).toContain("Sexta no Moby");
   });
+
+  it("destaca o evento substituído com a tag Atualizado", () => {
+    const updatedEvent = { ...event, id: 2, slug: "nosso-after-14-08", title: "Nosso After" };
+    const updatedMarkup = renderToStaticMarkup(<AgendaWeekHighlight state="ready" events={[updatedEvent]} />);
+    const regularMarkup = renderToStaticMarkup(<AgendaWeekHighlight state="ready" events={[event]} />);
+    expect(updatedMarkup).toContain("Atualizado");
+    expect(updatedMarkup).toContain("aria-label=\"Evento atualizado\"");
+    expect(regularMarkup).not.toContain("Atualizado");
+  });
 });
