@@ -306,3 +306,19 @@
 - [x] Respeitar prefers-reduced-motion e manter acessibilidade visual
 - [x] Cobrir a classe/estilo da animação com teste e validar visualmente
 - [x] Executar Vitest e TypeScript e publicar checkpoint
+
+## Auditoria de agendamentos e bots automáticos
+- [x] Mapear todas as rotinas automáticas implementadas e seus endpoints publicados
+- [x] Inspecionar schedules ativos, modo de execução, próxima execução e histórico recente
+- [x] Verificar se há bots ou schedules duplicados e se a rotina é idempotente
+- [x] Comparar o schedule ativo com o código, secrets e fontes configuradas
+- [x] Registrar riscos, evidências e recomendações sem alterar a configuração durante a auditoria
+
+## Correção crítica da autenticação Cron e consolidação
+- [x] Implementar autenticação específica e segura para os três callbacks `/api/scheduled/*`
+- [x] Rejeitar chamadas sem autenticação cron válida com HTTP 403
+- [x] Adicionar testes de integração para sucesso 2xx, acesso negado 403 e erro interno 500 com stack
+- [x] Executar suíte completa, TypeScript e validação dos callbacks
+- [ ] Salvar checkpoint e publicar a correção antes de alterar schedules
+- [ ] Executar trigger manual controlado do Heartbeat e validar logs de produção
+- [ ] Avaliar e consolidar o Heartbeat diário com o schedule semanal sem duplicidade

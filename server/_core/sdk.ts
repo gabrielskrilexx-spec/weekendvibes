@@ -274,16 +274,31 @@ class SDKServer {
       }
     }
 
+    if (!sessionToken) {
+      throw ForbiddenError("Missing session cookie");
+    }
+
     const session = await this.verifySession(sessionToken);
 
+    // Heartbeat callbacks receive a platform-issued opaque token rather than
+    // the app's locally signed JWT. Only accept it when the OAuth service
+    // identifies the caller as a cron identity and returns a task UID.
     if (!session) {
+      try {
+        const cronInfo = await this.getUserInfoWithJwt(sessionToken);
+        if (cronInfo.openId.startsWith(CRON_OPEN_ID_PREFIX) && cronInfo.taskUid) {
+          return buildCronUser(cronInfo);
+        }
+      } catch {
+        // Fall through to the same safe 403 for invalid external requests.
+      }
       throw ForbiddenError("Invalid session cookie");
     }
 
     if (session.openId.startsWith(CRON_OPEN_ID_PREFIX)) {
-      const userInfo = await this.getUserInfoWithJwt(sessionToken ?? "");
+      const userInfo = await this.getUserInfoWithJwt(sessionToken);
       const taskUid = userInfo.taskUid ?? null;
-      if (!taskUid) {
+      if (!taskUid || !userInfo.openId.startsWith(CRON_OPEN_ID_PREFIX)) {
         throw ForbiddenError("Cron session missing task_uid");
       }
       return buildCronUser(userInfo);
