@@ -2,7 +2,7 @@ import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { adminProcedure, publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { deleteEvent, getEventBySlug, listEvents, listRecentInstagramAgendaEvents, listTodayEvents, listOperationalAlerts, resolveOperationalAlert, saveEvent, updateEvent, listFavoriteEventIds, toggleFavoriteEvent, setEventReminder, listUserReminders } from "./db";
 import { invokeLLM } from "./_core/llm";
 import { getTuesdayRoutineStatus, runTuesdayRoutineNow } from "./manual-ingestion";
@@ -10,29 +10,26 @@ import { listIngestionReport, reprocessIngestionSource } from "./ingestion-repor
 import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
 
 const eventInput = z.object({
-  title: z.string().min(3),
-  slug: z.string().min(3),
-  description: z.string().optional(),
+  title: z.string().trim().min(3).max(160),
+  slug: z.string().trim().min(3).max(180).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  description: z.string().max(5000).optional(),
   eventDate: z.coerce.date(),
   endDate: z.coerce.date().optional(),
-  locationName: z.string().min(2),
-  address: z.string().optional(),
-  city: z.string().min(2),
+  locationName: z.string().trim().min(2).max(180),
+  address: z.string().trim().max(300).optional(),
+  city: z.enum(["Santos", "Guarujá"]),
   category: z.enum(["show", "balada", "evento_musical"]),
   genre: z.enum(["funk", "house_eletronica", "samba_pagode", "rap_trap"]).optional(),
   priceCents: z.number().int().min(0).default(0),
-  sourceUrl: z.string().url().optional().or(z.literal("")),
-  imageUrl: z.string().url().optional().or(z.literal("")),
+  sourceUrl: z.string().url().refine(value => value === "" || /^https:\/\//i.test(value), "A fonte deve usar HTTPS").optional().or(z.literal("")),
+  imageUrl: z.string().url().refine(value => value === "" || /^https:\/\//i.test(value), "A imagem deve usar HTTPS").optional().or(z.literal("")),
   latitude: z.string().optional(),
   longitude: z.string().optional(),
   sourceHash: z.string().optional(),
   isPublished: z.number().int().min(0).max(1).default(1),
 });
 
-const adminOnly = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== "admin") throw new Error("Acesso restrito ao painel administrativo");
-  return next();
-});
+const adminOnly = adminProcedure;
 
 export const appRouter = router({
   system: systemRouter,
@@ -70,7 +67,7 @@ export const appRouter = router({
     create: adminOnly.input(eventInput).mutation(({ input }) => saveEvent(input)),
     update: adminOnly.input(z.object({ id: z.number(), data: eventInput.partial() })).mutation(({ input }) => updateEvent(input.id, input.data)),
     remove: adminOnly.input(z.object({ id: z.number() })).mutation(({ input }) => deleteEvent(input.id)),
-    enrich: adminOnly.input(z.object({ rawText: z.string().min(20) })).mutation(async ({ input }) => {
+    enrich: adminOnly.input(z.object({ rawText: z.string().trim().min(20).max(12000) })).mutation(async ({ input }) => {
       const response = await invokeLLM({
         model: "gpt-4o-mini",
         messages: [

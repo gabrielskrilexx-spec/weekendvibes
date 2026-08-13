@@ -244,3 +244,11 @@
 - [x] Permitir reprocessamento administrativo seguro de fontes com falha
 - [x] Cobrir autorização, concorrência, idempotência, erros e acessibilidade com testes
 - [x] Salvar e publicar checkpoint da geocodificação e dos relatórios operacionais
+
+## Reforço de segurança e proteção de dados
+- [x] Auditar autenticação, autorização, sessões, entradas, CORS, headers e endpoints administrativos
+- [x] Reforçar validação, limites, proteção contra abuso e respostas sem dados sensíveis
+- [x] Revisar segredos, logs, armazenamento e exposição de dados pessoais
+- [x] Proteger fluxos de ingestão, reprocessamento e geocodificação contra concorrência e abuso
+- [x] Adicionar testes de segurança e validar regressões
+- [x] Salvar e publicar checkpoint do reforço de segurança
