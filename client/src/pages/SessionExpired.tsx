@@ -1,4 +1,5 @@
 import { Home, LogIn, RefreshCw } from "lucide-react";
+import { getSafeReturnPath } from "@shared/const";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -6,6 +7,9 @@ import { startLogin } from "@/const";
 
 export default function SessionExpired() {
   const [, setLocation] = useLocation();
+  const returnTo = typeof window !== "undefined"
+    ? getSafeReturnPath(new URLSearchParams(window.location.search).get("returnTo"))
+    : "/";
 
   return (
     <main className="min-h-screen w-full bg-background px-4 py-10 text-foreground sm:flex sm:items-center sm:justify-center">
@@ -21,7 +25,7 @@ export default function SessionExpired() {
             Por segurança, sua sessão expirou. Entre novamente para continuar usando favoritos, lembretes e recursos da sua conta.
           </p>
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-            <Button onClick={() => startLogin()} className="bg-gradient-to-r from-orange-500 to-fuchsia-600 text-white hover:from-orange-600 hover:to-fuchsia-700">
+            <Button onClick={() => startLogin(returnTo)} className="bg-gradient-to-r from-orange-500 to-fuchsia-600 text-white hover:from-orange-600 to-fuchsia-700">
               <LogIn className="mr-2 h-4 w-4" aria-hidden="true" />
               Entrar novamente
             </Button>

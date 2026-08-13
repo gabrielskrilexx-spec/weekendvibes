@@ -78,7 +78,12 @@ export function useAuth(options?: UseAuthOptions) {
 
     // Navigate at this moment only. startLogin() mints the nonce + cookie itself.
     if (redirectPath) {
-      window.location.href = redirectPath;
+      const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      const destination = new URL(redirectPath, window.location.origin);
+      if (returnTo.startsWith("/") && !returnTo.startsWith("//")) {
+        destination.searchParams.set("returnTo", returnTo);
+      }
+      window.location.href = `${destination.pathname}${destination.search}${destination.hash}`;
     } else {
       startLogin();
     }

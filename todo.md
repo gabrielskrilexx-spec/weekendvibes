@@ -259,3 +259,10 @@
 - [x] Integrar estados protegidos sem expor detalhes sensíveis
 - [x] Validar navegação, acessibilidade, responsividade e testes
 - [x] Salvar e publicar checkpoint das páginas de erro
+
+## Redirecionamento inteligente pós-login
+- [x] Preservar a rota interna original ao iniciar o login a partir de sessão expirada
+- [x] Retornar o usuário à rota solicitada após callback OAuth bem-sucedido
+- [x] Validar destino, impedir open redirect e usar fallback seguro para a Home
+- [x] Cobrir evento, painel, query string, acessibilidade e testes de regressão
+- [x] Salvar e publicar checkpoint do redirecionamento pós-login
