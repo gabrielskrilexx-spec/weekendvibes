@@ -7,7 +7,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
-import { ingestEventsHandler } from "../scheduled";
+import { ingestEventsHandler, ingestFullAgendaHandler } from "../scheduled";
 import { ingestAgentDocumentsHandler } from "../scheduled-agent";
 import { ingestInstagramHandler } from "../scheduled-instagram";
 import { serveStatic, setupVite } from "./vite";
@@ -48,6 +48,7 @@ async function startServer() {
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   app.post("/api/scheduled/ingest-events", ingestEventsHandler);
+  app.post("/api/scheduled/ingest-full-agenda", ingestFullAgendaHandler);
   app.post("/api/scheduled/ingest-event-documents", ingestAgentDocumentsHandler);
   app.post("/api/scheduled/ingest-instagram", ingestInstagramHandler);
   // tRPC API
