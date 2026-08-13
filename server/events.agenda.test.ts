@@ -40,7 +40,12 @@ describe("events.recentInstagramAgenda", () => {
       id: 102,
       sourceType: "instagram_other",
     };
-    const rows = [agendaReingerida, instagramNaoAgenda];
+    const ingresseAgenda = {
+      ...agendaReingerida,
+      id: 103,
+      sourceType: "ingresse",
+    };
+    const rows = [agendaReingerida, instagramNaoAgenda, ingresseAgenda];
     let whereClause: unknown;
     const fakeDb = {
       select: () => ({
@@ -60,7 +65,7 @@ describe("events.recentInstagramAgenda", () => {
     const { listRecentInstagramAgendaEvents } = await import("./db");
     const result = await listRecentInstagramAgendaEvents({ dbOverride: fakeDb, lookbackDays: 5, size: 8 });
 
-    expect(result.map((event) => event.id)).toEqual([101, 102]);
+    expect(result.map((event) => event.id)).toEqual([101, 102, 103]);
     const queryText = collectQueryText(whereClause);
     expect(whereClause).toBeTruthy();
     expect(queryText).toContain(INSTAGRAM_AGENDA_SOURCE_TYPE);
@@ -75,7 +80,9 @@ describe("events.recentInstagramAgenda", () => {
     const base = { isPublished: 1, isArchived: 0, createdAt: new Date("2026-05-01T12:00:00.000Z"), updatedAt: new Date("2026-08-11T12:00:00.000Z"), eventDate: new Date("2026-08-15T22:00:00.000Z") } as const;
     const agendaReingerida = { ...base, sourceType: INSTAGRAM_AGENDA_SOURCE_TYPE };
     const instagramNaoAgenda = { ...base, sourceType: "instagram_other" };
+    const ingresseAgenda = { ...base, sourceType: "ingresse" };
     expect(isRecentInstagramAgendaEvent(agendaReingerida, now)).toBe(true);
+    expect(isRecentInstagramAgendaEvent(ingresseAgenda, now)).toBe(true);
     expect(isRecentInstagramAgendaEvent(instagramNaoAgenda, now)).toBe(false);
     expect(isRecentInstagramAgendaEvent({ ...agendaReingerida, updatedAt: new Date("2026-08-01T12:00:00.000Z") }, now)).toBe(false);
   });

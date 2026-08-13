@@ -8,6 +8,9 @@ const DEFAULT_SOURCE_URLS = [
   "https://blacktag.com.br/",
   "https://www.ingresse.com/reveillon-guaruja-2027/",
   "https://www.ingresse.com/laroc-guaruja-apresenta-meduza/",
+  "https://www.ingresse.com/nosso-after-mc-luuky/",
+  "https://www.ingresse.com/nosso-after-14-08/",
+  "https://www.ingresse.com/",
 ];
 
 export const TARGET_VENUES = [
@@ -54,9 +57,10 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
     try {
       const url = new URL(match[1], absoluteBase);
       if (url.origin !== absoluteBase.origin) continue;
-      if ((url.pathname.startsWith("/e/") && url.hostname.includes("articket")) || (url.pathname.startsWith("/eventos/") && url.hostname.includes("blacktag"))) {
-        links.add(url.href);
-      }
+      const isArticket = url.pathname.startsWith("/e/") && url.hostname.includes("articket");
+      const isBlacktag = url.pathname.startsWith("/eventos/") && url.hostname.includes("blacktag");
+      const isIngresseEvent = url.hostname.includes("ingresse") && url.pathname !== "/" && !url.pathname.startsWith("/search");
+      if (isArticket || isBlacktag || isIngresseEvent) links.add(url.href);
     } catch {
       // Ignore malformed public links.
     }
@@ -118,7 +122,7 @@ export async function runIngestionPipeline() {
   const structured = await invokeLLM({
     model: "gpt-4o-mini",
     messages: [
-      { role: "system", content: "Extraia somente eventos públicos de música, shows ou baladas dos locais Valluns/Vallum Garden, Lucky Scope, Verilonguinho, Moby House/Moby Dick, Curvão Surf House ou Meu Lugar, localizados exclusivamente em Santos ou Guarujá. Ignore eventos passados, cidades diferentes, locais não-alvo e eventos de gastronomia, esporte, teatro ou exposição sem música. Retorne somente JSON no schema. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Se o gênero não puder ser inferido com segurança, descarte o evento. Use o SOURCE_URL correspondente como sourceUrl e IMAGE_URL quando houver." },
+      { role: "system", content: "Extraia somente eventos públicos de música, shows ou baladas dos locais Valluns/Vallum Garden, Lucky Scope, Verilonguinho, Moby House/Moby Dick, Curvão Surf House, Meu Lugar, Laroc Club Guarujá ou Guarujá Golf Club, localizados exclusivamente em Santos ou Guarujá. Ignore eventos passados, cidades diferentes, locais não-alvo e eventos de gastronomia, esporte, teatro ou exposição sem música. Retorne somente JSON no schema. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Se o gênero não puder ser inferido com segurança, descarte o evento. Use o SOURCE_URL correspondente como sourceUrl e IMAGE_URL quando houver." },
       { role: "user", content: rawText },
     ],
     response_format: { type: "json_schema", json_schema: { name: "event_batch", strict: true, schema: { type: "object", properties: { events: { type: "array", items: { type: "object", properties: { title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string" }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "samba_pagode", "rap_trap"] }, priceCents: { type: "integer" }, sourceUrl: { type: "string" }, imageUrl: { type: "string" }, latitude: { type: "string" }, longitude: { type: "string" } }, required: ["title", "summary", "eventDate", "locationName", "address", "city", "category", "genre", "priceCents", "sourceUrl", "imageUrl", "latitude", "longitude"], additionalProperties: false } } }, required: ["events"], additionalProperties: false } } },
@@ -133,7 +137,9 @@ export async function runIngestionPipeline() {
     const genre = String(event.genre);
     if (Number.isNaN(date.getTime()) || (city !== "Santos" && city !== "Guarujá") || !containsTargetVenue(`${event.locationName} ${event.address}`) || !["show", "balada", "evento_musical"].includes(category) || !["funk", "house_eletronica", "samba_pagode", "rap_trap"].includes(genre)) continue;
     const sourceHash = crypto.createHash("md5").update(`${normalizeSlug(String(event.sourceUrl))}:${normalizeSlug(String(event.title))}:${date.toISOString().slice(0, 10)}`).digest("hex");
-    await saveEvent({ title: String(event.title), slug: `${normalizeSlug(String(event.title))}-${date.getTime()}`, description: String(event.summary), eventDate: date, locationName: String(event.locationName), address: String(event.address), city, category: category as "show" | "balada" | "evento_musical", genre, priceCents: Number(event.priceCents) || 0, sourceUrl: String(event.sourceUrl), imageUrl: String(event.imageUrl || ""), latitude: String(event.latitude || ""), longitude: String(event.longitude || ""), sourceHash, isPublished: 1 });
+    const sourceUrl = String(event.sourceUrl);
+    const sourceType = sourceUrl.includes("ingresse.com") ? "ingresse" : "public_source";
+    await saveEvent({ title: String(event.title), slug: `${normalizeSlug(String(event.title))}-${date.getTime()}`, description: String(event.summary), eventDate: date, locationName: String(event.locationName), address: String(event.address), city, category: category as "show" | "balada" | "evento_musical", genre, priceCents: Number(event.priceCents) || 0, sourceUrl, sourceType, imageUrl: String(event.imageUrl || ""), latitude: String(event.latitude || ""), longitude: String(event.longitude || ""), sourceHash, isPublished: 1 });
     imported += 1;
   }
   return { imported, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length };

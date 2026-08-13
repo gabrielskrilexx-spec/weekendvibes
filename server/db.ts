@@ -92,6 +92,7 @@ export async function getUserByOpenId(openId: string) {
 
 export const ALLOWED_CITIES = ["Santos", "Guarujá"] as const;
 export const INSTAGRAM_AGENDA_SOURCE_TYPE = "instagram_agenda_weekend" as const;
+export const WEEKLY_AGENDA_SOURCE_TYPES = [INSTAGRAM_AGENDA_SOURCE_TYPE, "ingresse"] as const;
 export const MUSICAL_CATEGORIES = ["show", "balada", "evento_musical"] as const;
 export const MUSICAL_GENRES = ["funk", "house_eletronica", "samba_pagode", "rap_trap"] as const;
 
@@ -99,7 +100,7 @@ export function isRecentInstagramAgendaEvent(event: Pick<Event, "sourceType" | "
   const updatedAt = new Date(event.updatedAt);
   const eventDate = new Date(event.eventDate);
   const cutoff = now.getTime() - lookbackDays * 24 * 60 * 60 * 1000;
-  return event.sourceType === INSTAGRAM_AGENDA_SOURCE_TYPE && event.isPublished === 1 && event.isArchived === 0 && updatedAt.getTime() >= cutoff && updatedAt.getTime() <= now.getTime() && eventDate.getTime() >= now.getTime();
+  return WEEKLY_AGENDA_SOURCE_TYPES.includes(event.sourceType as typeof WEEKLY_AGENDA_SOURCE_TYPES[number]) && event.isPublished === 1 && event.isArchived === 0 && updatedAt.getTime() >= cutoff && updatedAt.getTime() <= now.getTime() && eventDate.getTime() >= now.getTime();
 }
 
 export type OperationalIntegration = "apify" | "ocr" | "openai" | "pipeline";
@@ -164,7 +165,7 @@ export async function listRecentInstagramAgendaEvents(options: { lookbackDays?: 
   return db.select().from(events).where(and(
     eq(events.isPublished, 1),
     eq(events.isArchived, 0),
-    eq(events.sourceType, INSTAGRAM_AGENDA_SOURCE_TYPE),
+    sql`${events.sourceType} IN (${sql.join(WEEKLY_AGENDA_SOURCE_TYPES.map(sourceType => sql`${sourceType}`), sql`, `)})`,
     sql`${events.updatedAt} >= ${cutoff}`,
     sql`${events.eventDate} >= NOW()`,
     sql`${events.city} IN (${sql.join(ALLOWED_CITIES.map(city => sql`${city}`), sql`, `)})`,

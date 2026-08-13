@@ -273,3 +273,11 @@
 - [x] Corrigir o status incorreto de esgotado e demais informações divergentes confirmadas
 - [x] Validar feed, detalhe, compartilhamento e testes de idempotência
 - [x] Salvar e publicar checkpoint da correção do evento
+
+## Nova fonte Ingresse — Nosso After 14/08
+- [x] Consultar a URL oficial e registrar os dados confirmados; a página individual permaneceu dinâmica e campos não confirmados foram mantidos sem preenchimento
+- [x] Verificar elegibilidade para Santos/Guarujá e categorias/gêneros musicais permitidos no pipeline
+- [x] Comparar com eventos existentes; não persistir ainda o evento parcial porque horário, endereço completo, imagem, preço e disponibilidade não foram confirmados
+- [x] Registrar a URL no conjunto de fontes futuras do Ingresse
+- [x] Validar Agenda da Semana, feed, detalhe e idempotência da fonte Ingresse
+- [x] Salvar e publicar checkpoint da atualização
