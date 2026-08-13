@@ -12,7 +12,17 @@ type AgendaEvent = {
   eventDate: Date | string;
   locationName: string;
   imageUrl?: string | null;
+  createdAt?: Date | string | null;
 };
+
+const NEW_EVENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function isNewEvent(createdAt: Date | string | null | undefined, now = Date.now()) {
+  if (!createdAt) return false;
+  const createdTime = new Date(createdAt).getTime();
+  if (!Number.isFinite(createdTime) || createdTime > now) return false;
+  return now - createdTime <= NEW_EVENT_WINDOW_MS;
+}
 
 export default function AgendaWeekHighlight({ state, events }: { state: AgendaWeekState; events: AgendaEvent[] }) {
   return (
@@ -34,7 +44,7 @@ export default function AgendaWeekHighlight({ state, events }: { state: AgendaWe
           <CarouselContent className="-ml-3 sm:-ml-4">
             {events.map(event => <CarouselItem key={event.id} className="pl-3 sm:basis-1/2 sm:pl-4 lg:basis-1/3">
               <Link href={`/eventos/${event.slug}`} className="group block h-full overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/70 transition hover:-translate-y-1 hover:border-orange-300/50">
-                <div className="relative aspect-[16/9] overflow-hidden bg-gradient-to-br from-orange-400/30 via-fuchsia-500/20 to-zinc-900">{event.imageUrl ? <img src={event.imageUrl} alt="" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center text-4xl font-black text-white/70">WV</div>}<span className="absolute left-3 top-3 rounded-full bg-zinc-950/80 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-yellow-100">{event.city}</span>{event.slug === "nosso-after-14-08" && <span aria-label="Evento atualizado" className="absolute right-3 top-3 rounded-full border border-yellow-200/70 bg-yellow-300 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-950 shadow-lg">Atualizado</span>}</div>
+                <div className="relative aspect-[16/9] overflow-hidden bg-gradient-to-br from-orange-400/30 via-fuchsia-500/20 to-zinc-900">{event.imageUrl ? <img src={event.imageUrl} alt="" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center text-4xl font-black text-white/70">WV</div>}<span className="absolute left-3 top-3 rounded-full bg-zinc-950/80 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-yellow-100">{event.city}</span><div className="absolute right-3 top-3 flex max-w-[calc(100%-7rem)] flex-wrap justify-end gap-1.5">{isNewEvent(event.createdAt) && <span aria-label="Evento novo" className="rounded-full border border-fuchsia-200/70 bg-fuchsia-500 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white shadow-lg">Novo</span>}{event.slug === "nosso-after-14-08" && <span aria-label="Evento atualizado" className="rounded-full border border-yellow-200/70 bg-yellow-300 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-950 shadow-lg">Atualizado</span>}</div></div>
                 <div className="p-4"><p className="text-[11px] font-black uppercase tracking-[0.16em] text-orange-300">{new Date(event.eventDate).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" })}</p><h3 className="mt-2 line-clamp-2 text-lg font-black leading-tight text-white">{event.title}</h3><p className="mt-2 line-clamp-1 text-sm text-zinc-400">{event.locationName}</p></div>
               </Link>
             </CarouselItem>)}

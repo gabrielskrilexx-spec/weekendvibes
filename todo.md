@@ -294,3 +294,9 @@
 - [x] Garantir contraste, leitura por tecnologias assistivas e responsividade da tag
 - [x] Cobrir a renderização da tag com teste e validar visualmente a Home
 - [x] Executar Vitest e TypeScript e publicar checkpoint da melhoria
+
+## Tag automática de eventos novos
+- [x] Exibir automaticamente “Novo” para eventos criados nos últimos sete dias
+- [x] Preservar a tag “Atualizado” e evitar sobreposição visual entre as tags
+- [x] Cobrir limites da janela temporal, eventos futuros e datas inválidas com testes
+- [x] Validar acessibilidade, responsividade, suíte completa e publicar checkpoint
