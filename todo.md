@@ -281,3 +281,10 @@
 - [x] Registrar a URL no conjunto de fontes futuras do Ingresse
 - [x] Validar Agenda da Semana, feed, detalhe e idempotência da fonte Ingresse
 - [x] Salvar e publicar checkpoint da atualização
+
+## Substituição do evento Nosso After — 14/08
+- [x] Consultar a URL oficial enviada e registrar somente os dados confirmados
+- [x] Remover ou arquivar o evento Nosso After — MC Luuky incorreto da Agenda da Semana sem apagar histórico indevidamente
+- [x] Persistir o Nosso After — 14/08 com deduplicação e origem Ingresse, somente se a cidade, data e categoria forem verificáveis
+- [x] Validar Agenda da Semana, feed, detalhe e idempotência da substituição
+- [x] Executar Vitest e TypeScript e publicar checkpoint da alteração
