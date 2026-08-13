@@ -16,9 +16,10 @@ describe("Instagram weekend pipeline", () => {
     expect(isWithinInstagramLookback({ timestamp: "2026-08-13T00:00:00.000Z" }, now)).toBe(false);
   });
 
-  it("keeps the five verified regional accounts as direct Apify sources", () => {
+  it("keeps all configured accounts as direct Apify sources", () => {
     expect(INSTAGRAM_TARGETS.map(target => target.username)).toEqual([
       "mobydicksantos", "projac.bar", "meulugar.bar", "nossoafterguaruja", "curvaosurfhouse",
+      "flamingomusicbar", "rocketseaclub", "ativahouse",
     ]);
     expect(INSTAGRAM_TARGETS.every(target => target.directUrl.startsWith("https://www.instagram.com/"))).toBe(true);
   });

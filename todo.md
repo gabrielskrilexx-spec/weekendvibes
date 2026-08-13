@@ -328,3 +328,9 @@
 - [x] Exibir estado e detalhes de alertas para timeout e respostas HTTP 5xx
 - [x] Garantir acesso administrativo, estados vazios e atualização segura dos dados
 - [x] Adicionar testes de backend e frontend, validar visualmente e publicar checkpoint
+
+## Novos perfis Instagram para monitoramento
+- [x] Validar URLs e escopo regional de Flamingo Bar, Rocket Sea Club e Ativa House; os perfis foram aceitos na configuração, mas o Instagram redirecionou para login e não permitiu confirmar publicamente a cidade
+- [x] Adicionar @flamingomusicbar, @rocketseaclub e @ativahouse ao pipeline Apify
+- [x] Preservar filtros de 5 dias, “Agenda da semana”, hashtags e categorias musicais
+- [x] Executar testes, validar a configuração e publicar checkpoint
