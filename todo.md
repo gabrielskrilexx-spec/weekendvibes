@@ -322,3 +322,9 @@
 - [x] Salvar checkpoint e publicar a correção antes de alterar schedules
 - [x] Executar trigger manual controlado do Heartbeat e validar logs de produção
 - [x] Avaliar e consolidar o Heartbeat diário com o schedule semanal sem duplicidade
+
+## Métricas e alertas de ingestão no painel administrativo
+- [x] Exibir quantidade de eventos ingeridos por fonte no painel administrativo
+- [x] Exibir estado e detalhes de alertas para timeout e respostas HTTP 5xx
+- [x] Garantir acesso administrativo, estados vazios e atualização segura dos dados
+- [x] Adicionar testes de backend e frontend, validar visualmente e publicar checkpoint
