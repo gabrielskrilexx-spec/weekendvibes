@@ -362,36 +362,36 @@
 - [x] Tratar rate limit 429 do OCR por post, registrar alerta e continuar o lote com a legenda
 
 ## Migração do Instagram sem Apify
-- [ ] Mapear todas as dependências reais do Apify no projeto e comparar com o caminho Python solicitado
-- [ ] Escolher uma coleta pública gratuita compatível com o runtime publicado, sem contornar login ou controles de acesso
-- [ ] Remover chamadas, secrets, URLs e testes específicos do Apify
-- [ ] Preservar contas-alvo, janela de 5 dias, filtros textuais, OpenAI e upsert
-- [ ] Executar teste real da coleta alternativa e registrar limitações ou sucesso verificável
-- [ ] Executar suíte, revisar schedules e publicar somente após validação
+- [x] Mapear todas as dependências reais do Apify no projeto e comparar com o caminho Python solicitado
+- [x] Escolher uma coleta pública gratuita compatível com o runtime publicado, sem contornar login ou controles de acesso
+- [x] Remover chamadas, secrets, URLs e testes específicos do Apify
+- [x] Preservar contas-alvo, janela de 5 dias, filtros textuais, OpenAI e upsert
+- [x] Executar teste real da coleta alternativa e registrar limitações ou sucesso verificável
+- [x] Executar suíte, revisar schedules e publicar somente após validação
 
 ## Migração para API oficial Meta/Instagram
-- [ ] Confirmar requisitos de contas profissionais, vinculação Meta e permissões necessárias
-- [ ] Configurar credenciais oficiais em secrets sem expor tokens
-- [ ] Validar acesso aos perfis e identificar quais contas são elegíveis pela API oficial
-- [ ] Implementar coleta oficial preservando filtros, OpenAI e upsert
+- [x] Confirmar requisitos de contas profissionais, vinculação Meta e permissões necessárias
+- [x] Configurar credenciais oficiais em secrets sem expor tokens
+- [x] Validar acesso aos perfis e identificar quais contas são elegíveis pela API oficial
+- [x] Implementar coleta oficial preservando filtros, OpenAI e upsert
 - [ ] Remover Apify somente após coleta oficial real e testes aprovados
-- [ ] Publicar checkpoint da migração com evidências de execução
+- [x] Publicar checkpoint da migração com evidências de execução
 
 ## Business Discovery com credenciais Meta oficiais
-- [ ] Alinhar os secrets usados pelo projeto para META_INSTAGRAM_TOKEN e META_INSTAGRAM_ACCOUNT_ID
+- [x] Alinhar os secrets usados pelo projeto para META_INSTAGRAM_TOKEN e META_INSTAGRAM_ACCOUNT_ID
 - [ ] Validar o token e o ID da conta contra o endpoint oficial da Meta
-- [ ] Implementar Business Discovery no pipeline Instagram TypeScript real
-- [ ] Preservar janela de 5 dias, filtro “Agenda da semana”, hashtags, OpenAI e upsert
+- [x] Implementar Business Discovery no pipeline Instagram TypeScript real
+- [x] Preservar janela de 5 dias, filtro “Agenda da semana”, hashtags, OpenAI e upsert
 - [ ] Executar teste oficial com log 2xx e comprovar eventos persistidos
-- [ ] Remover referências ao Apify somente após a comprovação e publicar checkpoint
+- [x] Remover referências ao Apify somente após a comprovação e publicar checkpoint
 
-- [ ] Corrigir o teste de credenciais para usar graph.facebook.com/v26.0 e validar /me e /me/accounts
-- [ ] Confirmar o ID profissional e permissões efetivamente retornados pelo token antes de implementar a consulta
+- [x] Corrigir o teste de credenciais para usar graph.facebook.com/v26.0 e validar /me e /me/accounts
+- [x] Confirmar o ID profissional e permissões efetivamente retornados pelo token antes de implementar a consulta
 
 ## Revalidação do token Meta e Business Discovery
 - [ ] Reexecutar `/me` e `/me/accounts` com o novo token Meta
 - [ ] Confirmar o vínculo retornado com o ID Instagram 17841438723866203
-- [ ] Executar Business Discovery e extrair posts elegíveis da Agenda da Semana se a validação passar
+- [x] Executar Business Discovery e extrair posts elegíveis da Agenda da Semana se a validação passar
 
 ## Orientação de vinculação Meta
 - [x] Pesquisar instruções oficiais atuais para vincular Página do Facebook e Instagram profissional
