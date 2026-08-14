@@ -165,6 +165,10 @@ function isSilentNoDataStatus(status: number) {
   return status === 302 || status === 303 || status === 307 || status === 308 || status === 429;
 }
 
+function isSilentMetaPermissionFailure(status: number, body: string) {
+  return status === 400 && /"code"\s*:\s*10\b|permission for this action|permissions? denied/i.test(body);
+}
+
 function parsePublicInstagramHtml(html: string, target: (typeof INSTAGRAM_TARGETS)[number]): InstagramPost[] {
   const posts: InstagramPost[] = [];
   const captionMatches = Array.from(html.matchAll(/(?:"caption"|"edge_media_to_caption")\s*:\s*(?:\{\s*"edges"\s*:\s*\[\s*\{\s*"node"\s*:\s*)?\{?\s*"text"\s*:\s*"((?:\\.|[^"\\])*)/g));
@@ -210,12 +214,13 @@ async function fetchMetaBusinessDiscoveryPosts(token: string, accountId: string)
     const fields = `business_discovery.username(${target.username}){username,media.limit(25){id,caption,timestamp,permalink,media_url,media_type}}`;
     const url = `${META_GRAPH_BASE_URL}/${accountId}?${new URLSearchParams({ fields, access_token: token }).toString()}`;
     const response = await fetch(url, { headers: { Accept: "application/json" } });
-    if (isSilentNoDataStatus(response.status)) {
+    const responseBody = await response.text();
+    if (isSilentNoDataStatus(response.status) || isSilentMetaPermissionFailure(response.status, responseBody)) {
       console.info(`[Instagram Meta] ${target.username}: HTTP ${response.status}; modo sem dados.`);
       continue;
     }
-    if (!response.ok) throw new InstagramIntegrationFailure("meta", `Meta Graph API request failed with ${response.status}: ${await response.text()}`);
-    posts.push(...metaPostsFromPayload(await response.json(), target));
+    if (!response.ok) throw new InstagramIntegrationFailure("meta", `Meta Graph API request failed with ${response.status}: ${responseBody}`);
+    posts.push(...metaPostsFromPayload(JSON.parse(responseBody), target));
   }
   return posts;
 }
