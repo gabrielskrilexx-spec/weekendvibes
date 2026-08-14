@@ -2,12 +2,13 @@ import crypto from "node:crypto";
 import { INSTAGRAM_AGENDA_SOURCE_TYPE, listActiveLocationAliasValues, recordOperationalAlert, saveEvent } from "./db";
 import { containsTargetVenue } from "./ingestion";
 
-const APIFY_RUN_URL = "https://api.apify.com/v2/actors/apify~instagram-scraper/run-sync-get-dataset-items";
+const META_GRAPH_BASE_URL = "https://graph.facebook.com/v26.0";
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
 const LOOKBACK_DAYS = 5;
+const PUBLIC_FETCH_HEADERS = { Accept: "text/html,application/xhtml+xml", "User-Agent": "WeekendVibes/1.0 (public event discovery)" };
 
-export type InstagramIntegration = "apify" | "ocr" | "openai";
+export type InstagramIntegration = "meta" | "public" | "ocr" | "openai";
 
 export class InstagramIntegrationFailure extends Error {
   constructor(public readonly integration: InstagramIntegration, message: string, options?: { cause?: unknown }) {
@@ -31,12 +32,14 @@ export type InstagramPost = {
   id?: string;
   shortCode?: string;
   url?: string;
+  permalink?: string;
   caption?: string;
   text?: string;
   timestamp?: string | number;
   takenAt?: string | number;
   displayUrl?: string;
   imageUrl?: string;
+  media_url?: string;
   ownerUsername?: string;
   username?: string;
 };
@@ -79,7 +82,8 @@ export function hasApprovedAgendaText(text: string) {
 }
 
 function postUrl(post: InstagramPost) {
-  if (post.url?.startsWith("https://www.instagram.com/")) return post.url;
+  const candidate = post.url ?? post.permalink;
+  if (candidate?.startsWith("https://www.instagram.com/")) return candidate;
   if (post.shortCode) return `https://www.instagram.com/p/${post.shortCode}/`;
   return "";
 }
@@ -132,11 +136,7 @@ export async function extractOcrText(imageUrl: string) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn("[Instagram OCR] Image unavailable; continuing with caption only:", message);
-    try {
-      await recordOperationalAlert({ integration: "ocr", title: "Imagem do Instagram indisponível", message });
-    } catch (alertError) {
-      console.warn("[Instagram OCR] Could not persist image alert:", alertError);
-    }
+    try { await recordOperationalAlert({ integration: "ocr", title: "Imagem do Instagram indisponível", message }); } catch (alertError) { console.warn("[Instagram OCR] Could not persist image alert:", alertError); }
     return "";
   }
   try {
@@ -153,11 +153,7 @@ export async function extractOcrText(imageUrl: string) {
     if (isRecoverableOcrRateLimit(error)) {
       const message = error instanceof Error ? error.message : String(error);
       console.warn("[Instagram OCR] Rate limit reached; continuing with caption only:", message);
-      try {
-        await recordOperationalAlert({ integration: "ocr", title: "Limite temporário do OCR", message });
-      } catch (alertError) {
-        console.warn("[Instagram OCR] Could not persist rate-limit alert:", alertError);
-      }
+      try { await recordOperationalAlert({ integration: "ocr", title: "Limite temporário do OCR", message }); } catch (alertError) { console.warn("[Instagram OCR] Could not persist rate-limit alert:", alertError); }
       return "";
     }
     if (error instanceof InstagramIntegrationFailure) throw error;
@@ -165,24 +161,70 @@ export async function extractOcrText(imageUrl: string) {
   }
 }
 
-export async function fetchInstagramPosts() {
-  try {
-    const response = await fetch(APIFY_RUN_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${requiredEnv("APIFY_API_TOKEN")}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        resultsType: "posts",
-        directUrls: INSTAGRAM_TARGETS.map(target => target.directUrl),
-        resultsLimit: 50,
-      }),
-    });
-    if (!response.ok) throw new Error(`Apify Instagram Scraper failed with ${response.status}: ${await response.text()}`);
-    const payload = await response.json();
-    return (Array.isArray(payload) ? payload : payload?.items ?? []) as InstagramPost[];
-  } catch (error) {
-    if (error instanceof InstagramIntegrationFailure) throw error;
-    throw new InstagramIntegrationFailure("apify", error instanceof Error ? error.message : String(error), { cause: error });
+function isSilentNoDataStatus(status: number) {
+  return status === 302 || status === 303 || status === 307 || status === 308 || status === 429;
+}
+
+function parsePublicInstagramHtml(html: string, target: (typeof INSTAGRAM_TARGETS)[number]): InstagramPost[] {
+  const posts: InstagramPost[] = [];
+  const captionMatches = Array.from(html.matchAll(/(?:"caption"|"edge_media_to_caption")\s*:\s*(?:\{\s*"edges"\s*:\s*\[\s*\{\s*"node"\s*:\s*)?\{?\s*"text"\s*:\s*"((?:\\.|[^"\\])*)/g));
+  const timestampMatches = Array.from(html.matchAll(/"taken_at_timestamp"\s*:\s*(\d+)/g));
+  for (let index = 0; index < captionMatches.length; index += 1) {
+    const decoded = captionMatches[index][1].replace(/\\u([0-9a-fA-F]{4})/g, (_match: string, code: string) => String.fromCharCode(parseInt(code, 16))).replace(/\\"/g, '"').replace(/\\n/g, "\n");
+    posts.push({ caption: decoded, timestamp: timestampMatches[index]?.[1], ownerUsername: target.username, url: target.directUrl });
   }
+  return posts;
+}
+
+async function fetchPublicInstagramPosts(): Promise<InstagramPost[]> {
+  const posts: InstagramPost[] = [];
+  for (const target of INSTAGRAM_TARGETS) {
+    const response = await fetch(target.directUrl, { headers: PUBLIC_FETCH_HEADERS, redirect: "manual" });
+    if (isSilentNoDataStatus(response.status)) {
+      console.info(`[Instagram public] ${target.username}: HTTP ${response.status}; modo sem dados.`);
+      continue;
+    }
+    if (!response.ok) throw new InstagramIntegrationFailure("public", `Public Instagram request failed with ${response.status}`);
+    posts.push(...parsePublicInstagramHtml(await response.text(), target));
+  }
+  return posts;
+}
+
+function metaPostsFromPayload(payload: any, target: (typeof INSTAGRAM_TARGETS)[number]): InstagramPost[] {
+  const media = payload?.business_discovery?.media?.data;
+  if (!Array.isArray(media)) return [];
+  return media.map((item: any) => ({
+    id: item.id,
+    caption: item.caption,
+    timestamp: item.timestamp,
+    permalink: item.permalink,
+    media_url: item.media_url,
+    displayUrl: item.media_url,
+    ownerUsername: item.username ?? target.username,
+  }));
+}
+
+async function fetchMetaBusinessDiscoveryPosts(token: string, accountId: string): Promise<InstagramPost[]> {
+  const posts: InstagramPost[] = [];
+  for (const target of INSTAGRAM_TARGETS) {
+    const fields = `business_discovery.username(${target.username}){username,media.limit(25){id,caption,timestamp,permalink,media_url,media_type}}`;
+    const url = `${META_GRAPH_BASE_URL}/${accountId}?${new URLSearchParams({ fields, access_token: token }).toString()}`;
+    const response = await fetch(url, { headers: { Accept: "application/json" } });
+    if (isSilentNoDataStatus(response.status)) {
+      console.info(`[Instagram Meta] ${target.username}: HTTP ${response.status}; modo sem dados.`);
+      continue;
+    }
+    if (!response.ok) throw new InstagramIntegrationFailure("meta", `Meta Graph API request failed with ${response.status}: ${await response.text()}`);
+    posts.push(...metaPostsFromPayload(await response.json(), target));
+  }
+  return posts;
+}
+
+export async function fetchInstagramPosts() {
+  const token = process.env.META_INSTAGRAM_TOKEN?.trim();
+  const accountId = process.env.META_INSTAGRAM_ACCOUNT_ID?.trim();
+  if (token && accountId) return fetchMetaBusinessDiscoveryPosts(token, accountId);
+  return fetchPublicInstagramPosts();
 }
 
 async function extractStructuredEvents(approvedPosts: Array<{ post: InstagramPost; rawText: string }>) {
@@ -217,7 +259,7 @@ export async function runInstagramPipeline() {
   for (const post of posts) {
     if (!isWithinInstagramLookback(post)) continue;
     const caption = String(post.caption ?? post.text ?? "");
-    const ocrText = hasApprovedAgendaText(caption) ? "" : await extractOcrText(String(post.displayUrl ?? post.imageUrl ?? ""));
+    const ocrText = hasApprovedAgendaText(caption) ? "" : await extractOcrText(String(post.displayUrl ?? post.imageUrl ?? post.media_url ?? ""));
     const rawText = [caption, ocrText].filter(Boolean).join("\n");
     if (hasApprovedAgendaText(rawText)) approvedPosts.push({ post, rawText });
   }

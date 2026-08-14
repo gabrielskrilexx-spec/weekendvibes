@@ -3,7 +3,8 @@ import { AlertTriangle, Bell, Check, ChevronDown, X } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
 const integrationLabels: Record<string, string> = {
-  apify: "Apify",
+  meta: "Meta Graph API",
+  public: "Coleta pública",
   ocr: "OCR",
   openai: "OpenAI",
   pipeline: "Pipeline",

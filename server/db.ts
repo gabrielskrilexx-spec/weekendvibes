@@ -103,7 +103,7 @@ export function isRecentInstagramAgendaEvent(event: Pick<Event, "sourceType" | "
   return WEEKLY_AGENDA_SOURCE_TYPES.includes(event.sourceType as typeof WEEKLY_AGENDA_SOURCE_TYPES[number]) && event.isPublished === 1 && event.isArchived === 0 && updatedAt.getTime() >= cutoff && updatedAt.getTime() <= now.getTime() && eventDate.getTime() >= now.getTime();
 }
 
-export type OperationalIntegration = "apify" | "ocr" | "openai" | "pipeline";
+export type OperationalIntegration = "meta" | "public" | "ocr" | "openai" | "pipeline";
 export type PublicOperationalAlert = Pick<OperationalAlert, "id" | "integration" | "title" | "message" | "createdAt">;
 
 export function operationalAlertFingerprint(integration: OperationalIntegration, message: string) {

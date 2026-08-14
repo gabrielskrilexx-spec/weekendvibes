@@ -22,7 +22,8 @@ describe("scheduled Instagram ingestion", () => {
     vi.mocked(saveEvent).mockClear();
     vi.mocked(archiveExpiredSoldOutEvents).mockClear();
     vi.mocked(recordOperationalAlert).mockClear();
-    process.env.APIFY_API_TOKEN = "test-apify";
+    process.env.META_INSTAGRAM_TOKEN = "test-meta-token";
+    process.env.META_INSTAGRAM_ACCOUNT_ID = "17841438723866203";
     process.env.OPENAI_API_KEY = "test-openai";
   });
 
@@ -34,16 +35,16 @@ describe("scheduled Instagram ingestion", () => {
     expect(archiveExpiredSoldOutEvents).not.toHaveBeenCalled();
   });
 
-  it("records an Apify failure and notifies the owner for cron callers", async () => {
+  it("records a Meta failure and notifies the owner for cron callers", async () => {
     vi.spyOn(sdk, "authenticateRequest").mockResolvedValue({ isCron: true } as never);
-    vi.spyOn(await import("./instagram-pipeline"), "runInstagramPipeline").mockRejectedValueOnce(new InstagramIntegrationFailure("apify", "Apify retornou HTTP 503"));
+    vi.spyOn(await import("./instagram-pipeline"), "runInstagramPipeline").mockRejectedValueOnce(new InstagramIntegrationFailure("meta", "Meta Graph API retornou HTTP 503"));
     const res = { json: vi.fn().mockReturnThis(), status: vi.fn().mockReturnThis() } as never;
 
     await ingestInstagramHandler({} as never, res);
 
-    expect(recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ integration: "apify", title: "Falha na captura do Instagram", message: expect.stringContaining("HTTP 503") }));
+    expect(recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ integration: "meta", title: "Falha na API oficial do Instagram", message: expect.stringContaining("HTTP 503") }));
     expect((res as any).status).toHaveBeenCalledWith(500);
-    expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: false, integration: "apify" }));
+    expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: false, integration: "meta" }));
   });
 
   it.each(["ocr", "openai"] as const)("classifica falha de %s no alerta operacional", async (integration) => {
@@ -70,11 +71,15 @@ describe("scheduled Instagram ingestion", () => {
   it("approves a post from OCR when its caption fails the strict filter", async () => {
     const originalFetch = globalThis.fetch;
     const sourceUrl = "https://www.instagram.com/p/ocr-agenda/";
-    globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify([{ url: sourceUrl, caption: "Confira nossos próximos eventos", timestamp: "2026-08-11T12:00:00.000Z", displayUrl: "https://cdn.example/ocr-agenda.jpg" }]), { status: 200 }))
-      .mockResolvedValueOnce(new Response("fake-image", { status: 200, headers: { "content-type": "image/jpeg" } }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "Agenda da semana\\n#Sábado\\nMoby House Santos" } }] }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "Sábado no Moby", summary: "Agenda musical aprovada por OCR", eventDate: "2026-08-15T22:00:00.000Z", locationName: "Moby House", address: "Av. Vicente de Carvalho, 30, Santos", city: "Santos", category: "balada", genre: "house_eletronica", priceCents: 0, imageUrl: "https://cdn.example/ocr-agenda.jpg", sourceUrl }] }) } }] }), { status: 200 }));
+    let call = 0;
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      call += 1;
+      if (call === 1) return Promise.resolve(new Response(JSON.stringify({ business_discovery: { media: { data: [{ id: "1", permalink: sourceUrl, caption: "Confira nossos próximos eventos", timestamp: "2026-08-11T12:00:00.000Z", media_url: "https://cdn.example/ocr-agenda.jpg" }] } } }), { status: 200 }));
+      if (call <= 8) return Promise.resolve(new Response(JSON.stringify({ business_discovery: { media: { data: [] } } }), { status: 200 }));
+      if (call === 9) return Promise.resolve(new Response("fake-image", { status: 200, headers: { "content-type": "image/jpeg" } }));
+      if (call === 10) return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: "Agenda da semana\\n#Sábado\\nMoby House Santos" } }] }), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "Sábado no Moby", summary: "Agenda musical aprovada por OCR", eventDate: "2026-08-15T22:00:00.000Z", locationName: "Moby House", address: "Av. Vicente de Carvalho, 30, Santos", city: "Santos", category: "balada", genre: "house_eletronica", priceCents: 0, imageUrl: "https://cdn.example/ocr-agenda.jpg", sourceUrl }] }) } }] }), { status: 200 }));
+    });
     try {
       const result = await runInstagramPipeline();
       expect(result).toEqual({ receivedPosts: 1, approvedPosts: 1, structuredEvents: 1, imported: 1 });
@@ -87,9 +92,13 @@ describe("scheduled Instagram ingestion", () => {
   it("filters an approved post and persists the structured event", async () => {
     const originalFetch = globalThis.fetch;
     const sourceUrl = "https://www.instagram.com/p/agenda123/";
-    globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify([{ url: sourceUrl, caption: "Agenda da semana\n#Sexta-Feira", timestamp: "2026-08-11T12:00:00.000Z", displayUrl: "https://cdn.example/agenda.jpg" }]), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "Sexta no Moby", summary: "Agenda musical", eventDate: "2026-08-14T22:00:00.000Z", locationName: "Moby House", address: "Av. Vicente de Carvalho, 30, Santos", city: "Santos", category: "balada", genre: "house_eletronica", priceCents: 0, imageUrl: "https://cdn.example/agenda.jpg", sourceUrl }] }) } }] }), { status: 200 }));
+    let call = 0;
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      call += 1;
+      if (call === 1) return Promise.resolve(new Response(JSON.stringify({ business_discovery: { media: { data: [{ id: "1", permalink: sourceUrl, caption: "Agenda da semana\\n#Sexta-Feira", timestamp: "2026-08-11T12:00:00.000Z", media_url: "https://cdn.example/agenda.jpg" }] } } }), { status: 200 }));
+      if (call <= 8) return Promise.resolve(new Response(JSON.stringify({ business_discovery: { media: { data: [] } } }), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "Sexta no Moby", summary: "Agenda musical", eventDate: "2026-08-14T22:00:00.000Z", locationName: "Moby House", address: "Av. Vicente de Carvalho, 30, Santos", city: "Santos", category: "balada", genre: "house_eletronica", priceCents: 0, imageUrl: "https://cdn.example/agenda.jpg", sourceUrl }] }) } }] }), { status: 200 }));
+    });
     try {
       const result = await runInstagramPipeline();
       expect(result).toEqual({ receivedPosts: 1, approvedPosts: 1, structuredEvents: 1, imported: 1 });

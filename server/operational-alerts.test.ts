@@ -3,8 +3,8 @@ import { listOperationalAlerts, operationalAlertFingerprint, recordOperationalAl
 
 describe("operational alerts", () => {
   it("gera fingerprint estável por integração e mensagem normalizada", () => {
-    expect(operationalAlertFingerprint("apify", " Apify retornou 503 ")).toBe(operationalAlertFingerprint("apify", "Apify retornou 503"));
-    expect(operationalAlertFingerprint("apify", "Apify retornou 503")).not.toBe(operationalAlertFingerprint("ocr", "Apify retornou 503"));
+    expect(operationalAlertFingerprint("meta", " Meta retornou 503 ")).toBe(operationalAlertFingerprint("meta", "Meta retornou 503"));
+    expect(operationalAlertFingerprint("meta", "Meta retornou 503")).not.toBe(operationalAlertFingerprint("ocr", "Meta retornou 503"));
   });
 
   it("persiste o alerta com deduplicação e reabre um alerta repetido", async () => {

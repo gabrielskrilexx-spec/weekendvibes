@@ -7,7 +7,8 @@ import { runInstagramAgendaStep } from "./agenda-routine";
 import { HttpError } from "@shared/_core/errors";
 
 const integrationTitles: Record<OperationalIntegration, string> = {
-  apify: "Falha na captura do Instagram",
+  meta: "Falha na API oficial do Instagram",
+  public: "Falha na coleta pública do Instagram",
   ocr: "Falha no OCR da Agenda da Semana",
   openai: "Falha no enriquecimento com OpenAI",
   pipeline: "Falha no pipeline do Instagram",

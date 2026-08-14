@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import OperationalAlertCenter, { resolveOperationalAlertFromUi } from "./OperationalAlertCenter";
 
 const mocks = {
-  data: [{ id: 7, integration: "apify", title: "Falha na captura do Instagram", message: "Apify retornou HTTP 503", createdAt: new Date("2026-08-12T12:00:00.000Z") }],
+  data: [{ id: 7, integration: "meta", title: "Falha na API oficial do Instagram", message: "Meta Graph API retornou HTTP 503", createdAt: new Date("2026-08-12T12:00:00.000Z") }],
 };
 
 const resolve = vi.fn();
@@ -65,6 +65,6 @@ describe("OperationalAlertCenter", () => {
   it("não renderiza superfície visual quando não há alertas ativos", () => {
     mocks.data = [];
     expect(renderToStaticMarkup(<OperationalAlertCenter />)).toBe("");
-    mocks.data = [{ id: 7, integration: "apify", title: "Falha na captura do Instagram", message: "Apify retornou HTTP 503", createdAt: new Date("2026-08-12T12:00:00.000Z") }];
+    mocks.data = [{ id: 7, integration: "meta", title: "Falha na API oficial do Instagram", message: "Meta Graph API retornou HTTP 503", createdAt: new Date("2026-08-12T12:00:00.000Z") }];
   });
 });
