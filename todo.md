@@ -483,3 +483,8 @@
 - [x] Integrar a limpeza ao monitoramento diário sem duplicar ingestão
 - [x] Adicionar testes de timezone, limite de expiração, idempotência e isolamento de tabelas
 - [x] Executar suíte, revisar TODO e publicar checkpoint
+
+## Verificação da edição visual do OperationalAlertCenter
+- [x] Inspecionar o botão alvo e confirmar se a remoção da aba já está aplicada
+- [x] Corrigir manualmente o alvo caso a edição visual não tenha sido aplicada
+- [x] Validar a interface e publicar um novo checkpoint

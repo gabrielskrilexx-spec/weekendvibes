@@ -27,16 +27,15 @@ vi.mock("@/lib/trpc", () => ({
 }));
 
 describe("OperationalAlertCenter", () => {
-  it("exibe o badge de alerta e a quantidade de falhas ativas", () => {
+  it("não renderiza a aba visual de alertas de integração", () => {
     const markup = renderToStaticMarkup(<OperationalAlertCenter />);
-    expect(markup).toContain("Alertas de integração");
-    expect(markup).toContain(">1<");
-    expect(markup).toContain("aria-live=\"assertive\"");
+    expect(markup).not.toContain("Alertas de integração");
+    expect(markup).toBe("");
   });
 
   it("executa resolução otimista, rollback e invalidação para administradores", async () => {
     const markup = renderToStaticMarkup(<OperationalAlertCenter />);
-    expect(markup).toContain("Alertas administrativos: marque como lido para resolver");
+    expect(markup).toBe("");
     expect(typeof resolve).toBe("function");
     expect(mutationOptions?.onMutate).toBeTypeOf("function");
     expect(mutationOptions?.onError).toBeTypeOf("function");
@@ -51,14 +50,10 @@ describe("OperationalAlertCenter", () => {
     expect(invalidate).toHaveBeenCalledWith({ size: 8 });
   });
 
-  it("simula a abertura do painel e marca o alerta como lido pelo botão", async () => {
+  it("não expõe botões após a remoção da aba visual", async () => {
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<OperationalAlertCenter />); });
-    await act(async () => { tree!.root.findAllByType("button")[0]?.props.onClick(); });
-    const resolveButton = tree!.root.findAllByType("button").find(button => String(button.props["aria-label"]).startsWith("Marcar como lido"));
-    expect(resolveButton).toBeDefined();
-    await act(async () => { resolveButton?.props.onClick(); });
-    expect(resolve).toHaveBeenCalledWith({ id: 7 });
+    expect(tree!.root.findAllByType("button")).toHaveLength(0);
     tree!.unmount();
   });
 
