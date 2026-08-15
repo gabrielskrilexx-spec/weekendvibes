@@ -10,6 +10,7 @@ import { createContext } from "./context";
 import { ingestEventsHandler, ingestFullAgendaHandler } from "../scheduled";
 import { ingestAgentDocumentsHandler } from "../scheduled-agent";
 import { ingestInstagramHandler } from "../scheduled-instagram";
+import { heartbeatMonitorHandler } from "../scheduled-heartbeat-monitor";
 import { serveStatic, setupVite } from "./vite";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -51,6 +52,7 @@ async function startServer() {
   app.post("/api/scheduled/ingest-full-agenda", ingestFullAgendaHandler);
   app.post("/api/scheduled/ingest-event-documents", ingestAgentDocumentsHandler);
   app.post("/api/scheduled/ingest-instagram", ingestInstagramHandler);
+  app.post("/api/scheduled/monitor-heartbeat", heartbeatMonitorHandler);
   // tRPC API
   app.use(
     "/api/trpc",

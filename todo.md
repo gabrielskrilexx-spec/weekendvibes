@@ -404,3 +404,44 @@
 - [x] Preservar filtros de 5 dias, Agenda da semana, hashtags, cidades, gêneros, OpenAI e upsert
 - [x] Atualizar testes de fallback, remover expectativas Apify e verificar schedules
 - [x] Executar suíte completa e publicar checkpoint da refatoração
+
+## Reativação oficial Meta — solicitação atual
+- [ ] Reativar exclusivamente a coleta oficial Business Discovery com os secrets Meta atualizados
+- [ ] Remover o coletor público temporário e seus caminhos de fallback do pipeline
+- [ ] Executar ingestão oficial dos perfis alvo e registrar respostas HTTP da Graph API
+- [ ] Validar eventos reais persistidos no banco e sua presença na Agenda da Semana
+- [ ] Atualizar testes, executar suíte completa e publicar checkpoint da alteração
+
+## Reexecução Meta com token de longa duração
+- [ ] Reexecutar Business Discovery com o token atualizado e registrar HTTP por perfil
+- [ ] Confirmar eventos aprovados da Agenda da Semana e persistência idempotente no banco
+- [ ] Atualizar evidências, executar suíte e publicar checkpoint somente após validação
+
+## Nova reexecução após app Meta Ao Vivo
+- [ ] Reexecutar Business Discovery com os secrets atuais e registrar HTTP por perfil
+- [ ] Confirmar posts elegíveis da Agenda da Semana e eventos persistidos no banco
+- [ ] Atualizar evidências, suíte e checkpoint após resultado verificável
+
+## Nova tentativa com token Meta regenerado em produção
+- [ ] Executar Business Discovery com o token regenerado e registrar o status HTTP real
+- [ ] Validar posts elegíveis da Agenda da Semana e persistência dos eventos no banco
+- [ ] Atualizar evidências, suíte e checkpoint somente após resultado verificável
+
+## Correção de secrets no runtime do schedule
+- [x] Inspecionar o schedule ativo e o prompt de execução sem expor valores
+- [x] Corrigir a disponibilização explícita de SCHEDULED_TASK_ENDPOINT_BASE e SCHEDULED_TASK_COOKIE no runtime — substituído por Heartbeat direto, que não depende dessas variáveis
+- [x] Publicar a alteração antes de qualquer trigger do schedule
+- [x] Executar trigger manual e validar endpoint privado e logs sanitizados — Run Now único do AGENT confirmou missing_required_environment antes do POST; nenhum segredo ou payload foi exposto
+- [x] Atualizar testes e registrar o resultado no checkpoint — diagnóstico operacional registrado; nenhuma alteração de código foi necessária
+
+## Diagnóstico temporário do AGENT
+- [x] Reativar o AGENT cron antigo sem alterar o Heartbeat direto
+- [x] Executar exatamente um Run Now e registrar o resultado sanitizado
+- [x] Pausar novamente o AGENT para evitar duplicidade
+
+## Monitoramento diário do Heartbeat direto
+- [x] Definir métricas de saúde e persistência sem disparar a ingestão novamente
+- [x] Implementar callback cron-only para registrar a última execução e contagens observadas
+- [x] Adicionar testes para sucesso, ausência de execução recente e falha de persistência
+- [ ] Publicar o callback antes de criar o schedule diário
+- [ ] Criar schedule diário automático e validar metadata, logs e estado

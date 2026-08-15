@@ -6,9 +6,9 @@ const META_GRAPH_BASE_URL = "https://graph.facebook.com/v26.0";
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
 const LOOKBACK_DAYS = 5;
-const PUBLIC_FETCH_HEADERS = { Accept: "text/html,application/xhtml+xml", "User-Agent": "WeekendVibes/1.0 (public event discovery)" };
 
-export type InstagramIntegration = "meta" | "public" | "ocr" | "openai";
+
+export type InstagramIntegration = "meta" | "ocr" | "openai";
 
 export class InstagramIntegrationFailure extends Error {
   constructor(public readonly integration: InstagramIntegration, message: string, options?: { cause?: unknown }) {
@@ -161,39 +161,6 @@ export async function extractOcrText(imageUrl: string) {
   }
 }
 
-function isSilentNoDataStatus(status: number) {
-  return status === 302 || status === 303 || status === 307 || status === 308 || status === 429;
-}
-
-function isSilentMetaPermissionFailure(status: number, body: string) {
-  return status === 400 && /"code"\s*:\s*10\b|permission for this action|permissions? denied/i.test(body);
-}
-
-function parsePublicInstagramHtml(html: string, target: (typeof INSTAGRAM_TARGETS)[number]): InstagramPost[] {
-  const posts: InstagramPost[] = [];
-  const captionMatches = Array.from(html.matchAll(/(?:"caption"|"edge_media_to_caption")\s*:\s*(?:\{\s*"edges"\s*:\s*\[\s*\{\s*"node"\s*:\s*)?\{?\s*"text"\s*:\s*"((?:\\.|[^"\\])*)/g));
-  const timestampMatches = Array.from(html.matchAll(/"taken_at_timestamp"\s*:\s*(\d+)/g));
-  for (let index = 0; index < captionMatches.length; index += 1) {
-    const decoded = captionMatches[index][1].replace(/\\u([0-9a-fA-F]{4})/g, (_match: string, code: string) => String.fromCharCode(parseInt(code, 16))).replace(/\\"/g, '"').replace(/\\n/g, "\n");
-    posts.push({ caption: decoded, timestamp: timestampMatches[index]?.[1], ownerUsername: target.username, url: target.directUrl });
-  }
-  return posts;
-}
-
-async function fetchPublicInstagramPosts(): Promise<InstagramPost[]> {
-  const posts: InstagramPost[] = [];
-  for (const target of INSTAGRAM_TARGETS) {
-    const response = await fetch(target.directUrl, { headers: PUBLIC_FETCH_HEADERS, redirect: "manual" });
-    if (isSilentNoDataStatus(response.status)) {
-      console.info(`[Instagram public] ${target.username}: HTTP ${response.status}; modo sem dados.`);
-      continue;
-    }
-    if (!response.ok) throw new InstagramIntegrationFailure("public", `Public Instagram request failed with ${response.status}`);
-    posts.push(...parsePublicInstagramHtml(await response.text(), target));
-  }
-  return posts;
-}
-
 function metaPostsFromPayload(payload: any, target: (typeof INSTAGRAM_TARGETS)[number]): InstagramPost[] {
   const media = payload?.business_discovery?.media?.data;
   if (!Array.isArray(media)) return [];
@@ -215,10 +182,6 @@ async function fetchMetaBusinessDiscoveryPosts(token: string, accountId: string)
     const url = `${META_GRAPH_BASE_URL}/${accountId}?${new URLSearchParams({ fields, access_token: token }).toString()}`;
     const response = await fetch(url, { headers: { Accept: "application/json" } });
     const responseBody = await response.text();
-    if (isSilentNoDataStatus(response.status) || isSilentMetaPermissionFailure(response.status, responseBody)) {
-      console.info(`[Instagram Meta] ${target.username}: HTTP ${response.status}; modo sem dados.`);
-      continue;
-    }
     if (!response.ok) throw new InstagramIntegrationFailure("meta", `Meta Graph API request failed with ${response.status}: ${responseBody}`);
     posts.push(...metaPostsFromPayload(JSON.parse(responseBody), target));
   }
@@ -226,10 +189,9 @@ async function fetchMetaBusinessDiscoveryPosts(token: string, accountId: string)
 }
 
 export async function fetchInstagramPosts() {
-  const token = process.env.META_INSTAGRAM_TOKEN?.trim();
-  const accountId = process.env.META_INSTAGRAM_ACCOUNT_ID?.trim();
-  if (token && accountId) return fetchMetaBusinessDiscoveryPosts(token, accountId);
-  return fetchPublicInstagramPosts();
+  const token = requiredEnv("META_INSTAGRAM_TOKEN");
+  const accountId = requiredEnv("META_INSTAGRAM_ACCOUNT_ID");
+  return fetchMetaBusinessDiscoveryPosts(token, accountId);
 }
 
 async function extractStructuredEvents(approvedPosts: Array<{ post: InstagramPost; rawText: string }>) {

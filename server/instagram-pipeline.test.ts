@@ -16,7 +16,7 @@ describe("Instagram weekend pipeline", () => {
     expect(isWithinInstagramLookback({ timestamp: "2026-08-13T00:00:00.000Z" }, now)).toBe(false);
   });
 
-  it("keeps all configured accounts as public and Meta Business Discovery targets", () => {
+  it("keeps all configured accounts as official Meta Business Discovery targets", () => {
     expect(INSTAGRAM_TARGETS.map(target => target.username)).toEqual([
       "mobydicksantos", "projac.bar", "meulugar.bar", "nossoafterguaruja", "curvaosurfhouse",
       "flamingomusicbar", "rocketseaclub", "ativahouse",
@@ -24,13 +24,19 @@ describe("Instagram weekend pipeline", () => {
     expect(INSTAGRAM_TARGETS.every(target => target.directUrl.startsWith("https://www.instagram.com/"))).toBe(true);
   });
 
-  it.each([302, 429])("returns no data silently when public Instagram responds with HTTP %s", async status => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response("blocked", { status }));
+  it("requires the official Meta credentials and never falls back to public collection", async () => {
     delete process.env.META_INSTAGRAM_TOKEN;
     delete process.env.META_INSTAGRAM_ACCOUNT_ID;
+    await expect(fetchInstagramPosts()).rejects.toThrow("Missing required environment variable: META_INSTAGRAM_TOKEN");
+  });
+
+  it("propagates an official Graph API error instead of converting it to no data", async () => {
+    const originalFetch = globalThis.fetch;
+    process.env.META_INSTAGRAM_TOKEN = "test-meta-token";
+    process.env.META_INSTAGRAM_ACCOUNT_ID = "17841438723866203";
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 10, message: "Application does not have permission for this action" } }), { status: 400 }));
     try {
-      await expect(fetchInstagramPosts()).resolves.toEqual([]);
+      await expect(fetchInstagramPosts()).rejects.toThrow("Meta Graph API request failed with 400");
     } finally {
       globalThis.fetch = originalFetch;
     }
