@@ -443,5 +443,25 @@
 - [x] Definir métricas de saúde e persistência sem disparar a ingestão novamente
 - [x] Implementar callback cron-only para registrar a última execução e contagens observadas
 - [x] Adicionar testes para sucesso, ausência de execução recente e falha de persistência
-- [ ] Publicar o callback antes de criar o schedule diário
-- [ ] Criar schedule diário automático e validar metadata, logs e estado
+- [x] Publicar o callback antes de criar o schedule diário
+- [x] Criar schedule diário automático e validar metadata, logs e estado
+
+## Schedule diário de monitoramento
+- [x] Criar `weekendvibes-monitor-diario` em modo automático
+- [x] Configurar POST para `/api/scheduled/monitor-heartbeat` às 09:00 no fuso de São Paulo
+- [x] Validar metadata, autenticação cron e ausência de duplicidade com o Heartbeat de ingestão
+
+## Ajuste de horário do monitor diário
+- [x] Atualizar `weekendvibes-monitor-diario` para 08:00 America/Sao_Paulo (11:00 UTC)
+- [x] Preservar POST, endpoint, task_uid e autenticação nativa do Heartbeat
+- [x] Confirmar status ativo e primeira execução programada
+
+## Auditoria operacional de 16/08
+- [x] Listar todas as tarefas agendadas ativas e consolidar o status geral
+- [x] Consultar o primeiro log de execução de `weekendvibes-monitor-diario` em 16/08 — consulta realizada; ainda não há execução registrada
+- [x] Registrar status HTTP, saúde e persistência sem expor credenciais — sem log disponível antes da janela programada
+
+## Verificação pós-execução do monitor diário
+- [x] Consultar a primeira execução após 16/08 às 08:00 de São Paulo — consulta realizada; nenhum run foi retornado
+- [x] Confirmar status HTTP, `healthy` e contagem de eventos persistidos — indisponíveis porque não há execução registrada
+- [x] Registrar o resultado sanitizado sem expor autenticação
