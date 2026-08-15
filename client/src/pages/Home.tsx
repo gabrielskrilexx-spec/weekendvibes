@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { MapPin, Search, Sparkles, WifiOff, SlidersHorizontal, Moon, Sun, Contrast } from "lucide-react";
+import { MapPin, Sparkles, WifiOff, SlidersHorizontal, Moon, Sun, Contrast } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { getAgendaWeekState } from "@/lib/agendaState";
@@ -21,7 +21,6 @@ export default function Home() {
   const [city, setCity] = useState("Todas");
   const [category, setCategory] = useState("Todas");
   const [genre, setGenre] = useState("");
-  const [query, setQuery] = useState("");
   const [venue, setVenue] = useState("");
   const [date, setDate] = useState("");
   const [minPrice, setMinPrice] = useState("");
@@ -33,7 +32,7 @@ export default function Home() {
   const agendaQuery = trpc.events.recentInstagramAgenda.useQuery({ lookbackDays: 5, size: 8 });
   const agendaState = getAgendaWeekState({ isLoading: agendaQuery.isLoading, isError: agendaQuery.isError, events: agendaQuery.data });
   const agendaEvents = agendaQuery.data ?? [];
-  const events = useMemo(() => (eventsQuery.data ?? []).filter(event => event.title.toLowerCase().includes(query.toLowerCase()) || event.locationName.toLowerCase().includes(query.toLowerCase())), [eventsQuery.data, query]);
+  const events = useMemo(() => eventsQuery.data ?? [], [eventsQuery.data]);
 
 
   return (
@@ -51,7 +50,6 @@ export default function Home() {
           <div className="mb-6 flex items-center gap-2 text-sm font-bold uppercase tracking-[0.22em] text-yellow-200"><Sparkles size={16} /> Seu fim de semana começa aqui</div>
           <h1 className="max-w-4xl text-5xl font-black leading-[.95] tracking-[-0.07em] text-white sm:text-7xl">O que vai <span className="text-transparent bg-gradient-to-r from-orange-300 via-yellow-200 to-fuchsia-400 bg-clip-text">rolar?</span></h1>
           <p className="mt-5 max-w-xl text-base leading-relaxed text-zinc-400">Shows, baladas e música para viver Santos e Guarujá do jeito que o seu fim de semana merece.</p>
-          <div className="mt-8 flex max-w-2xl items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 shadow-2xl shadow-fuchsia-950/20"><Search size={20} className="text-orange-300" /><input aria-label="Buscar por evento ou local" value={query} onChange={e => setQuery(e.target.value)} placeholder="Busque por evento ou local..." className="w-full bg-transparent text-sm text-white outline-none placeholder:text-zinc-500 focus-visible:ring-2 focus-visible:ring-orange-300/70" /></div>
         </div>
       </section>
 

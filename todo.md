@@ -508,3 +508,13 @@
 - [x] Criar administração de fontes com ativação/desativação, prioridade, frequência e último sucesso
 - [x] Preservar autenticação admin-only e impedir que alterações de frequência criem schedules duplicados
 - [x] Atualizar testes, validar interface mobile/desktop e publicar checkpoint
+
+## Habilidade reutilizável do processo WeekendVibes
+- [x] Consolidar o fluxo reutilizável de ingestão, validação, qualidade, deduplicação e automação
+- [x] Criar SKILL.md e referências sem credenciais ou dados sensíveis
+- [x] Validar a habilidade com o validador oficial e entregar o arquivo ao usuário
+
+## Remoção de filtro duplicado
+- [x] Localizar os dois filtros exibidos no início e identificar o redundante
+- [x] Remover o filtro redundante preservando o filtro funcional
+- [x] Atualizar testes, validar a interface e publicar checkpoint
