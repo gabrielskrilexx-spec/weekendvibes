@@ -8,6 +8,8 @@ vi.mock("./db", () => ({
   INSTAGRAM_AGENDA_SOURCE_TYPE: "instagram_agenda_weekend",
   archiveExpiredSoldOutEvents: vi.fn().mockResolvedValue(0),
   listActiveLocationAliasValues: vi.fn().mockResolvedValue([]),
+  listEnabledInstagramSources: vi.fn().mockResolvedValue([]),
+  markIngestionSourceResult: vi.fn().mockResolvedValue(undefined),
   recordOperationalAlert: vi.fn().mockResolvedValue(undefined),
   saveEvent: vi.fn().mockResolvedValue(undefined),
 }));

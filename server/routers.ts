@@ -3,7 +3,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, publicProcedure, protectedProcedure, router } from "./_core/trpc";
-import { deleteEvent, getEventBySlug, listEvents, listRecentInstagramAgendaEvents, listTodayEvents, resolveOperationalAlert, saveEvent, updateEvent, listFavoriteEventIds, toggleFavoriteEvent, setEventReminder, listUserReminders } from "./db";
+import { deleteEvent, getEventBySlug, listEvents, listRecentInstagramAgendaEvents, listTodayEvents, resolveOperationalAlert, saveEvent, updateEvent, listFavoriteEventIds, toggleFavoriteEvent, setEventReminder, listUserReminders, listIngestionSources, updateIngestionSource } from "./db";
 import { invokeLLM } from "./_core/llm";
 import { getTuesdayRoutineStatus, runTuesdayRoutineNow } from "./manual-ingestion";
 import { listIngestionReport, reprocessIngestionSource } from "./ingestion-reports";
@@ -60,6 +60,10 @@ export const appRouter = router({
   }),
   operationalAlerts: router({
     resolve: adminOnly.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => resolveOperationalAlert(input.id)),
+  }),
+  ingestionSources: router({
+    list: adminOnly.query(() => listIngestionSources()),
+    update: adminOnly.input(z.object({ id: z.number().int().positive(), isEnabled: z.boolean(), priority: z.number().int().min(1).max(1000), frequencyMinutes: z.number().int().min(60).max(525600) })).mutation(({ input }) => updateIngestionSource(input.id, input)),
   }),
   events: router({
     list: publicProcedure.input(z.object({ day: z.string().optional(), date: z.string().optional(), startDate: z.string().optional(), endDate: z.string().optional(), timeFrom: z.string().optional(), timeTo: z.string().optional(), city: z.string().optional(), category: z.string().optional(), genre: z.string().optional(), venue: z.string().optional(), minPriceCents: z.number().int().min(0).optional(), maxPriceCents: z.number().int().min(0).optional(), page: z.number().int().min(1).optional(), size: z.number().int().min(1).max(100).optional() }).optional()).query(({ input }) => listEvents(input ?? {})),

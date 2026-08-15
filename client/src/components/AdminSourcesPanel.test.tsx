@@ -1,0 +1,39 @@
+import React from "react";
+import { act, create } from "react-test-renderer";
+import { describe, expect, it, vi } from "vitest";
+import AdminSourcesPanel from "./AdminSourcesPanel";
+
+const refetch = vi.fn();
+const invalidate = vi.fn();
+const mutate = vi.fn();
+const source = { id: 1, name: "Moby House", kind: "instagram", handle: "mobydicksantos", url: "https://www.instagram.com/mobydicksantos/", isEnabled: 1, priority: 10, frequencyMinutes: 10080, lastSuccessAt: new Date("2026-08-15T12:00:00Z"), lastStatus: "succeeded" };
+
+vi.mock("@/lib/trpc", () => ({
+  trpc: {
+    ingestionSources: {
+      list: { useQuery: () => ({ data: [source], isLoading: false, isError: false, isFetching: false, refetch }) },
+      update: { useMutation: () => ({ isPending: false, mutate }) },
+    },
+    useUtils: () => ({ ingestionSources: { list: { invalidate } } }),
+  },
+}));
+
+describe("AdminSourcesPanel", () => {
+  it("exibe fonte, estado e último sucesso", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const rendered = JSON.stringify(tree!.toJSON());
+    expect(rendered).toContain("Fontes monitoradas");
+    expect(rendered).toContain("Moby House");
+    expect(rendered).toContain("Último sucesso");
+    expect(rendered).toContain("Ativa");
+  });
+
+  it("permite pausar uma fonte", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const button = tree!.root.findAllByType("button").find(item => item.props["aria-pressed"] === true);
+    await act(async () => { button?.props.onClick(); });
+    expect(mutate).toHaveBeenCalledWith({ id: 1, isEnabled: false, priority: 10, frequencyMinutes: 10080 });
+  });
+});

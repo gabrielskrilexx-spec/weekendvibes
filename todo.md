@@ -501,3 +501,10 @@
 - [x] Reduzir o bundle inicial com carregamento sob demanda das áreas administrativas
 - [x] Validar tamanhos dos chunks, TypeScript, testes e build de produção
 - [x] Publicar checkpoint da otimização de desempenho
+
+## Mobile, qualidade dos eventos e administração de fontes
+- [x] Implementar lazy loading e navegação inferior otimizada para mobile
+- [x] Exibir indicadores públicos de qualidade e confiança nos cards e detalhes dos eventos
+- [x] Criar administração de fontes com ativação/desativação, prioridade, frequência e último sucesso
+- [x] Preservar autenticação admin-only e impedir que alterações de frequência criem schedules duplicados
+- [x] Atualizar testes, validar interface mobile/desktop e publicar checkpoint

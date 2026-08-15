@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Event, InsertEvent, InsertUser, events, users, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -166,6 +166,55 @@ export async function deleteLocationAlias(id: number, dbOverride?: Awaited<Retur
   const db = dbOverride ?? await getDb();
   if (!db) throw new Error("Database unavailable");
   await db.delete(locationAliases).where(eq(locationAliases.id, id));
+}
+
+export const DEFAULT_INGESTION_SOURCES = [
+  { sourceKey: "instagram:mobydicksantos", name: "Moby House", kind: "instagram" as const, handle: "mobydicksantos", url: "https://www.instagram.com/mobydicksantos/" },
+  { sourceKey: "instagram:projac.bar", name: "Projac Bar", kind: "instagram" as const, handle: "projac.bar", url: "https://www.instagram.com/projac.bar/" },
+  { sourceKey: "instagram:meulugar.bar", name: "Meu Lugar Bar e Entretenimento", kind: "instagram" as const, handle: "meulugar.bar", url: "https://www.instagram.com/meulugar.bar/" },
+  { sourceKey: "instagram:nossoafterguaruja", name: "Nosso After", kind: "instagram" as const, handle: "nossoafterguaruja", url: "https://www.instagram.com/nossoafterguaruja/" },
+  { sourceKey: "instagram:curvaosurfhouse", name: "Curvão Surf House", kind: "instagram" as const, handle: "curvaosurfhouse", url: "https://www.instagram.com/curvaosurfhouse/" },
+  { sourceKey: "instagram:flamingomusicbar", name: "Flamingo Bar", kind: "instagram" as const, handle: "flamingomusicbar", url: "https://www.instagram.com/flamingomusicbar/" },
+  { sourceKey: "instagram:rocketseaclub", name: "Rocket Sea Club", kind: "instagram" as const, handle: "rocketseaclub", url: "https://www.instagram.com/rocketseaclub/" },
+  { sourceKey: "instagram:ativahouse", name: "Ativa House", kind: "instagram" as const, handle: "ativahouse", url: "https://www.instagram.com/ativahouse/" },
+  { sourceKey: "public:articket", name: "ArTicket", kind: "public" as const, handle: null, url: "https://articket.com.br/" },
+  { sourceKey: "public:blacktag", name: "Blacktag", kind: "public" as const, handle: null, url: "https://blacktag.com.br/" },
+  { sourceKey: "public:zig", name: "Zig Tickets", kind: "public" as const, handle: null, url: "https://zig.tickets/" },
+  { sourceKey: "public:ingresse", name: "Ingresse", kind: "public" as const, handle: null, url: "https://www.ingresse.com/" },
+];
+
+async function ensureDefaultIngestionSources(db: Awaited<ReturnType<typeof getDb>>) {
+  if (!db) return;
+  for (const source of DEFAULT_INGESTION_SOURCES) {
+    await db.insert(ingestionSources).values(source).onDuplicateKeyUpdate({ set: { name: source.name, url: source.url, handle: source.handle } });
+  }
+}
+
+export async function listIngestionSources(dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<IngestionSource[]> {
+  const db = dbOverride ?? await getDb();
+  if (!db) return [];
+  await ensureDefaultIngestionSources(db);
+  return db.select().from(ingestionSources).orderBy(asc(ingestionSources.kind), asc(ingestionSources.priority), asc(ingestionSources.name));
+}
+
+export async function listEnabledInstagramSources(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const rows = await listIngestionSources(dbOverride);
+  return rows.filter(source => source.kind === "instagram" && source.isEnabled === 1);
+}
+
+export async function updateIngestionSource(id: number, input: { isEnabled: boolean; priority: number; frequencyMinutes: number }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const priority = Math.min(Math.max(Math.round(input.priority), 1), 1000);
+  const frequencyMinutes = Math.min(Math.max(Math.round(input.frequencyMinutes), 60), 525600);
+  await db.update(ingestionSources).set({ isEnabled: input.isEnabled ? 1 : 0, priority, frequencyMinutes, updatedAt: new Date() }).where(eq(ingestionSources.id, id));
+  return listIngestionSources(db);
+}
+
+export async function markIngestionSourceResult(sourceKey: string, result: { status: "succeeded" | "failed" | "skipped"; message?: string }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return;
+  await db.update(ingestionSources).set({ lastStatus: result.status, lastSuccessAt: result.status === "succeeded" ? new Date() : undefined, lastMessage: result.message?.slice(0, 1000) ?? null, updatedAt: new Date() }).where(eq(ingestionSources.sourceKey, sourceKey));
 }
 
 export function eventIdentityKey(sourceUrl: string, eventDate: Date | string) {

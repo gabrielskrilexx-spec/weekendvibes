@@ -141,3 +141,24 @@ export const locationAliases = mysqlTable("locationAliases", {
 
 export type LocationAlias = typeof locationAliases.$inferSelect;
 export type InsertLocationAlias = typeof locationAliases.$inferInsert;
+
+export const ingestionSources = mysqlTable("ingestionSources", {
+  id: int("id").autoincrement().primaryKey(),
+  sourceKey: varchar("sourceKey", { length: 120 }).notNull().unique(),
+  name: varchar("name", { length: 180 }).notNull(),
+  kind: mysqlEnum("kind", ["instagram", "public"]).notNull(),
+  handle: varchar("handle", { length: 180 }),
+  url: varchar("url", { length: 1000 }).notNull(),
+  isEnabled: int("isEnabled").default(1).notNull(),
+  priority: int("priority").default(50).notNull(),
+  frequencyMinutes: int("frequencyMinutes").default(10080).notNull(),
+  scheduleTaskUid: varchar("scheduleTaskUid", { length: 65 }),
+  lastSuccessAt: timestamp("lastSuccessAt"),
+  lastStatus: mysqlEnum("lastStatus", ["never", "succeeded", "failed", "skipped"]).default("never").notNull(),
+  lastMessage: text("lastMessage"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type IngestionSource = typeof ingestionSources.$inferSelect;
+export type InsertIngestionSource = typeof ingestionSources.$inferInsert;

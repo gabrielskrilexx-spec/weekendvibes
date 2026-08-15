@@ -15,10 +15,13 @@ export default function EventCard({ event }: { event: Event }) {
   const date = new Date(event.eventDate);
   const image = event.imageUrl || "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=900&q=80";
   const isSoldOut = event.ticketStatus === "sold_out" || (event.ticketStatus === undefined && (event.priceNote?.toLowerCase().includes("vendas encerradas") ?? false));
+  const qualitySignals = [Boolean(event.sourceUrl), Boolean(event.imageUrl), Boolean(event.address), Boolean(event.genre), Boolean(event.eventDate)].filter(Boolean).length;
+  const confidenceLabel = qualitySignals >= 5 ? "Alta confiança" : qualitySignals >= 3 ? "Confiança moderada" : "Dados básicos";
+  const confidenceStyle = qualitySignals >= 5 ? "border-emerald-300/20 bg-emerald-400/10 text-emerald-100" : qualitySignals >= 3 ? "border-yellow-300/20 bg-yellow-300/10 text-yellow-100" : "border-white/10 bg-white/[0.05] text-zinc-300";
   return (
     <article className="group overflow-hidden rounded-[24px] border border-white/10 bg-zinc-900/90 shadow-[0_20px_60px_-30px_rgba(168,85,247,.55)] transition duration-200 hover:-translate-y-1 hover:border-orange-300/40">
       <div className="relative h-48 overflow-hidden">
-        <img src={image} alt="" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+        <img src={image} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
         <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/15 to-transparent" />
         <span className="absolute left-4 top-4 rounded-full border border-white/15 bg-zinc-950/70 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-orange-100 backdrop-blur">{event.city}</span>
         {isSoldOut && (
@@ -38,6 +41,7 @@ export default function EventCard({ event }: { event: Event }) {
           <p className="flex items-center gap-2"><MapPin size={15} className="text-fuchsia-300" /><span className="line-clamp-1">{event.locationName}</span></p>
           <p className={`flex items-center gap-2 ${isSoldOut ? "text-rose-200" : ""}`}><Ticket size={15} className={isSoldOut ? "text-rose-300" : "text-yellow-300"} />{event.priceNote ?? (event.priceCents > 0 ? `A partir de R$ ${(event.priceCents / 100).toFixed(2).replace(".", ",")}` : "A partir de R$ 0,00")}</p>
         </div>
+        <div className="flex flex-wrap items-center gap-2" aria-label="Qualidade dos dados do evento"><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${confidenceStyle}`} title="Indicador calculado a partir de fonte, imagem, endereço, gênero e data">{confidenceLabel}</span>{event.sourceUrl && <span className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-400">Fonte verificável</span>}</div>
         <FavoriteReminderControls eventId={event.id} />
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${categoryColors[event.category]}`}>{event.category === "evento_musical" ? "música" : event.category}</span>{event.genre && <span className="rounded-full border border-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-zinc-300">{genreLabels[event.genre] ?? event.genre}</span>}</div>

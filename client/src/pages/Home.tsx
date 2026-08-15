@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { getAgendaWeekState } from "@/lib/agendaState";
 import RegionalEventMap from "@/components/RegionalEventMap";
+import MobileBottomNav from "@/components/MobileBottomNav";
 import EventCard from "@/components/EventCard";
 import AgendaWeekHighlight from "@/components/AgendaWeekHighlight";
 import TodayEvents from "@/components/TodayEvents";
@@ -36,7 +37,7 @@ export default function Home() {
 
 
   return (
-    <main className="min-h-screen bg-zinc-950 pb-16 text-zinc-100">
+    <main className="min-h-screen bg-zinc-950 pb-28 text-zinc-100">
       <header className="sticky top-0 z-20 border-b border-white/10 bg-zinc-950/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
           <Link href="/" className="text-2xl font-black tracking-[-0.06em] text-transparent bg-gradient-to-r from-orange-300 via-yellow-200 to-fuchsia-400 bg-clip-text">WeekendVibes<span className="text-white">.</span></Link>
@@ -74,9 +75,10 @@ export default function Home() {
             {!eventsQuery.isLoading && !eventsQuery.isError && events.length === 0 && <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-10 text-center text-zinc-400">Nenhum evento encontrado com esses filtros.</div>}
             <div className="grid gap-5 sm:grid-cols-2">{events.map(event => <EventCard key={event.id} event={event} />)}</div>
           </div>
-          <aside className="lg:sticky lg:top-24 lg:self-start"><RegionalEventMap events={events} /></aside>
+          <aside id="mapa" className="lg:sticky lg:top-24 lg:self-start"><RegionalEventMap events={events} /></aside>
         </div>
       </section>
+      <MobileBottomNav onFilters={() => { setShowAdvanced(true); window.scrollTo({ top: document.body.scrollHeight / 2, behavior: "smooth" }); }} />
     </main>
   );
 }

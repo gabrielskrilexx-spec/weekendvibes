@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { INSTAGRAM_AGENDA_SOURCE_TYPE, listActiveLocationAliasValues, recordOperationalAlert, saveEvent } from "./db";
+import { INSTAGRAM_AGENDA_SOURCE_TYPE, listActiveLocationAliasValues, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent } from "./db";
 import { containsTargetVenue } from "./ingestion";
 
 const META_GRAPH_BASE_URL = "https://graph.facebook.com/v26.0";
@@ -177,13 +177,29 @@ function metaPostsFromPayload(payload: any, target: (typeof INSTAGRAM_TARGETS)[n
 
 async function fetchMetaBusinessDiscoveryPosts(token: string, accountId: string): Promise<InstagramPost[]> {
   const posts: InstagramPost[] = [];
-  for (const target of INSTAGRAM_TARGETS) {
+  const configuredSources = (await listEnabledInstagramSources()) ?? [];
+  const configuredHandles = new Set(configuredSources.map(source => source.handle?.replace(/^@/, "").toLowerCase()).filter(Boolean));
+  const targets = (configuredSources.length ? INSTAGRAM_TARGETS.filter(target => configuredHandles.has(target.username.toLowerCase())) : INSTAGRAM_TARGETS).slice().sort((left, right) => {
+    const leftPriority = configuredSources.find(source => source.handle?.replace(/^@/, "").toLowerCase() === left.username.toLowerCase())?.priority ?? 50;
+    const rightPriority = configuredSources.find(source => source.handle?.replace(/^@/, "").toLowerCase() === right.username.toLowerCase())?.priority ?? 50;
+    return leftPriority - rightPriority;
+  });
+  for (const target of targets) {
+    const source = configuredSources.find(item => item.handle?.replace(/^@/, "").toLowerCase() === target.username.toLowerCase());
+    if (source?.lastSuccessAt && Date.now() - new Date(source.lastSuccessAt).getTime() < source.frequencyMinutes * 60_000) {
+      await markIngestionSourceResult(source.sourceKey, { status: "skipped", message: "Aguardando a próxima janela configurada." });
+      continue;
+    }
     const fields = `business_discovery.username(${target.username}){username,media.limit(25){id,caption,timestamp,permalink,media_url,media_type}}`;
     const url = `${META_GRAPH_BASE_URL}/${accountId}?${new URLSearchParams({ fields, access_token: token }).toString()}`;
     const response = await fetch(url, { headers: { Accept: "application/json" } });
     const responseBody = await response.text();
-    if (!response.ok) throw new InstagramIntegrationFailure("meta", `Meta Graph API request failed with ${response.status}: ${responseBody}`);
+    if (!response.ok) {
+      if (source) await markIngestionSourceResult(source.sourceKey, { status: "failed", message: `HTTP ${response.status}` });
+      throw new InstagramIntegrationFailure("meta", `Meta Graph API request failed with ${response.status}: ${responseBody}`);
+    }
     posts.push(...metaPostsFromPayload(JSON.parse(responseBody), target));
+    if (source) await markIngestionSourceResult(source.sourceKey, { status: "succeeded", message: "Business Discovery respondeu com sucesso." });
   }
   return posts;
 }
