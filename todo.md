@@ -495,3 +495,9 @@
 - [x] Investigar e corrigir o ReferenceError `ReferenceError: әт is not defined`
 - [x] Atualizar testes de frontend e backend para a nova seção administrativa e ausência do erro de console
 - [x] Validar interface, suíte completa e publicar novo checkpoint
+
+## Otimização de CSS e bundle administrativo
+- [x] Corrigir a ordem do `@import` de fontes no CSS global
+- [x] Reduzir o bundle inicial com carregamento sob demanda das áreas administrativas
+- [x] Validar tamanhos dos chunks, TypeScript, testes e build de produção
+- [x] Publicar checkpoint da otimização de desempenho
