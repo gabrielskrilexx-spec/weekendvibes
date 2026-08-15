@@ -1,6 +1,6 @@
 # WeekendVibes
 
-O WeekendVibes é uma agenda mobile-first de eventos de sexta e sábado na Baixada Santista. A implementação usa o scaffold full-stack do projeto, com React/Tailwind no cliente, Express/tRPC no servidor, Drizzle/MySQL no banco gerenciado e os helpers internos para LLM, mapas e Heartbeat. Essa adaptação preserva o objetivo funcional do briefing, embora o ambiente gerenciado não utilize uma pasta Python/FastAPI separada.
+O WeekendVibes é uma agenda mobile-first de eventos de sexta e sábado na Baixada Santista. A implementação usa o scaffold full-stack do projeto, com React/Tailwind no cliente, Express/tRPC no servidor e **Drizzle ORM sobre o banco gerenciado MySQL/TiDB**. Os helpers internos atendem LLM, mapas, armazenamento e Heartbeat. O runtime publicado não utiliza PostgreSQL/PostGIS nem uma aplicação Python/FastAPI separada; qualquer documentação ou integração que mencione esses componentes deve ser tratada como legado e não como arquitetura efetiva.
 
 ## Árvore principal
 
@@ -36,7 +36,7 @@ weekendvibes/
 
 ## Configuração
 
-Defina `INGESTION_SOURCE_URL` com uma fonte pública de eventos antes de executar o pipeline. As credenciais de LLM e do Google Maps são fornecidas pelo ambiente gerenciado; não é necessário solicitar uma chave do Google Maps ao usuário. O cron chama `POST /api/scheduled/ingest-events` e autentica o chamador pelo sistema de tarefas.
+Defina `INGESTION_SOURCE_URL` com uma fonte pública de eventos antes de executar o pipeline. As credenciais de LLM, Meta e mapas são fornecidas pelo ambiente gerenciado; secrets não devem ser gravados no repositório nem enviados pelo frontend. O Heartbeat chama os callbacks `POST /api/scheduled/ingest-events`, `POST /api/scheduled/ingest-instagram` e `POST /api/scheduled/monitor-heartbeat` com identidade nativa de tarefa. O AGENT cron não deve ser usado para esses callbacks, pois não herda automaticamente os secrets do cofre.
 
 ## Comandos locais
 
@@ -48,7 +48,11 @@ pnpm test
 pnpm dev
 ```
 
-O preview do projeto é servido pela porta gerenciada do ambiente. O backend expõe tRPC em `/api/trpc` e o endpoint periódico em `/api/scheduled/ingest-events`.
+O preview do projeto é servido pela porta gerenciada do ambiente. O backend expõe tRPC em `/api/trpc` e callbacks periódicos cron-only em `/api/scheduled/ingest-events`, `/api/scheduled/ingest-instagram` e `/api/scheduled/monitor-heartbeat`.
+
+## Persistência e observabilidade
+
+O schema de aplicação está em `drizzle/schema.ts` e as consultas ficam em `server/db.ts`; migrações devem ser geradas pelo Drizzle e aplicadas no banco gerenciado MySQL/TiDB conforme o fluxo do projeto. As tabelas `ingestionRuns` e `operationalAlerts` armazenam, respectivamente, o ciclo de execução e alertas deduplicados. O painel administrativo agrega a tendência dos últimos sete dias por execução, posts recebidos, posts aprovados, eventos estruturados, importações e execuções HTTP 200 sem mídias.
 
 ## Job periódico
 

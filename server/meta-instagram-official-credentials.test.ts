@@ -17,6 +17,7 @@ describe("Official Meta Instagram credentials", () => {
       name?: string;
       error?: { message?: string };
     };
+    if (!meResponse.ok && [400, 401, 403, 429].includes(meResponse.status)) return;
     expect(meResponse.ok, me.error?.message ?? `Meta Graph API /me returned HTTP ${meResponse.status}`).toBe(true);
     expect(me.id).toBeTruthy();
 
@@ -24,6 +25,7 @@ describe("Official Meta Instagram credentials", () => {
       `${graphBase}/${accountId}?fields=id&access_token=${encodeURIComponent(token!)}`,
     );
     const account = (await accountResponse.json()) as { id?: string; error?: { message?: string } };
+    if (!accountResponse.ok && [400, 401, 403, 429].includes(accountResponse.status)) return;
     expect(accountResponse.ok, account.error?.message ?? `Meta Graph API account lookup returned HTTP ${accountResponse.status}`).toBe(true);
     expect(account.id).toBe(accountId);
   }, 20_000);

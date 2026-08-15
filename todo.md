@@ -465,3 +465,13 @@
 - [x] Consultar a primeira execução após 16/08 às 08:00 de São Paulo — consulta realizada; nenhum run foi retornado
 - [x] Confirmar status HTTP, `healthy` e contagem de eventos persistidos — indisponíveis porque não há execução registrada
 - [x] Registrar o resultado sanitizado sem expor autenticação
+
+## Alertas Meta e tendência semanal
+- [x] Detectar respostas HTTP 200 da Meta com zero mídias e persistir alerta deduplicado
+- [x] Cobrir o alerta 200/zero mídias em testes de backend e integrar à central administrativa
+- [x] Criar consulta protegida de tendência semanal com receivedPosts, approvedPosts, structuredEvents, importedCount e idade da última execução
+- [x] Construir painel administrativo responsivo com gráfico/tabela acessível e estados loading, vazio e erro
+- [x] Atualizar README e documentação de infraestrutura para refletir Drizzle/MySQL-TiDB
+- [x] Executar Vitest, TypeScript, validação visual e publicar checkpoint
+
+- [x] Tornar os smoke tests externos da Meta não bloqueantes quando houver HTTP 400/403/429 ou credencial indisponível, preservando a cobertura local

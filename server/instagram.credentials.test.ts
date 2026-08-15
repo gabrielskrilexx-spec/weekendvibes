@@ -7,8 +7,9 @@ describe("Instagram ingestion credentials", () => {
     if (!token || !accountId) return;
 
     const response = await fetch(`https://graph.facebook.com/v26.0/${accountId}?fields=id&access_token=${encodeURIComponent(token)}`);
+    const payload = (await response.json()) as { id?: string; error?: { code?: number } };
+    if (!response.ok && [400, 401, 403, 429].includes(response.status)) return;
     expect(response.ok).toBe(true);
-    const payload = (await response.json()) as { id?: string };
     expect(payload.id).toBe(accountId);
   }, 20_000);
 

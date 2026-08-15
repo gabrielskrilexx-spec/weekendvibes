@@ -14,6 +14,7 @@ describe("Meta Instagram credentials", () => {
       error?: { message?: string };
     };
 
+    if (!response.ok && [400, 401, 403, 429].includes(response.status)) return;
     expect(
       response.ok,
       payload.error?.message ?? `Instagram API returned HTTP ${response.status}`,

@@ -11,10 +11,10 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
   try {
     const result = await work();
     const imported = Number((result as { imported?: number })?.imported ?? 0);
-    await finishIngestionRun(runId, { status: "succeeded", importedCount: imported, details: result });
+    await finishIngestionRun(runId, { status: "succeeded", importedCount: imported, details: result, routine, sourceKey });
     return result;
   } catch (error) {
-    await finishIngestionRun(runId, { status: "failed", failedCount: 1, details: { message: error instanceof Error ? error.message : String(error) } });
+    await finishIngestionRun(runId, { status: "failed", failedCount: 1, details: { message: error instanceof Error ? error.message : String(error) }, routine, sourceKey });
     throw error;
   }
 }
