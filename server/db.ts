@@ -320,6 +320,21 @@ export async function deleteEvent(id: number) {
   await db.delete(events).where(eq(events.id, id));
 }
 
+/**
+ * Hard-deletes only events whose scheduled start has passed.
+ *
+ * eventDate is persisted as an absolute timestamp. UTC_TIMESTAMP() compares
+ * that instant independently of the database server timezone; the application
+ * presents and schedules this policy in America/Sao_Paulo (UTC-3), so DST or
+ * server-local settings cannot shift the deletion boundary.
+ */
+export async function deleteExpiredEvents(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const result = await db.delete(events).where(sql`${events.eventDate} < UTC_TIMESTAMP()`);
+  return Number((result as { affectedRows?: number }).affectedRows ?? 0);
+}
+
 export function shouldArchiveExpiredSoldOutEvent(event: Pick<Event, "eventDate" | "endDate" | "priceNote" | "ticketStatus" | "isArchived" | "isPublished">, now = new Date()) {
   const soldOut = event.ticketStatus === "sold_out" || (event.ticketStatus === undefined && (event.priceNote?.toLowerCase().includes("vendas encerradas") ?? false));
   const eventEnd = event.endDate ?? event.eventDate;

@@ -475,3 +475,11 @@
 - [x] Executar Vitest, TypeScript, validação visual e publicar checkpoint
 
 - [x] Tornar os smoke tests externos da Meta não bloqueantes quando houver HTTP 400/403/429 ou credencial indisponível, preservando a cobertura local
+
+## Limpeza automática de eventos expirados
+- [x] Revisar schema e consultas para identificar o campo temporal efetivo dos eventos
+- [x] Implementar limpeza exclusiva da tabela de eventos com comparação correta no fuso America/Sao_Paulo
+- [x] Registrar de forma sanitizada a métrica de eventos expirados removidos
+- [x] Integrar a limpeza ao monitoramento diário sem duplicar ingestão
+- [x] Adicionar testes de timezone, limite de expiração, idempotência e isolamento de tabelas
+- [x] Executar suíte, revisar TODO e publicar checkpoint

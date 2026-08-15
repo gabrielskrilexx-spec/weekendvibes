@@ -86,3 +86,10 @@ O pipeline também consulta `https://zig.tickets/eventos/festa-do-branco-22-08` 
 
 ## Mídia e preços dos eventos
 Os cards públicos exibem a imagem oficial de cada fonte. A Festa do Branco mostra “A partir de R$ 0,00”, conforme a página Zig Tickets. O Nosso After mostra “Preço não informado” porque a página Ingresse retornou “Event not found” e a fonte equivalente Blacktag não expôs lotes ou valores no HTML público consultado. O campo `priceNote` diferencia esse estado de um evento gratuito.
+
+## Limpeza automática de eventos expirados
+
+O callback cron-only `/api/scheduled/monitor-heartbeat` executa a manutenção diária antes de montar o snapshot operacional. A função `deleteExpiredEvents` faz hard delete exclusivamente na tabela `events`, removendo registros cujo `eventDate` já passou. Como os timestamps de eventos são persistidos como instantes UTC, a comparação usa `UTC_TIMESTAMP()`; a política e o schedule são expressos em `America/Sao_Paulo` para que a fronteira operacional corresponda ao horário de Santos e Guarujá sem depender do timezone do servidor MySQL/TiDB.
+
+A rotina não atualiza nem remove venues, perfis, aliases, configurações ou `ingestionRuns`. Cada execução registra `expired_events_removed=<N>` no log sanitizado e inclui `expiredRemoved` e `timezone: "America/Sao_Paulo"` no snapshot do monitor, permitindo auditoria sem expor dados sensíveis. A remoção é idempotente: uma segunda execução não encontra novamente os registros já excluídos.
+

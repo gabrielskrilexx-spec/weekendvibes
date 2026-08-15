@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { ingestionRuns, events } from "../drizzle/schema";
-import { getDb } from "./db";
+import { deleteExpiredEvents, getDb } from "./db";
 import { sdk } from "./_core/sdk";
 import { HttpError } from "@shared/_core/errors";
 import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
@@ -37,6 +37,8 @@ export async function heartbeatMonitorHandler(req: Request, res: Response) {
     if (!db) return res.status(503).json({ ok: false, error: "database-unavailable", startedAt, finishedAt: new Date().toISOString() });
 
     monitorRunId = await startIngestionRun({ routine: "heartbeat-monitor", sourceKey: "heartbeat-direct" });
+    const expiredRemoved = await deleteExpiredEvents(db);
+    console.info(`[HeartbeatMonitor] expired_events_removed=${expiredRemoved}`);
     const latestRuns = await db.select().from(ingestionRuns)
       .where(sql`${ingestionRuns.routine} IN (${sql.join(MONITORED_ROUTINES.map(routine => sql`${routine}`), sql`, `)})`)
       .orderBy(desc(ingestionRuns.startedAt)).limit(10);
@@ -53,6 +55,8 @@ export async function heartbeatMonitorHandler(req: Request, res: Response) {
       latestRun: latest ? { id: latest.id, routine: latest.routine, status: latest.status, importedCount: latest.importedCount, failedCount: latest.failedCount, finishedAt: latest.finishedAt } : null,
       latestRunAgeMs: latestFinishedAt ? Math.max(0, now - latestFinishedAt) : null,
       persistedPublishedEvents: persistedEventCount,
+      expiredRemoved,
+      timezone: "America/Sao_Paulo",
       checkedAt: new Date().toISOString(),
     };
     await finishIngestionRun(monitorRunId, { status: healthy ? "succeeded" : "partial", details: snapshot });

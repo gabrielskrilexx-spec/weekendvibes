@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { archiveExpiredSoldOutEvents, filterEventsForPublicFeed, getEventBySlug, isPublicEventRecord, PUBLIC_EVENT_STATE, shouldArchiveExpiredSoldOutEvent } from "./db";
+import { archiveExpiredSoldOutEvents, deleteExpiredEvents, filterEventsForPublicFeed, getEventBySlug, isPublicEventRecord, PUBLIC_EVENT_STATE, shouldArchiveExpiredSoldOutEvent } from "./db";
 
 describe("event archive eligibility", () => {
   const now = new Date("2026-08-20T12:00:00Z");
@@ -63,6 +63,22 @@ describe("event archive eligibility", () => {
     await expect(archiveExpiredSoldOutEvents(fakeDb)).resolves.toBe(1);
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ isArchived: 1, isPublished: 0 }));
     expect(where).toHaveBeenCalledOnce();
+  });
+
+  it("hard-deletes only rows matching the expired event timestamp and returns the exact count", async () => {
+    const where = vi.fn().mockResolvedValue({ affectedRows: 3 });
+    const fakeDb = { delete: vi.fn().mockReturnValue({ where }) } as never;
+
+    await expect(deleteExpiredEvents(fakeDb)).resolves.toBe(3);
+    expect(fakeDb.delete).toHaveBeenCalledOnce();
+    expect(where).toHaveBeenCalledOnce();
+    const whereArgument = where.mock.calls[0][0] as { queryChunks?: unknown[] };
+    const serializedCondition = JSON.stringify(whereArgument, (_key, value) => {
+      if (value && typeof value === "object" && "name" in value && "table" in value) return { name: (value as { name: string }).name };
+      return value;
+    });
+    expect(serializedCondition).toContain("eventDate");
+    expect(serializedCondition).toContain("UTC_TIMESTAMP");
   });
 
   it("does not re-archive an already archived event", () => {
