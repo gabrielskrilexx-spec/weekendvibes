@@ -3,7 +3,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, publicProcedure, protectedProcedure, router } from "./_core/trpc";
-import { deleteEvent, getEventBySlug, listEvents, listRecentInstagramAgendaEvents, listTodayEvents, listOperationalAlerts, resolveOperationalAlert, saveEvent, updateEvent, listFavoriteEventIds, toggleFavoriteEvent, setEventReminder, listUserReminders } from "./db";
+import { deleteEvent, getEventBySlug, listEvents, listRecentInstagramAgendaEvents, listTodayEvents, resolveOperationalAlert, saveEvent, updateEvent, listFavoriteEventIds, toggleFavoriteEvent, setEventReminder, listUserReminders } from "./db";
 import { invokeLLM } from "./_core/llm";
 import { getTuesdayRoutineStatus, runTuesdayRoutineNow } from "./manual-ingestion";
 import { listIngestionReport, reprocessIngestionSource } from "./ingestion-reports";
@@ -59,7 +59,6 @@ export const appRouter = router({
     geocodeNow: adminOnly.mutation(() => processPendingGeocoding(10)),
   }),
   operationalAlerts: router({
-    list: publicProcedure.input(z.object({ size: z.number().int().min(1).max(20).optional() }).optional()).query(({ input }) => listOperationalAlerts(input ?? {})),
     resolve: adminOnly.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => resolveOperationalAlert(input.id)),
   }),
   events: router({

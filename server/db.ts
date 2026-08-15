@@ -104,8 +104,6 @@ export function isRecentInstagramAgendaEvent(event: Pick<Event, "sourceType" | "
 }
 
 export type OperationalIntegration = "meta" | "public" | "ocr" | "openai" | "pipeline";
-export type PublicOperationalAlert = Pick<OperationalAlert, "id" | "integration" | "title" | "message" | "createdAt">;
-
 export function operationalAlertFingerprint(integration: OperationalIntegration, message: string) {
   return createHash("sha256").update(`${integration}:${message.trim()}`).digest("hex");
 }
@@ -125,17 +123,6 @@ export async function recordOperationalAlert(input: { integration: OperationalIn
     set: { title: values.title, message: values.message, isResolved: 0, updatedAt: new Date() },
   });
   return values;
-}
-
-export async function listOperationalAlerts(options: { size?: number; dbOverride?: Awaited<ReturnType<typeof getDb>> } = {}): Promise<PublicOperationalAlert[]> {
-  const db = options.dbOverride ?? await getDb();
-  if (!db) return [];
-  const size = Math.min(Math.max(options.size ?? 5, 1), 20);
-  return db.select({ id: operationalAlerts.id, integration: operationalAlerts.integration, title: operationalAlerts.title, message: operationalAlerts.message, createdAt: operationalAlerts.createdAt })
-    .from(operationalAlerts)
-    .where(eq(operationalAlerts.isResolved, 0))
-    .orderBy(desc(operationalAlerts.createdAt))
-    .limit(size);
 }
 
 export async function resolveOperationalAlert(id: number, dbOverride?: Awaited<ReturnType<typeof getDb>>) {

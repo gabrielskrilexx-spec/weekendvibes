@@ -7,7 +7,7 @@ vi.mock("./db", () => ({
   getEventBySlug: vi.fn(),
   listEvents: vi.fn(),
   listRecentInstagramAgendaEvents: vi.fn(),
-  listOperationalAlerts: vi.fn().mockResolvedValue([]),
+  listTodayEvents: vi.fn(),
   resolveOperationalAlert: vi.fn().mockResolvedValue(undefined),
   saveEvent: vi.fn(),
   updateEvent: vi.fn(),

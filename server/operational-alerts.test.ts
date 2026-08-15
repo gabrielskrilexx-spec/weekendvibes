@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { listOperationalAlerts, operationalAlertFingerprint, recordOperationalAlert, resolveOperationalAlert } from "./db";
+import { operationalAlertFingerprint, recordOperationalAlert, resolveOperationalAlert } from "./db";
 
 describe("operational alerts", () => {
   it("gera fingerprint estável por integração e mensagem normalizada", () => {
@@ -18,20 +18,12 @@ describe("operational alerts", () => {
     expect(onDuplicateKeyUpdate).toHaveBeenCalledWith(expect.objectContaining({ set: expect.objectContaining({ isResolved: 0 }) }));
   });
 
-  it("consulta alertas não resolvidos e resolve pelo id", async () => {
-    const alert = { id: 4, integration: "ocr", title: "Falha OCR", message: "timeout", createdAt: new Date() };
-    const limit = vi.fn().mockResolvedValue([alert]);
-    const orderBy = vi.fn().mockReturnValue({ limit });
-    const where = vi.fn().mockReturnValue({ orderBy });
-    const from = vi.fn().mockReturnValue({ where });
-    const select = vi.fn().mockReturnValue({ from });
+  it("resolve um alerta pelo id para uso exclusivo do painel administrativo", async () => {
     const updateWhere = vi.fn().mockResolvedValue(undefined);
     const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
-    const fakeDb = { select, update: vi.fn().mockReturnValue({ set: updateSet }) } as never;
+    const fakeDb = { update: vi.fn().mockReturnValue({ set: updateSet }) } as never;
 
-    await expect(listOperationalAlerts({ dbOverride: fakeDb, size: 8 })).resolves.toEqual([alert]);
     await resolveOperationalAlert(4, fakeDb);
     expect(updateWhere).toHaveBeenCalled();
-    expect(select).toHaveBeenCalled();
   });
 });

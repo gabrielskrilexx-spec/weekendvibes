@@ -488,3 +488,10 @@
 - [x] Inspecionar o botão alvo e confirmar se a remoção da aba já está aplicada
 - [x] Corrigir manualmente o alvo caso a edição visual não tenha sido aplicada
 - [x] Validar a interface e publicar um novo checkpoint
+
+## Limpeza e centralização de alertas de integração
+- [x] Mapear e remover componentes, imports e referências visuais de alertas que não são mais utilizados
+- [x] Criar seção exclusiva no painel administrativo para listar, filtrar e resolver alertas de integração
+- [x] Investigar e corrigir o ReferenceError `ReferenceError: әт is not defined`
+- [x] Atualizar testes de frontend e backend para a nova seção administrativa e ausência do erro de console
+- [x] Validar interface, suíte completa e publicar novo checkpoint

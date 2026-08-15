@@ -6,7 +6,6 @@ import { getAgendaWeekState } from "@/lib/agendaState";
 import RegionalEventMap from "@/components/RegionalEventMap";
 import EventCard from "@/components/EventCard";
 import AgendaWeekHighlight from "@/components/AgendaWeekHighlight";
-import OperationalAlertCenter from "@/components/OperationalAlertCenter";
 import TodayEvents from "@/components/TodayEvents";
 import { useTheme } from "@/contexts/ThemeContext";
 
@@ -38,7 +37,6 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-zinc-950 pb-16 text-zinc-100">
-      <OperationalAlertCenter />
       <header className="sticky top-0 z-20 border-b border-white/10 bg-zinc-950/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
           <Link href="/" className="text-2xl font-black tracking-[-0.06em] text-transparent bg-gradient-to-r from-orange-300 via-yellow-200 to-fuchsia-400 bg-clip-text">WeekendVibes<span className="text-white">.</span></Link>
