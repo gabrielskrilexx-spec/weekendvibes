@@ -518,3 +518,15 @@
 - [x] Localizar os dois filtros exibidos no início e identificar o redundante
 - [x] Remover o filtro redundante preservando o filtro funcional
 - [x] Atualizar testes, validar a interface e publicar checkpoint
+
+## Relatório operacional do período de ausência
+- [x] Coletar estado atual dos schedules, execuções e alertas disponíveis
+- [x] Consolidar mudanças e resultados sem inventar execuções não registradas
+- [x] Entregar relatório operacional ao usuário
+
+## Saneamento operacional da ingestão e logs
+- [x] Auditar o schedule de Instagram, callback e registros de execução
+- [x] Garantir carregamento singleton/lazy do Google Maps sem reinicializações redundantes
+- [x] Padronizar falhas de sessão inválida sem afetar chamadas cron autenticadas
+- [x] Reativar e publicar a configuração do schedule; disparo controlado permanece bloqueado por ambiente ausente
+- [ ] Validar `ingestionRuns`, eventos persistidos e métricas da execução
