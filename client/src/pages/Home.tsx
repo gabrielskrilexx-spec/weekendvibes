@@ -8,6 +8,7 @@ import MobileBottomNav from "@/components/MobileBottomNav";
 import EventCard from "@/components/EventCard";
 import AgendaWeekHighlight from "@/components/AgendaWeekHighlight";
 import TodayEvents from "@/components/TodayEvents";
+import { EventGridSkeleton } from "@/components/EventSkeletons";
 import { useTheme } from "@/contexts/ThemeContext";
 
 const days = [{ label: "Todos", value: "" }, { label: "Sexta", value: "sexta" }, { label: "Sábado", value: "sabado" }];
@@ -68,7 +69,7 @@ export default function Home() {
         <div className="mt-8 grid gap-8 lg:grid-cols-[1.25fr_.75fr]">
           <div>
             <div className="mb-4 flex items-end justify-between"><div><p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">Agenda em destaque</p><h2 className="mt-1 text-3xl font-black tracking-tight text-white">Escolha sua vibe</h2></div><span className="text-sm text-zinc-500">{events.length} rolês</span></div>
-            {eventsQuery.isLoading && <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-10 text-center text-zinc-400">Carregando os rolês do fim de semana...</div>}
+            {eventsQuery.isLoading && <EventGridSkeleton count={4} />}
             {eventsQuery.isError && <div className="flex items-start gap-3 rounded-3xl border border-orange-300/20 bg-orange-300/10 p-6 text-orange-100"><WifiOff className="mt-1 shrink-0" /><div><p className="font-black">A agenda está temporariamente offline.</p><p className="mt-1 text-sm text-orange-100/70">O layout continua funcionando. Tente novamente em instantes ou confira os filtros.</p></div></div>}
             {!eventsQuery.isLoading && !eventsQuery.isError && events.length === 0 && <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-10 text-center text-zinc-400">Nenhum evento encontrado com esses filtros.</div>}
             <div className="grid gap-5 sm:grid-cols-2">{events.map(event => <EventCard key={event.id} event={event} />)}</div>

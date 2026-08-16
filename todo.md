@@ -530,3 +530,9 @@
 - [x] Padronizar falhas de sessão inválida sem afetar chamadas cron autenticadas
 - [x] Reativar e publicar a configuração do schedule; disparo controlado permanece bloqueado por ambiente ausente
 - [ ] Validar `ingestionRuns`, eventos persistidos e métricas da execução
+
+## Skeleton loading de eventos
+- [x] Mapear estados de carregamento da agenda e dos cards
+- [x] Criar skeletons reutilizáveis com animação acessível
+- [x] Integrar skeletons à Home e validar testes/interface
+- [x] Publicar checkpoint da melhoria de loading

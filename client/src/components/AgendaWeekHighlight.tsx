@@ -3,6 +3,7 @@ import { CalendarDays } from "lucide-react";
 import { Link } from "wouter";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import type { AgendaWeekState } from "@/lib/agendaState";
+import { AgendaWeekSkeleton } from "@/components/EventSkeletons";
 
 type AgendaEvent = {
   id: number;
@@ -36,7 +37,7 @@ export default function AgendaWeekHighlight({ state, events }: { state: AgendaWe
             <p className="mt-2 max-w-xl text-sm leading-relaxed text-zinc-300">Os rolês publicados recentemente pelos espaços da Baixada Santista.</p>
           </div>
         </div>
-        {state === "loading" && <div className="h-44 animate-pulse rounded-2xl bg-white/[0.08]" aria-label="Carregando Agenda da Semana" />}
+        {state === "loading" && <AgendaWeekSkeleton />}
         {state === "error" && <p className="rounded-2xl border border-orange-300/20 bg-orange-300/10 p-5 text-sm text-orange-100">A Agenda da Semana está sendo atualizada. Tente novamente em instantes.</p>}
         {state === "empty" && <p className="rounded-2xl border border-white/10 bg-white/[0.05] p-5 text-sm text-zinc-300">Nenhum evento recente da Agenda da Semana por enquanto.</p>}
         {state === "ready" && <Carousel opts={{ align: "start", loop: events.length > 2 }}>
