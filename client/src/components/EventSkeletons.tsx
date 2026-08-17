@@ -3,12 +3,12 @@ import React from "react";
 type SkeletonBlockProps = { className?: string };
 
 function SkeletonBlock({ className = "" }: SkeletonBlockProps) {
-  return <div aria-hidden="true" className={`rounded-xl bg-white/[0.08] motion-safe:animate-pulse ${className}`} />;
+  return <div aria-hidden="true" className={`event-skeleton-block rounded-xl ${className}`} />;
 }
 
 export function EventCardSkeleton() {
   return (
-    <article className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03]" aria-hidden="true">
+    <article className="event-skeleton-shell overflow-hidden rounded-3xl border" aria-hidden="true">
       <SkeletonBlock className="aspect-[16/10] rounded-none" />
       <div className="space-y-3 p-5">
         <SkeletonBlock className="h-3 w-24" />
@@ -35,7 +35,7 @@ export function AgendaWeekSkeleton() {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" role="status" aria-label="Carregando Agenda da Semana">
       {Array.from({ length: 3 }, (_, index) => (
-        <div key={index} className="overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/60" aria-hidden="true">
+        <div key={index} className="event-skeleton-shell overflow-hidden rounded-2xl border" aria-hidden="true">
           <SkeletonBlock className="aspect-[16/9] rounded-none" />
           <div className="space-y-3 p-4">
             <SkeletonBlock className="h-3 w-28" />

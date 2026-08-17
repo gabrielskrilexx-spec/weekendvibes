@@ -563,3 +563,9 @@
 - [x] Adicionar hover/focus sutis e acessíveis aos cards de eventos
 - [x] Consolidar o alternador de modo escuro com identidade minimalista tropical
 - [x] Validar prefers-reduced-motion, desktop/mobile, testes e publicar checkpoint
+
+## Transição de temas e compatibilidade visual
+- [x] Implementar transição suave entre modo claro e escuro
+- [x] Ajustar skeleton loading para os tokens e contraste dos dois temas
+- [x] Ajustar botões de compartilhamento para os dois temas e estados de foco/hover
+- [x] Validar `prefers-reduced-motion`, desktop/mobile, testes e publicar checkpoint
