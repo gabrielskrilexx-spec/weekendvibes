@@ -64,6 +64,17 @@ function routeSelectorId(clusterId: string) {
   return `route-selector-${clusterId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 }
 
+export const MAP_LEGEND_ITEMS = [
+  { key: "santos", label: "Santos", color: "#f97316", description: "eventos em Santos" },
+  { key: "guaruja", label: "Guarujá", color: "#d946ef", description: "eventos no Guarujá" },
+  { key: "cluster", label: "Número", color: "#ffffff", description: "eventos agrupados no pin" },
+  { key: "approximate", label: "Aproximado", color: "#facc15", description: "endereço sem coordenada exata" },
+] as const;
+
+export function shouldShowTouchTooltip(currentClusterId: string | null, nextClusterId: string) {
+  return currentClusterId !== nextClusterId;
+}
+
 function markerContent(cluster: EventCluster) {
   const element = document.createElement("button");
   element.type = "button";
@@ -117,6 +128,7 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
   const liveRouteStatusRef = useRef(liveRouteStatus);
   const selectedRouteIndexRef = useRef(selectedRouteIndex);
   const selectedClusterRef = useRef(selectedCluster);
+  const touchTooltipClusterRef = useRef<string | null>(null);
   const directionsCacheRef = useRef<ShortLivedCache<LiveRouteDetails[]>>(createDirectionsCache());
   const clusters = useMemo(() => groupEventsByRegion(events), [events]);
 
@@ -212,7 +224,20 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
         infoWindowRef.current?.setContent(markerTooltipContent(cluster));
         infoWindowRef.current?.open({ map: mapRef.current, anchor: marker });
       });
-      marker.addListener("click", () => { setSelectedCluster(cluster.id); infoWindowRef.current?.setContent(popupContent(cluster, travelModeRef.current, userLocationRef.current, liveRoutesRef.current[cluster.id] ?? [], selectedRouteIndexRef.current[cluster.id] ?? 0, liveRouteStatusRef.current[cluster.id] === "loading", liveRouteStatusRef.current[cluster.id] === "unavailable")); infoWindowRef.current?.open({ map: mapRef.current, anchor: marker }); });
+      marker.addListener("click", (event: unknown) => {
+        const pointerType = (event as { domEvent?: { pointerType?: string } } | null)?.domEvent?.pointerType;
+        if (pointerType === "touch" && shouldShowTouchTooltip(touchTooltipClusterRef.current, cluster.id)) {
+          touchTooltipClusterRef.current = cluster.id;
+          setSelectedCluster(null);
+          infoWindowRef.current?.setContent(markerTooltipContent(cluster));
+          infoWindowRef.current?.open({ map: mapRef.current, anchor: marker });
+          return;
+        }
+        touchTooltipClusterRef.current = null;
+        setSelectedCluster(cluster.id);
+        infoWindowRef.current?.setContent(popupContent(cluster, travelModeRef.current, userLocationRef.current, liveRoutesRef.current[cluster.id] ?? [], selectedRouteIndexRef.current[cluster.id] ?? 0, liveRouteStatusRef.current[cluster.id] === "loading", liveRouteStatusRef.current[cluster.id] === "unavailable"));
+        infoWindowRef.current?.open({ map: mapRef.current, anchor: marker });
+      });
       markersRef.current.push(marker);
       clusterMarkersRef.current.set(cluster.id, marker);
     });
@@ -248,7 +273,9 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
     return <div key={event.id} className="mt-2 border-t border-white/10 pt-2"><div className="flex items-center justify-between gap-2"><span className="truncate text-xs text-zinc-500">{event.title}</span>{summary && <span className="shrink-0 text-xs font-bold text-yellow-200">{formatDistance(summary.distance)} · {formatDuration(summary.duration)}</span>}</div><a href={route} target="_blank" rel="noopener noreferrer" aria-label={`Iniciar rota de ${TRAVEL_MODES[travelMode].label.toLowerCase()} até ${event.title}`} className="mt-1 inline-flex min-h-10 w-full items-center gap-2 rounded-xl px-2 text-xs font-bold text-orange-200 hover:bg-orange-300/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"><Route size={14} /> Iniciar rota de {TRAVEL_MODES[travelMode].label.toLowerCase()}</a></div>;
   };
 
+  const mapLegend = <div aria-label="Legenda do mapa" className="mt-3 rounded-2xl border border-white/10 bg-zinc-950/90 px-3 py-3 backdrop-blur sm:px-4"><div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-yellow-200">Como ler o mapa</div><div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-4">{MAP_LEGEND_ITEMS.map(item => <div key={item.key} className="flex min-w-0 items-center gap-2 text-[11px] text-zinc-300"><span aria-hidden="true" className="inline-flex h-4 min-w-4 items-center justify-center rounded-full border" style={{ backgroundColor: item.key === "cluster" ? "rgba(255,255,255,0.12)" : `${item.color}22`, borderColor: item.color }}><span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} /></span><span className="min-w-0"><strong className="font-black text-white">{item.label}</strong><span className="hidden text-zinc-500 sm:inline"> · {item.description}</span></span></div>)}</div><p className="mt-2 text-[10px] text-zinc-500 sm:hidden">Toque uma vez em um pin para ver um resumo persistente. Toque novamente para abrir os detalhes.</p></div>;
+
   const mapPanel = <div className="relative overflow-hidden rounded-[24px] border border-white/10 bg-zinc-900"><MapView key={isFullscreen ? "fullscreen" : "inline"} className={isFullscreen ? "h-[calc(100vh-7rem)]" : "h-[460px]"} initialCenter={{ lat: -23.96, lng: -46.33 }} initialZoom={11} onMapReady={setupMap} mapOptions={{ styles: WEEKENDVIBES_MAP_STYLE }} /><button type="button" onClick={() => setIsFullscreen(value => !value)} aria-label={isFullscreen ? "Fechar mapa em tela cheia" : "Abrir mapa em tela cheia"} className="absolute right-3 top-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 bg-zinc-950/85 px-4 py-2 text-xs font-black text-white shadow-lg backdrop-blur focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300">{isFullscreen ? <X size={16} /> : <Maximize2 size={16} />}{isFullscreen ? "Fechar" : "Tela cheia"}</button></div>;
 
-  return <section aria-labelledby="regional-map-title"><div className="mb-4 flex items-end justify-between gap-4"><div><p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-fuchsia-300"><Navigation size={15} /> Explorar por região</p><h2 id="regional-map-title" className="mt-1 text-3xl font-black tracking-tight text-white">Mapa dos rolês</h2><p className="mt-1 text-sm text-zinc-500">Pins agrupam eventos próximos em Santos e Guarujá.</p></div><span className="hidden items-center gap-1 text-xs font-bold text-zinc-500 sm:flex"><Users size={14} /> {clusters.length} regiões</span></div>{isFullscreen ? <div role="dialog" aria-modal="true" aria-labelledby="regional-map-title" className="fixed inset-0 z-50 overflow-y-auto bg-zinc-950 p-3 sm:p-6"><div className="mx-auto flex min-h-full max-w-7xl flex-col"><div className="mb-3 flex items-center justify-between"><p className="text-sm font-black text-white">Mapa regional</p><p className="text-xs text-zinc-500">Pressione Esc para fechar</p></div>{mapPanel}{travelControls}</div></div> : <>{mapPanel}{travelControls}</>}<div className="mt-3 grid gap-2 sm:grid-cols-2" aria-label="Regiões com eventos no mapa">{clusters.map(cluster => <div key={cluster.id} className={`rounded-2xl border p-3 transition ${selectedCluster === cluster.id ? "border-orange-300/70 bg-orange-300/10" : "border-white/10 bg-white/[0.03]"}`}><button type="button" onClick={() => focusCluster(cluster)} aria-pressed={selectedCluster === cluster.id} className="flex w-full items-center justify-between text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"><span><span className="block text-sm font-black text-white">{cluster.city}</span><span className="block text-xs text-zinc-500">{cluster.events.map(event => event.locationName).join(" · ")}</span>{cluster.approximate && <span className="mt-1 block text-[11px] font-bold text-yellow-200">Endereço aproximado</span>}</span><span className="rounded-full bg-white/10 px-2 py-1 text-xs font-black text-yellow-200">{cluster.events.length}</span></button>{cluster.events.map(renderEventRoute)}</div>)}{!clusters.length && <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-zinc-500">Nenhum evento com localização disponível para exibir no mapa.</p>}</div><p className="sr-only" aria-live="polite">{selectedCluster ? `Região selecionada: ${clusters.find(cluster => cluster.id === selectedCluster)?.city ?? ""}` : "Selecione uma região para aproximar o mapa."}</p></section>;
+  return <section aria-labelledby="regional-map-title"><div className="mb-4 flex items-end justify-between gap-4"><div><p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-fuchsia-300"><Navigation size={15} /> Explorar por região</p><h2 id="regional-map-title" className="mt-1 text-3xl font-black tracking-tight text-white">Mapa dos rolês</h2><p className="mt-1 text-sm text-zinc-500">Pins agrupam eventos próximos em Santos e Guarujá.</p></div><span className="hidden items-center gap-1 text-xs font-bold text-zinc-500 sm:flex"><Users size={14} /> {clusters.length} regiões</span></div>{isFullscreen ? <div role="dialog" aria-modal="true" aria-labelledby="regional-map-title" className="fixed inset-0 z-50 overflow-y-auto bg-zinc-950 p-3 sm:p-6"><div className="mx-auto flex min-h-full max-w-7xl flex-col"><div className="mb-3 flex items-center justify-between"><p className="text-sm font-black text-white">Mapa regional</p><p className="text-xs text-zinc-500">Pressione Esc para fechar</p></div>{mapPanel}{mapLegend}{travelControls}</div></div> : <>{mapPanel}{mapLegend}{travelControls}</>}<div className="mt-3 grid gap-2 sm:grid-cols-2" aria-label="Regiões com eventos no mapa">{clusters.map(cluster => <div key={cluster.id} className={`rounded-2xl border p-3 transition ${selectedCluster === cluster.id ? "border-orange-300/70 bg-orange-300/10" : "border-white/10 bg-white/[0.03]"}`}><button type="button" onClick={() => focusCluster(cluster)} aria-pressed={selectedCluster === cluster.id} className="flex w-full items-center justify-between text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"><span><span className="block text-sm font-black text-white">{cluster.city}</span><span className="block text-xs text-zinc-500">{cluster.events.map(event => event.locationName).join(" · ")}</span>{cluster.approximate && <span className="mt-1 block text-[11px] font-bold text-yellow-200">Endereço aproximado</span>}</span><span className="rounded-full bg-white/10 px-2 py-1 text-xs font-black text-yellow-200">{cluster.events.length}</span></button>{cluster.events.map(renderEventRoute)}</div>)}{!clusters.length && <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-zinc-500">Nenhum evento com localização disponível para exibir no mapa.</p>}</div><p className="sr-only" aria-live="polite">{selectedCluster ? `Região selecionada: ${clusters.find(cluster => cluster.id === selectedCluster)?.city ?? ""}` : "Selecione uma região para aproximar o mapa."}</p></section>;
 }

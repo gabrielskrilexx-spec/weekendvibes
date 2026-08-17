@@ -652,3 +652,8 @@
 - [x] Adicionar tooltips interativos aos marcadores/clusters com local, quantidade e detalhes acionáveis
 - [x] Cobrir estados de carregamento, erro, tooltip e acessibilidade com testes
 - [x] Validar TypeScript, Vitest, build, responsividade e publicar checkpoint
+## Legenda visual e interação touch do mapa
+- [x] Adicionar legenda responsiva explicando cores por cidade, agrupamentos e endereços aproximados
+- [x] Manter tooltip visível após toque no mobile com fechamento acessível e sem bloquear detalhes
+- [x] Criar testes para legenda, comportamento touch e estados de acessibilidade
+- [x] Validar TypeScript, Vitest, build, screenshots responsivos e publicar checkpoint

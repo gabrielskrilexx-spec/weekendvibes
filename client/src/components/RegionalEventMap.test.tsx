@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { directionsUrl, markerTooltipContent, routeDetailsFromResult, routeOptionsFromResult, visibleEventIdsForBounds } from "./RegionalEventMap";
+import { directionsUrl, MAP_LEGEND_ITEMS, markerTooltipContent, routeDetailsFromResult, routeOptionsFromResult, shouldShowTouchTooltip, visibleEventIdsForBounds } from "./RegionalEventMap";
 import { ShortLivedCache } from "@/lib/shortLivedCache";
+
+describe("map legend and touch interaction", () => {
+  it("documenta cidades, agrupamentos e precisão aproximada", () => {
+    expect(MAP_LEGEND_ITEMS.map(item => item.key)).toEqual(["santos", "guaruja", "cluster", "approximate"]);
+    expect(MAP_LEGEND_ITEMS.map(item => item.label)).toEqual(["Santos", "Guarujá", "Número", "Aproximado"]);
+  });
+
+  it("mantém o resumo no primeiro toque e permite abrir detalhes no segundo", () => {
+    expect(shouldShowTouchTooltip(null, "santos")).toBe(true);
+    expect(shouldShowTouchTooltip("guaruja", "santos")).toBe(true);
+    expect(shouldShowTouchTooltip("santos", "santos")).toBe(false);
+  });
+});
 
 describe("markerTooltipContent", () => {
   it("exibe cidade, contagem, locais e sinalização de precisão aproximada", () => {
