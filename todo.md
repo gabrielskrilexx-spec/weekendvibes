@@ -623,3 +623,11 @@
 - [x] Exibir distância e tempo estimado nos InfoWindows a partir da localização atual
 - [x] Cobrir viewport, localização, distância/tempo e regressões com testes
 - [x] Validar TypeScript, Vitest, build, visual e publicar checkpoint
+
+## Directions API e rota em tempo real
+- [x] Auditar integração Maps, secrets e contratos de viagem
+- [x] Implementar carregamento sob demanda da Directions API
+- [x] Exibir rota detalhada, distância e duração real no InfoWindow
+- [x] Implementar estados de carregamento, erro e fallback aproximado sem expor detalhes internos
+- [x] Cobrir a integração com testes e atualizar a documentação de mapas
+- [x] Validar TypeScript, Vitest, build, visual e publicar checkpoint

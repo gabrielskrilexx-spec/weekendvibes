@@ -39,6 +39,15 @@ function travelSummary(event: MappableEvent, origin: Coordinates | null, mode: T
   return { distance, duration: estimateMinutes(distance, mode) };
 }
 
+export interface LiveRouteDetails { distanceText: string; durationText: string; steps: string[]; }
+
+export function routeDetailsFromResult(result: { routes?: Array<{ legs?: Array<{ distance?: { text?: string | null }; duration?: { text?: string | null }; steps?: Array<{ instructions?: string | null }> }> }> }) : LiveRouteDetails | null {
+  const leg = result.routes?.[0]?.legs?.[0];
+  if (!leg?.distance?.text || !leg.duration?.text) return null;
+  const steps = (leg.steps ?? []).map(step => String(step.instructions ?? "").replace(/<[^>]*>/g, "").trim()).filter(Boolean).slice(0, 5);
+  return { distanceText: leg.distance.text, durationText: leg.duration.text, steps };
+}
+
 function markerContent(cluster: EventCluster) {
   const element = document.createElement("button");
   element.type = "button";
@@ -48,7 +57,7 @@ function markerContent(cluster: EventCluster) {
   return element;
 }
 
-function popupContent(cluster: EventCluster, mode: TravelMode, origin: Coordinates | null) {
+function popupContent(cluster: EventCluster, mode: TravelMode, origin: Coordinates | null, liveRoute?: LiveRouteDetails | null, routeLoading = false, routeUnavailable = false) {
   const featured = cluster.events[0];
   const featuredImage = featured?.imageUrl ? `<img src="${escapeHtml(featured.imageUrl)}" alt="" style="width:100%;height:92px;object-fit:cover;border-radius:10px;margin:8px 0" loading="lazy" />` : "";
   const eventLinks = cluster.events.map(event => {
@@ -57,7 +66,8 @@ function popupContent(cluster: EventCluster, mode: TravelMode, origin: Coordinat
     return `<div style="border-top:1px solid #e4e4e7;padding:8px 0"><a href="/eventos/${encodeURIComponent(event.slug)}" style="display:block;color:#c026d3;font-weight:700;text-decoration:none">${escapeHtml(event.title)}<br><small style="color:#52525b;font-weight:500">${escapeHtml(event.locationName)}</small></a>${summary ? `<small style="display:block;margin-top:4px;color:#52525b">${formatDistance(summary.distance)} · ${formatDuration(summary.duration)} · ${TRAVEL_MODES[mode].label}</small>` : ""}${route ? `<a href="${route}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:5px;color:#ea580c;font-size:12px;font-weight:700;text-decoration:none">Como chegar de ${TRAVEL_MODES[mode].label.toLowerCase()} ↗</a>` : ""}</div>`;
   }).join("");
   const approximate = cluster.approximate ? `<small style="display:block;color:#a16207;background:#fef3c7;padding:5px 7px;border-radius:6px">Endereço aproximado</small>` : "";
-  return `<div style="max-width:260px;font-family:system-ui;color:#18181b"><strong>${escapeHtml(clusterLabel(cluster))}</strong>${featuredImage}${approximate}${eventLinks}</div>`;
+  const liveRouteBlock = routeLoading ? `<div style="margin:8px 0;padding:8px;border-radius:8px;background:#fff7ed;color:#9a3412;font-size:12px">Calculando rota e trânsito em tempo real…</div>` : routeUnavailable ? `<div style="margin:8px 0;padding:8px;border-radius:8px;background:#fef2f2;color:#991b1b;font-size:12px">A rota em tempo real está indisponível. Exibindo apenas a estimativa local.</div>` : liveRoute ? `<div style="margin:8px 0;padding:8px;border-radius:8px;background:#ecfdf5;color:#166534;font-size:12px"><strong>Rota em tempo real</strong><br>${escapeHtml(liveRoute.distanceText)} · ${escapeHtml(liveRoute.durationText)}<ol style="margin:6px 0 0 16px;padding:0">${liveRoute.steps.map(step => `<li style="margin-top:3px">${escapeHtml(step)}</li>`).join("")}</ol></div>` : "";
+  return `<div style="max-width:260px;font-family:system-ui;color:#18181b"><strong>${escapeHtml(clusterLabel(cluster))}</strong>${featuredImage}${approximate}${liveRouteBlock}${eventLinks}</div>`;
 }
 
 export default function RegionalEventMap({ events, onVisibleEventIdsChange }: RegionalEventMapProps) {
@@ -66,10 +76,13 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
   const [travelMode, setTravelMode] = useState<TravelMode>("driving");
   const [userLocation, setUserLocation] = useState<Coordinates | null>(null);
   const [locationStatus, setLocationStatus] = useState<"idle" | "loading" | "ready" | "denied" | "unavailable">("idle");
+  const [liveRoutes, setLiveRoutes] = useState<Record<string, LiveRouteDetails | null>>({});
+  const [liveRouteStatus, setLiveRouteStatus] = useState<Record<string, "loading" | "ready" | "unavailable">>({});
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const clusterMarkersRef = useRef(new Map<string, google.maps.marker.AdvancedMarkerElement>());
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const directionsServiceRef = useRef<google.maps.DirectionsService | null>(null);
   const travelModeRef = useRef(travelMode);
   const userLocationRef = useRef(userLocation);
   const eventsRef = useRef(events);
@@ -79,6 +92,24 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
   useEffect(() => { travelModeRef.current = travelMode; }, [travelMode]);
   useEffect(() => { userLocationRef.current = userLocation; }, [userLocation]);
   useEffect(() => { eventsRef.current = events; visibleCallbackRef.current = onVisibleEventIdsChange; }, [events, onVisibleEventIdsChange]);
+  const requestLiveRoute = (cluster: EventCluster, origin: Coordinates | null, mode: TravelMode) => {
+    const destination = coordinatesFor(cluster.events[0]);
+    const service = directionsServiceRef.current;
+    if (!origin || !destination || !service) return;
+    setLiveRouteStatus(current => ({ ...current, [cluster.id]: "loading" }));
+    service.route({
+      origin: { lat: origin.latitude, lng: origin.longitude },
+      destination: { lat: destination.latitude, lng: destination.longitude },
+      travelMode: TRAVEL_MODES[mode].mapsMode.toUpperCase() as google.maps.TravelMode,
+      provideRouteAlternatives: false,
+      ...(mode === "driving" ? { drivingOptions: { departureTime: new Date() } } : {}),
+    }, (result, status) => {
+      const details = status === "OK" && result ? routeDetailsFromResult(result) : null;
+      setLiveRoutes(current => ({ ...current, [cluster.id]: details }));
+      setLiveRouteStatus(current => ({ ...current, [cluster.id]: details ? "ready" : "unavailable" }));
+    });
+  };
+
   const requestLocation = () => {
     if (!navigator.geolocation) { setLocationStatus("unavailable"); return; }
     setLocationStatus("loading");
@@ -88,6 +119,7 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
   const setupMap = (map: google.maps.Map) => {
     mapRef.current = map;
     infoWindowRef.current = new window.google.maps.InfoWindow();
+    directionsServiceRef.current = new window.google.maps.DirectionsService();
     map.setOptions({ restriction: { latLngBounds: BAIXADA_BOUNDS, strictBounds: false } });
     const publishVisibleEvents = () => {
       const bounds = map.getBounds();
@@ -114,7 +146,7 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
     if (!mapRef.current || !window.google?.maps?.marker) return;
     clusters.forEach(cluster => {
       const marker = new window.google.maps.marker.AdvancedMarkerElement({ map: mapRef.current, position: { lat: cluster.latitude, lng: cluster.longitude }, title: clusterLabel(cluster), content: markerContent(cluster) });
-      marker.addListener("click", () => { setSelectedCluster(cluster.id); infoWindowRef.current?.setContent(popupContent(cluster, travelModeRef.current, userLocationRef.current)); infoWindowRef.current?.open({ map: mapRef.current, anchor: marker }); });
+      marker.addListener("click", () => { setSelectedCluster(cluster.id); infoWindowRef.current?.setContent(popupContent(cluster, travelModeRef.current, userLocationRef.current, liveRoutes[cluster.id], liveRouteStatus[cluster.id] === "loading", liveRouteStatus[cluster.id] === "unavailable")); infoWindowRef.current?.open({ map: mapRef.current, anchor: marker }); });
       markersRef.current.push(marker);
       clusterMarkersRef.current.set(cluster.id, marker);
     });
@@ -127,9 +159,16 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
     const cluster = clusters.find(item => item.id === selectedCluster);
     const marker = clusterMarkersRef.current.get(selectedCluster);
     if (!cluster || !marker) return;
-    infoWindowRef.current.setContent(popupContent(cluster, travelMode, userLocation));
+    infoWindowRef.current.setContent(popupContent(cluster, travelMode, userLocation, liveRoutes[selectedCluster], liveRouteStatus[selectedCluster] === "loading", liveRouteStatus[selectedCluster] === "unavailable"));
     infoWindowRef.current.open({ map: mapRef.current, anchor: marker });
-  }, [clusters, selectedCluster, travelMode, userLocation]);
+  }, [clusters, selectedCluster, travelMode, userLocation, liveRoutes, liveRouteStatus]);
+
+  useEffect(() => {
+    if (!selectedCluster || !userLocation) return;
+    const cluster = clusters.find(item => item.id === selectedCluster);
+    if (!cluster || liveRouteStatus[selectedCluster] === "loading") return;
+    requestLiveRoute(cluster, userLocation, travelMode);
+  }, [selectedCluster, userLocation, travelMode, clusters]);
 
   const focusCluster = (cluster: EventCluster) => { setSelectedCluster(cluster.id); mapRef.current?.panTo({ lat: cluster.latitude, lng: cluster.longitude }); mapRef.current?.setZoom(14); };
   const locationMessage = locationStatus === "denied" ? "Permissão de localização negada. Você ainda pode iniciar a rota sem estimativa." : locationStatus === "unavailable" ? "Não foi possível acessar sua localização neste dispositivo." : locationStatus === "loading" ? "Buscando sua localização..." : "Ative sua localização para ver distância e tempo estimado.";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { directionsUrl, visibleEventIdsForBounds } from "./RegionalEventMap";
+import { directionsUrl, routeDetailsFromResult, visibleEventIdsForBounds } from "./RegionalEventMap";
 
 describe("directionsUrl", () => {
   it("gera uma rota de carro para o destino do evento", () => {
@@ -9,6 +9,17 @@ describe("directionsUrl", () => {
 
   it("usa o centro de Santos como destino aproximado quando faltam coordenadas", () => {
     expect(directionsUrl({ title: "Sem mapa", latitude: null, longitude: "-46.33", city: "Santos" })).toContain("destination=-23.9608%2C-46.3336");
+  });
+});
+
+describe("routeDetailsFromResult", () => {
+  it("normaliza distância, duração e até cinco instruções da rota", () => {
+    const details = routeDetailsFromResult({ routes: [{ legs: [{ distance: { text: "8,4 km" }, duration: { text: "24 min" }, steps: [{ instructions: "Siga <b>em frente</b>" }, { instructions: "Vire à direita" }, { instructions: "Continue" }, { instructions: "A" }, { instructions: "B" }, { instructions: "Ignorada" }] }] }] });
+    expect(details).toEqual({ distanceText: "8,4 km", durationText: "24 min", steps: ["Siga em frente", "Vire à direita", "Continue", "A", "B"] });
+  });
+
+  it("retorna nulo quando a API não entrega uma perna válida", () => {
+    expect(routeDetailsFromResult({ routes: [] })).toBeNull();
   });
 });
 
