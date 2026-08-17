@@ -4,13 +4,20 @@ import { MapView } from "@/components/Map";
 import { BAIXADA_BOUNDS, clusterLabel, groupEventsByRegion, mapCoordinatesFor, type ClusterableEvent, type EventCluster } from "@/lib/eventClusters";
 import { distanceInKm, estimateMinutes, formatDistance, formatDuration, TRAVEL_MODES, type Coordinates, type TravelMode } from "@/lib/mapTravel";
 
-interface RegionalEventMapProps { events: ClusterableEvent[]; }
+interface RegionalEventMapProps { events: ClusterableEvent[]; onVisibleEventIdsChange?: (eventIds: number[]) => void; }
 
-type MappableEvent = Pick<ClusterableEvent, "title" | "latitude" | "longitude"> & { city?: string };
+type MappableEvent = Pick<ClusterableEvent, "title" | "latitude" | "longitude"> & { city?: string; slug?: string; locationName?: string; locationPrecision?: string | null };
 
 function coordinatesFor(event: MappableEvent): Coordinates | null {
   const coordinates = mapCoordinatesFor({ ...event, city: event.city ?? "Santos" });
   return { latitude: coordinates.latitude, longitude: coordinates.longitude };
+}
+
+export function visibleEventIdsForBounds(events: ClusterableEvent[], bounds: { contains: (point: { lat: number; lng: number }) => boolean }) {
+  return events.filter(event => {
+    const coordinates = mapCoordinatesFor(event);
+    return bounds.contains({ lat: coordinates.latitude, lng: coordinates.longitude });
+  }).map(event => event.id).sort((a, b) => a - b);
 }
 
 function escapeHtml(value: unknown) {
@@ -53,7 +60,7 @@ function popupContent(cluster: EventCluster, mode: TravelMode, origin: Coordinat
   return `<div style="max-width:260px;font-family:system-ui;color:#18181b"><strong>${escapeHtml(clusterLabel(cluster))}</strong>${featuredImage}${approximate}${eventLinks}</div>`;
 }
 
-export default function RegionalEventMap({ events }: RegionalEventMapProps) {
+export default function RegionalEventMap({ events, onVisibleEventIdsChange }: RegionalEventMapProps) {
   const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [travelMode, setTravelMode] = useState<TravelMode>("driving");
@@ -61,14 +68,17 @@ export default function RegionalEventMap({ events }: RegionalEventMapProps) {
   const [locationStatus, setLocationStatus] = useState<"idle" | "loading" | "ready" | "denied" | "unavailable">("idle");
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const clusterMarkersRef = useRef(new Map<string, google.maps.marker.AdvancedMarkerElement>());
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const travelModeRef = useRef(travelMode);
   const userLocationRef = useRef(userLocation);
+  const eventsRef = useRef(events);
+  const visibleCallbackRef = useRef(onVisibleEventIdsChange);
   const clusters = useMemo(() => groupEventsByRegion(events), [events]);
 
   useEffect(() => { travelModeRef.current = travelMode; }, [travelMode]);
   useEffect(() => { userLocationRef.current = userLocation; }, [userLocation]);
-
+  useEffect(() => { eventsRef.current = events; visibleCallbackRef.current = onVisibleEventIdsChange; }, [events, onVisibleEventIdsChange]);
   const requestLocation = () => {
     if (!navigator.geolocation) { setLocationStatus("unavailable"); return; }
     setLocationStatus("loading");
@@ -79,7 +89,14 @@ export default function RegionalEventMap({ events }: RegionalEventMapProps) {
     mapRef.current = map;
     infoWindowRef.current = new window.google.maps.InfoWindow();
     map.setOptions({ restriction: { latLngBounds: BAIXADA_BOUNDS, strictBounds: false } });
+    const publishVisibleEvents = () => {
+      const bounds = map.getBounds();
+      if (!bounds) return;
+      visibleCallbackRef.current?.(visibleEventIdsForBounds(eventsRef.current, bounds));
+    };
+    map.addListener("idle", publishVisibleEvents);
     map.fitBounds(BAIXADA_BOUNDS, 24);
+    window.setTimeout(publishVisibleEvents, 0);
   };
 
   useEffect(() => {
@@ -99,10 +116,20 @@ export default function RegionalEventMap({ events }: RegionalEventMapProps) {
       const marker = new window.google.maps.marker.AdvancedMarkerElement({ map: mapRef.current, position: { lat: cluster.latitude, lng: cluster.longitude }, title: clusterLabel(cluster), content: markerContent(cluster) });
       marker.addListener("click", () => { setSelectedCluster(cluster.id); infoWindowRef.current?.setContent(popupContent(cluster, travelModeRef.current, userLocationRef.current)); infoWindowRef.current?.open({ map: mapRef.current, anchor: marker }); });
       markersRef.current.push(marker);
+      clusterMarkersRef.current.set(cluster.id, marker);
     });
     if (clusters.length > 1) { const bounds = new window.google.maps.LatLngBounds(); clusters.forEach(cluster => bounds.extend({ lat: cluster.latitude, lng: cluster.longitude })); mapRef.current.fitBounds(bounds, 56); }
-    return () => { markersRef.current.forEach(marker => { marker.map = null; }); markersRef.current = []; };
+    return () => { markersRef.current.forEach(marker => { marker.map = null; }); markersRef.current = []; clusterMarkersRef.current.clear(); };
   }, [clusters]);
+
+  useEffect(() => {
+    if (!selectedCluster || !mapRef.current || !infoWindowRef.current) return;
+    const cluster = clusters.find(item => item.id === selectedCluster);
+    const marker = clusterMarkersRef.current.get(selectedCluster);
+    if (!cluster || !marker) return;
+    infoWindowRef.current.setContent(popupContent(cluster, travelMode, userLocation));
+    infoWindowRef.current.open({ map: mapRef.current, anchor: marker });
+  }, [clusters, selectedCluster, travelMode, userLocation]);
 
   const focusCluster = (cluster: EventCluster) => { setSelectedCluster(cluster.id); mapRef.current?.panTo({ lat: cluster.latitude, lng: cluster.longitude }); mapRef.current?.setZoom(14); };
   const locationMessage = locationStatus === "denied" ? "Permissão de localização negada. Você ainda pode iniciar a rota sem estimativa." : locationStatus === "unavailable" ? "Não foi possível acessar sua localização neste dispositivo." : locationStatus === "loading" ? "Buscando sua localização..." : "Ative sua localização para ver distância e tempo estimado.";

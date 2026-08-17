@@ -615,3 +615,11 @@
 - [x] Implementar fallback de coordenada aproximada para Santos/Guarujá com indicador visual
 - [x] Cobrir as melhorias com testes e documentar a arquitetura do mapa
 - [x] Validar TypeScript, Vitest, build, warnings de carregamento e publicar checkpoint
+
+## Sincronização mapa-lista e métricas de viagem
+- [x] Auditar o mapa regional, a lista pública e os utilitários de distância/tempo
+- [x] Sincronizar a lista com os eventos visíveis no viewport após pan e zoom
+- [x] Preservar seleção, clustering e estados vazios sem flicker durante mudanças do mapa
+- [x] Exibir distância e tempo estimado nos InfoWindows a partir da localização atual
+- [x] Cobrir viewport, localização, distância/tempo e regressões com testes
+- [x] Validar TypeScript, Vitest, build, visual e publicar checkpoint

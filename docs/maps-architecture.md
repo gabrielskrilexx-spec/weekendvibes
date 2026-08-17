@@ -25,3 +25,9 @@ O worker de geocoding tenta obter coordenadas pelo Nominatim. Quando consegue, g
 ## Limitações residuais
 
 A estimativa de tempo é uma aproximação geométrica local, não uma previsão de trânsito em tempo real. A precisão final depende do provedor de geocoding e da qualidade do endereço extraído. O uso do Google Maps continua condicionado à disponibilidade da chave/proxy e aos limites da conta configurada.
+
+## Sincronização entre viewport e agenda
+
+O mapa publica os IDs dos eventos contidos no `LatLngBounds` atual sempre que o Google Maps emite o evento `idle`, após pan, zoom ou ajuste de bounds. A Home mantém esse conjunto separado da consulta principal e renderiza apenas os cards visíveis no viewport; quando os filtros da consulta mudam, o estado visual é resetado até o mapa publicar o novo recorte. O callback usa refs para consumir a lista e o consumidor mais recentes sem recriar o listener a cada renderização.
+
+O InfoWindow é reconstruído de forma reativa quando a localização do usuário ou o meio de transporte muda. A distância é calculada a partir das coordenadas atuais do navegador e o tempo é uma estimativa determinística baseada no modo escolhido; sem permissão de localização, o popup mantém o conteúdo do evento e o link de rota, mas não apresenta uma estimativa fictícia. A mesma regra é aplicada aos eventos agrupados no cluster.

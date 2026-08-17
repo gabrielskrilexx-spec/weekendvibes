@@ -30,11 +30,14 @@ export default function Home() {
   const [timeFrom, setTimeFrom] = useState("");
   const [timeTo, setTimeTo] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [visibleMapEventIds, setVisibleMapEventIds] = useState<number[] | null>(null);
   const eventsQuery = trpc.events.list.useQuery({ day: day || undefined, city: city === "Santos" || city === "Guarujá" ? city : undefined, category: category === "show" || category === "balada" || category === "evento_musical" ? category : undefined, genre: genre === "funk" || genre === "house_eletronica" || genre === "samba_pagode" || genre === "rap_trap" ? genre : undefined, venue: venue.trim() || undefined, date: date || undefined, minPriceCents: minPrice ? Number(minPrice) * 100 : undefined, maxPriceCents: maxPrice ? Number(maxPrice) * 100 : undefined, timeFrom: timeFrom || undefined, timeTo: timeTo || undefined, size: 40 });
   const agendaQuery = trpc.events.recentInstagramAgenda.useQuery({ lookbackDays: 5, size: 8 });
   const agendaState = getAgendaWeekState({ isLoading: agendaQuery.isLoading, isError: agendaQuery.isError, events: agendaQuery.data });
   const agendaEvents = agendaQuery.data ?? [];
   const events = useMemo(() => eventsQuery.data ?? [], [eventsQuery.data]);
+  const visibleEvents = useMemo(() => visibleMapEventIds === null ? events : events.filter(event => visibleMapEventIds.includes(event.id)), [events, visibleMapEventIds]);
+  useEffect(() => { setVisibleMapEventIds(null); }, [events]);
 
 
   return (
@@ -69,13 +72,14 @@ export default function Home() {
 
         <div className="mt-10 grid gap-8 lg:grid-cols-[1.25fr_.75fr]">
           <div>
-            <div className="mb-4 flex items-end justify-between border-b border-white/10 pb-3"><div><p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">Agenda em destaque</p><h2 className="mt-1 text-3xl font-black tracking-tight text-white">Escolha sua vibe</h2></div><span className="text-sm text-zinc-500">{events.length} rolês</span></div>
+            <div className="mb-4 flex items-end justify-between border-b border-white/10 pb-3"><div><p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">Agenda em destaque</p><h2 className="mt-1 text-3xl font-black tracking-tight text-white">Escolha sua vibe</h2></div><span className="text-sm text-zinc-500">{visibleEvents.length} de {events.length} rolês no mapa</span></div>
             {eventsQuery.isLoading && <EventGridSkeleton count={4} />}
             {eventsQuery.isError && <div className="flex items-start gap-3 rounded-3xl border border-orange-300/20 bg-orange-300/10 p-6 text-orange-100"><WifiOff className="mt-1 shrink-0" /><div><p className="font-black">A agenda está temporariamente offline.</p><p className="mt-1 text-sm text-orange-100/70">O layout continua funcionando. Tente novamente em instantes ou confira os filtros.</p></div></div>}
+            {!eventsQuery.isLoading && !eventsQuery.isError && events.length > 0 && visibleEvents.length === 0 && <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-10 text-center text-zinc-400">Nenhum evento está visível nesta área do mapa. Aproxime ou mova o mapa para encontrar outros rolês.</div>}
             {!eventsQuery.isLoading && !eventsQuery.isError && events.length === 0 && <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-10 text-center text-zinc-400">Nenhum evento encontrado com esses filtros.</div>}
-            <div className="grid gap-5 sm:grid-cols-2">{events.map(event => <EventCard key={event.id} event={event} />)}</div>
+            <div className="grid gap-5 sm:grid-cols-2">{visibleEvents.map(event => <EventCard key={event.id} event={event} />)}</div>
           </div>
-          <aside id="mapa" className="lg:sticky lg:top-24 lg:self-start"><RegionalEventMap events={events} /></aside>
+          <aside id="mapa" className="lg:sticky lg:top-24 lg:self-start"><RegionalEventMap events={events} onVisibleEventIdsChange={setVisibleMapEventIds} /></aside>
         </div>
       </section>
       <SiteFooter />
