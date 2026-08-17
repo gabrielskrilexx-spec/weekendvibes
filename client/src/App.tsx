@@ -7,7 +7,8 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import AccessDenied from "./pages/AccessDenied";
-import SessionExpired from "./pages/SessionExpired";
+import SessionExpired from "@/pages/SessionExpired";
+import CookieConsent from "./components/CookieConsent";
 
 const EventDetail = lazy(() => import("@/pages/EventDetail"));
 const Admin = lazy(() => import("@/pages/Admin"));
@@ -39,5 +40,5 @@ function Router() {
 }
 
 export default function App() {
-  return <ErrorBoundary><ThemeProvider defaultTheme="dark" switchable><TooltipProvider><Toaster /><Router /></TooltipProvider></ThemeProvider></ErrorBoundary>;
+  return <ErrorBoundary><ThemeProvider defaultTheme="dark" switchable><TooltipProvider><Toaster /><Router /><CookieConsent /></TooltipProvider></ThemeProvider></ErrorBoundary>;
 }

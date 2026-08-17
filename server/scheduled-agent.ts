@@ -3,6 +3,7 @@ import { sdk } from "./_core/sdk";
 import { ingestAgentDocuments, type AgentEventDocument } from "./agent-ingestion";
 import { archiveExpiredSoldOutEvents } from "./db";
 import { HttpError } from "@shared/_core/errors";
+import { redactError } from "./_core/security";
 
 export async function ingestAgentDocumentsHandler(req: Request, res: Response) {
   const startedAt = new Date().toISOString();
@@ -11,7 +12,8 @@ export async function ingestAgentDocumentsHandler(req: Request, res: Response) {
     user = await sdk.authenticateRequest(req);
   } catch (error) {
     if (error instanceof HttpError && error.statusCode === 403) return res.status(403).json({ error: "cron-only" });
-    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined, startedAt, finishedAt: new Date().toISOString() });
+    console.error("[ScheduledAgent] failed", redactError(error));
+    return res.status(500).json({ ok: false, error: "internal_error", startedAt, finishedAt: new Date().toISOString() });
   }
   if (!user.isCron) return res.status(403).json({ error: "cron-only" });
   try {
@@ -26,6 +28,7 @@ export async function ingestAgentDocumentsHandler(req: Request, res: Response) {
     const result = await ingestAgentDocuments(normalized);
     return res.json({ ok: true, startedAt, finishedAt: new Date().toISOString(), archived, result });
   } catch (error) {
-    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined, startedAt, finishedAt: new Date().toISOString() });
+    console.error("[ScheduledAgent] failed", redactError(error));
+    return res.status(500).json({ ok: false, error: "internal_error", startedAt, finishedAt: new Date().toISOString() });
   }
 }

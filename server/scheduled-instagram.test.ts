@@ -44,9 +44,9 @@ describe("scheduled Instagram ingestion", () => {
 
     await ingestInstagramHandler({} as never, res);
 
-    expect(recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ integration: "meta", title: "Falha na API oficial do Instagram", message: expect.stringContaining("HTTP 503") }));
+    expect(recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ integration: "meta", title: "Falha na API oficial do Instagram", message: "A ingestão automática falhou. Consulte o painel operacional." }));
     expect((res as any).status).toHaveBeenCalledWith(500);
-    expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: false, integration: "meta" }));
+    expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: false, integration: "meta", error: "internal_error" }));
   });
 
   it.each(["ocr", "openai"] as const)("classifica falha de %s no alerta operacional", async (integration) => {

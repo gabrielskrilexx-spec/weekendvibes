@@ -59,7 +59,7 @@ describe("cron authentication and scheduled events callback", () => {
     expect(runPublicAgendaStep).not.toHaveBeenCalled();
   });
 
-  it("returns 500 with stack details when ingestion fails internally", async () => {
+  it("returns 500 with a generic error when ingestion fails internally", async () => {
     vi.spyOn(sdk, "authenticateRequest").mockResolvedValue({ isCron: true, taskUid: "task-1" } as never);
     vi.mocked(runPublicAgendaStep).mockRejectedValue(new Error("database unavailable"));
     const res = response();
@@ -67,9 +67,6 @@ describe("cron authentication and scheduled events callback", () => {
     await ingestEventsHandler({ originalUrl: "/api/scheduled/ingest-events" } as never, res);
 
     expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-      error: expect.stringContaining("database unavailable"),
-      stack: expect.stringContaining("database unavailable"),
-    }));
+    expect(res.json).toHaveBeenCalledWith({ error: "internal_error" });
   });
 });

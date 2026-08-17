@@ -10,6 +10,10 @@ import { listIngestionReport, reprocessIngestionSource } from "./ingestion-repor
 import { createLocationAlias, deleteLocationAlias, listLocationAliases, updateLocationAlias } from "./db";
 import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
 
+const safeFilter = (max = 120) => z.string().trim().max(max).optional();
+const latitudeInput = z.string().regex(/^-?(?:90(?:\.0+)?|[1-8]?\d(?:\.\d+)?)$/).optional();
+const longitudeInput = z.string().regex(/^-?(?:180(?:\.0+)?|1[0-7]\d(?:\.\d+)?|\d{1,2}(?:\.\d+)?)$/).optional();
+
 const eventInput = z.object({
   title: z.string().trim().min(3).max(160),
   slug: z.string().trim().min(3).max(180).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
@@ -24,9 +28,9 @@ const eventInput = z.object({
   priceCents: z.number().int().min(0).default(0),
   sourceUrl: z.string().url().refine(value => value === "" || /^https:\/\//i.test(value), "A fonte deve usar HTTPS").optional().or(z.literal("")),
   imageUrl: z.string().url().refine(value => value === "" || /^https:\/\//i.test(value), "A imagem deve usar HTTPS").optional().or(z.literal("")),
-  latitude: z.string().optional(),
-  longitude: z.string().optional(),
-  sourceHash: z.string().optional(),
+  latitude: latitudeInput,
+  longitude: longitudeInput,
+  sourceHash: z.string().trim().max(255).regex(/^[A-Za-z0-9:_-]+$/).optional(),
   isPublished: z.number().int().min(0).max(1).default(1),
 });
 
@@ -66,10 +70,10 @@ export const appRouter = router({
     update: adminOnly.input(z.object({ id: z.number().int().positive(), isEnabled: z.boolean(), priority: z.number().int().min(1).max(1000), frequencyMinutes: z.number().int().min(60).max(525600) })).mutation(({ input }) => updateIngestionSource(input.id, input)),
   }),
   events: router({
-    list: publicProcedure.input(z.object({ day: z.string().optional(), date: z.string().optional(), startDate: z.string().optional(), endDate: z.string().optional(), timeFrom: z.string().optional(), timeTo: z.string().optional(), city: z.string().optional(), category: z.string().optional(), genre: z.string().optional(), venue: z.string().optional(), minPriceCents: z.number().int().min(0).optional(), maxPriceCents: z.number().int().min(0).optional(), page: z.number().int().min(1).optional(), size: z.number().int().min(1).max(100).optional() }).optional()).query(({ input }) => listEvents(input ?? {})),
+    list: publicProcedure.input(z.object({ day: safeFilter(20), date: safeFilter(20), startDate: safeFilter(30), endDate: safeFilter(30), timeFrom: safeFilter(10), timeTo: safeFilter(10), city: z.enum(["Santos", "Guarujá"]).optional(), category: z.enum(["show", "balada", "evento_musical"]).optional(), genre: z.enum(["funk", "house_eletronica", "samba_pagode", "rap_trap"]).optional(), venue: safeFilter(180), minPriceCents: z.number().int().min(0).max(10_000_000).optional(), maxPriceCents: z.number().int().min(0).max(10_000_000).optional(), page: z.number().int().min(1).max(10000).optional(), size: z.number().int().min(1).max(100).optional() }).optional()).query(({ input }) => listEvents(input ?? {})),
     today: publicProcedure.input(z.object({ size: z.number().int().min(1).max(20).optional() }).optional()).query(({ input }) => listTodayEvents(input ?? {})),
     recentInstagramAgenda: publicProcedure.input(z.object({ lookbackDays: z.number().int().min(1).max(14).optional(), size: z.number().int().min(1).max(12).optional() }).optional()).query(({ input }) => listRecentInstagramAgendaEvents(input ?? {})),
-    bySlug: publicProcedure.input(z.object({ slug: z.string() })).query(({ input }) => getEventBySlug(input.slug)),
+    bySlug: publicProcedure.input(z.object({ slug: z.string().trim().min(3).max(180).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/) })).query(({ input }) => getEventBySlug(input.slug)),
     favoriteIds: protectedProcedure.query(({ ctx }) => listFavoriteEventIds(ctx.user.id)),
     toggleFavorite: protectedProcedure.input(z.object({ eventId: z.number().int().positive() })).mutation(({ ctx, input }) => toggleFavoriteEvent(ctx.user.id, input.eventId)),
     reminders: protectedProcedure.query(({ ctx }) => listUserReminders(ctx.user.id)),

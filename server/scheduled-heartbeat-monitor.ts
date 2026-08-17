@@ -5,16 +5,16 @@ import { deleteExpiredEvents, getDb } from "./db";
 import { sdk } from "./_core/sdk";
 import { HttpError } from "@shared/_core/errors";
 import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
+import { redactError } from "./_core/security";
 
 const MONITORED_ROUTINES = ["full-agenda", "instagram-agenda", "scheduled-instagram"] as const;
 const MAX_HEARTBEAT_AGE_MS = 26 * 60 * 60 * 1000;
 
-function errorPayload(req: Request, error: unknown, startedAt: string) {
+function errorPayload(error: unknown, startedAt: string) {
   return {
     ok: false,
-    error: error instanceof Error ? error.message : String(error),
-    stack: error instanceof Error ? error.stack : undefined,
-    context: { url: req.originalUrl },
+    error: "internal_error",
+    errorClass: redactError(error).name,
     startedAt,
     finishedAt: new Date().toISOString(),
   };
@@ -29,7 +29,8 @@ export async function heartbeatMonitorHandler(req: Request, res: Response) {
       user = await sdk.authenticateRequest(req);
     } catch (error) {
       if (error instanceof HttpError && error.statusCode === 403) return res.status(403).json({ error: "cron-only" });
-      return res.status(500).json(errorPayload(req, error, startedAt));
+      console.error("[HeartbeatMonitor] failed", redactError(error));
+      return res.status(500).json(errorPayload(error, startedAt));
     }
     if (!user.isCron || !user.taskUid) return res.status(403).json({ error: "cron-only" });
 
@@ -62,7 +63,8 @@ export async function heartbeatMonitorHandler(req: Request, res: Response) {
     await finishIngestionRun(monitorRunId, { status: healthy ? "succeeded" : "partial", details: snapshot });
     return res.status(healthy ? 200 : 200).json({ ok: true, ...snapshot, monitorRunId, startedAt, finishedAt: new Date().toISOString() });
   } catch (error) {
-    await finishIngestionRun(monitorRunId, { status: "failed", failedCount: 1, details: { error: error instanceof Error ? error.message : String(error) } });
-    return res.status(500).json(errorPayload(req, error, startedAt));
+    await finishIngestionRun(monitorRunId, { status: "failed", failedCount: 1, details: { error: redactError(error) } });
+    console.error("[HeartbeatMonitor] failed", redactError(error));
+      return res.status(500).json(errorPayload(error, startedAt));
   }
 }

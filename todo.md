@@ -581,3 +581,14 @@
 - [x] Deduplicar posts, Stories e highlights e preservar a origem verificável
 - [x] Atualizar testes, métricas e alertas de ingestão
 - [x] Validar a rotina sem forjar eventos e publicar checkpoint
+
+## Auditoria de segurança e privacidade
+- [x] Auditar superfície de APIs, autenticação, CORS, headers, cookies, logs e tratamento de erros
+- [x] Implementar rate limiting/throttling para rotas públicas e sensíveis
+- [x] Restringir CORS a origens configuradas e seguras
+- [x] Reforçar validação/sanitização de inputs e respostas sem vazamento de detalhes internos
+- [x] Implementar security headers: CSP, HSTS, X-Content-Type-Options e X-Frame-Options
+- [x] Revisar cookies de sessão e criar infraestrutura de consentimento para cookies não essenciais
+- [x] Redigir política de redaction para logs e remover dados sensíveis em texto claro
+- [x] Criar testes automatizados de segurança e documentação executiva com limitações residuais
+- [x] Validar tudo e publicar checkpoint do hardening

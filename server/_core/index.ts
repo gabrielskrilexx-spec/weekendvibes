@@ -12,6 +12,7 @@ import { ingestAgentDocumentsHandler } from "../scheduled-agent";
 import { ingestInstagramHandler } from "../scheduled-instagram";
 import { heartbeatMonitorHandler } from "../scheduled-heartbeat-monitor";
 import { serveStatic, setupVite } from "./vite";
+import { applySecurityHeaders, createRateLimit, createStrictCors } from "./security";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -37,15 +38,16 @@ async function startServer() {
   const server = createServer(app);
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
-  app.use((_req, res, next) => {
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("X-Frame-Options", "DENY");
-    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    res.setHeader("Permissions-Policy", "geolocation=(self), camera=(), microphone=()");
+  app.use(createStrictCors());
+  app.use((req, res, next) => {
+    applySecurityHeaders(req, res);
     next();
   });
   app.use(express.json({ limit: "5mb" }));
   app.use(express.urlencoded({ limit: "1mb", extended: true }));
+  app.use("/api/oauth", createRateLimit({ windowMs: 15 * 60 * 1000, max: 30, name: "oauth" }));
+  app.use("/api/trpc", createRateLimit({ windowMs: 60 * 1000, max: 120, name: "trpc" }));
+  app.use("/manus-storage", createRateLimit({ windowMs: 60 * 1000, max: 120, name: "storage" }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   app.post("/api/scheduled/ingest-events", ingestEventsHandler);

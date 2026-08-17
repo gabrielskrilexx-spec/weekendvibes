@@ -5,6 +5,7 @@ import { InstagramIntegrationFailure } from "./instagram-pipeline";
 import { recordOperationalAlert, OperationalIntegration } from "./db";
 import { runInstagramAgendaStep } from "./agenda-routine";
 import { HttpError } from "@shared/_core/errors";
+import { redactError } from "./_core/security";
 
 const integrationTitles: Record<OperationalIntegration, string> = {
   meta: "Falha na API oficial do Instagram",
@@ -21,7 +22,8 @@ export async function ingestInstagramHandler(req: Request, res: Response) {
     user = await sdk.authenticateRequest(req);
   } catch (error) {
     if (error instanceof HttpError && error.statusCode === 403) return res.status(403).json({ error: "cron-only" });
-    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined, startedAt, finishedAt: new Date().toISOString() });
+    console.error("[Instagram] authentication failed", redactError(error));
+    return res.status(500).json({ ok: false, error: "internal_error", startedAt, finishedAt: new Date().toISOString() });
   }
   if (!user.isCron) return res.status(403).json({ error: "cron-only" });
 
@@ -30,17 +32,18 @@ export async function ingestInstagramHandler(req: Request, res: Response) {
     return res.json({ ok: true, startedAt, finishedAt: new Date().toISOString(), archived, result });
   } catch (error) {
     const integration: OperationalIntegration = error instanceof InstagramIntegrationFailure ? error.integration : "pipeline";
-    const message = error instanceof Error ? error.message : String(error);
+    const safeError = redactError(error);
     try {
-      await recordOperationalAlert({ integration, title: integrationTitles[integration], message: `A ingestão automática falhou: ${message}` });
+      await recordOperationalAlert({ integration, title: integrationTitles[integration], message: "A ingestão automática falhou. Consulte o painel operacional." });
     } catch (alertError) {
-      console.warn("[Instagram] Could not persist operational alert:", alertError);
+      console.warn("[Instagram] Could not persist operational alert", redactError(alertError));
     }
     try {
-      await notifyOwner({ title: integrationTitles[integration], content: message });
+      await notifyOwner({ title: integrationTitles[integration], content: "A ingestão automática falhou. Consulte o painel operacional." });
     } catch (notificationError) {
-      console.warn("[Instagram] Could not notify project owner:", notificationError);
+      console.warn("[Instagram] Could not notify project owner", redactError(notificationError));
     }
-    return res.status(500).json({ ok: false, error: message, integration, startedAt, finishedAt: new Date().toISOString() });
+    console.error("[Instagram] ingestion failed", { integration, ...safeError });
+    return res.status(500).json({ ok: false, error: "internal_error", integration, startedAt, finishedAt: new Date().toISOString() });
   }
 }

@@ -79,14 +79,14 @@ export async function transcribeAudio(
       return {
         error: "Voice transcription service is not configured",
         code: "SERVICE_ERROR",
-        details: "BUILT_IN_FORGE_API_URL is not set"
+        details: "transcription_service_unavailable"
       };
     }
     if (!ENV.forgeApiKey) {
       return {
         error: "Voice transcription service authentication is missing",
         code: "SERVICE_ERROR",
-        details: "BUILT_IN_FORGE_API_KEY is not set"
+        details: "transcription_service_unavailable"
       };
     }
 
@@ -99,7 +99,7 @@ export async function transcribeAudio(
         return {
           error: "Failed to download audio file",
           code: "INVALID_FORMAT",
-          details: `HTTP ${response.status}: ${response.statusText}`
+          details: "audio_source_unavailable"
         };
       }
       
@@ -112,14 +112,14 @@ export async function transcribeAudio(
         return {
           error: "Audio file exceeds maximum size limit",
           code: "FILE_TOO_LARGE",
-          details: `File size is ${sizeMB.toFixed(2)}MB, maximum allowed is 16MB`
+          details: "audio_file_too_large"
         };
       }
     } catch (error) {
       return {
         error: "Failed to fetch audio file",
         code: "SERVICE_ERROR",
-        details: error instanceof Error ? error.message : "Unknown error"
+        details: "audio_source_unavailable"
       };
     }
 
@@ -166,7 +166,7 @@ export async function transcribeAudio(
       return {
         error: "Transcription service request failed",
         code: "TRANSCRIPTION_FAILED",
-        details: `${response.status} ${response.statusText}${errorText ? `: ${errorText}` : ""}`
+        details: "transcription_service_error"
       };
     }
 
@@ -178,7 +178,7 @@ export async function transcribeAudio(
       return {
         error: "Invalid transcription response",
         code: "SERVICE_ERROR",
-        details: "Transcription service returned an invalid response format"
+        details: "transcription_service_error"
       };
     }
 
@@ -189,7 +189,7 @@ export async function transcribeAudio(
     return {
       error: "Voice transcription failed",
       code: "SERVICE_ERROR",
-      details: error instanceof Error ? error.message : "An unexpected error occurred"
+      details: "transcription_service_error"
     };
   }
 }
