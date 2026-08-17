@@ -84,11 +84,12 @@ declare global {
   interface Window {
     google?: typeof google;
     __weekendVibesMapsReady?: () => void;
+    gm_authFailure?: () => void;
   }
 }
 
 const MAPS_READY_CALLBACK = "__weekendVibesMapsReady";
-const MAPS_SCRIPT_BASE_URL = `/api/maps/javascript?callback=${encodeURIComponent(MAPS_READY_CALLBACK)}&libraries=marker,places,geocoding,geometry,routes`;
+const MAPS_SCRIPT_BASE_URL = `/api/maps/javascript?callback=${encodeURIComponent(MAPS_READY_CALLBACK)}&libraries=marker,places,geocoding,geometry,routes&loader=2`;
 
 export const WEEKENDVIBES_MAP_STYLE: google.maps.MapTypeStyle[] = [
   { elementType: "geometry", stylers: [{ color: "#24242a" }] },
@@ -110,24 +111,44 @@ function loadMapScript(): Promise<void> {
   mapScriptPromise = new Promise<void>((resolve, reject) => {
     const script = document.createElement("script");
     let settled = false;
-    const cleanup = () => {
-      script.remove();
-      delete window[MAPS_READY_CALLBACK];
+    let scriptUrl: string | null = null;
+    const previousAuthFailure = window.gm_authFailure;
+    const onWindowError = (event: Event) => {
+      const target = event.target as HTMLScriptElement | null;
+      if (target === script) {
+        fail(new Error("Google Maps script resource error"));
+      }
     };
-    const succeed = () => {
+    const cleanup = () => {
+      window.removeEventListener("error", onWindowError, true);
+      script.remove();
+      if (scriptUrl) URL.revokeObjectURL(scriptUrl);
+      delete window[MAPS_READY_CALLBACK];
+      if (previousAuthFailure) window.gm_authFailure = previousAuthFailure;
+      else delete window.gm_authFailure;
+    };
+    const fail = (error: Error) => {
       if (settled) return;
       settled = true;
       cleanup();
-      if (window.google?.maps?.Map) resolve();
-      else {
-        mapScriptPromise = null;
-        reject(new Error("Google Maps loaded without the Maps API"));
+      mapScriptPromise = null;
+      console.error("[Maps] Google Maps initialization failed:", error.message);
+      reject(error);
+    };
+    const succeed = () => {
+      if (settled) return;
+      if (!window.google?.maps?.Map) {
+        fail(new Error("Google Maps loaded without the Maps API"));
+        return;
       }
+      settled = true;
+      cleanup();
+      resolve();
     };
     window[MAPS_READY_CALLBACK] = succeed;
-    script.src = MAPS_SCRIPT_BASE_URL;
+    window.gm_authFailure = () => fail(new Error("Google Maps authentication failure (gm_authFailure)"));
+    window.addEventListener("error", onWindowError, true);
     script.async = true;
-    script.crossOrigin = "anonymous";
     script.onload = () => {
       // Poll briefly for browser/proxy variants that finish the bootstrap after onload.
       let attempts = 0;
@@ -147,19 +168,21 @@ function loadMapScript(): Promise<void> {
     };
     window.setTimeout(() => {
       if (settled) return;
-      settled = true;
-      cleanup();
-      mapScriptPromise = null;
-      reject(new Error("Google Maps loaded without the Maps API"));
+      fail(new Error("Google Maps initialization timeout"));
     }, 15000);
-    script.onerror = () => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      mapScriptPromise = null;
-      reject(new Error("Failed to load Google Maps"));
-    };
-    document.head.appendChild(script);
+    script.onerror = () => fail(new Error("Google Maps script execution error"));
+    void fetch(MAPS_SCRIPT_BASE_URL, { credentials: "same-origin" })
+      .then(response => {
+        if (!response.ok) throw new Error(`Google Maps relay HTTP ${response.status}`);
+        return response.text();
+      })
+      .then(source => {
+        if (settled) return;
+        scriptUrl = URL.createObjectURL(new Blob([source], { type: "application/javascript" }));
+        script.src = scriptUrl;
+        document.head.appendChild(script);
+      })
+      .catch(error => fail(error instanceof Error ? error : new Error("Google Maps relay fetch error")));
   });
 
   return mapScriptPromise;
@@ -183,6 +206,7 @@ export function MapView({
   mapOptions,
 }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
+  const mapHost = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
   const [isVisible, setIsVisible] = useState(!lazy);
   const [isMapReady, setIsMapReady] = useState(false);
@@ -206,12 +230,13 @@ export function MapView({
   const init = usePersistFn(async () => {
     try {
       await loadMapScript();
-    } catch {
+    } catch (error) {
       setLoadError(true);
+      console.error("[Maps] MapView fallback activated:", error instanceof Error ? error.message : "unknown initialization error");
       return;
     }
-    if (!mapContainer.current || !window.google?.maps) return;
-    map.current = new window.google.maps.Map(mapContainer.current, {
+    if (!mapHost.current || !window.google?.maps) return;
+    map.current = new window.google.maps.Map(mapHost.current, {
       zoom: initialZoom,
       center: initialCenter,
       mapTypeControl: false,
@@ -235,6 +260,7 @@ export function MapView({
 
   return (
     <div ref={mapContainer} aria-busy={isVisible && !isMapReady && !loadError} className={cn("relative min-h-[460px] h-[500px] w-full overflow-hidden", className)}>
+      <div ref={mapHost} className="absolute inset-0" aria-hidden="true" />
       {!isMapReady && !loadError && <div className="absolute inset-0 z-10 overflow-hidden bg-zinc-900" role="status" aria-live="polite" aria-label={isVisible ? "Carregando mapa" : "Mapa aguardando entrada na tela"}>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(217,70,239,0.14),transparent_34%),radial-gradient(circle_at_80%_80%,rgba(249,115,22,0.12),transparent_38%)]" />
         <div className="relative grid h-full place-items-center px-6">

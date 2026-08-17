@@ -657,3 +657,8 @@
 - [x] Manter tooltip visível após toque no mobile com fechamento acessível e sem bloquear detalhes
 - [x] Criar testes para legenda, comportamento touch e estados de acessibilidade
 - [x] Validar TypeScript, Vitest, build, screenshots responsivos e publicar checkpoint
+## Diagnóstico do fallback do Google Maps
+- [x] Rastrear o estado loadError, o relay e a configuração de credenciais sem expor segredos
+- [x] Capturar e registrar de forma redigida o erro técnico real do Google Maps
+- [x] Corrigir a inicialização ou configuração responsável pelo fallback
+- [x] Validar conexão em navegador, TypeScript, Vitest, build e publicar checkpoint

@@ -107,7 +107,7 @@ export function applySecurityHeaders(req: Request, res: Response): void {
     "object-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self'",
-    `script-src 'self' https://maps.googleapis.com https://maps.gstatic.com${mapsProxyOrigin ? ` ${mapsProxyOrigin}` : ""}`,
+    `script-src 'self' blob: https://maps.googleapis.com https://maps.gstatic.com${mapsProxyOrigin ? ` ${mapsProxyOrigin}` : ""}`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data: blob: https:",

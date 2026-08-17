@@ -58,11 +58,35 @@ describe("Google Maps JavaScript relay", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/javascript");
+    expect(response.headers.get("cross-origin-resource-policy")).toBe("cross-origin");
     expect(upstream).toHaveBeenCalledOnce();
     const [request] = upstream.mock.calls[0] ?? [];
     const url = new URL(String(request));
     expect(url.searchParams.get("callback")).toBe("__weekendVibesMapsReady");
     expect(url.searchParams.get("origin")).toBe("https://weekendvib-jscaalye.manus.space");
+  });
+
+  it("prioriza o host encaminhado quando o request chega por host interno", async () => {
+    let handler: ((req: any, res: any) => Promise<void>) | undefined;
+    const app = { get: vi.fn((_path: string, callback: any) => { handler = callback; }) };
+    registerMapsJavascriptRoute(app as any);
+    const upstream = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("window.google = window.google || {};", { status: 200 }),
+    );
+    await handler?.({
+      protocol: "http",
+      secure: false,
+      query: { callback: "__weekendVibesMapsReady" },
+      get(name: string) {
+        return {
+          host: "127.0.0.1:3000",
+          "x-forwarded-host": "weekendvib-jscaalye.manus.space",
+          "x-forwarded-proto": "https",
+        }[name];
+      },
+    }, createResponse());
+    const [request] = upstream.mock.calls[0] ?? [];
+    expect(new URL(String(request)).searchParams.get("origin")).toBe("https://weekendvib-jscaalye.manus.space");
   });
 
   it("rejeita callback que não seja um identificador JavaScript simples", async () => {

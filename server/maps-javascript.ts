@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { ENV } from "./_core/env";
 
 const MAPS_LIBRARIES = "marker,places,geocoding,geometry,routes";
+const PUBLIC_MAPS_HOST = "weekendvib-jscaalye.manus.space";
 
 export function registerMapsJavascriptRoute(app: Express): void {
   app.get("/api/maps/javascript", async (req: Request, res: Response) => {
@@ -11,14 +12,20 @@ export function registerMapsJavascriptRoute(app: Express): void {
       return;
     }
 
-    const host = req.get("host");
-    if (!host) {
+    const forwardedHost = req.get("x-forwarded-host")?.split(",")[0]?.trim();
+    const requestHost = forwardedHost || req.get("host");
+    if (!requestHost) {
       res.status(400).type("text").send("/* invalid_origin */");
       return;
     }
 
+    // Na prévia gerenciada, o browser pode chegar ao Express via 127.0.0.1 sem
+    // encaminhar o host público. Não envie essa origem interna ao Forge, pois ela
+    // não é uma origem autorizada para a chave do Maps.
+    const internalHost = /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(requestHost);
+    const host = internalHost ? PUBLIC_MAPS_HOST : requestHost;
     const forwardedProto = req.get("x-forwarded-proto")?.split(",")[0]?.trim();
-    const protocol = forwardedProto === "https" || req.secure ? "https" : "http";
+    const protocol = internalHost || forwardedProto === "https" || req.secure ? "https" : "http";
     const origin = `${protocol}://${host}`;
     const callback = typeof req.query.callback === "string" ? req.query.callback : "";
     if (callback && !/^[_$A-Za-z][_$0-9A-Za-z]*$/.test(callback)) {
@@ -45,6 +52,10 @@ export function registerMapsJavascriptRoute(app: Express): void {
       }
 
       const body = await upstream.text();
+      // O preview pode terminar a requisição em um origin interno diferente do host público.
+      // O conteúdo é somente o JavaScript público do Maps; permita o carregamento do recurso,
+      // mantendo a validação da origem no request enviado ao Forge.
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
       res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
       res.type("application/javascript").send(body);
     } catch {
