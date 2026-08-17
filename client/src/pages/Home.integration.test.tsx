@@ -29,7 +29,7 @@ vi.mock("@/lib/trpc", () => ({
   },
 }));
 
-vi.mock("@/components/Map", () => ({ MapView: () => <div data-testid="map-mock" /> }));
+vi.mock("@/components/Map", () => ({ MapView: () => <div data-testid="map-mock" />, WEEKENDVIBES_MAP_STYLE: [] }));
 vi.mock("@/components/EventCard", () => ({ default: ({ event }: { event: { title: string } }) => <div>{event.title}</div> }));
 
 import Home from "./Home";

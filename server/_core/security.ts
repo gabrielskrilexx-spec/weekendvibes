@@ -96,8 +96,10 @@ export function applySecurityHeaders(req: Request, res: Response): void {
   const isProduction = process.env.NODE_ENV === "production";
   const isSecure = req.protocol === "https" || req.headers["x-forwarded-proto"] === "https";
   const analyticsOrigin = getOrigin(process.env.VITE_ANALYTICS_ENDPOINT);
+  const mapsProxyOrigin = getOrigin(process.env.VITE_FRONTEND_FORGE_API_URL);
   const connectSources = ["'self'", "https://maps.googleapis.com", "https://maps.gstatic.com"];
   if (analyticsOrigin) connectSources.push(analyticsOrigin);
+  if (mapsProxyOrigin) connectSources.push(mapsProxyOrigin);
 
   const policy = [
     "default-src 'self'",
@@ -105,7 +107,7 @@ export function applySecurityHeaders(req: Request, res: Response): void {
     "object-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self'",
-    "script-src 'self' https://maps.googleapis.com https://maps.gstatic.com",
+    `script-src 'self' https://maps.googleapis.com https://maps.gstatic.com${mapsProxyOrigin ? ` ${mapsProxyOrigin}` : ""}`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data: blob: https:",

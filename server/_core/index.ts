@@ -13,6 +13,7 @@ import { ingestInstagramHandler } from "../scheduled-instagram";
 import { heartbeatMonitorHandler } from "../scheduled-heartbeat-monitor";
 import { serveStatic, setupVite } from "./vite";
 import { applySecurityHeaders, createRateLimit, createStrictCors } from "./security";
+import { registerMapsJavascriptRoute } from "../maps-javascript";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -49,6 +50,8 @@ async function startServer() {
   app.use("/api/trpc", createRateLimit({ windowMs: 60 * 1000, max: 120, name: "trpc" }));
   app.use("/manus-storage", createRateLimit({ windowMs: 60 * 1000, max: 120, name: "storage" }));
   registerStorageProxy(app);
+  app.use("/api/maps", createRateLimit({ windowMs: 60 * 1000, max: 30, name: "maps-script" }));
+  registerMapsJavascriptRoute(app);
   registerOAuthRoutes(app);
   app.post("/api/scheduled/ingest-events", ingestEventsHandler);
   app.post("/api/scheduled/ingest-full-agenda", ingestFullAgendaHandler);

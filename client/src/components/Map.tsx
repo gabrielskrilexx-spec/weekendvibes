@@ -83,14 +83,23 @@ import { cn } from "@/lib/utils";
 declare global {
   interface Window {
     google?: typeof google;
+    __weekendVibesMapsReady?: () => void;
   }
 }
 
-const API_KEY = import.meta.env.VITE_FRONTEND_FORGE_API_KEY;
-const FORGE_BASE_URL =
-  import.meta.env.VITE_FRONTEND_FORGE_API_URL ||
-  "https://forge.butterfly-effect.dev";
-const MAPS_PROXY_URL = `${FORGE_BASE_URL}/v1/maps/proxy`;
+const MAPS_READY_CALLBACK = "__weekendVibesMapsReady";
+const MAPS_SCRIPT_BASE_URL = `/api/maps/javascript?callback=${encodeURIComponent(MAPS_READY_CALLBACK)}&libraries=marker,places,geocoding,geometry,routes`;
+
+export const WEEKENDVIBES_MAP_STYLE: google.maps.MapTypeStyle[] = [
+  { elementType: "geometry", stylers: [{ color: "#24242a" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#24242a" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#d4d4d8" }] },
+  { featureType: "poi", stylers: [{ visibility: "off" }] },
+  { featureType: "transit", stylers: [{ visibility: "off" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#3f3f46" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#e4e4e7" }] },
+  { featureType: "water", stylers: [{ color: "#183047" }] },
+];
 
 let mapScriptPromise: Promise<void> | null = null;
 
@@ -100,18 +109,55 @@ function loadMapScript(): Promise<void> {
 
   mapScriptPromise = new Promise<void>((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = `${MAPS_PROXY_URL}/maps/api/js?key=${API_KEY}&v=weekly&libraries=marker,places,geocoding,geometry`;
+    let settled = false;
+    const cleanup = () => {
+      script.remove();
+      delete window[MAPS_READY_CALLBACK];
+    };
+    const succeed = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (window.google?.maps?.Map) resolve();
+      else {
+        mapScriptPromise = null;
+        reject(new Error("Google Maps loaded without the Maps API"));
+      }
+    };
+    window[MAPS_READY_CALLBACK] = succeed;
+    script.src = MAPS_SCRIPT_BASE_URL;
     script.async = true;
     script.crossOrigin = "anonymous";
     script.onload = () => {
-      script.remove();
-      if (window.google?.maps) resolve();
-      else reject(new Error("Google Maps loaded without the Maps API"));
+      // Poll briefly for browser/proxy variants that finish the bootstrap after onload.
+      let attempts = 0;
+      const poll = window.setInterval(() => {
+        if (settled) {
+          window.clearInterval(poll);
+          return;
+        }
+        if (window.google?.maps?.Map) {
+          window.clearInterval(poll);
+          succeed();
+          return;
+        }
+        attempts += 1;
+        if (attempts >= 50) window.clearInterval(poll);
+      }, 100);
     };
-    script.onerror = () => {
-      script.remove();
+    window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
       mapScriptPromise = null;
-      reject(new Error("Failed to load Google Maps script"));
+      reject(new Error("Google Maps loaded without the Maps API"));
+    }, 15000);
+    script.onerror = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      mapScriptPromise = null;
+      reject(new Error("Failed to load Google Maps"));
     };
     document.head.appendChild(script);
   });
@@ -139,6 +185,7 @@ export function MapView({
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
   const [isVisible, setIsVisible] = useState(!lazy);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     if (!lazy || !mapContainer.current || typeof IntersectionObserver === "undefined") {
@@ -159,6 +206,7 @@ export function MapView({
     try {
       await loadMapScript();
     } catch {
+      setLoadError(true);
       return;
     }
     if (!mapContainer.current || !window.google?.maps) return;
@@ -171,7 +219,7 @@ export function MapView({
       streetViewControl: false,
       clickableIcons: false,
       gestureHandling: "greedy",
-      mapId: "DEMO_MAP_ID",
+      backgroundColor: "#24242a",
       ...mapOptions,
     });
     if (onMapReady) {
@@ -184,8 +232,9 @@ export function MapView({
   }, [init, isVisible]);
 
   return (
-    <div ref={mapContainer} className={cn("relative w-full h-[500px]", className)}>
-      {!isVisible && <div className="absolute inset-0 grid place-items-center bg-zinc-900 text-sm text-zinc-500" role="status">Carregando mapa quando ele entrar na tela…</div>}
+    <div ref={mapContainer} className={cn("relative min-h-[460px] h-[500px] w-full overflow-hidden", className)}>
+      {!isVisible && <div className="absolute inset-0 z-10 grid place-items-center bg-zinc-900 text-sm text-zinc-500" role="status">Carregando mapa quando ele entrar na tela…</div>}
+      {loadError && <div className="absolute inset-0 z-10 grid place-items-center bg-zinc-900 px-6 text-center text-sm text-zinc-300" role="alert">Não foi possível carregar o mapa agora. Tente atualizar a página.</div>}
     </div>
   );
 }

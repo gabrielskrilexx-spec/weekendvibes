@@ -639,3 +639,11 @@
 - [x] Adicionar seletor acessível de rota no InfoWindow
 - [x] Cobrir seleção, expiração, limite do cache e fallback com testes
 - [x] Atualizar documentação, validar TypeScript/Vitest/build e publicar checkpoint
+
+## Correção do mapa preto
+- [x] Auditar console, carregamento da API e variáveis públicas do Google Maps
+- [x] Auditar dimensões do contêiner, overlays, z-index e estilo escuro
+- [x] Corrigir a causa raiz e preservar centralização em Santos/Guarujá
+- [x] Adicionar ou atualizar testes para o carregamento e o tema do mapa
+- [x] Validar visualmente, executar a suíte e publicar checkpoint
+- [x] Corrigir o mapa preto: alinhar a credencial Forge server-side, relay same-origin, origem HTTPS encaminhada e callback do Google Maps; validar visualmente a rota Mapa dos rolês.
