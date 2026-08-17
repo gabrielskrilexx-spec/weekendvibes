@@ -669,3 +669,10 @@
 - [x] Adicionar botão Minha Localização com estados de permissão, erro e sucesso
 - [x] Criar testes para rotas, cache, localização e acessibilidade
 - [x] Validar TypeScript, Vitest, build, screenshots responsivos e publicar checkpoint
+## Mapa populado, filtros e InfoWindows
+- [x] Conectar eventos ativos reais ao mapa e posicionar coordenadas exatas e aproximadas
+- [x] Implementar clustering funcional com expansão ao clicar no agrupamento
+- [x] Transformar legenda em filtros toggles por cidade e precisão/status
+- [x] Exibir InfoWindows dark com imagem, título, data/horário e ação para detalhes
+- [x] Adicionar testes de dados, filtros, clustering, InfoWindows e acessibilidade
+- [x] Validar TypeScript, Vitest, build, screenshots responsivos e publicar checkpoint

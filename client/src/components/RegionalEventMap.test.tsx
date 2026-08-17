@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { directionsUrl, locationControlLabel, MAP_LEGEND_ITEMS, markerTooltipContent, routeDetailsFromResult, routeOptionsFromResult, shouldShowTouchTooltip, visibleEventIdsForBounds } from "./RegionalEventMap";
+import { directionsUrl, filterEventsForMap, locationControlLabel, MAP_LEGEND_ITEMS, markerTooltipContent, routeDetailsFromResult, routeOptionsFromResult, shouldShowTouchTooltip, visibleEventIdsForBounds } from "./RegionalEventMap";
 import { ShortLivedCache } from "@/lib/shortLivedCache";
 
 describe("map legend and touch interaction", () => {
@@ -12,6 +12,21 @@ describe("map legend and touch interaction", () => {
     expect(shouldShowTouchTooltip(null, "santos")).toBe(true);
     expect(shouldShowTouchTooltip("guaruja", "santos")).toBe(true);
     expect(shouldShowTouchTooltip("santos", "santos")).toBe(false);
+  });
+});
+
+describe("filterEventsForMap", () => {
+  const events = [
+    { id: 1, title: "Santos exato", slug: "santos-exato", city: "Santos", locationName: "Local A", latitude: "-23.96", longitude: "-46.33", locationPrecision: "exact" },
+    { id: 2, title: "Guarujá aproximado", slug: "guaruja-aprox", city: "Guarujá", locationName: "Local B", latitude: null, longitude: null, locationPrecision: "approximate" },
+  ];
+  it("filtra cidade e precisão sem alterar os dados originais", () => {
+    expect(filterEventsForMap(events, { Santos: true, "Guarujá": false, exact: true, approximate: true }).map(event => event.id)).toEqual([1]);
+    expect(filterEventsForMap(events, { Santos: false, "Guarujá": true, exact: false, approximate: true }).map(event => event.id)).toEqual([2]);
+    expect(events).toHaveLength(2);
+  });
+  it("retorna vazio quando todas as cidades estão desmarcadas", () => {
+    expect(filterEventsForMap(events, { Santos: false, "Guarujá": false, exact: true, approximate: true })).toEqual([]);
   });
 });
 

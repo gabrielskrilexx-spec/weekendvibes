@@ -4,11 +4,20 @@ import { MapView, WEEKENDVIBES_MAP_STYLE } from "@/components/Map";
 import { BAIXADA_BOUNDS, clusterLabel, groupEventsByRegion, mapCoordinatesFor, type ClusterableEvent, type EventCluster } from "@/lib/eventClusters";
 import { distanceInKm, estimateMinutes, formatDistance, formatDuration, TRAVEL_MODES, type Coordinates, type TravelMode } from "@/lib/mapTravel";
 import { createDirectionsCache, type ShortLivedCache } from "@/lib/shortLivedCache";
+import { MarkerClusterer } from "@googlemaps/markerclusterer";
 
 interface RegionalEventMapProps { events: ClusterableEvent[]; onVisibleEventIdsChange?: (eventIds: number[]) => void; }
 
 type MappableEvent = Pick<ClusterableEvent, "title" | "latitude" | "longitude"> & { city?: string; slug?: string; locationName?: string; locationPrecision?: string | null };
 type RoutesApiLike = { computeRoutes: (request: Record<string, unknown>) => Promise<{ routes?: unknown[] }> };
+export type MapFilterState = { Santos: boolean; "Guarujá": boolean; exact: boolean; approximate: boolean };
+export function filterEventsForMap(events: ClusterableEvent[], filters: MapFilterState) {
+  return events.filter(event => {
+    const city = event.city === "Guarujá" ? "Guarujá" : "Santos";
+    const approximate = event.locationPrecision === "approximate" || event.locationPrecision === "approximate_city";
+    return filters[city] && filters[approximate ? "approximate" : "exact"];
+  });
+}
 
 function coordinatesFor(event: MappableEvent): Coordinates | null {
   const coordinates = mapCoordinatesFor({ ...event, city: event.city ?? "Santos" });
@@ -111,6 +120,15 @@ function markerContent(cluster: EventCluster) {
   return element;
 }
 
+function eventMarkerContent(event: ClusterableEvent, approximate: boolean) {
+  const element = document.createElement("button");
+  element.type = "button";
+  element.setAttribute("aria-label", `${event.title} em ${event.locationName}${approximate ? ". Localização aproximada" : ""}`);
+  element.style.cssText = `display:grid;place-items:center;width:30px;height:30px;padding:0;border:2px solid white;border-radius:999px;background:${approximate ? "#facc15" : event.city === "Guarujá" ? "#d946ef" : "#f97316"};color:${approximate ? "#422006" : "white"};font:900 11px system-ui;box-shadow:0 4px 12px rgba(0,0,0,.42);cursor:pointer`;
+  element.textContent = "•";
+  return element;
+}
+
 export function markerTooltipContent(cluster: EventCluster) {
   const venues = cluster.events.map(event => event.locationName).filter(Boolean).slice(0, 3).join(" · ");
   const more = cluster.events.length > 3 ? ` +${cluster.events.length - 3}` : "";
@@ -135,6 +153,8 @@ function popupContent(cluster: EventCluster, mode: TravelMode, origin: Coordinat
 
 export default function RegionalEventMap({ events, onVisibleEventIdsChange }: RegionalEventMapProps) {
   const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
+  const [cityFilters, setCityFilters] = useState<Record<"Santos" | "Guarujá", boolean>>({ Santos: true, "Guarujá": true });
+  const [precisionFilters, setPrecisionFilters] = useState<Record<"exact" | "approximate", boolean>>({ exact: true, approximate: true });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [travelMode, setTravelMode] = useState<TravelMode>("driving");
   const [userLocation, setUserLocation] = useState<Coordinates | null>(null);
@@ -145,6 +165,7 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const clusterMarkersRef = useRef(new Map<string, google.maps.marker.AdvancedMarkerElement>());
+  const markerClustererRef = useRef<MarkerClusterer | null>(null);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const routesApiRef = useRef<RoutesApiLike | null>(null);
   const routesLibraryReadyRef = useRef<Promise<void> | null>(null);
@@ -158,11 +179,12 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
   const selectedClusterRef = useRef(selectedCluster);
   const touchTooltipClusterRef = useRef<string | null>(null);
   const directionsCacheRef = useRef<ShortLivedCache<LiveRouteDetails[]>>(createDirectionsCache());
-  const clusters = useMemo(() => groupEventsByRegion(events), [events]);
+  const filteredEvents = useMemo(() => filterEventsForMap(events, { ...cityFilters, ...precisionFilters }), [events, cityFilters, precisionFilters]);
+  const clusters = useMemo(() => groupEventsByRegion(filteredEvents), [filteredEvents]);
 
   useEffect(() => { travelModeRef.current = travelMode; }, [travelMode]);
   useEffect(() => { userLocationRef.current = userLocation; }, [userLocation]);
-  useEffect(() => { eventsRef.current = events; visibleCallbackRef.current = onVisibleEventIdsChange; }, [events, onVisibleEventIdsChange]);
+  useEffect(() => { eventsRef.current = filteredEvents; visibleCallbackRef.current = onVisibleEventIdsChange; }, [filteredEvents, onVisibleEventIdsChange]);
   useEffect(() => { liveRoutesRef.current = liveRoutes; liveRouteStatusRef.current = liveRouteStatus; selectedRouteIndexRef.current = selectedRouteIndex; selectedClusterRef.current = selectedCluster; }, [liveRoutes, liveRouteStatus, selectedRouteIndex, selectedCluster]);
   const requestLiveRoute = async (cluster: EventCluster, origin: Coordinates | null, mode: TravelMode) => {
     const destination = coordinatesFor(cluster.events[0]);
@@ -259,25 +281,36 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
 
   useEffect(() => {
     markersRef.current.forEach(marker => { marker.map = null; });
+    markerClustererRef.current?.clearMarkers();
+    markerClustererRef.current = null;
     markersRef.current = [];
+    clusterMarkersRef.current.clear();
     if (!mapRef.current || !window.google?.maps?.marker) return;
-    clusters.forEach(cluster => {
-      const marker = new window.google.maps.marker.AdvancedMarkerElement({ map: mapRef.current, position: { lat: cluster.latitude, lng: cluster.longitude }, title: clusterLabel(cluster), content: markerContent(cluster) });
+    const markers = filteredEvents.map(event => {
+      const coordinates = mapCoordinatesFor(event);
+      const approximate = coordinates.approximate;
+      const marker = new window.google.maps.marker.AdvancedMarkerElement({
+        position: { lat: coordinates.latitude, lng: coordinates.longitude },
+        title: `${event.title} · ${event.locationName}`,
+        content: eventMarkerContent(event, approximate),
+      });
+      const cluster = clusters.find(item => item.events.some(clusterEvent => clusterEvent.id === event.id));
+      if (!cluster) return marker;
       marker.addListener("mouseover", () => {
         if (selectedClusterRef.current === cluster.id) return;
         infoWindowRef.current?.setContent(markerTooltipContent(cluster));
         infoWindowRef.current?.open({ map: mapRef.current, anchor: marker });
       });
       marker.addListener("mouseout", () => {
-        if (selectedClusterRef.current !== cluster.id) infoWindowRef.current?.close();
+        if (selectedClusterRef.current !== cluster.id && touchTooltipClusterRef.current !== cluster.id) infoWindowRef.current?.close();
       });
       marker.addListener("focus", () => {
         if (selectedClusterRef.current === cluster.id) return;
         infoWindowRef.current?.setContent(markerTooltipContent(cluster));
         infoWindowRef.current?.open({ map: mapRef.current, anchor: marker });
       });
-      marker.addListener("click", (event: unknown) => {
-        const pointerType = (event as { domEvent?: { pointerType?: string } } | null)?.domEvent?.pointerType;
+      marker.addListener("click", (pointerEvent: unknown) => {
+        const pointerType = (pointerEvent as { domEvent?: { pointerType?: string } } | null)?.domEvent?.pointerType;
         if (pointerType === "touch" && shouldShowTouchTooltip(touchTooltipClusterRef.current, cluster.id)) {
           touchTooltipClusterRef.current = cluster.id;
           setSelectedCluster(null);
@@ -287,15 +320,17 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
         }
         touchTooltipClusterRef.current = null;
         setSelectedCluster(cluster.id);
-        infoWindowRef.current?.setContent(popupContent(cluster, travelModeRef.current, userLocationRef.current, liveRoutesRef.current[cluster.id] ?? [], selectedRouteIndexRef.current[cluster.id] ?? 0, liveRouteStatusRef.current[cluster.id] === "loading", liveRouteStatusRef.current[cluster.id] === "unavailable"));
+        const selectedEventCluster: EventCluster = { ...cluster, id: `${cluster.id}-${event.id}`, events: [event], approximate };
+        infoWindowRef.current?.setContent(popupContent(selectedEventCluster, travelModeRef.current, userLocationRef.current, liveRoutesRef.current[cluster.id] ?? [], selectedRouteIndexRef.current[cluster.id] ?? 0, liveRouteStatusRef.current[cluster.id] === "loading", liveRouteStatusRef.current[cluster.id] === "unavailable"));
         infoWindowRef.current?.open({ map: mapRef.current, anchor: marker });
       });
       markersRef.current.push(marker);
-      clusterMarkersRef.current.set(cluster.id, marker);
+      clusterMarkersRef.current.set(event.id.toString(), marker);
+      return marker;
     });
-    if (clusters.length > 1) { const bounds = new window.google.maps.LatLngBounds(); clusters.forEach(cluster => bounds.extend({ lat: cluster.latitude, lng: cluster.longitude })); mapRef.current.fitBounds(bounds, 56); }
-    return () => { markersRef.current.forEach(marker => { marker.map = null; }); markersRef.current = []; clusterMarkersRef.current.clear(); };
-  }, [clusters]);
+    markerClustererRef.current = new MarkerClusterer({ map: mapRef.current, markers });
+    return () => { markersRef.current.forEach(marker => { marker.map = null; }); markerClustererRef.current?.clearMarkers(); markerClustererRef.current = null; markersRef.current = []; clusterMarkersRef.current.clear(); };
+  }, [clusters, filteredEvents]);
 
   useEffect(() => {
     if (!selectedCluster || !mapRef.current || !infoWindowRef.current) return;
@@ -325,8 +360,8 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
     return <div key={event.id} className="mt-2 border-t border-white/10 pt-2"><div className="flex items-center justify-between gap-2"><span className="truncate text-xs text-zinc-500">{event.title}</span>{summary && <span className="shrink-0 text-xs font-bold text-yellow-200">{formatDistance(summary.distance)} · {formatDuration(summary.duration)}</span>}</div><a href={route} target="_blank" rel="noopener noreferrer" aria-label={`Iniciar rota de ${TRAVEL_MODES[travelMode].label.toLowerCase()} até ${event.title}`} className="mt-1 inline-flex min-h-10 w-full items-center gap-2 rounded-xl px-2 text-xs font-bold text-orange-200 hover:bg-orange-300/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"><Route size={14} /> Iniciar rota de {TRAVEL_MODES[travelMode].label.toLowerCase()}</a></div>;
   };
 
-  const mapLegend = <div aria-label="Legenda do mapa" className="mt-3 rounded-2xl border border-white/10 bg-zinc-950/90 px-3 py-3 backdrop-blur sm:px-4"><div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-yellow-200">Como ler o mapa</div><div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-4">{MAP_LEGEND_ITEMS.map(item => <div key={item.key} className="flex min-w-0 items-center gap-2 text-[11px] text-zinc-300"><span aria-hidden="true" className="inline-flex h-4 min-w-4 items-center justify-center rounded-full border" style={{ backgroundColor: item.key === "cluster" ? "rgba(255,255,255,0.12)" : `${item.color}22`, borderColor: item.color }}><span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} /></span><span className="min-w-0"><strong className="font-black text-white">{item.label}</strong><span className="hidden text-zinc-500 sm:inline"> · {item.description}</span></span></div>)}</div><p className="mt-2 text-[10px] text-zinc-500 sm:hidden">Toque uma vez em um pin para ver um resumo persistente. Toque novamente para abrir os detalhes.</p></div>;
-
+  const filterToggle = (key: "Santos" | "Guarujá" | "exact" | "approximate", label: string, color: string, checked: boolean, onChange: () => void, description: string) => <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-2 py-2 text-[11px] text-zinc-300 transition hover:border-white/20 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-yellow-200"><input type="checkbox" checked={checked} onChange={onChange} aria-label={`Filtrar ${label}`} className="sr-only" /><span aria-hidden="true" className="inline-flex h-4 w-4 items-center justify-center rounded-full border-2" style={{ backgroundColor: checked ? color : "transparent", borderColor: color }}><span className={checked ? "h-1.5 w-1.5 rounded-full bg-white" : "hidden"} /></span><span><strong className="font-black text-white">{label}</strong><span className="hidden text-zinc-500 sm:inline"> · {description}</span></span></label>;
+  const mapLegend = <div aria-label="Filtros e legenda do mapa" className="mt-3 rounded-2xl border border-white/10 bg-zinc-950/90 px-3 py-3 backdrop-blur sm:px-4"><div className="mb-2 flex items-center justify-between gap-3"><div className="text-[10px] font-black uppercase tracking-[0.18em] text-yellow-200">Como ler e filtrar</div><span className="text-[10px] font-bold text-zinc-500">{filteredEvents.length} eventos visíveis</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{filterToggle("Santos", "Santos", "#f97316", cityFilters.Santos, () => setCityFilters(current => ({ ...current, Santos: !current.Santos })), "eventos na cidade")}{filterToggle("Guarujá", "Guarujá", "#d946ef", cityFilters["Guarujá"], () => setCityFilters(current => ({ ...current, "Guarujá": !current["Guarujá"] })), "eventos na cidade")}{filterToggle("exact", "Exato", "#f97316", precisionFilters.exact, () => setPrecisionFilters(current => ({ ...current, exact: !current.exact })), "coordenada confirmada")}{filterToggle("approximate", "Aproximado", "#facc15", precisionFilters.approximate, () => setPrecisionFilters(current => ({ ...current, approximate: !current.approximate })), "centro da cidade")}</div><div className="mt-2 flex flex-wrap items-center gap-3 text-[10px] text-zinc-500"><span><strong className="text-white">Número</strong> = eventos agrupados no pin</span><span>Toque uma vez para resumo; toque novamente para detalhes.</span></div></div>;
   const mapPanel = <div className="relative overflow-hidden rounded-[24px] border border-white/10 bg-zinc-900"><MapView key={isFullscreen ? "fullscreen" : "inline"} className={isFullscreen ? "h-[calc(100vh-7rem)]" : "h-[460px]"} initialCenter={{ lat: -23.96, lng: -46.33 }} initialZoom={11} onMapReady={setupMap} mapOptions={{ styles: WEEKENDVIBES_MAP_STYLE }} /><div className="absolute right-3 top-3 flex flex-col items-end gap-2"><button type="button" onClick={centerOnUserLocation} disabled={locationStatus === "loading"} aria-label="Centralizar mapa na minha localização" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-orange-300/50 bg-zinc-950/90 px-4 py-2 text-xs font-black text-orange-100 shadow-lg backdrop-blur transition hover:bg-orange-300/15 disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300"><LocateFixed size={16} />{locationControlLabel(locationStatus)}</button><button type="button" onClick={() => setIsFullscreen(value => !value)} aria-label={isFullscreen ? "Fechar mapa em tela cheia" : "Abrir mapa em tela cheia"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 bg-zinc-950/85 px-4 py-2 text-xs font-black text-white shadow-lg backdrop-blur focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300">{isFullscreen ? <X size={16} /> : <Maximize2 size={16} />}{isFullscreen ? "Fechar" : "Tela cheia"}</button></div></div>;
 
   return <section aria-labelledby="regional-map-title"><div className="mb-4 flex items-end justify-between gap-4"><div><p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-fuchsia-300"><Navigation size={15} /> Explorar por região</p><h2 id="regional-map-title" className="mt-1 text-3xl font-black tracking-tight text-white">Mapa dos rolês</h2><p className="mt-1 text-sm text-zinc-500">Pins agrupam eventos próximos em Santos e Guarujá.</p></div><span className="hidden items-center gap-1 text-xs font-bold text-zinc-500 sm:flex"><Users size={14} /> {clusters.length} regiões</span></div>{isFullscreen ? <div role="dialog" aria-modal="true" aria-labelledby="regional-map-title" className="fixed inset-0 z-50 overflow-y-auto bg-zinc-950 p-3 sm:p-6"><div className="mx-auto flex min-h-full max-w-7xl flex-col"><div className="mb-3 flex items-center justify-between"><p className="text-sm font-black text-white">Mapa regional</p><p className="text-xs text-zinc-500">Pressione Esc para fechar</p></div>{mapPanel}{mapLegend}{travelControls}</div></div> : <>{mapPanel}{mapLegend}{travelControls}</>}<div className="mt-3 grid gap-2 sm:grid-cols-2" aria-label="Regiões com eventos no mapa">{clusters.map(cluster => <div key={cluster.id} className={`rounded-2xl border p-3 transition ${selectedCluster === cluster.id ? "border-orange-300/70 bg-orange-300/10" : "border-white/10 bg-white/[0.03]"}`}><button type="button" onClick={() => focusCluster(cluster)} aria-pressed={selectedCluster === cluster.id} className="flex w-full items-center justify-between text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"><span><span className="block text-sm font-black text-white">{cluster.city}</span><span className="block text-xs text-zinc-500">{cluster.events.map(event => event.locationName).join(" · ")}</span>{cluster.approximate && <span className="mt-1 block text-[11px] font-bold text-yellow-200">Endereço aproximado</span>}</span><span className="rounded-full bg-white/10 px-2 py-1 text-xs font-black text-yellow-200">{cluster.events.length}</span></button>{cluster.events.map(renderEventRoute)}</div>)}{!clusters.length && <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-zinc-500">Nenhum evento com localização disponível para exibir no mapa.</p>}</div><p className="sr-only" aria-live="polite">{selectedCluster ? `Região selecionada: ${clusters.find(cluster => cluster.id === selectedCluster)?.city ?? ""}` : "Selecione uma região para aproximar o mapa."}</p></section>;
