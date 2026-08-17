@@ -121,7 +121,7 @@
   body {
     @apply bg-background text-foreground;
     font-family: 'DM Sans', sans-serif;
-    background-image: radial-gradient(circle at 15% 15%, rgba(249, 115, 22, 0.06), transparent 28rem), radial-gradient(circle at 85% 10%, rgba(217, 70, 239, 0.06), transparent 28rem);
+    background-image: none;
   }
   h1, h2, h3, h4, button {
     font-family: 'Space Grotesk', sans-serif;
@@ -186,6 +186,18 @@
   .field {
     @apply w-full rounded-xl border border-white/10 bg-zinc-950 px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-orange-300/60;
   }
+
+  /* Variação minimalista: contraste e hierarquia sem superfícies excessivas. */
+  .minimal-surface {
+    background: rgba(255, 255, 255, 0.025);
+    border-color: rgba(255, 255, 255, 0.09);
+    box-shadow: none;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .minimal-surface { transition: border-color 180ms ease, background-color 180ms ease; }
+    .minimal-surface:hover { background: rgba(255, 255, 255, 0.045); border-color: rgba(251, 191, 36, 0.28); }
+  }
 }
 
 /* Tema claro alternativo: areia, coral e roxo tropical, mantendo a leitura dos componentes legados. */
@@ -215,7 +227,7 @@
 }
 
 .light body {
-  background-image: radial-gradient(circle at 15% 15%, rgba(249, 115, 22, 0.12), transparent 28rem), radial-gradient(circle at 85% 10%, rgba(217, 70, 239, 0.1), transparent 28rem);
+  background-image: none;
 }
 
 .light .bg-zinc-950 { background-color: oklch(0.975 0.018 82); }

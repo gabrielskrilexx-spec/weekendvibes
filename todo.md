@@ -548,3 +548,13 @@
 - [x] Implementar URL do Google Calendar e arquivo iCalendar compatível com Apple Calendar
 - [x] Integrar ações acessíveis aos detalhes do evento e cobrir testes
 - [x] Validar interface mobile e publicar checkpoint
+
+## Atualização da habilidade WeekendVibes
+- [x] Incorporar ao skill o workflow de exportação para Google Calendar e Apple Calendar
+- [x] Atualizar referências e critérios de validação da habilidade
+- [x] Executar o validador oficial e entregar a habilidade atualizada
+
+## Teste visual minimalista
+- [x] Reduzir a complexidade visual da Home sem perder a identidade tropical
+- [x] Preservar contraste, foco visível, responsividade e navegação mobile
+- [x] Validar a variação em desktop/mobile, executar testes e publicar checkpoint
