@@ -569,3 +569,15 @@
 - [x] Ajustar skeleton loading para os tokens e contraste dos dois temas
 - [x] Ajustar botões de compartilhamento para os dois temas e estados de foco/hover
 - [x] Validar `prefers-reduced-motion`, desktop/mobile, testes e publicar checkpoint
+
+## Verificação preventiva do schedule
+- [x] Confirmar configuração, próxima execução e histórico do schedule Instagram
+- [x] Verificar callback, autenticação cron e logs recentes sem expor segredos
+- [x] Consolidar riscos e checklist da execução de amanhã
+
+## Hashtags regionais e Stories
+- [x] Definir regras para `#Guarujá` e `#Santos` sem relaxar o filtro de agenda e o escopo geográfico
+- [x] Implementar coleta de Stories somente por fontes e permissões disponíveis, com fallback sem dados
+- [x] Deduplicar posts, Stories e highlights e preservar a origem verificável
+- [x] Atualizar testes, métricas e alertas de ingestão
+- [x] Validar a rotina sem forjar eventos e publicar checkpoint

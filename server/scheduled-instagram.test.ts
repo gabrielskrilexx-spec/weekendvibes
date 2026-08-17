@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "./_core/sdk";
 import { ingestInstagramHandler } from "./scheduled-instagram";
-import { runInstagramPipeline, InstagramIntegrationFailure } from "./instagram-pipeline";
+import { hasRegionalHashtag, runInstagramPipeline, InstagramIntegrationFailure } from "./instagram-pipeline";
 import { archiveExpiredSoldOutEvents, recordOperationalAlert, saveEvent } from "./db";
 
 vi.mock("./db", () => ({
@@ -58,6 +58,11 @@ describe("scheduled Instagram ingestion", () => {
 
     expect(recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ integration }));
     expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: false, integration }));
+  });
+
+  it("recognizes both regional hashtags in the scheduled ingestion context", () => {
+    expect(hasRegionalHashtag("Agenda da semana #Sexta-Feira #Guarujá")).toBe(true);
+    expect(hasRegionalHashtag("Agenda da semana #Sábado #Santos")).toBe(true);
   });
 
   it("archives first and executes the Instagram pipeline for cron callers", async () => {

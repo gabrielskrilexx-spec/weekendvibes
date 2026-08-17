@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchInstagramPosts, hasApprovedAgendaText, INSTAGRAM_TARGETS, isWithinInstagramLookback } from "./instagram-pipeline";
+import { fetchInstagramPosts, fetchInstagramStories, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback } from "./instagram-pipeline";
 
 describe("Instagram weekend pipeline", () => {
   it("requires the exact agenda phrase and one allowed hashtag", () => {
@@ -7,6 +7,13 @@ describe("Instagram weekend pipeline", () => {
     expect(hasApprovedAgendaText("Agenda semanal\n#Sexta-Feira")).toBe(false);
     expect(hasApprovedAgendaText("Agenda da semana\n#sexta-feira")).toBe(false);
     expect(hasApprovedAgendaText("Agenda da semana\n#Domingo")).toBe(false);
+  });
+
+  it("recognizes the regional hashtags without weakening the strict agenda filter", () => {
+    expect(hasRegionalHashtag("Agenda da semana #Sexta-Feira #Guarujá")).toBe(true);
+    expect(hasRegionalHashtag("Agenda da semana #Sábado #Santos")).toBe(true);
+    expect(hasRegionalHashtag("Agenda da semana #Sábado #PraiaGrande")).toBe(false);
+    expect(hasApprovedAgendaText("Agenda da semana #Sábado #Guarujá")).toBe(true);
   });
 
   it("accepts only posts from the last five days", () => {
@@ -28,6 +35,10 @@ describe("Instagram weekend pipeline", () => {
     delete process.env.META_INSTAGRAM_TOKEN;
     delete process.env.META_INSTAGRAM_ACCOUNT_ID;
     await expect(fetchInstagramPosts()).rejects.toThrow("Missing required environment variable: META_INSTAGRAM_TOKEN");
+  });
+
+  it("returns no Stories instead of using an undocumented or session-based collector", async () => {
+    await expect(fetchInstagramStories()).resolves.toEqual([]);
   });
 
   it("propagates an official Graph API error instead of converting it to no data", async () => {

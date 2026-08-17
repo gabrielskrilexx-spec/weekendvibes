@@ -10,6 +10,12 @@ const LOOKBACK_DAYS = 5;
 
 export type InstagramIntegration = "meta" | "ocr" | "openai";
 
+/** Marcadores de praça usados pelos estabelecimentos da Baixada Santista. */
+export const REGIONAL_HASHTAGS = ["#Guarujá", "#Santos"] as const;
+
+/** Origem da mídia, preparada para um futuro conector oficial de Stories. */
+export type InstagramMediaOrigin = "post" | "story" | "highlight";
+
 export class InstagramIntegrationFailure extends Error {
   constructor(public readonly integration: InstagramIntegration, message: string, options?: { cause?: unknown }) {
     super(message, options);
@@ -42,6 +48,7 @@ export type InstagramPost = {
   media_url?: string;
   ownerUsername?: string;
   username?: string;
+  mediaType?: InstagramMediaOrigin;
 };
 
 type StructuredEvent = {
@@ -75,6 +82,10 @@ export function isWithinInstagramLookback(post: InstagramPost, now = new Date())
   if (!date || Number.isNaN(date.getTime())) return false;
   const cutoff = new Date(now.getTime() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
   return date >= cutoff && date <= now;
+}
+
+export function hasRegionalHashtag(text: string) {
+  return REGIONAL_HASHTAGS.some(hashtag => text.includes(hashtag));
 }
 
 export function hasApprovedAgendaText(text: string) {
@@ -172,6 +183,7 @@ function metaPostsFromPayload(payload: any, target: (typeof INSTAGRAM_TARGETS)[n
     media_url: item.media_url,
     displayUrl: item.media_url,
     ownerUsername: item.username ?? target.username,
+    mediaType: "post",
   }));
 }
 
@@ -210,6 +222,25 @@ export async function fetchInstagramPosts() {
   return fetchMetaBusinessDiscoveryPosts(token, accountId);
 }
 
+/**
+ * Business Discovery expõe mídia publicada, não Stories de perfis de terceiros.
+ * O retorno vazio é deliberado: não usamos scraping de sessão nem endpoints
+ * privados e não fabricamos eventos quando Stories não estão disponíveis.
+ */
+export async function fetchInstagramStories(): Promise<InstagramPost[]> {
+  return [];
+}
+
+function deduplicateInstagramPosts(posts: InstagramPost[]) {
+  const seen = new Set<string>();
+  return posts.filter(post => {
+    const key = post.id ?? postUrl(post) ?? `${post.ownerUsername ?? post.username ?? "unknown"}|${post.timestamp ?? post.takenAt ?? "unknown"}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function extractStructuredEvents(approvedPosts: Array<{ post: InstagramPost; rawText: string }>) {
   if (approvedPosts.length === 0) return [] as StructuredEvent[];
   const raw = approvedPosts.map(({ post, rawText }) => `SOURCE_URL: ${postUrl(post)}\nACCOUNT: ${post.ownerUsername ?? post.username ?? ""}\nRAW_POST_TEXT: ${rawText}`).join("\n\n").slice(0, 48_000);
@@ -237,14 +268,15 @@ async function extractStructuredEvents(approvedPosts: Array<{ post: InstagramPos
 
 export async function runInstagramPipeline() {
   const activeAliases = await listActiveLocationAliasValues();
-  const posts = await fetchInstagramPosts();
+  const posts = deduplicateInstagramPosts(await fetchInstagramPosts());
   const approvedPosts: Array<{ post: InstagramPost; rawText: string }> = [];
   for (const post of posts) {
     if (!isWithinInstagramLookback(post)) continue;
     const caption = String(post.caption ?? post.text ?? "");
     const ocrText = hasApprovedAgendaText(caption) ? "" : await extractOcrText(String(post.displayUrl ?? post.imageUrl ?? post.media_url ?? ""));
     const rawText = [caption, ocrText].filter(Boolean).join("\n");
-    if (hasApprovedAgendaText(rawText)) approvedPosts.push({ post, rawText });
+    const regionalMarker = hasRegionalHashtag(rawText) ? "\nREGIONAL_HASHTAG_MATCH: Santos/Guarujá" : "";
+    if (hasApprovedAgendaText(rawText)) approvedPosts.push({ post, rawText: `${rawText}${regionalMarker}` });
   }
 
   const structuredEvents = await extractStructuredEvents(approvedPosts);
