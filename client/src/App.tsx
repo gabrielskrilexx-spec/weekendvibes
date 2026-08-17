@@ -10,6 +10,7 @@ import AccessDenied from "./pages/AccessDenied";
 import SessionExpired from "@/pages/SessionExpired";
 import Legal from "@/pages/Legal";
 import CookieConsent from "./components/CookieConsent";
+import LegalConsentGate from "./components/LegalConsentGate";
 
 const EventDetail = lazy(() => import("@/pages/EventDetail"));
 const Admin = lazy(() => import("@/pages/Admin"));
@@ -42,5 +43,5 @@ function Router() {
 }
 
 export default function App() {
-  return <ErrorBoundary><ThemeProvider defaultTheme="dark" switchable><TooltipProvider><Toaster /><Router /><CookieConsent /></TooltipProvider></ThemeProvider></ErrorBoundary>;
+  return <ErrorBoundary><ThemeProvider defaultTheme="dark" switchable><TooltipProvider><Toaster /><Router /><CookieConsent /><LegalConsentGate /></TooltipProvider></ThemeProvider></ErrorBoundary>;
 }

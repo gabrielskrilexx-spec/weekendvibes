@@ -598,3 +598,10 @@
 - [x] Integrar links acessíveis no rodapé do site
 - [x] Adicionar testes de rota, conteúdo essencial e navegação
 - [x] Validar TypeScript, testes, build e publicar checkpoint
+
+## Aceite obrigatório no login
+- [x] Auditar o fluxo atual de autenticação e os pontos que iniciam o OAuth
+- [x] Exigir checkbox de aceite dos Termos de Uso e Política de Privacidade antes do login
+- [x] Exibir links legais e mensagem acessível sem persistir tokens ou dados desnecessários
+- [x] Cobrir aceite, bloqueio sem aceite e regressão do login com testes
+- [x] Validar TypeScript, testes, build e publicar checkpoint
