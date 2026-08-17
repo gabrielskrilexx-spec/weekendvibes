@@ -73,6 +73,13 @@ function markerContent(cluster: EventCluster) {
   return element;
 }
 
+export function markerTooltipContent(cluster: EventCluster) {
+  const venues = cluster.events.map(event => event.locationName).filter(Boolean).slice(0, 3).join(" · ");
+  const more = cluster.events.length > 3 ? ` +${cluster.events.length - 3}` : "";
+  const precision = cluster.approximate ? `<small style="display:block;margin-top:6px;color:#a16207">Endereço aproximado</small>` : "";
+  return `<div role="tooltip" style="min-width:180px;max-width:240px;padding:2px;font-family:system-ui;color:#18181b"><strong style="display:block;font-size:13px">${escapeHtml(cluster.city)}</strong><span style="display:block;margin-top:4px;font-size:12px;color:#52525b">${cluster.events.length} ${cluster.events.length === 1 ? "rolê" : "rolês"}${more}</span>${venues ? `<span style="display:block;margin-top:4px;font-size:11px;color:#71717a">${escapeHtml(venues)}</span>` : ""}${precision}<span style="display:block;margin-top:7px;font-size:11px;color:#a21caf">Clique para ver detalhes</span></div>`;
+}
+
 function popupContent(cluster: EventCluster, mode: TravelMode, origin: Coordinates | null, liveRoutes: LiveRouteDetails[] = [], selectedRouteIndex = 0, routeLoading = false, routeUnavailable = false) {
   const featured = cluster.events[0];
   const featuredImage = featured?.imageUrl ? `<img src="${escapeHtml(featured.imageUrl)}" alt="" style="width:100%;height:92px;object-fit:cover;border-radius:10px;margin:8px 0" loading="lazy" />` : "";
@@ -192,6 +199,19 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
     if (!mapRef.current || !window.google?.maps?.marker) return;
     clusters.forEach(cluster => {
       const marker = new window.google.maps.marker.AdvancedMarkerElement({ map: mapRef.current, position: { lat: cluster.latitude, lng: cluster.longitude }, title: clusterLabel(cluster), content: markerContent(cluster) });
+      marker.addListener("mouseover", () => {
+        if (selectedClusterRef.current === cluster.id) return;
+        infoWindowRef.current?.setContent(markerTooltipContent(cluster));
+        infoWindowRef.current?.open({ map: mapRef.current, anchor: marker });
+      });
+      marker.addListener("mouseout", () => {
+        if (selectedClusterRef.current !== cluster.id) infoWindowRef.current?.close();
+      });
+      marker.addListener("focus", () => {
+        if (selectedClusterRef.current === cluster.id) return;
+        infoWindowRef.current?.setContent(markerTooltipContent(cluster));
+        infoWindowRef.current?.open({ map: mapRef.current, anchor: marker });
+      });
       marker.addListener("click", () => { setSelectedCluster(cluster.id); infoWindowRef.current?.setContent(popupContent(cluster, travelModeRef.current, userLocationRef.current, liveRoutesRef.current[cluster.id] ?? [], selectedRouteIndexRef.current[cluster.id] ?? 0, liveRouteStatusRef.current[cluster.id] === "loading", liveRouteStatusRef.current[cluster.id] === "unavailable")); infoWindowRef.current?.open({ map: mapRef.current, anchor: marker }); });
       markersRef.current.push(marker);
       clusterMarkersRef.current.set(cluster.id, marker);

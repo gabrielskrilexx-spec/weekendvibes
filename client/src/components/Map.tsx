@@ -185,6 +185,7 @@ export function MapView({
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
   const [isVisible, setIsVisible] = useState(!lazy);
+  const [isMapReady, setIsMapReady] = useState(false);
   const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
@@ -222,6 +223,7 @@ export function MapView({
       backgroundColor: "#24242a",
       ...mapOptions,
     });
+    setIsMapReady(true);
     if (onMapReady) {
       onMapReady(map.current);
     }
@@ -232,8 +234,18 @@ export function MapView({
   }, [init, isVisible]);
 
   return (
-    <div ref={mapContainer} className={cn("relative min-h-[460px] h-[500px] w-full overflow-hidden", className)}>
-      {!isVisible && <div className="absolute inset-0 z-10 grid place-items-center bg-zinc-900 text-sm text-zinc-500" role="status">Carregando mapa quando ele entrar na tela…</div>}
+    <div ref={mapContainer} aria-busy={isVisible && !isMapReady && !loadError} className={cn("relative min-h-[460px] h-[500px] w-full overflow-hidden", className)}>
+      {!isMapReady && !loadError && <div className="absolute inset-0 z-10 overflow-hidden bg-zinc-900" role="status" aria-live="polite" aria-label={isVisible ? "Carregando mapa" : "Mapa aguardando entrada na tela"}>
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(217,70,239,0.14),transparent_34%),radial-gradient(circle_at_80%_80%,rgba(249,115,22,0.12),transparent_38%)]" />
+        <div className="relative grid h-full place-items-center px-6">
+          <div className="w-full max-w-sm space-y-4 text-center">
+            <div className="mx-auto h-14 w-14 animate-pulse rounded-full border-2 border-orange-300/40 bg-orange-300/10 shadow-[0_0_36px_rgba(249,115,22,0.18)]" />
+            <div className="mx-auto h-3 w-40 animate-pulse rounded-full bg-white/15" />
+            <div className="mx-auto h-2 w-64 animate-pulse rounded-full bg-white/10" />
+            <p className="text-xs font-bold tracking-wide text-zinc-400">{isVisible ? "Preparando o mapa dos rolês…" : "Carregando o mapa quando ele entrar na tela…"}</p>
+          </div>
+        </div>
+      </div>}
       {loadError && <div className="absolute inset-0 z-10 grid place-items-center bg-zinc-900 px-6 text-center text-sm text-zinc-300" role="alert">Não foi possível carregar o mapa agora. Tente atualizar a página.</div>}
     </div>
   );

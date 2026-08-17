@@ -647,3 +647,8 @@
 - [x] Adicionar ou atualizar testes para o carregamento e o tema do mapa
 - [x] Validar visualmente, executar a suíte e publicar checkpoint
 - [x] Corrigir o mapa preto: alinhar a credencial Forge server-side, relay same-origin, origem HTTPS encaminhada e callback do Google Maps; validar visualmente a rota Mapa dos rolês.
+## Skeleton e tooltips dos marcadores do mapa
+- [x] Adicionar skeleton animado e acessível durante lazy loading e inicialização do Google Maps
+- [x] Adicionar tooltips interativos aos marcadores/clusters com local, quantidade e detalhes acionáveis
+- [x] Cobrir estados de carregamento, erro, tooltip e acessibilidade com testes
+- [x] Validar TypeScript, Vitest, build, responsividade e publicar checkpoint

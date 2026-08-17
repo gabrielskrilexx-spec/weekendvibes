@@ -1,6 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { directionsUrl, routeDetailsFromResult, routeOptionsFromResult, visibleEventIdsForBounds } from "./RegionalEventMap";
+import { directionsUrl, markerTooltipContent, routeDetailsFromResult, routeOptionsFromResult, visibleEventIdsForBounds } from "./RegionalEventMap";
 import { ShortLivedCache } from "@/lib/shortLivedCache";
+
+describe("markerTooltipContent", () => {
+  it("exibe cidade, contagem, locais e sinalização de precisão aproximada", () => {
+    const content = markerTooltipContent({ id: "santos", city: "Santos", latitude: -23.96, longitude: -46.33, approximate: true, events: [
+      { id: 1, title: "Rolê <script>", slug: "role", locationName: "Moby House", city: "Santos", latitude: "-23.96", longitude: "-46.33" },
+      { id: 2, title: "Outro", slug: "outro", locationName: "Meu Lugar", city: "Santos", latitude: "-23.96", longitude: "-46.33" },
+    ] });
+    expect(content).toContain("Santos");
+    expect(content).toContain("2 rolês");
+    expect(content).toContain("Moby House · Meu Lugar");
+    expect(content).toContain("Endereço aproximado");
+    expect(content).not.toContain("<script>");
+  });
+
+  it("limita a lista de locais e informa itens adicionais", () => {
+    const content = markerTooltipContent({ id: "guaruja", city: "Guarujá", latitude: -23.99, longitude: -46.25, approximate: false, events: [
+      { id: 1, title: "A", slug: "a", locationName: "A", city: "Guarujá", latitude: "-23.99", longitude: "-46.25" },
+      { id: 2, title: "B", slug: "b", locationName: "B", city: "Guarujá", latitude: "-23.99", longitude: "-46.25" },
+      { id: 3, title: "C", slug: "c", locationName: "C", city: "Guarujá", latitude: "-23.99", longitude: "-46.25" },
+      { id: 4, title: "D", slug: "d", locationName: "D", city: "Guarujá", latitude: "-23.99", longitude: "-46.25" },
+    ] });
+    expect(content).toContain("4 rolês +1");
+    expect(content).toContain("A · B · C");
+    expect(content).not.toContain("A · B · C · D");
+  });
+});
 
 describe("directionsUrl", () => {
   it("gera uma rota de carro para o destino do evento", () => {
