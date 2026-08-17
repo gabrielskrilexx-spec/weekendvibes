@@ -3,6 +3,7 @@ import { LocateFixed, Maximize2, Navigation, Route, Users, X } from "lucide-reac
 import { MapView } from "@/components/Map";
 import { BAIXADA_BOUNDS, clusterLabel, groupEventsByRegion, mapCoordinatesFor, type ClusterableEvent, type EventCluster } from "@/lib/eventClusters";
 import { distanceInKm, estimateMinutes, formatDistance, formatDuration, TRAVEL_MODES, type Coordinates, type TravelMode } from "@/lib/mapTravel";
+import { createDirectionsCache, type ShortLivedCache } from "@/lib/shortLivedCache";
 
 interface RegionalEventMapProps { events: ClusterableEvent[]; onVisibleEventIdsChange?: (eventIds: number[]) => void; }
 
@@ -40,12 +41,27 @@ function travelSummary(event: MappableEvent, origin: Coordinates | null, mode: T
 }
 
 export interface LiveRouteDetails { distanceText: string; durationText: string; steps: string[]; }
+type DirectionsResultLike = { routes?: Array<{ legs?: Array<{ distance?: { text?: string | null }; duration?: { text?: string | null }; steps?: Array<{ instructions?: string | null }> }> }> };
 
-export function routeDetailsFromResult(result: { routes?: Array<{ legs?: Array<{ distance?: { text?: string | null }; duration?: { text?: string | null }; steps?: Array<{ instructions?: string | null }> }> }> }) : LiveRouteDetails | null {
-  const leg = result.routes?.[0]?.legs?.[0];
-  if (!leg?.distance?.text || !leg.duration?.text) return null;
-  const steps = (leg.steps ?? []).map(step => String(step.instructions ?? "").replace(/<[^>]*>/g, "").trim()).filter(Boolean).slice(0, 5);
-  return { distanceText: leg.distance.text, durationText: leg.duration.text, steps };
+export function routeOptionsFromResult(result: DirectionsResultLike): LiveRouteDetails[] {
+  return (result.routes ?? []).map(route => {
+    const leg = route.legs?.[0];
+    if (!leg?.distance?.text || !leg.duration?.text) return null;
+    const steps = (leg.steps ?? []).map(step => String(step.instructions ?? "").replace(/<[^>]*>/g, "").trim()).filter(Boolean).slice(0, 5);
+    return { distanceText: leg.distance.text, durationText: leg.duration.text, steps };
+  }).filter((route): route is LiveRouteDetails => route !== null);
+}
+
+export function routeDetailsFromResult(result: DirectionsResultLike): LiveRouteDetails | null {
+  return routeOptionsFromResult(result)[0] ?? null;
+}
+
+function directionsCacheKey(origin: Coordinates, destination: Coordinates, mode: TravelMode) {
+  return [origin.latitude.toFixed(4), origin.longitude.toFixed(4), destination.latitude.toFixed(4), destination.longitude.toFixed(4), mode].join(":");
+}
+
+function routeSelectorId(clusterId: string) {
+  return `route-selector-${clusterId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 }
 
 function markerContent(cluster: EventCluster) {
@@ -57,7 +73,7 @@ function markerContent(cluster: EventCluster) {
   return element;
 }
 
-function popupContent(cluster: EventCluster, mode: TravelMode, origin: Coordinates | null, liveRoute?: LiveRouteDetails | null, routeLoading = false, routeUnavailable = false) {
+function popupContent(cluster: EventCluster, mode: TravelMode, origin: Coordinates | null, liveRoutes: LiveRouteDetails[] = [], selectedRouteIndex = 0, routeLoading = false, routeUnavailable = false) {
   const featured = cluster.events[0];
   const featuredImage = featured?.imageUrl ? `<img src="${escapeHtml(featured.imageUrl)}" alt="" style="width:100%;height:92px;object-fit:cover;border-radius:10px;margin:8px 0" loading="lazy" />` : "";
   const eventLinks = cluster.events.map(event => {
@@ -66,7 +82,9 @@ function popupContent(cluster: EventCluster, mode: TravelMode, origin: Coordinat
     return `<div style="border-top:1px solid #e4e4e7;padding:8px 0"><a href="/eventos/${encodeURIComponent(event.slug)}" style="display:block;color:#c026d3;font-weight:700;text-decoration:none">${escapeHtml(event.title)}<br><small style="color:#52525b;font-weight:500">${escapeHtml(event.locationName)}</small></a>${summary ? `<small style="display:block;margin-top:4px;color:#52525b">${formatDistance(summary.distance)} · ${formatDuration(summary.duration)} · ${TRAVEL_MODES[mode].label}</small>` : ""}${route ? `<a href="${route}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:5px;color:#ea580c;font-size:12px;font-weight:700;text-decoration:none">Como chegar de ${TRAVEL_MODES[mode].label.toLowerCase()} ↗</a>` : ""}</div>`;
   }).join("");
   const approximate = cluster.approximate ? `<small style="display:block;color:#a16207;background:#fef3c7;padding:5px 7px;border-radius:6px">Endereço aproximado</small>` : "";
-  const liveRouteBlock = routeLoading ? `<div style="margin:8px 0;padding:8px;border-radius:8px;background:#fff7ed;color:#9a3412;font-size:12px">Calculando rota e trânsito em tempo real…</div>` : routeUnavailable ? `<div style="margin:8px 0;padding:8px;border-radius:8px;background:#fef2f2;color:#991b1b;font-size:12px">A rota em tempo real está indisponível. Exibindo apenas a estimativa local.</div>` : liveRoute ? `<div style="margin:8px 0;padding:8px;border-radius:8px;background:#ecfdf5;color:#166534;font-size:12px"><strong>Rota em tempo real</strong><br>${escapeHtml(liveRoute.distanceText)} · ${escapeHtml(liveRoute.durationText)}<ol style="margin:6px 0 0 16px;padding:0">${liveRoute.steps.map(step => `<li style="margin-top:3px">${escapeHtml(step)}</li>`).join("")}</ol></div>` : "";
+  const liveRoute = liveRoutes[Math.min(Math.max(selectedRouteIndex, 0), Math.max(liveRoutes.length - 1, 0))];
+  const routeSelector = liveRoutes.length > 1 ? `<label for="${routeSelectorId(cluster.id)}" style="display:block;margin-top:8px;font-size:12px;font-weight:700;color:#52525b">Rotas disponíveis<select id="${routeSelectorId(cluster.id)}" style="display:block;width:100%;margin-top:4px;padding:6px;border:1px solid #d4d4d8;border-radius:6px;background:white;color:#18181b">${liveRoutes.map((route, index) => `<option value="${index}" ${index === selectedRouteIndex ? "selected" : ""}>Rota ${index + 1} · ${escapeHtml(route.distanceText)} · ${escapeHtml(route.durationText)}</option>`).join("")}</select></label>` : "";
+  const liveRouteBlock = routeLoading ? `<div style="margin:8px 0;padding:8px;border-radius:8px;background:#fff7ed;color:#9a3412;font-size:12px">Calculando rota e trânsito em tempo real…</div>` : routeUnavailable ? `<div style="margin:8px 0;padding:8px;border-radius:8px;background:#fef2f2;color:#991b1b;font-size:12px">A rota em tempo real está indisponível. Exibindo apenas a estimativa local.</div>` : liveRoute ? `<div style="margin:8px 0;padding:8px;border-radius:8px;background:#ecfdf5;color:#166534;font-size:12px"><strong>Rota em tempo real</strong>${routeSelector}<br>${escapeHtml(liveRoute.distanceText)} · ${escapeHtml(liveRoute.durationText)}<ol style="margin:6px 0 0 16px;padding:0">${liveRoute.steps.map(step => `<li style="margin-top:3px">${escapeHtml(step)}</li>`).join("")}</ol></div>` : "";
   return `<div style="max-width:260px;font-family:system-ui;color:#18181b"><strong>${escapeHtml(clusterLabel(cluster))}</strong>${featuredImage}${approximate}${liveRouteBlock}${eventLinks}</div>`;
 }
 
@@ -76,8 +94,9 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
   const [travelMode, setTravelMode] = useState<TravelMode>("driving");
   const [userLocation, setUserLocation] = useState<Coordinates | null>(null);
   const [locationStatus, setLocationStatus] = useState<"idle" | "loading" | "ready" | "denied" | "unavailable">("idle");
-  const [liveRoutes, setLiveRoutes] = useState<Record<string, LiveRouteDetails | null>>({});
+  const [liveRoutes, setLiveRoutes] = useState<Record<string, LiveRouteDetails[]>>({});
   const [liveRouteStatus, setLiveRouteStatus] = useState<Record<string, "loading" | "ready" | "unavailable">>({});
+  const [selectedRouteIndex, setSelectedRouteIndex] = useState<Record<string, number>>({});
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const clusterMarkersRef = useRef(new Map<string, google.maps.marker.AdvancedMarkerElement>());
@@ -87,26 +106,44 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
   const userLocationRef = useRef(userLocation);
   const eventsRef = useRef(events);
   const visibleCallbackRef = useRef(onVisibleEventIdsChange);
+  const liveRoutesRef = useRef(liveRoutes);
+  const liveRouteStatusRef = useRef(liveRouteStatus);
+  const selectedRouteIndexRef = useRef(selectedRouteIndex);
+  const selectedClusterRef = useRef(selectedCluster);
+  const directionsCacheRef = useRef<ShortLivedCache<LiveRouteDetails[]>>(createDirectionsCache());
   const clusters = useMemo(() => groupEventsByRegion(events), [events]);
 
   useEffect(() => { travelModeRef.current = travelMode; }, [travelMode]);
   useEffect(() => { userLocationRef.current = userLocation; }, [userLocation]);
   useEffect(() => { eventsRef.current = events; visibleCallbackRef.current = onVisibleEventIdsChange; }, [events, onVisibleEventIdsChange]);
+  useEffect(() => { liveRoutesRef.current = liveRoutes; liveRouteStatusRef.current = liveRouteStatus; selectedRouteIndexRef.current = selectedRouteIndex; selectedClusterRef.current = selectedCluster; }, [liveRoutes, liveRouteStatus, selectedRouteIndex, selectedCluster]);
   const requestLiveRoute = (cluster: EventCluster, origin: Coordinates | null, mode: TravelMode) => {
     const destination = coordinatesFor(cluster.events[0]);
     const service = directionsServiceRef.current;
     if (!origin || !destination || !service) return;
+    const cacheKey = directionsCacheKey(origin, destination, mode);
+    const cached = directionsCacheRef.current.get(cacheKey);
+    if (cached) {
+      setLiveRoutes(current => ({ ...current, [cluster.id]: cached }));
+      setSelectedRouteIndex(current => ({ ...current, [cluster.id]: 0 }));
+      setLiveRouteStatus(current => ({ ...current, [cluster.id]: "ready" }));
+      return;
+    }
     setLiveRouteStatus(current => ({ ...current, [cluster.id]: "loading" }));
     service.route({
       origin: { lat: origin.latitude, lng: origin.longitude },
       destination: { lat: destination.latitude, lng: destination.longitude },
       travelMode: TRAVEL_MODES[mode].mapsMode.toUpperCase() as google.maps.TravelMode,
-      provideRouteAlternatives: false,
+      provideRouteAlternatives: true,
       ...(mode === "driving" ? { drivingOptions: { departureTime: new Date() } } : {}),
     }, (result, status) => {
-      const details = status === "OK" && result ? routeDetailsFromResult(result) : null;
-      setLiveRoutes(current => ({ ...current, [cluster.id]: details }));
-      setLiveRouteStatus(current => ({ ...current, [cluster.id]: details ? "ready" : "unavailable" }));
+      const routes = status === "OK" && result ? routeOptionsFromResult(result) : [];
+      if (routes.length > 0) {
+        directionsCacheRef.current.set(cacheKey, routes);
+      }
+      setLiveRoutes(current => ({ ...current, [cluster.id]: routes }));
+      setSelectedRouteIndex(current => ({ ...current, [cluster.id]: 0 }));
+      setLiveRouteStatus(current => ({ ...current, [cluster.id]: routes.length > 0 ? "ready" : "unavailable" }));
     });
   };
 
@@ -119,6 +156,15 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
   const setupMap = (map: google.maps.Map) => {
     mapRef.current = map;
     infoWindowRef.current = new window.google.maps.InfoWindow();
+    infoWindowRef.current.addListener("domready", () => {
+      const select = document.getElementById(routeSelectorId(selectedClusterRef.current ?? "")) as HTMLSelectElement | null;
+      if (!select) return;
+      select.onchange = () => {
+        const clusterId = selectedClusterRef.current;
+        if (!clusterId) return;
+        setSelectedRouteIndex(current => ({ ...current, [clusterId]: Number(select.value) || 0 }));
+      };
+    });
     directionsServiceRef.current = new window.google.maps.DirectionsService();
     map.setOptions({ restriction: { latLngBounds: BAIXADA_BOUNDS, strictBounds: false } });
     const publishVisibleEvents = () => {
@@ -146,7 +192,7 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
     if (!mapRef.current || !window.google?.maps?.marker) return;
     clusters.forEach(cluster => {
       const marker = new window.google.maps.marker.AdvancedMarkerElement({ map: mapRef.current, position: { lat: cluster.latitude, lng: cluster.longitude }, title: clusterLabel(cluster), content: markerContent(cluster) });
-      marker.addListener("click", () => { setSelectedCluster(cluster.id); infoWindowRef.current?.setContent(popupContent(cluster, travelModeRef.current, userLocationRef.current, liveRoutes[cluster.id], liveRouteStatus[cluster.id] === "loading", liveRouteStatus[cluster.id] === "unavailable")); infoWindowRef.current?.open({ map: mapRef.current, anchor: marker }); });
+      marker.addListener("click", () => { setSelectedCluster(cluster.id); infoWindowRef.current?.setContent(popupContent(cluster, travelModeRef.current, userLocationRef.current, liveRoutesRef.current[cluster.id] ?? [], selectedRouteIndexRef.current[cluster.id] ?? 0, liveRouteStatusRef.current[cluster.id] === "loading", liveRouteStatusRef.current[cluster.id] === "unavailable")); infoWindowRef.current?.open({ map: mapRef.current, anchor: marker }); });
       markersRef.current.push(marker);
       clusterMarkersRef.current.set(cluster.id, marker);
     });
@@ -159,7 +205,7 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
     const cluster = clusters.find(item => item.id === selectedCluster);
     const marker = clusterMarkersRef.current.get(selectedCluster);
     if (!cluster || !marker) return;
-    infoWindowRef.current.setContent(popupContent(cluster, travelMode, userLocation, liveRoutes[selectedCluster], liveRouteStatus[selectedCluster] === "loading", liveRouteStatus[selectedCluster] === "unavailable"));
+    infoWindowRef.current.setContent(popupContent(cluster, travelMode, userLocation, liveRoutes[selectedCluster] ?? [], selectedRouteIndex[selectedCluster] ?? 0, liveRouteStatus[selectedCluster] === "loading", liveRouteStatus[selectedCluster] === "unavailable"));
     infoWindowRef.current.open({ map: mapRef.current, anchor: marker });
   }, [clusters, selectedCluster, travelMode, userLocation, liveRoutes, liveRouteStatus]);
 

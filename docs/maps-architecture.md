@@ -37,3 +37,9 @@ O InfoWindow é reconstruído de forma reativa quando a localização do usuári
 Quando o usuário seleciona uma região e autoriza a localização, o mapa cria um `DirectionsService` no callback `onMapReady` e solicita a rota somente para o cluster selecionado. A origem é a posição atual do navegador, o destino é o primeiro evento do cluster e o modo acompanha a escolha de carro, transporte público, bicicleta ou caminhada. Para carro, a solicitação inclui o horário de partida atual para permitir duração baseada nas condições disponíveis do provedor.
 
 O InfoWindow apresenta um estado de carregamento, seguido de distância, duração retornada pela rota e até cinco instruções resumidas com HTML sanitizado. Se não houver origem, o usuário negar localização, o serviço não estiver disponível ou a API não retornar uma rota válida, o componente preserva a estimativa local e exibe um aviso genérico, sem expor status, URL ou mensagem interna do fornecedor. O serviço é inicializado pelo proxy oficial já configurado no projeto; não é necessário solicitar uma chave diretamente ao usuário.
+
+## Rotas alternativas e cache curto
+
+O InfoWindow solicita `provideRouteAlternatives` quando há localização atual, destino válido e meio de transporte selecionado. As alternativas são normalizadas para distância, duração e até cinco instruções, e o usuário pode escolher uma delas em um seletor acessível dentro do popup.
+
+As respostas são armazenadas apenas em memória durante a sessão, indexadas por origem e destino arredondados a quatro casas decimais e pelo meio de transporte. O cache expira em 60 segundos e mantém no máximo 30 entradas, removendo a mais antiga quando o limite é atingido. Nenhum token, endereço de usuário ou dado de perfil é persistido. Sem localização, permissão, resposta válida ou serviço disponível, o mapa conserva apenas a estimativa local e o link externo do Google Maps.

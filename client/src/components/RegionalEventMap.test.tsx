@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { directionsUrl, routeDetailsFromResult, visibleEventIdsForBounds } from "./RegionalEventMap";
+import { directionsUrl, routeDetailsFromResult, routeOptionsFromResult, visibleEventIdsForBounds } from "./RegionalEventMap";
+import { ShortLivedCache } from "@/lib/shortLivedCache";
 
 describe("directionsUrl", () => {
   it("gera uma rota de carro para o destino do evento", () => {
@@ -20,6 +21,36 @@ describe("routeDetailsFromResult", () => {
 
   it("retorna nulo quando a API não entrega uma perna válida", () => {
     expect(routeDetailsFromResult({ routes: [] })).toBeNull();
+  });
+});
+
+describe("route cache", () => {
+  it("retém uma consulta até o TTL e expira depois dele", () => {
+    const cache = new ShortLivedCache<string>(60_000, 2);
+    cache.set("route", "cached", 1_000);
+    expect(cache.get("route", 60_999)).toBe("cached");
+    expect(cache.get("route", 61_000)).toBeNull();
+  });
+
+  it("limita entradas removendo a mais antiga", () => {
+    const cache = new ShortLivedCache<string>(60_000, 2);
+    cache.set("a", "A", 1);
+    cache.set("b", "B", 2);
+    cache.set("c", "C", 3);
+    expect(cache.get("a", 4)).toBeNull();
+    expect(cache.get("b", 4)).toBe("B");
+    expect(cache.size).toBe(2);
+  });
+});
+
+describe("routeOptionsFromResult", () => {
+  it("normaliza e preserva rotas alternativas válidas", () => {
+    const routes = routeOptionsFromResult({ routes: [
+      { legs: [{ distance: { text: "8 km" }, duration: { text: "20 min" }, steps: [{ instructions: "Siga" }] }] },
+      { legs: [{ distance: { text: "10 km" }, duration: { text: "18 min" }, steps: [{ instructions: "Vire" }] }] },
+    ] });
+    expect(routes).toHaveLength(2);
+    expect(routes[1]).toEqual({ distanceText: "10 km", durationText: "18 min", steps: ["Vire"] });
   });
 });
 

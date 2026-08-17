@@ -631,3 +631,11 @@
 - [x] Implementar estados de carregamento, erro e fallback aproximado sem expor detalhes internos
 - [x] Cobrir a integração com testes e atualizar a documentação de mapas
 - [x] Validar TypeScript, Vitest, build, visual e publicar checkpoint
+
+## Rotas alternativas e cache de Directions
+- [x] Auditar fluxo atual de rotas e estratégia de cache
+- [x] Implementar cache de curto prazo indexado por origem, destino e transporte
+- [x] Solicitar e normalizar rotas alternativas sem armazenar dados sensíveis
+- [x] Adicionar seletor acessível de rota no InfoWindow
+- [x] Cobrir seleção, expiração, limite do cache e fallback com testes
+- [x] Atualizar documentação, validar TypeScript/Vitest/build e publicar checkpoint
