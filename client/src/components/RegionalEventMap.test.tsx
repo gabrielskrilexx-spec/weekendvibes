@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { directionsUrl, MAP_LEGEND_ITEMS, markerTooltipContent, routeDetailsFromResult, routeOptionsFromResult, shouldShowTouchTooltip, visibleEventIdsForBounds } from "./RegionalEventMap";
+import { directionsUrl, locationControlLabel, MAP_LEGEND_ITEMS, markerTooltipContent, routeDetailsFromResult, routeOptionsFromResult, shouldShowTouchTooltip, visibleEventIdsForBounds } from "./RegionalEventMap";
 import { ShortLivedCache } from "@/lib/shortLivedCache";
 
 describe("map legend and touch interaction", () => {
@@ -79,6 +79,19 @@ describe("route cache", () => {
     expect(cache.get("a", 4)).toBeNull();
     expect(cache.get("b", 4)).toBe("B");
     expect(cache.size).toBe(2);
+  });
+});
+
+describe("Routes API e localização", () => {
+  it("normaliza distância, duração e instruções do formato nativo da Routes API", () => {
+    const routes = routeOptionsFromResult({ routes: [{ distanceMeters: 8400, duration: "1440s", localizedValues: { distance: { text: "8,4 km" }, duration: { text: "24 min" } }, legs: [{ steps: [{ instructions: "Siga em frente" }] }] }] });
+    expect(routes[0]).toEqual({ distanceText: "8,4 km", durationText: "24 min", steps: ["Siga em frente"] });
+  });
+
+  it("mantém rótulos claros nos estados do botão de localização", () => {
+    expect(locationControlLabel("loading")).toBe("Localizando…");
+    expect(locationControlLabel("ready")).toBe("Minha localização");
+    expect(locationControlLabel("denied")).toBe("Usar minha localização");
   });
 });
 

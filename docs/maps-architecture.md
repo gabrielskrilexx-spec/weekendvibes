@@ -43,3 +43,11 @@ O InfoWindow apresenta um estado de carregamento, seguido de distância, duraç�
 O InfoWindow solicita `provideRouteAlternatives` quando há localização atual, destino válido e meio de transporte selecionado. As alternativas são normalizadas para distância, duração e até cinco instruções, e o usuário pode escolher uma delas em um seletor acessível dentro do popup.
 
 As respostas são armazenadas apenas em memória durante a sessão, indexadas por origem e destino arredondados a quatro casas decimais e pelo meio de transporte. O cache expira em 60 segundos e mantém no máximo 30 entradas, removendo a mais antiga quando o limite é atingido. Nenhum token, endereço de usuário ou dado de perfil é persistido. Sem localização, permissão, resposta válida ou serviço disponível, o mapa conserva apenas a estimativa local e o link externo do Google Maps.
+
+## Migração para Routes Library (2026-08-17)
+
+A migração usa a classe `Route` da Routes Library do Maps JavaScript, cujo método `computeRoutes()` substitui o `DirectionsService.route()` legado. O carregamento é feito sob demanda por `google.maps.importLibrary("routes")`, com alternativas habilitadas e máscara de campos limitada a distância, duração, valores localizados e instruções. A aplicação mantém o cache curto e o fallback de distância estimada quando a API não está disponível.
+
+O controle **Minha localização** solicita a posição apenas após interação do usuário. Com uma posição válida, o mapa centraliza no usuário e aplica zoom regional; se a localização já estiver disponível, o controle apenas reposiciona a câmera. Estados de carregamento, permissão negada e indisponibilidade são comunicados sem expor detalhes sensíveis.
+
+Referências oficiais: [migração para Route](https://developers.google.com/maps/documentation/javascript/routes/routes-js-migration), [renderização da Routes Library](https://developers.google.com/maps/documentation/javascript/routes/routes-migrate-rendering) e [seleção de campos da Routes API](https://developers.google.com/maps/documentation/routes/choose_fields).

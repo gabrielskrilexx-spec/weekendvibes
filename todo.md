@@ -662,3 +662,10 @@
 - [x] Capturar e registrar de forma redigida o erro técnico real do Google Maps
 - [x] Corrigir a inicialização ou configuração responsável pelo fallback
 - [x] Validar conexão em navegador, TypeScript, Vitest, build e publicar checkpoint
+## Routes API e Minha Localização
+- [x] Auditar o fluxo atual de DirectionsService, cache, transporte e geolocalização
+- [x] Migrar o cálculo de rotas para a Routes API sem expor credenciais ou romper o fallback
+- [x] Exibir distância e tempo estimado de chegada no InfoWindow e nos controles do mapa
+- [x] Adicionar botão Minha Localização com estados de permissão, erro e sucesso
+- [x] Criar testes para rotas, cache, localização e acessibilidade
+- [x] Validar TypeScript, Vitest, build, screenshots responsivos e publicar checkpoint

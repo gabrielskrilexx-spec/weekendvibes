@@ -8,6 +8,7 @@ import { createDirectionsCache, type ShortLivedCache } from "@/lib/shortLivedCac
 interface RegionalEventMapProps { events: ClusterableEvent[]; onVisibleEventIdsChange?: (eventIds: number[]) => void; }
 
 type MappableEvent = Pick<ClusterableEvent, "title" | "latitude" | "longitude"> & { city?: string; slug?: string; locationName?: string; locationPrecision?: string | null };
+type RoutesApiLike = { computeRoutes: (request: Record<string, unknown>) => Promise<{ routes?: unknown[] }> };
 
 function coordinatesFor(event: MappableEvent): Coordinates | null {
   const coordinates = mapCoordinatesFor({ ...event, city: event.city ?? "Santos" });
@@ -41,14 +42,34 @@ function travelSummary(event: MappableEvent, origin: Coordinates | null, mode: T
 }
 
 export interface LiveRouteDetails { distanceText: string; durationText: string; steps: string[]; }
-type DirectionsResultLike = { routes?: Array<{ legs?: Array<{ distance?: { text?: string | null }; duration?: { text?: string | null }; steps?: Array<{ instructions?: string | null }> }> }> };
+type DirectionsResultLike = { routes?: Array<{ distanceMeters?: number | null; duration?: string | null; localizedValues?: { distance?: { text?: string | null }; duration?: { text?: string | null } }; legs?: Array<{ distance?: { text?: string | null }; duration?: { text?: string | null } | string | null; distanceMeters?: number | null; localizedValues?: { distance?: { text?: string | null }; duration?: { text?: string | null } }; steps?: Array<{ instructions?: string | null }> }> }> };
+
+function formatRoutesDistance(meters: number) {
+  if (!Number.isFinite(meters)) return "";
+  return meters >= 1000 ? `${(meters / 1000).toFixed(1).replace(".", ",")} km` : `${Math.round(meters)} m`;
+}
+
+function formatRoutesDuration(duration: string | null | undefined) {
+  if (!duration) return "";
+  const seconds = Number.parseFloat(duration.replace("s", ""));
+  if (!Number.isFinite(seconds)) return duration;
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return `${minutes} min`;
+}
+
+function routeText(route: NonNullable<DirectionsResultLike["routes"]>[number]) {
+  const leg = route.legs?.[0];
+  const distanceText = route.localizedValues?.distance?.text ?? leg?.localizedValues?.distance?.text ?? leg?.distance?.text ?? formatRoutesDistance(route.distanceMeters ?? leg?.distanceMeters ?? Number.NaN);
+  const durationText = route.localizedValues?.duration?.text ?? leg?.localizedValues?.duration?.text ?? (typeof leg?.duration === "string" ? leg.duration : leg?.duration?.text) ?? formatRoutesDuration(route.duration);
+  return { leg, distanceText, durationText };
+}
 
 export function routeOptionsFromResult(result: DirectionsResultLike): LiveRouteDetails[] {
   return (result.routes ?? []).map(route => {
-    const leg = route.legs?.[0];
-    if (!leg?.distance?.text || !leg.duration?.text) return null;
-    const steps = (leg.steps ?? []).map(step => String(step.instructions ?? "").replace(/<[^>]*>/g, "").trim()).filter(Boolean).slice(0, 5);
-    return { distanceText: leg.distance.text, durationText: leg.duration.text, steps };
+    const { leg, distanceText, durationText } = routeText(route);
+    if (!distanceText || !durationText) return null;
+    const steps = (leg?.steps ?? []).map(step => String(step.instructions ?? "").replace(/<[^>]*>/g, "").trim()).filter(Boolean).slice(0, 5);
+    return { distanceText, durationText, steps };
   }).filter((route): route is LiveRouteDetails => route !== null);
 }
 
@@ -73,6 +94,12 @@ export const MAP_LEGEND_ITEMS = [
 
 export function shouldShowTouchTooltip(currentClusterId: string | null, nextClusterId: string) {
   return currentClusterId !== nextClusterId;
+}
+
+export function locationControlLabel(status: "idle" | "loading" | "ready" | "denied" | "unavailable") {
+  if (status === "loading") return "Localizando…";
+  if (status === "ready") return "Minha localização";
+  return "Usar minha localização";
 }
 
 function markerContent(cluster: EventCluster) {
@@ -119,7 +146,8 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const clusterMarkersRef = useRef(new Map<string, google.maps.marker.AdvancedMarkerElement>());
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
-  const directionsServiceRef = useRef<google.maps.DirectionsService | null>(null);
+  const routesApiRef = useRef<RoutesApiLike | null>(null);
+  const routesLibraryReadyRef = useRef<Promise<void> | null>(null);
   const travelModeRef = useRef(travelMode);
   const userLocationRef = useRef(userLocation);
   const eventsRef = useRef(events);
@@ -136,10 +164,9 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
   useEffect(() => { userLocationRef.current = userLocation; }, [userLocation]);
   useEffect(() => { eventsRef.current = events; visibleCallbackRef.current = onVisibleEventIdsChange; }, [events, onVisibleEventIdsChange]);
   useEffect(() => { liveRoutesRef.current = liveRoutes; liveRouteStatusRef.current = liveRouteStatus; selectedRouteIndexRef.current = selectedRouteIndex; selectedClusterRef.current = selectedCluster; }, [liveRoutes, liveRouteStatus, selectedRouteIndex, selectedCluster]);
-  const requestLiveRoute = (cluster: EventCluster, origin: Coordinates | null, mode: TravelMode) => {
+  const requestLiveRoute = async (cluster: EventCluster, origin: Coordinates | null, mode: TravelMode) => {
     const destination = coordinatesFor(cluster.events[0]);
-    const service = directionsServiceRef.current;
-    if (!origin || !destination || !service) return;
+    if (!origin || !destination) return;
     const cacheKey = directionsCacheKey(origin, destination, mode);
     const cached = directionsCacheRef.current.get(cacheKey);
     if (cached) {
@@ -149,27 +176,50 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
       return;
     }
     setLiveRouteStatus(current => ({ ...current, [cluster.id]: "loading" }));
-    service.route({
-      origin: { lat: origin.latitude, lng: origin.longitude },
-      destination: { lat: destination.latitude, lng: destination.longitude },
-      travelMode: TRAVEL_MODES[mode].mapsMode.toUpperCase() as google.maps.TravelMode,
-      provideRouteAlternatives: true,
-      ...(mode === "driving" ? { drivingOptions: { departureTime: new Date() } } : {}),
-    }, (result, status) => {
-      const routes = status === "OK" && result ? routeOptionsFromResult(result) : [];
-      if (routes.length > 0) {
-        directionsCacheRef.current.set(cacheKey, routes);
-      }
+    try {
+      await routesLibraryReadyRef.current;
+      const routeApi = routesApiRef.current;
+      if (!routeApi) throw new Error("Routes Library indisponível");
+      const request: Record<string, unknown> = {
+        origin: { lat: origin.latitude, lng: origin.longitude },
+        destination: { lat: destination.latitude, lng: destination.longitude },
+        travelMode: TRAVEL_MODES[mode].mapsMode.toUpperCase(),
+        computeAlternativeRoutes: true,
+        fields: ["routes.distanceMeters", "routes.duration", "routes.localizedValues", "routes.legs.steps.instructions"],
+      };
+      if (mode === "driving") request.routingPreference = "TRAFFIC_AWARE";
+      const result = await routeApi.computeRoutes(request);
+      const routes = routeOptionsFromResult(result as DirectionsResultLike);
+      if (routes.length > 0) directionsCacheRef.current.set(cacheKey, routes);
       setLiveRoutes(current => ({ ...current, [cluster.id]: routes }));
       setSelectedRouteIndex(current => ({ ...current, [cluster.id]: 0 }));
       setLiveRouteStatus(current => ({ ...current, [cluster.id]: routes.length > 0 ? "ready" : "unavailable" }));
-    });
+    } catch (error) {
+      console.warn("[Maps] Routes API indisponível; usando estimativa local", { reason: error instanceof Error ? error.message : "unknown" });
+      setLiveRoutes(current => ({ ...current, [cluster.id]: [] }));
+      setLiveRouteStatus(current => ({ ...current, [cluster.id]: "unavailable" }));
+    }
   };
 
   const requestLocation = () => {
     if (!navigator.geolocation) { setLocationStatus("unavailable"); return; }
     setLocationStatus("loading");
-    navigator.geolocation.getCurrentPosition(position => { setUserLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude }); setLocationStatus("ready"); }, error => { setLocationStatus(error.code === error.PERMISSION_DENIED ? "denied" : "unavailable"); }, { enableHighAccuracy: false, maximumAge: 300000, timeout: 10000 });
+    navigator.geolocation.getCurrentPosition(position => {
+      const location = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+      setUserLocation(location);
+      setLocationStatus("ready");
+      mapRef.current?.panTo({ lat: location.latitude, lng: location.longitude });
+      mapRef.current?.setZoom(14);
+    }, error => { setLocationStatus(error.code === error.PERMISSION_DENIED ? "denied" : "unavailable"); }, { enableHighAccuracy: false, maximumAge: 300000, timeout: 10000 });
+  };
+
+  const centerOnUserLocation = () => {
+    if (userLocation) {
+      mapRef.current?.panTo({ lat: userLocation.latitude, lng: userLocation.longitude });
+      mapRef.current?.setZoom(14);
+      return;
+    }
+    requestLocation();
   };
 
   const setupMap = (map: google.maps.Map) => {
@@ -184,7 +234,9 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
         setSelectedRouteIndex(current => ({ ...current, [clusterId]: Number(select.value) || 0 }));
       };
     });
-    directionsServiceRef.current = new window.google.maps.DirectionsService();
+    routesLibraryReadyRef.current = window.google.maps.importLibrary("routes").then(library => {
+      routesApiRef.current = (library as { Route?: RoutesApiLike }).Route ?? null;
+    });
     map.setOptions({ restriction: { latLngBounds: BAIXADA_BOUNDS, strictBounds: false } });
     const publishVisibleEvents = () => {
       const bounds = map.getBounds();
@@ -264,7 +316,7 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
   const focusCluster = (cluster: EventCluster) => { setSelectedCluster(cluster.id); mapRef.current?.panTo({ lat: cluster.latitude, lng: cluster.longitude }); mapRef.current?.setZoom(14); };
   const locationMessage = locationStatus === "denied" ? "Permissão de localização negada. Você ainda pode iniciar a rota sem estimativa." : locationStatus === "unavailable" ? "Não foi possível acessar sua localização neste dispositivo." : locationStatus === "loading" ? "Buscando sua localização..." : "Ative sua localização para ver distância e tempo estimado.";
 
-  const travelControls = <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3"><div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-yellow-200">Deslocamento</p><p className="mt-1 text-xs text-zinc-500">{locationStatus === "ready" ? "Distâncias calculadas a partir da sua localização atual." : locationMessage}</p></div><button type="button" onClick={requestLocation} disabled={locationStatus === "loading"} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-orange-300/40 px-3 text-xs font-black text-orange-200 transition hover:bg-orange-300/10 disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"><LocateFixed size={15} />{locationStatus === "ready" ? "Atualizar localização" : "Usar minha localização"}</button></div><label className="mt-3 block text-xs font-bold text-zinc-400">Meio de transporte<select aria-label="Escolha o meio de transporte" value={travelMode} onChange={event => setTravelMode(event.target.value as TravelMode)} className="mt-2 min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-200 sm:max-w-xs">{Object.entries(TRAVEL_MODES).map(([value, option]) => <option key={value} value={value}>{option.label}</option>)}</select></label></div>;
+  const travelControls = <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3"><div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-yellow-200">Deslocamento</p><p className="mt-1 text-xs text-zinc-500">{locationStatus === "ready" ? "Distâncias calculadas a partir da sua localização atual." : locationMessage}</p></div><button type="button" onClick={centerOnUserLocation} disabled={locationStatus === "loading"} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-orange-300/40 px-3 text-xs font-black text-orange-200 transition hover:bg-orange-300/10 disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"><LocateFixed size={15} />{locationControlLabel(locationStatus)}</button></div><label className="mt-3 block text-xs font-bold text-zinc-400">Meio de transporte<select aria-label="Escolha o meio de transporte" value={travelMode} onChange={event => setTravelMode(event.target.value as TravelMode)} className="mt-2 min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-200 sm:max-w-xs">{Object.entries(TRAVEL_MODES).map(([value, option]) => <option key={value} value={value}>{option.label}</option>)}</select></label></div>;
 
   const renderEventRoute = (event: ClusterableEvent) => {
     const route = directionsUrl(event, travelMode, userLocation);
@@ -275,7 +327,7 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
 
   const mapLegend = <div aria-label="Legenda do mapa" className="mt-3 rounded-2xl border border-white/10 bg-zinc-950/90 px-3 py-3 backdrop-blur sm:px-4"><div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-yellow-200">Como ler o mapa</div><div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-4">{MAP_LEGEND_ITEMS.map(item => <div key={item.key} className="flex min-w-0 items-center gap-2 text-[11px] text-zinc-300"><span aria-hidden="true" className="inline-flex h-4 min-w-4 items-center justify-center rounded-full border" style={{ backgroundColor: item.key === "cluster" ? "rgba(255,255,255,0.12)" : `${item.color}22`, borderColor: item.color }}><span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} /></span><span className="min-w-0"><strong className="font-black text-white">{item.label}</strong><span className="hidden text-zinc-500 sm:inline"> · {item.description}</span></span></div>)}</div><p className="mt-2 text-[10px] text-zinc-500 sm:hidden">Toque uma vez em um pin para ver um resumo persistente. Toque novamente para abrir os detalhes.</p></div>;
 
-  const mapPanel = <div className="relative overflow-hidden rounded-[24px] border border-white/10 bg-zinc-900"><MapView key={isFullscreen ? "fullscreen" : "inline"} className={isFullscreen ? "h-[calc(100vh-7rem)]" : "h-[460px]"} initialCenter={{ lat: -23.96, lng: -46.33 }} initialZoom={11} onMapReady={setupMap} mapOptions={{ styles: WEEKENDVIBES_MAP_STYLE }} /><button type="button" onClick={() => setIsFullscreen(value => !value)} aria-label={isFullscreen ? "Fechar mapa em tela cheia" : "Abrir mapa em tela cheia"} className="absolute right-3 top-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 bg-zinc-950/85 px-4 py-2 text-xs font-black text-white shadow-lg backdrop-blur focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300">{isFullscreen ? <X size={16} /> : <Maximize2 size={16} />}{isFullscreen ? "Fechar" : "Tela cheia"}</button></div>;
+  const mapPanel = <div className="relative overflow-hidden rounded-[24px] border border-white/10 bg-zinc-900"><MapView key={isFullscreen ? "fullscreen" : "inline"} className={isFullscreen ? "h-[calc(100vh-7rem)]" : "h-[460px]"} initialCenter={{ lat: -23.96, lng: -46.33 }} initialZoom={11} onMapReady={setupMap} mapOptions={{ styles: WEEKENDVIBES_MAP_STYLE }} /><div className="absolute right-3 top-3 flex flex-col items-end gap-2"><button type="button" onClick={centerOnUserLocation} disabled={locationStatus === "loading"} aria-label="Centralizar mapa na minha localização" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-orange-300/50 bg-zinc-950/90 px-4 py-2 text-xs font-black text-orange-100 shadow-lg backdrop-blur transition hover:bg-orange-300/15 disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300"><LocateFixed size={16} />{locationControlLabel(locationStatus)}</button><button type="button" onClick={() => setIsFullscreen(value => !value)} aria-label={isFullscreen ? "Fechar mapa em tela cheia" : "Abrir mapa em tela cheia"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 bg-zinc-950/85 px-4 py-2 text-xs font-black text-white shadow-lg backdrop-blur focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300">{isFullscreen ? <X size={16} /> : <Maximize2 size={16} />}{isFullscreen ? "Fechar" : "Tela cheia"}</button></div></div>;
 
   return <section aria-labelledby="regional-map-title"><div className="mb-4 flex items-end justify-between gap-4"><div><p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-fuchsia-300"><Navigation size={15} /> Explorar por região</p><h2 id="regional-map-title" className="mt-1 text-3xl font-black tracking-tight text-white">Mapa dos rolês</h2><p className="mt-1 text-sm text-zinc-500">Pins agrupam eventos próximos em Santos e Guarujá.</p></div><span className="hidden items-center gap-1 text-xs font-bold text-zinc-500 sm:flex"><Users size={14} /> {clusters.length} regiões</span></div>{isFullscreen ? <div role="dialog" aria-modal="true" aria-labelledby="regional-map-title" className="fixed inset-0 z-50 overflow-y-auto bg-zinc-950 p-3 sm:p-6"><div className="mx-auto flex min-h-full max-w-7xl flex-col"><div className="mb-3 flex items-center justify-between"><p className="text-sm font-black text-white">Mapa regional</p><p className="text-xs text-zinc-500">Pressione Esc para fechar</p></div>{mapPanel}{mapLegend}{travelControls}</div></div> : <>{mapPanel}{mapLegend}{travelControls}</>}<div className="mt-3 grid gap-2 sm:grid-cols-2" aria-label="Regiões com eventos no mapa">{clusters.map(cluster => <div key={cluster.id} className={`rounded-2xl border p-3 transition ${selectedCluster === cluster.id ? "border-orange-300/70 bg-orange-300/10" : "border-white/10 bg-white/[0.03]"}`}><button type="button" onClick={() => focusCluster(cluster)} aria-pressed={selectedCluster === cluster.id} className="flex w-full items-center justify-between text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"><span><span className="block text-sm font-black text-white">{cluster.city}</span><span className="block text-xs text-zinc-500">{cluster.events.map(event => event.locationName).join(" · ")}</span>{cluster.approximate && <span className="mt-1 block text-[11px] font-bold text-yellow-200">Endereço aproximado</span>}</span><span className="rounded-full bg-white/10 px-2 py-1 text-xs font-black text-yellow-200">{cluster.events.length}</span></button>{cluster.events.map(renderEventRoute)}</div>)}{!clusters.length && <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-zinc-500">Nenhum evento com localização disponível para exibir no mapa.</p>}</div><p className="sr-only" aria-live="polite">{selectedCluster ? `Região selecionada: ${clusters.find(cluster => cluster.id === selectedCluster)?.city ?? ""}` : "Selecione uma região para aproximar o mapa."}</p></section>;
 }
