@@ -10,6 +10,7 @@ import AgendaWeekHighlight from "@/components/AgendaWeekHighlight";
 import TodayEvents from "@/components/TodayEvents";
 import { EventGridSkeleton } from "@/components/EventSkeletons";
 import { useTheme } from "@/contexts/ThemeContext";
+import SiteFooter from "@/components/SiteFooter";
 
 const days = [{ label: "Todos", value: "" }, { label: "Sexta", value: "sexta" }, { label: "Sábado", value: "sabado" }];
 const cities = ["Todas", "Santos", "Guarujá"];
@@ -77,6 +78,7 @@ export default function Home() {
           <aside id="mapa" className="lg:sticky lg:top-24 lg:self-start"><RegionalEventMap events={events} /></aside>
         </div>
       </section>
+      <SiteFooter />
       <MobileBottomNav onFilters={() => { setShowAdvanced(true); window.scrollTo({ top: document.body.scrollHeight / 2, behavior: "smooth" }); }} />
     </main>
   );

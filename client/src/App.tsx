@@ -8,6 +8,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import AccessDenied from "./pages/AccessDenied";
 import SessionExpired from "@/pages/SessionExpired";
+import Legal from "@/pages/Legal";
 import CookieConsent from "./components/CookieConsent";
 
 const EventDetail = lazy(() => import("@/pages/EventDetail"));
@@ -33,6 +34,7 @@ function Router() {
         <Route path="/404" component={NotFound} />
         <Route path="/acesso-negado" component={AccessDenied} />
         <Route path="/sessao-expirada" component={SessionExpired} />
+        <Route path="/legal" component={Legal} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

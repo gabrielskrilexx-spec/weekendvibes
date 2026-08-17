@@ -592,3 +592,9 @@
 - [x] Redigir política de redaction para logs e remover dados sensíveis em texto claro
 - [x] Criar testes automatizados de segurança e documentação executiva com limitações residuais
 - [x] Validar tudo e publicar checkpoint do hardening
+
+## Política de Privacidade e Termos de Uso
+- [x] Criar página pública com Política de Privacidade e Termos de Uso
+- [x] Integrar links acessíveis no rodapé do site
+- [x] Adicionar testes de rota, conteúdo essencial e navegação
+- [x] Validar TypeScript, testes, build e publicar checkpoint
