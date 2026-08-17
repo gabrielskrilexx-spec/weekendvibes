@@ -76,7 +76,7 @@
 
 /// <reference types="@types/google.maps" />
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePersistFn } from "@/hooks/usePersistFn";
 import { cn } from "@/lib/utils";
 
@@ -124,6 +124,8 @@ interface MapViewProps {
   initialCenter?: google.maps.LatLngLiteral;
   initialZoom?: number;
   onMapReady?: (map: google.maps.Map) => void;
+  lazy?: boolean;
+  mapOptions?: google.maps.MapOptions;
 }
 
 export function MapView({
@@ -131,9 +133,27 @@ export function MapView({
   initialCenter = { lat: 37.7749, lng: -122.4194 },
   initialZoom = 12,
   onMapReady,
+  lazy = true,
+  mapOptions,
 }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
+  const [isVisible, setIsVisible] = useState(!lazy);
+
+  useEffect(() => {
+    if (!lazy || !mapContainer.current || typeof IntersectionObserver === "undefined") {
+      if (lazy) setIsVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setIsVisible(true);
+        observer.disconnect();
+      }
+    }, { rootMargin: "300px 0px", threshold: 0.01 });
+    observer.observe(mapContainer.current);
+    return () => observer.disconnect();
+  }, [lazy]);
 
   const init = usePersistFn(async () => {
     try {
@@ -145,11 +165,14 @@ export function MapView({
     map.current = new window.google.maps.Map(mapContainer.current, {
       zoom: initialZoom,
       center: initialCenter,
-      mapTypeControl: true,
-      fullscreenControl: true,
+      mapTypeControl: false,
+      fullscreenControl: false,
       zoomControl: true,
-      streetViewControl: true,
+      streetViewControl: false,
+      clickableIcons: false,
+      gestureHandling: "greedy",
       mapId: "DEMO_MAP_ID",
+      ...mapOptions,
     });
     if (onMapReady) {
       onMapReady(map.current);
@@ -157,10 +180,12 @@ export function MapView({
   });
 
   useEffect(() => {
-    init();
-  }, [init]);
+    if (isVisible) init();
+  }, [init, isVisible]);
 
   return (
-    <div ref={mapContainer} className={cn("w-full h-[500px]", className)} />
+    <div ref={mapContainer} className={cn("relative w-full h-[500px]", className)}>
+      {!isVisible && <div className="absolute inset-0 grid place-items-center bg-zinc-900 text-sm text-zinc-500" role="status">Carregando mapa quando ele entrar na tela…</div>}
+    </div>
   );
 }

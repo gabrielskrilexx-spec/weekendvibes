@@ -605,3 +605,13 @@
 - [x] Exibir links legais e mensagem acessível sem persistir tokens ou dados desnecessários
 - [x] Cobrir aceite, bloqueio sem aceite e regressão do login com testes
 - [x] Validar TypeScript, testes, build e publicar checkpoint
+
+## Upgrade de mapas e geomapeamento
+- [x] Auditar componente de mapa, singleton, geocoding, dependências e testes atuais
+- [x] Implementar lazy loading por Intersection Observer e singleton da API
+- [x] Implementar marker clustering estável sem piscar ao filtrar eventos
+- [x] Adicionar estilo tropical/minimalista, InfoWindows responsivos e bounds regionais
+- [x] Adicionar geolocalização do usuário e ação Eventos perto de mim
+- [x] Implementar fallback de coordenada aproximada para Santos/Guarujá com indicador visual
+- [x] Cobrir as melhorias com testes e documentar a arquitetura do mapa
+- [x] Validar TypeScript, Vitest, build, warnings de carregamento e publicar checkpoint

@@ -5,6 +5,10 @@ import { getDb } from "./db";
 
 export const GEOCODING_PROVIDER = "nominatim" as const;
 const MAX_ATTEMPTS = 3;
+const CITY_FALLBACKS = {
+  Santos: { latitude: "-23.9608", longitude: "-46.3336" },
+  Guarujá: { latitude: "-23.9931", longitude: "-46.2564" },
+} as const;
 
 export function geocodingAddressHash(address: string, city: string) {
   return createHash("sha256").update(`${address.trim().toLowerCase()}|${city.trim().toLowerCase()}`).digest("hex");
@@ -27,12 +31,16 @@ export async function processPendingGeocoding(limit = 5) {
       const results = await response.json() as Array<{ lat?: string; lon?: string; importance?: number }>;
       const result = results[0];
       if (!result?.lat || !result.lon) throw new Error("Endereço não encontrado");
-      await db.update(events).set({ latitude: result.lat, longitude: result.lon, updatedAt: new Date() }).where(eq(events.id, event.id));
+      await db.update(events).set({ latitude: result.lat, longitude: result.lon, locationPrecision: "exact", updatedAt: new Date() }).where(eq(events.id, event.id));
       await db.update(geocodingJobs).set({ status: "succeeded", provider: GEOCODING_PROVIDER, confidence: (result.importance ?? 0) >= 0.5 ? "high" : "medium", processedAt: new Date(), updatedAt: new Date() }).where(eq(geocodingJobs.id, job.id));
       succeeded += 1;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await db.update(geocodingJobs).set({ status: "failed", provider: GEOCODING_PROVIDER, lastError: message.slice(0, 2000), processedAt: new Date(), updatedAt: new Date() }).where(eq(geocodingJobs.id, job.id));
+      const fallback = CITY_FALLBACKS[event.city as keyof typeof CITY_FALLBACKS];
+      if (job.attempts + 1 >= MAX_ATTEMPTS && fallback) {
+        await db.update(events).set({ latitude: fallback.latitude, longitude: fallback.longitude, locationPrecision: "approximate", updatedAt: new Date() }).where(eq(events.id, event.id));
+      }
+      await db.update(geocodingJobs).set({ status: "failed", provider: fallback && job.attempts + 1 >= MAX_ATTEMPTS ? "regional-fallback" : GEOCODING_PROVIDER, confidence: fallback && job.attempts + 1 >= MAX_ATTEMPTS ? "low" : undefined, lastError: message.slice(0, 2000), processedAt: new Date(), updatedAt: new Date() }).where(eq(geocodingJobs.id, job.id));
       failed += 1;
     }
   }

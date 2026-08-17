@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clusterLabel, groupEventsByRegion } from "./eventClusters";
+import { clusterLabel, groupEventsByRegion, mapCoordinatesFor, BAIXADA_BOUNDS } from "./eventClusters";
 
 const event = (id: number, city: string, latitude: string, longitude: string, title = `Evento ${id}`) => ({ id, city, latitude, longitude, title, slug: `evento-${id}`, locationName: `Local ${id}` });
 
@@ -17,7 +17,15 @@ describe("groupEventsByRegion", () => {
     expect(clusters).toHaveLength(2);
   });
 
-  it("ignora eventos sem coordenadas válidas", () => {
-    expect(groupEventsByRegion([event(1, "Santos", "não-informada", "-46.33"), event(2, "Guarujá", "-23.99", "-46.25")])).toHaveLength(1);
+  it("usa o centro da cidade e marca o cluster como aproximado quando falta coordenada", () => {
+    const clusters = groupEventsByRegion([event(1, "Santos", "não-informada", "-46.33"), event(2, "Guarujá", "-23.99", "-46.25")]);
+    expect(clusters).toHaveLength(2);
+    expect(clusters[0].approximate).toBe(true);
+    expect(mapCoordinatesFor({ city: "Santos", latitude: null, longitude: null, locationPrecision: "exact" }).approximate).toBe(true);
+  });
+
+  it("expõe bounds estáveis da Baixada Santista", () => {
+    expect(BAIXADA_BOUNDS.south).toBeLessThan(BAIXADA_BOUNDS.north);
+    expect(BAIXADA_BOUNDS.west).toBeLessThan(BAIXADA_BOUNDS.east);
   });
 });

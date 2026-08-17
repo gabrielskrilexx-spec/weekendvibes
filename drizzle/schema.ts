@@ -45,6 +45,7 @@ export const events = mysqlTable("events", {
   imageUrl: varchar("imageUrl", { length: 1000 }),
   latitude: varchar("latitude", { length: 32 }),
   longitude: varchar("longitude", { length: 32 }),
+  locationPrecision: varchar("locationPrecision", { length: 24 }).default("exact").notNull(),
   sourceHash: varchar("sourceHash", { length: 64 }).unique(),
   isPublished: int("isPublished").default(1).notNull(),
   isArchived: int("isArchived").default(0).notNull(),
