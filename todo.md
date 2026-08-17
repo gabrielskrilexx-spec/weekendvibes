@@ -558,3 +558,8 @@
 - [x] Reduzir a complexidade visual da Home sem perder a identidade tropical
 - [x] Preservar contraste, foco visível, responsividade e navegação mobile
 - [x] Validar a variação em desktop/mobile, executar testes e publicar checkpoint
+
+## Microinterações e modo escuro minimalista
+- [x] Adicionar hover/focus sutis e acessíveis aos cards de eventos
+- [x] Consolidar o alternador de modo escuro com identidade minimalista tropical
+- [x] Validar prefers-reduced-motion, desktop/mobile, testes e publicar checkpoint
