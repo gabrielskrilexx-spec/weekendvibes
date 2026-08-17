@@ -1,4 +1,4 @@
-import { Copy, Facebook, Instagram, MessageCircle, RotateCcw, Share2 } from "lucide-react";
+import { CalendarPlus, Copy, Download, Facebook, Instagram, MessageCircle, RotateCcw, Share2 } from "lucide-react";
 
 export type EventShareCardData = {
   title: string;
@@ -23,11 +23,13 @@ type Props = {
   onWhatsApp: () => void;
   onFacebook: () => void;
   onInstagram: () => void;
+  onGoogleCalendar: () => void;
+  onAppleCalendar: () => void;
 };
 
 const WHATSAPP_MESSAGE_LIMIT = 280;
 
-export default function EventShareCard({ data, whatsappMessage, defaultWhatsappMessage, onWhatsappMessageChange, onResetWhatsappMessage, onNativeShare, onCopy, onWhatsApp, onFacebook, onInstagram }: Props) {
+export default function EventShareCard({ data, whatsappMessage, defaultWhatsappMessage, onWhatsappMessageChange, onResetWhatsappMessage, onNativeShare, onCopy, onWhatsApp, onFacebook, onInstagram, onGoogleCalendar, onAppleCalendar }: Props) {
   const messageId = "whatsapp-share-message";
   const remaining = WHATSAPP_MESSAGE_LIMIT - whatsappMessage.length;
   return (
@@ -51,6 +53,8 @@ export default function EventShareCard({ data, whatsappMessage, defaultWhatsappM
         <button type="button" onClick={onCopy} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-black text-white transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300"><Copy size={16} /> Copiar link</button>
         <button type="button" onClick={onFacebook} aria-label="Compartilhar no Facebook" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-black text-white transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300"><Facebook size={16} /> Facebook</button>
         <button type="button" onClick={onInstagram} aria-label="Compartilhar no Instagram" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-black text-white transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300"><Instagram size={16} /> Instagram</button>
+        <button type="button" onClick={onGoogleCalendar} aria-label="Adicionar ao Google Calendar" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-sky-300/30 bg-sky-400/10 px-3 py-2 text-xs font-black text-sky-100 transition hover:bg-sky-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300"><CalendarPlus size={16} /> Google Calendar</button>
+        <button type="button" onClick={onAppleCalendar} aria-label="Baixar arquivo para Apple Calendar" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-black text-white transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300"><Download size={16} /> Apple Calendar</button>
       </div>
     </section>
   );

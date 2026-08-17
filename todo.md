@@ -529,10 +529,22 @@
 - [x] Garantir carregamento singleton/lazy do Google Maps sem reinicializações redundantes
 - [x] Padronizar falhas de sessão inválida sem afetar chamadas cron autenticadas
 - [x] Reativar e publicar a configuração do schedule; disparo controlado permanece bloqueado por ambiente ausente
-- [ ] Validar `ingestionRuns`, eventos persistidos e métricas da execução
+- [x] Validar `ingestionRuns`, eventos persistidos e métricas da execução — dispensado pelo usuário nesta sessão; a execução autônoma será validada pelo Heartbeat
 
 ## Skeleton loading de eventos
 - [x] Mapear estados de carregamento da agenda e dos cards
 - [x] Criar skeletons reutilizáveis com animação acessível
 - [x] Integrar skeletons à Home e validar testes/interface
 - [x] Publicar checkpoint da melhoria de loading
+
+## Compartilhamento social nos detalhes
+- [x] Mapear os contratos e componentes atuais de compartilhamento — já existente em `EventDetail` e `EventShareCard`
+- [x] Adicionar ações de WhatsApp, Web Share API e copiar link — já implementado, com Facebook e Instagram adicionais
+- [x] Cobrir acessibilidade, feedback e fallback nos testes — cobertura existente para URLs sociais e fallback nativo/cópia
+- [x] Validar interface mobile e publicar checkpoint — não aplicável: nenhuma alteração nova foi necessária
+
+## Exportação para calendários
+- [x] Mapear os dados disponíveis de data, duração, local e descrição do evento
+- [x] Implementar URL do Google Calendar e arquivo iCalendar compatível com Apple Calendar
+- [x] Integrar ações acessíveis aos detalhes do evento e cobrir testes
+- [x] Validar interface mobile e publicar checkpoint
