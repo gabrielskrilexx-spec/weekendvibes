@@ -764,3 +764,9 @@
 - [x] Disparar alerta para blocked_credentials e códigos Meta 190/467 com instrução de renovação
 - [x] Solicitar/configurar DISCORD_WEBHOOK_URL e validar lógica com testes Vitest
 - [x] Validar TypeScript, Vitest, build, segurança e publicar checkpoint
+
+## Diagnóstico do erro oficial do Google Maps
+- [x] Auditar loader frontend, relay, variável pública e logs do Maps
+- [x] Verificar se o projeto expõe diagnóstico seguro de chave, APIs e domínio
+- [x] Corrigir qualquer configuração controlável no código sem expor credenciais
+- [x] Validar testes/build e documentar os ajustes externos necessários no Google Cloud
