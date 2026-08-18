@@ -688,3 +688,9 @@
 - [x] Aprimorar busca por evento, bairro, rua e estabelecimento com atualização instantânea do mapa
 - [x] Adicionar filtros geográficos e enquadramento suave por cidade/bairro/raio
 - [x] Criar testes unitários e de integração, documentação técnica, validar build e publicar checkpoint
+## Recuperação de contexto e resiliência Meta
+- [x] Localizar e validar o diretório raiz do WeekendVibes no sandbox atual
+- [x] Confirmar a versão/checkpoint disponível e os arquivos de integração Meta
+- [x] Identificar a causa da falha HTTP 500 e tratar erros de token, permissões, rate limit e upstream sem vazar segredos
+- [x] Adicionar testes de regressão e documentação operacional
+- [x] Validar TypeScript, Vitest, build, logs e publicar checkpoint se houver alteração

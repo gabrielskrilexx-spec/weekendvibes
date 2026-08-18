@@ -37,14 +37,25 @@ describe("scheduled Instagram ingestion", () => {
     expect(archiveExpiredSoldOutEvents).not.toHaveBeenCalled();
   });
 
-  it("records a Meta failure and notifies the owner for cron callers", async () => {
+  it("degrada falha upstream conhecida da Meta para HTTP 200 sem importar dados", async () => {
     vi.spyOn(sdk, "authenticateRequest").mockResolvedValue({ isCron: true } as never);
     vi.spyOn(await import("./instagram-pipeline"), "runInstagramPipeline").mockRejectedValueOnce(new InstagramIntegrationFailure("meta", "Meta Graph API retornou HTTP 503"));
     const res = { json: vi.fn().mockReturnThis(), status: vi.fn().mockReturnThis() } as never;
 
     await ingestInstagramHandler({} as never, res);
 
-    expect(recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ integration: "meta", title: "Falha na API oficial do Instagram", message: "A ingestão automática falhou. Consulte o painel operacional." }));
+    expect(recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ integration: "meta", title: "Falha na API oficial do Instagram", message: "A API da Meta respondeu HTTP 503; a execução foi concluída sem importar dados." }));
+    expect((res as any).status).toHaveBeenCalledWith(200);
+    expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, degraded: true, integration: "meta", error: "upstream_unavailable", upstreamStatus: 503, imported: 0 }));
+  });
+
+  it("mantém HTTP 500 para falha interna sem status upstream conhecido", async () => {
+    vi.spyOn(sdk, "authenticateRequest").mockResolvedValue({ isCron: true } as never);
+    vi.spyOn(await import("./instagram-pipeline"), "runInstagramPipeline").mockRejectedValueOnce(new InstagramIntegrationFailure("meta", "Falha de configuração local"));
+    const res = { json: vi.fn().mockReturnThis(), status: vi.fn().mockReturnThis() } as never;
+
+    await ingestInstagramHandler({} as never, res);
+
     expect((res as any).status).toHaveBeenCalledWith(500);
     expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: false, integration: "meta", error: "internal_error" }));
   });

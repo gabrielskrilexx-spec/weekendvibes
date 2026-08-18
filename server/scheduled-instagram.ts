@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { sdk } from "./_core/sdk";
 import { notifyOwner } from "./_core/notification";
-import { InstagramIntegrationFailure } from "./instagram-pipeline";
+import { InstagramIntegrationFailure, isGracefullyDegradedMetaFailure, getMetaFailureStatus } from "./instagram-pipeline";
 import { recordOperationalAlert, OperationalIntegration } from "./db";
 import { runInstagramAgendaStep } from "./agenda-routine";
 import { HttpError } from "@shared/_core/errors";
@@ -33,6 +33,16 @@ export async function ingestInstagramHandler(req: Request, res: Response) {
   } catch (error) {
     const integration: OperationalIntegration = error instanceof InstagramIntegrationFailure ? error.integration : "pipeline";
     const safeError = redactError(error);
+    if (isGracefullyDegradedMetaFailure(error)) {
+      const status = getMetaFailureStatus(error);
+      try {
+        await recordOperationalAlert({ integration: "meta", title: integrationTitles.meta, message: `A API da Meta respondeu HTTP ${status}; a execução foi concluída sem importar dados.` });
+      } catch (alertError) {
+        console.warn("[Instagram] Could not persist degraded Meta alert", redactError(alertError));
+      }
+      console.warn("[Instagram] Meta upstream unavailable; degraded run with no imported events", { status });
+      return res.status(200).json({ ok: true, degraded: true, integration: "meta", error: "upstream_unavailable", upstreamStatus: status, imported: 0, startedAt, finishedAt: new Date().toISOString() });
+    }
     try {
       await recordOperationalAlert({ integration, title: integrationTitles[integration], message: "A ingestão automática falhou. Consulte o painel operacional." });
     } catch (alertError) {

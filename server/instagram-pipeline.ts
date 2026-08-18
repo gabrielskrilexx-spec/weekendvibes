@@ -23,6 +23,19 @@ export class InstagramIntegrationFailure extends Error {
   }
 }
 
+/** Extrai somente o status HTTP da mensagem redigida do upstream Meta. */
+export function getMetaFailureStatus(error: unknown) {
+  if (!(error instanceof InstagramIntegrationFailure) || error.integration !== "meta") return null;
+  const match = error.message.match(/HTTP (\d{3})/i);
+  return match ? Number(match[1]) : null;
+}
+
+/** Falhas conhecidas do upstream podem degradar para agenda vazia sem dados forjados. */
+export function isGracefullyDegradedMetaFailure(error: unknown) {
+  const status = getMetaFailureStatus(error);
+  return status !== null && [401, 403, 408, 429, 500, 502, 503, 504].includes(status);
+}
+
 export const INSTAGRAM_TARGETS = [
   { name: "Moby House", username: "mobydicksantos", directUrl: "https://www.instagram.com/mobydicksantos/" },
   { name: "Projac Bar", username: "projac.bar", directUrl: "https://www.instagram.com/projac.bar/" },
