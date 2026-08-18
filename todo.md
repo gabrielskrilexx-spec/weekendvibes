@@ -716,3 +716,8 @@
 - [x] Expor durationMs e counts no callback agendado do Instagram, com zeros explícitos em degraded=true
 - [x] Cobrir normalização e persistência dos contadores com testes Vitest
 - [x] Executar validação final completa e publicar checkpoint da observabilidade
+
+## Atualização do contato legal
+- [x] Substituir o texto provisório de contato pelo e-mail oficial weekendvibes.of@gmail.com
+- [x] Atualizar ou criar teste da página legal para validar o novo contato
+- [x] Validar e publicar checkpoint da alteração

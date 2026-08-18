@@ -12,6 +12,8 @@ describe("Legal page", () => {
     expect(markup).toContain('href="#privacidade"');
     expect(markup).toContain('href="#termos"');
     expect(markup).toContain('id="contato"');
+    expect(markup).toContain("weekendvibes.of@gmail.com");
+    expect(markup).not.toContain("Antes da publicação definitiva");
   });
 
   it("oferece retorno para a agenda principal", () => {

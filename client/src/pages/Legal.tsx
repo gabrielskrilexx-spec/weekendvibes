@@ -67,7 +67,7 @@ export default function Legal() {
 
           <section id="contato" aria-labelledby="contact-title" className="border-t border-white/10 pt-12">
             <h2 id="contact-title" className="text-2xl font-black text-white sm:text-3xl">Contato e solicitações</h2>
-            <p className="mt-4">Para dúvidas sobre privacidade, solicitações de titulares ou correções de informações de eventos, utilize o canal de atendimento indicado pelo responsável pelo WeekendVibes. Antes da publicação definitiva, substitua este texto pelo e-mail ou formulário oficial de contato do controlador.</p>
+            <p className="mt-4">Para dúvidas sobre privacidade, solicitações de titulares ou correções de informações de eventos, utilize o e-mail weekendvibes.of@gmail.com.</p>
           </section>
         </article>
       </div>
