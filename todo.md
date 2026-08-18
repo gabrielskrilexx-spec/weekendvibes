@@ -789,3 +789,10 @@
 - [x] Recarregar automaticamente o mapa no evento browser online sem loops
 - [x] Cobrir o comportamento com Vitest/Playwright e validar build
 - [x] Publicar checkpoint da melhoria
+
+## Reconexão avançada do mapa
+- [x] Exibir mensagem transitória de conexão restabelecida após carregamento bem-sucedido
+- [x] Implementar backoff progressivo para retries automáticos do mapa
+- [x] Exibir indicador visual durante tentativas de reconexão
+- [x] Adicionar botão de recarregamento manual quando o retry automático falhar
+- [x] Atualizar testes Vitest/Playwright, validar TypeScript/build e publicar checkpoint

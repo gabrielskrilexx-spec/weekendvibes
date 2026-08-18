@@ -91,6 +91,11 @@ declare global {
 const MAPS_READY_CALLBACK = "__weekendVibesMapsReady";
 const MAPS_SCRIPT_BASE_URL = `/api/maps/javascript?callback=${encodeURIComponent(MAPS_READY_CALLBACK)}&libraries=marker,places,geocoding,geometry,routes&loader=2`;
 
+export function getMapReconnectDelay(attempt: number): number {
+  const normalizedAttempt = Math.max(0, Math.floor(attempt));
+  return Math.min(30_000, 1_000 * (2 ** Math.min(normalizedAttempt, 5)));
+}
+
 export const WEEKENDVIBES_MAP_STYLE: google.maps.MapTypeStyle[] = [
   { elementType: "geometry", stylers: [{ color: "#24242a" }] },
   { elementType: "labels.text.stroke", stylers: [{ color: "#24242a" }] },
@@ -213,17 +218,47 @@ export function MapView({
   const [loadError, setLoadError] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [showReconnected, setShowReconnected] = useState(false);
+  const retryTimer = useRef<number | null>(null);
+  const reconnectAttempt = useRef(0);
+  const reconnectingRef = useRef(false);
+  const reconnectedNoticeTimer = useRef<number | null>(null);
+
+  const clearRetryTimer = usePersistFn(() => {
+    if (retryTimer.current !== null) {
+      window.clearTimeout(retryTimer.current);
+      retryTimer.current = null;
+    }
+  });
+
+  const scheduleRetry = usePersistFn((immediate = false) => {
+    if (typeof window === "undefined" || !window.navigator.onLine || retryTimer.current !== null || reconnectingRef.current) return;
+    const attempt = reconnectAttempt.current;
+    const delay = immediate ? 0 : getMapReconnectDelay(attempt);
+    reconnectAttempt.current = attempt + 1;
+    reconnectingRef.current = true;
+    setIsReconnecting(true);
+    setLoadError(false);
+    setIsVisible(true);
+    retryTimer.current = window.setTimeout(() => {
+      retryTimer.current = null;
+      setRetryNonce(value => value + 1);
+    }, delay);
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const updateConnectivity = () => {
-      const isOnline = window.navigator.onLine;
-      setIsOffline(!isOnline);
-      if (isOnline && loadError && !isMapReady) {
-        setLoadError(false);
-        setIsVisible(true);
-        setRetryNonce(value => value + 1);
+      const online = window.navigator.onLine;
+      setIsOffline(!online);
+      if (!online) {
+        clearRetryTimer();
+        reconnectingRef.current = false;
+        setIsReconnecting(false);
+        return;
       }
+      if (loadError && !isMapReady) scheduleRetry();
     };
     updateConnectivity();
     window.addEventListener("online", updateConnectivity);
@@ -232,7 +267,7 @@ export function MapView({
       window.removeEventListener("online", updateConnectivity);
       window.removeEventListener("offline", updateConnectivity);
     };
-  }, [isMapReady, loadError]);
+  }, [isMapReady, loadError, scheduleRetry]);
 
   useEffect(() => {
     if (!lazy || !mapContainer.current || typeof IntersectionObserver === "undefined") {
@@ -249,10 +284,18 @@ export function MapView({
     return () => observer.disconnect();
   }, [lazy]);
 
+  useEffect(() => () => {
+    clearRetryTimer();
+    if (reconnectedNoticeTimer.current !== null) window.clearTimeout(reconnectedNoticeTimer.current);
+  }, [clearRetryTimer]);
+
   const init = usePersistFn(async () => {
+    const wasReconnecting = reconnectingRef.current;
     try {
       await loadMapScript();
     } catch (error) {
+      reconnectingRef.current = false;
+      setIsReconnecting(false);
       setLoadError(true);
       const message = error instanceof Error ? error.message : "unknown initialization error";
       const networkFailure = !window.navigator.onLine || /relay|network|fetch|resource|timeout/i.test(message);
@@ -260,7 +303,11 @@ export function MapView({
       console.error("[Maps] MapView fallback activated:", message);
       return;
     }
-    if (!mapHost.current || !window.google?.maps) return;
+    if (!mapHost.current || !window.google?.maps) {
+      reconnectingRef.current = false;
+      setIsReconnecting(false);
+      return;
+    }
     map.current = new window.google.maps.Map(mapHost.current, {
       zoom: initialZoom,
       center: initialCenter,
@@ -274,6 +321,14 @@ export function MapView({
       ...mapOptions,
     });
     setIsMapReady(true);
+    reconnectingRef.current = false;
+    setIsReconnecting(false);
+    if (wasReconnecting) {
+      reconnectAttempt.current = 0;
+      setShowReconnected(true);
+      if (reconnectedNoticeTimer.current !== null) window.clearTimeout(reconnectedNoticeTimer.current);
+      reconnectedNoticeTimer.current = window.setTimeout(() => setShowReconnected(false), 4_000);
+    }
     if (onMapReady) {
       onMapReady(map.current);
     }
@@ -286,18 +341,19 @@ export function MapView({
   return (
     <div ref={mapContainer} aria-busy={isVisible && !isMapReady && !loadError} className={cn("relative min-h-[460px] h-[500px] w-full overflow-hidden", className)}>
       <div ref={mapHost} className="absolute inset-0" aria-hidden="true" />
-      {!isMapReady && !loadError && <div className="content-fade-in absolute inset-0 z-10 overflow-hidden bg-zinc-900" role="status" aria-live="polite" aria-label={isVisible ? "Carregando mapa" : "Mapa aguardando entrada na tela"}>
+      {showReconnected && <div className="absolute right-4 top-4 z-20 rounded-full border border-emerald-300/30 bg-emerald-400/15 px-4 py-2 text-xs font-bold text-emerald-100 shadow-lg" role="status" aria-live="polite">Conexão restabelecida</div>}
+      {!isMapReady && !loadError && <div className="content-fade-in absolute inset-0 z-10 overflow-hidden bg-zinc-900" role="status" aria-live="polite" aria-label={isReconnecting ? "Reconectando ao mapa" : isVisible ? "Carregando mapa" : "Mapa aguardando entrada na tela"}>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(217,70,239,0.14),transparent_34%),radial-gradient(circle_at_80%_80%,rgba(249,115,22,0.12),transparent_38%)]" />
         <div className="relative grid h-full place-items-center px-6">
           <div className="w-full max-w-sm space-y-4 text-center">
             <div className="mx-auto h-14 w-14 animate-pulse rounded-full border-2 border-orange-300/40 bg-orange-300/10 shadow-[0_0_36px_rgba(249,115,22,0.18)]" />
             <div className="mx-auto h-3 w-40 animate-pulse rounded-full bg-white/15" />
             <div className="mx-auto h-2 w-64 animate-pulse rounded-full bg-white/10" />
-            <p className="text-xs font-bold tracking-wide text-zinc-400">{isVisible ? "Preparando o mapa dos rolês…" : "Carregando o mapa quando ele entrar na tela…"}</p>
+            <p className="text-xs font-bold tracking-wide text-zinc-400">{isReconnecting ? "Reconectando ao mapa…" : isVisible ? "Preparando o mapa dos rolês…" : "Carregando o mapa quando ele entrar na tela…"}</p>
           </div>
         </div>
       </div>}
-      {loadError && <div className="absolute inset-0 z-10 grid place-items-center bg-zinc-950 px-6 text-center" role="alert" aria-live="assertive"><div className="max-w-sm rounded-3xl border border-orange-300/20 bg-white/[0.04] p-6 shadow-2xl"><p className="text-xs font-black uppercase tracking-[0.18em] text-orange-200">Mapa temporariamente indisponível</p><h3 className="mt-2 text-lg font-black text-white">{isOffline ? "Parece que você está sem conexão." : "Não conseguimos carregar os mapas agora."}</h3><p className="mt-2 text-sm leading-relaxed text-zinc-400">{isOffline ? "Verifique sua internet e tente novamente. A agenda continua disponível em formato de lista enquanto a conexão não volta." : "A agenda continua disponível em formato de lista. Você pode tentar carregar o mapa novamente ou seguir explorando os eventos."}</p><button type="button" onClick={() => { setLoadError(false); setIsOffline(!window.navigator.onLine); setIsVisible(true); setRetryNonce(value => value + 1); }} className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-gradient-to-r from-orange-400 to-fuchsia-500 px-4 text-xs font-black text-white transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-200">{isOffline ? "Tentar novamente" : "Tentar carregar o mapa novamente"}</button></div></div>}
+      {loadError && <div className="absolute inset-0 z-10 grid place-items-center bg-zinc-950 px-6 text-center" role="alert" aria-live="assertive"><div className="max-w-sm rounded-3xl border border-orange-300/20 bg-white/[0.04] p-6 shadow-2xl"><p className="text-xs font-black uppercase tracking-[0.18em] text-orange-200">Mapa temporariamente indisponível</p><h3 className="mt-2 text-lg font-black text-white">{isOffline ? "Parece que você está sem conexão." : "Não conseguimos carregar os mapas agora."}</h3><p className="mt-2 text-sm leading-relaxed text-zinc-400">{isOffline ? "Verifique sua internet e tente novamente. A agenda continua disponível em formato de lista enquanto a conexão não volta." : "A agenda continua disponível em formato de lista. Você pode tentar carregar o mapa novamente ou seguir explorando os eventos."}</p><button type="button" onClick={() => { clearRetryTimer(); reconnectingRef.current = false; setIsReconnecting(false); setLoadError(false); setIsOffline(!window.navigator.onLine); setIsVisible(true); scheduleRetry(true); }} className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-gradient-to-r from-orange-400 to-fuchsia-500 px-4 text-xs font-black text-white transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-200">{isOffline ? "Tentar novamente" : "Tentar carregar o mapa novamente"}</button></div></div>}
     </div>
   );
 }
