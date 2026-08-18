@@ -833,3 +833,10 @@
 - [x] Construir timeline correlacionada de Heartbeat, ingestionRuns e retries
 - [x] Adicionar reconciliação visual por fonte com read, filtered, persisted e duplicidades
 - [x] Atualizar testes, documentação, validar TypeScript/Vitest/E2E/build e publicar checkpoint
+
+## Alertas automáticos de freshness e reconciliação
+- [x] Implementar avaliação de freshness crítico com limiar explícito e severidade
+- [x] Implementar avaliação de divergências de reconciliação com regras auditáveis
+- [x] Persistir alertas com deduplicação, fingerprint e correlação por execução
+- [x] Integrar alertas aos fluxos de ingestão e ao painel administrativo
+- [x] Atualizar testes, documentação, validar TypeScript/Vitest/E2E/build e publicar checkpoint

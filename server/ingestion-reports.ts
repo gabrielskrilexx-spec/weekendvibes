@@ -2,6 +2,7 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { ingestionRuns, operationalAlerts, ingestionSources } from "../drizzle/schema";
 import { classifyCriticalMetaReason, sendCriticalMetaAlert } from "./meta-alert-webhook";
 import { getDb, recordOperationalAlert } from "./db";
+import { buildFreshnessCriticalAlert, buildReconciliationDivergenceAlert } from "./operational-alert-rules";
 
 export function isCriticalIngestionFailure(details: unknown) {
   const text = typeof details === "string" ? details : JSON.stringify(details ?? "");
@@ -38,6 +39,28 @@ export function getFreshnessState(lastSuccessAt: Date | string | null | undefine
 
 export function buildFreshnessForTest(input: Array<{ sourceKey: string; lastSuccessAt: Date | string | null; expectedMinutes: number }>, now = new Date()) {
   return input.map(item => ({ ...item, state: getFreshnessState(item.lastSuccessAt, item.expectedMinutes, now) }));
+}
+
+export async function evaluateCriticalFreshnessAlerts(dbOverride?: Awaited<ReturnType<typeof getDb>>, now = new Date()) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return { evaluated: 0, triggered: 0 };
+  const sources = await db.select().from(ingestionSources).where(eq(ingestionSources.isEnabled, 1));
+  let triggered = 0;
+  for (const source of sources) {
+    const state = getFreshnessState(source.lastSuccessAt, source.frequencyMinutes, now);
+    const alert = buildFreshnessCriticalAlert({
+      sourceKey: source.sourceKey,
+      sourceName: source.name,
+      state,
+      lastSuccessAt: source.lastSuccessAt,
+      expectedMinutes: source.frequencyMinutes,
+      now,
+    });
+    if (!alert) continue;
+    await recordOperationalAlert({ dbOverride: db, ...alert });
+    triggered += 1;
+  }
+  return { evaluated: sources.length, triggered };
 }
 
 function isInstagramRun(run: { routine: string; sourceKey: string | null }) {
@@ -157,9 +180,20 @@ export async function finishIngestionRun(id: number | undefined, input: { status
       void sendCriticalMetaAlert({ reason: criticalMetaReason }).catch(error => console.warn("[Meta alert] Webhook delivery failed:", error instanceof Error ? error.message : "unknown"));
       await recordOperationalAlert({ dbOverride: db, integration: "meta", title: "Credenciais Meta exigem renovação", message: `A integração Meta registrou ${criticalMetaReason}. Renove manualmente o token de acesso do Instagram.` });
     }
-    const reconciliation = input.details && typeof input.details === "object" ? (input.details as { reconciliation?: { consistent?: boolean; missingCoordinates?: number; outOfBoundsCoordinates?: number; issues?: string[] } }).reconciliation : undefined;
-    if (reconciliation && (!reconciliation.consistent || Number(reconciliation.missingCoordinates ?? 0) > 0 || Number(reconciliation.outOfBoundsCoordinates ?? 0) > 0)) {
-      await recordOperationalAlert({ dbOverride: db, integration: "pipeline", title: "Reconciliação da ingestão requer atenção", message: `A execução ${id} registrou inconsistências ou qualidade geográfica abaixo do esperado. Verifique as métricas agregadas no painel administrativo.` });
+    const reconciliation = input.details && typeof input.details === "object" ? (input.details as { reconciliation?: { consistent?: boolean; read?: number; persisted?: number; duplicates?: number; missingCoordinates?: number; outOfBoundsCoordinates?: number; issues?: string[] } }).reconciliation : undefined;
+    if (reconciliation) {
+      const reconciliationAlert = buildReconciliationDivergenceAlert({
+        sourceKey: input.sourceKey ?? input.routine ?? "unknown",
+        runId: id,
+        consistent: reconciliation.consistent !== false,
+        issues: reconciliation.issues ?? [],
+        read: Number(reconciliation.read ?? counts.read),
+        persisted: Number(reconciliation.persisted ?? counts.persisted),
+        duplicates: Number(reconciliation.duplicates ?? 0),
+        missingCoordinates: Number(reconciliation.missingCoordinates ?? 0),
+        outOfBoundsCoordinates: Number(reconciliation.outOfBoundsCoordinates ?? 0),
+      });
+      if (reconciliationAlert) await recordOperationalAlert({ dbOverride: db, ...reconciliationAlert, runId: id });
     }
     if (input.status === "failed" && isCriticalIngestionFailure(failureText)) {
       await recordOperationalAlert({ dbOverride: db, integration: "pipeline", title: "Falha crítica na ingestão", message: `A rotina ${id} registrou timeout ou erro HTTP 5xx: ${failureText}` });

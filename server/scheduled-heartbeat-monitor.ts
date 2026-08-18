@@ -4,7 +4,7 @@ import { ingestionRuns, events } from "../drizzle/schema";
 import { deleteExpiredEvents, getDb } from "./db";
 import { sdk } from "./_core/sdk";
 import { HttpError } from "@shared/_core/errors";
-import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
+import { evaluateCriticalFreshnessAlerts, finishIngestionRun, startIngestionRun } from "./ingestion-reports";
 import { redactError } from "./_core/security";
 
 const MONITORED_ROUTINES = ["full-agenda", "instagram-agenda", "scheduled-instagram"] as const;
@@ -39,7 +39,8 @@ export async function heartbeatMonitorHandler(req: Request, res: Response) {
 
     monitorRunId = await startIngestionRun({ routine: "heartbeat-monitor", sourceKey: "heartbeat-direct" });
     const expiredRemoved = await deleteExpiredEvents(db);
-    console.info(`[HeartbeatMonitor] expired_events_removed=${expiredRemoved}`);
+    const freshnessAlerts = await evaluateCriticalFreshnessAlerts(db);
+    console.info(`[HeartbeatMonitor] expired_events_removed=${expiredRemoved} freshness_alerts=${freshnessAlerts.triggered}`);
     const latestRuns = await db.select().from(ingestionRuns)
       .where(sql`${ingestionRuns.routine} IN (${sql.join(MONITORED_ROUTINES.map(routine => sql`${routine}`), sql`, `)})`)
       .orderBy(desc(ingestionRuns.startedAt)).limit(10);
@@ -57,6 +58,7 @@ export async function heartbeatMonitorHandler(req: Request, res: Response) {
       latestRunAgeMs: latestFinishedAt ? Math.max(0, now - latestFinishedAt) : null,
       persistedPublishedEvents: persistedEventCount,
       expiredRemoved,
+      freshnessAlerts,
       timezone: "America/Sao_Paulo",
       checkedAt: new Date().toISOString(),
     };

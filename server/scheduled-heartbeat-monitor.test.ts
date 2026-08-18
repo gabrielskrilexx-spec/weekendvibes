@@ -2,12 +2,13 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { sdk } from "./_core/sdk";
 import { heartbeatMonitorHandler } from "./scheduled-heartbeat-monitor";
 import { deleteExpiredEvents, getDb } from "./db";
-import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
+import { evaluateCriticalFreshnessAlerts, finishIngestionRun, startIngestionRun } from "./ingestion-reports";
 
 vi.mock("./db", () => ({ getDb: vi.fn(), deleteExpiredEvents: vi.fn() }));
 vi.mock("./ingestion-reports", () => ({
   startIngestionRun: vi.fn().mockResolvedValue(77),
   finishIngestionRun: vi.fn().mockResolvedValue(undefined),
+  evaluateCriticalFreshnessAlerts: vi.fn().mockResolvedValue({ evaluated: 0, triggered: 0 }),
 }));
 
 type ResponseStub = { status: ReturnType<typeof vi.fn>; json: ReturnType<typeof vi.fn> };
@@ -29,6 +30,7 @@ describe("heartbeat direct monitor", () => {
     vi.restoreAllMocks();
     vi.mocked(startIngestionRun).mockResolvedValue(77);
     vi.mocked(finishIngestionRun).mockResolvedValue(undefined);
+    vi.mocked(evaluateCriticalFreshnessAlerts).mockResolvedValue({ evaluated: 0, triggered: 0 });
     vi.mocked(deleteExpiredEvents).mockResolvedValue(0);
   });
 
