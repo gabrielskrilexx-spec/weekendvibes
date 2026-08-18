@@ -726,3 +726,10 @@
 - [x] Transformar o e-mail da seção de contato em link clicável mailto
 - [x] Atualizar o teste da página legal para validar href e acessibilidade do link
 - [x] Validar e publicar checkpoint da alteração
+
+## Finalização front-end do Mapa dos rolês
+- [x] Auditar a conexão de eventos persistidos com pins e clusters do mapa
+- [x] Validar ou corrigir toggles de Santos, Guarujá e precisão exata/aproximada
+- [x] Validar ou corrigir InfoWindows dark com imagem, título, data, local e detalhes
+- [x] Atualizar testes e verificar responsividade desktop/mobile
+- [x] Validar TypeScript/Vitest/build e publicar checkpoint
