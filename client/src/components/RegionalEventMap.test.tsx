@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { directionsUrl, filterEventsForMap, locationControlLabel, MAP_LEGEND_ITEMS, markerTooltipContent, routeDetailsFromResult, routeOptionsFromResult, shouldShowTouchTooltip, visibleEventIdsForBounds } from "./RegionalEventMap";
+import { directionsUrl, filterEventsForMap, locationControlLabel, MAP_LEGEND_ITEMS, markerTooltipContent, popupContent, routeDetailsFromResult, routeOptionsFromResult, shouldShowTouchTooltip, visibleEventIdsForBounds } from "./RegionalEventMap";
 import { ShortLivedCache } from "@/lib/shortLivedCache";
 
 describe("map legend and touch interaction", () => {
@@ -53,6 +53,17 @@ describe("markerTooltipContent", () => {
     expect(content).toContain("4 rolês +1");
     expect(content).toContain("A · B · C");
     expect(content).not.toContain("A · B · C · D");
+  });
+});
+
+describe("popupContent", () => {
+  it("renderiza o botão Como chegar com destino do evento e abertura segura", () => {
+    const content = popupContent({ id: "santos", city: "Santos", latitude: -23.96, longitude: -46.33, approximate: false, events: [{ id: 8, title: "Show & Festa", slug: "show-festa", locationName: "Moby House", city: "Santos", latitude: "-23.96", longitude: "-46.33" }] }, "driving", null);
+    expect(content).toContain("Como chegar");
+    expect(content).toContain('target="_blank"');
+    expect(content).toContain("rel=\"noopener noreferrer\"");
+    expect(content).toContain("destination=-23.96%2C-46.33");
+    expect(content).toContain("Show &amp; Festa");
   });
 });
 

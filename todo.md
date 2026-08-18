@@ -676,3 +676,8 @@
 - [x] Exibir InfoWindows dark com imagem, título, data/horário e ação para detalhes
 - [x] Adicionar testes de dados, filtros, clustering, InfoWindows e acessibilidade
 - [x] Validar TypeScript, Vitest, build, screenshots responsivos e publicar checkpoint
+## Ação Como chegar nos InfoWindows
+- [x] Adicionar botão acessível Como chegar em cada InfoWindow individual
+- [x] Gerar link direto do Google Maps com destino exato ou fallback aproximado por cidade
+- [x] Cobrir link, escape, acessibilidade e abertura externa com testes
+- [x] Validar TypeScript, Vitest, build, responsividade e publicar checkpoint
