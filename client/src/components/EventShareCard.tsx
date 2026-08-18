@@ -1,4 +1,5 @@
 import { CalendarPlus, Copy, Download, Facebook, Instagram, MessageCircle, RotateCcw, Share2 } from "lucide-react";
+import { responsiveImageProps, EVENT_SHARE_IMAGE_SIZES } from "@/lib/responsiveImages";
 
 export type EventShareCardData = {
   title: string;
@@ -32,6 +33,8 @@ const WHATSAPP_MESSAGE_LIMIT = 280;
 export default function EventShareCard({ data, whatsappMessage, defaultWhatsappMessage, onWhatsappMessageChange, onResetWhatsappMessage, onNativeShare, onCopy, onWhatsApp, onFacebook, onInstagram, onGoogleCalendar, onAppleCalendar }: Props) {
   const messageId = "whatsapp-share-message";
   const remaining = WHATSAPP_MESSAGE_LIMIT - whatsappMessage.length;
+  const shareImage = data.imageUrl || "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=900&q=80";
+  const shareImageProps = responsiveImageProps(shareImage, EVENT_SHARE_IMAGE_SIZES);
   return (
     <section aria-labelledby="share-card-title" className="share-surface mt-7 rounded-2xl border p-4 text-card-foreground transition-colors">
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -39,7 +42,7 @@ export default function EventShareCard({ data, whatsappMessage, defaultWhatsappM
         <Share2 aria-hidden="true" size={19} className="text-fuchsia-300" />
       </div>
       <div className="overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-orange-400 via-fuchsia-600 to-purple-950 text-white">
-        <div className="relative h-36"><img src={data.imageUrl || "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=900&q=80"} alt="" loading="lazy" decoding="async" sizes="(max-width: 639px) 100vw, 320px" className="h-full w-full object-cover mix-blend-screen opacity-80" /><div className="absolute inset-0 bg-gradient-to-t from-purple-950 via-purple-950/20 to-transparent" /><span className="absolute left-3 top-3 rounded-full bg-yellow-300 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-zinc-950">{data.city}</span><p className="absolute bottom-3 left-3 right-3 text-2xl font-black leading-none tracking-tight">{data.title}</p></div>
+        <div className="relative h-36"><img {...shareImageProps} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover mix-blend-screen opacity-80" /><div className="absolute inset-0 bg-gradient-to-t from-purple-950 via-purple-950/20 to-transparent" /><span className="absolute left-3 top-3 rounded-full bg-yellow-300 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-zinc-950">{data.city}</span><p className="absolute bottom-3 left-3 right-3 text-2xl font-black leading-none tracking-tight">{data.title}</p></div>
         <div className="grid grid-cols-2 gap-3 bg-purple-950/90 p-3 text-xs"><div><p className="font-bold text-yellow-200">{data.dateLabel}</p><p className="text-white/75">às {data.timeLabel}</p></div><div><p className="font-bold text-orange-200">{data.locationName}</p><p className="text-white/75">{data.genre || data.category}</p></div></div>
       </div>
       <div className="mt-4 rounded-xl border border-border bg-secondary/60 p-3">

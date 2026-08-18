@@ -2,6 +2,7 @@ import { ArrowUpRight, CalendarDays, MapPin, Ticket, TicketX } from "lucide-reac
 import { Link } from "wouter";
 import type { Event } from "../../../drizzle/schema";
 import FavoriteReminderControls from "./FavoriteReminderControls";
+import { responsiveImageProps, EVENT_CARD_IMAGE_SIZES } from "@/lib/responsiveImages";
 
 const genreLabels: Record<string, string> = { funk: "Funk", house_eletronica: "House/Eletrônica", samba_pagode: "Samba/Pagode", rap_trap: "Rap/Trap" };
 
@@ -14,6 +15,7 @@ const categoryColors: Record<string, string> = {
 export default function EventCard({ event }: { event: Event }) {
   const date = new Date(event.eventDate);
   const image = event.imageUrl || "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=900&q=80";
+  const imageProps = responsiveImageProps(image, EVENT_CARD_IMAGE_SIZES);
   const isSoldOut = event.ticketStatus === "sold_out" || (event.ticketStatus === undefined && (event.priceNote?.toLowerCase().includes("vendas encerradas") ?? false));
   const qualitySignals = [Boolean(event.sourceUrl), Boolean(event.imageUrl), Boolean(event.address), Boolean(event.genre), Boolean(event.eventDate)].filter(Boolean).length;
   const confidenceLabel = qualitySignals >= 5 ? "Alta confiança" : qualitySignals >= 3 ? "Confiança moderada" : "Dados básicos";
@@ -21,7 +23,7 @@ export default function EventCard({ event }: { event: Event }) {
   return (
     <article className="content-fade-in group overflow-hidden rounded-[24px] border border-white/10 bg-zinc-900/90 shadow-[0_16px_40px_-28px_rgba(168,85,247,.48)] transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out hover:-translate-y-1 hover:border-orange-300/45 hover:shadow-[0_22px_48px_-24px_rgba(249,115,22,.42)] focus-within:-translate-y-1 focus-within:border-orange-300/55 motion-reduce:transform-none">
       <div className="relative h-48 overflow-hidden bg-zinc-800/80">
-        <img src={image} alt="" loading="lazy" decoding="async" sizes="(max-width: 639px) 100vw, 50vw" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+        <img {...imageProps} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
         <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/15 to-transparent" />
         <span className="absolute left-4 top-4 rounded-full border border-white/15 bg-zinc-950/70 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-orange-100 backdrop-blur">{event.city}</span>
         {isSoldOut && (

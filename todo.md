@@ -750,3 +750,9 @@
 - [x] Atualizar testes Vitest/Playwright para estados de loading e interação mobile
 - [x] Medir FCP/LCP e validar TypeScript, Vitest, E2E, build e responsividade
 - [x] Publicar checkpoint com relatório de performance
+
+## Srcset e InfoWindow touch mobile
+- [x] Adicionar srcset e sizes responsivos às imagens de capa de eventos
+- [x] Criar teste E2E mobile para abrir InfoWindow por toque
+- [x] Validar fechamento do InfoWindow por toque e ausência de erros no console
+- [x] Executar TypeScript, Vitest, E2E/build e publicar checkpoint
