@@ -90,6 +90,23 @@ test.describe("Mapa dos rolês — filtros e clustering", () => {
     expect(errors).toEqual([]);
   });
 
+  test("mantém o carregamento perceptível e registra FCP/LCP sem erros", async ({ page }) => {
+    await openMap(page);
+
+    const metrics = await page.evaluate(() => {
+      const paints = performance.getEntriesByType("paint") as PerformancePaintTiming[];
+      const fcp = paints.find(entry => entry.name === "first-contentful-paint")?.startTime ?? 0;
+      const lcp = (performance.getEntriesByType("largest-contentful-paint").at(-1) as LargestContentfulPaint | undefined)?.startTime ?? 0;
+      return { fcp, lcp, hasMapLoadingSemantics: Boolean(document.querySelector('[aria-busy="false"], [aria-label*="Carregando"]')) };
+    });
+
+    expect(metrics.fcp).toBeGreaterThan(0);
+    expect(metrics.fcp).toBeLessThan(4000);
+    if (metrics.lcp > 0) expect(metrics.lcp).toBeLessThan(5000);
+    expect(metrics.hasMapLoadingSemantics).toBe(true);
+    expect(await page.evaluate(() => (window as unknown as { __mapE2eErrors: string[] }).__mapE2eErrors)).toEqual([]);
+  });
+
   test("filtra coordenadas exatas e aproximadas preservando o estado do cluster", async ({ page }) => {
     await openMap(page);
 

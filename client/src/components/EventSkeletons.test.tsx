@@ -11,6 +11,8 @@ describe("EventSkeletons", () => {
     expect(agendaMarkup).toContain('role="status"');
     expect(agendaMarkup).toContain("Carregando Agenda da Semana");
     expect(gridMarkup).toContain('aria-label="Carregando eventos"');
+    expect(gridMarkup).toContain("content-fade-in");
+    expect(agendaMarkup).toContain("content-fade-in");
     expect((gridMarkup.match(/aspect-ratio/g) ?? []).length).toBeGreaterThanOrEqual(0);
   });
 

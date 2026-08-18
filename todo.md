@@ -740,3 +740,13 @@
 - [x] Verificar no navegador o desaparecimento/retorno de pins e reajuste de clusters
 - [x] Garantir mocks controlados do mapa e ausência de erros no console
 - [x] Executar E2E, TypeScript, Vitest/build e publicar checkpoint
+
+## Upgrade de performance, skeletons e mobile
+- [x] Auditar skeletons existentes para cards, listagens e container do mapa
+- [x] Implementar transição fade-in suave entre loading e conteúdo
+- [x] Refinar InfoWindows e filtros inferiores para touch targets mínimos de 44px
+- [x] Garantir margens e layout mobile dos modais e controles do mapa
+- [x] Aplicar loading="lazy" às imagens de eventos e estratégia equivalente de dimensionamento responsivo
+- [x] Atualizar testes Vitest/Playwright para estados de loading e interação mobile
+- [x] Medir FCP/LCP e validar TypeScript, Vitest, E2E, build e responsividade
+- [x] Publicar checkpoint com relatório de performance

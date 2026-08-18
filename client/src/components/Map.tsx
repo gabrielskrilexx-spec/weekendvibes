@@ -261,7 +261,7 @@ export function MapView({
   return (
     <div ref={mapContainer} aria-busy={isVisible && !isMapReady && !loadError} className={cn("relative min-h-[460px] h-[500px] w-full overflow-hidden", className)}>
       <div ref={mapHost} className="absolute inset-0" aria-hidden="true" />
-      {!isMapReady && !loadError && <div className="absolute inset-0 z-10 overflow-hidden bg-zinc-900" role="status" aria-live="polite" aria-label={isVisible ? "Carregando mapa" : "Mapa aguardando entrada na tela"}>
+      {!isMapReady && !loadError && <div className="content-fade-in absolute inset-0 z-10 overflow-hidden bg-zinc-900" role="status" aria-live="polite" aria-label={isVisible ? "Carregando mapa" : "Mapa aguardando entrada na tela"}>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(217,70,239,0.14),transparent_34%),radial-gradient(circle_at_80%_80%,rgba(249,115,22,0.12),transparent_38%)]" />
         <div className="relative grid h-full place-items-center px-6">
           <div className="w-full max-w-sm space-y-4 text-center">

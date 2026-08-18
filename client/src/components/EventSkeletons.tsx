@@ -8,7 +8,7 @@ function SkeletonBlock({ className = "" }: SkeletonBlockProps) {
 
 export function EventCardSkeleton() {
   return (
-    <article className="event-skeleton-shell overflow-hidden rounded-3xl border" aria-hidden="true">
+    <article className="content-fade-in event-skeleton-shell overflow-hidden rounded-3xl border" aria-hidden="true">
       <SkeletonBlock className="aspect-[16/10] rounded-none" />
       <div className="space-y-3 p-5">
         <SkeletonBlock className="h-3 w-24" />
@@ -25,7 +25,7 @@ export function EventCardSkeleton() {
 
 export function EventGridSkeleton({ count = 4 }: { count?: number }) {
   return (
-    <div className="grid gap-5 sm:grid-cols-2" role="status" aria-label="Carregando eventos">
+    <div className="content-fade-in grid gap-5 sm:grid-cols-2" role="status" aria-label="Carregando eventos">
       {Array.from({ length: count }, (_, index) => <EventCardSkeleton key={index} />)}
     </div>
   );
@@ -33,7 +33,7 @@ export function EventGridSkeleton({ count = 4 }: { count?: number }) {
 
 export function AgendaWeekSkeleton() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" role="status" aria-label="Carregando Agenda da Semana">
+    <div className="content-fade-in grid gap-4 sm:grid-cols-2 lg:grid-cols-3" role="status" aria-label="Carregando Agenda da Semana">
       {Array.from({ length: 3 }, (_, index) => (
         <div key={index} className="event-skeleton-shell overflow-hidden rounded-2xl border" aria-hidden="true">
           <SkeletonBlock className="aspect-[16/9] rounded-none" />
