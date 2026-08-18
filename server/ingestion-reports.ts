@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { ingestionRuns, operationalAlerts } from "../drizzle/schema";
+import { classifyCriticalMetaReason, sendCriticalMetaAlert } from "./meta-alert-webhook";
 import { getDb, recordOperationalAlert } from "./db";
 
 export function isCriticalIngestionFailure(details: unknown) {
@@ -102,6 +103,11 @@ export async function finishIngestionRun(id: number | undefined, input: { status
     const serializedDetails = input.details !== undefined ? JSON.stringify(input.details).slice(0, 20000) : null;
     await db.update(ingestionRuns).set({ status: input.status, importedCount: input.importedCount ?? counts.persisted, failedCount: input.failedCount ?? 0, durationMs, httpStatus: input.httpStatus ?? (input.status === "failed" ? 500 : 200), counts: serializedCounts, details: serializedDetails, finishedAt }).where(eq(ingestionRuns.id, id));
     const failureText = serializedDetails ?? "";
+    const criticalMetaReason = classifyCriticalMetaReason(failureText);
+    if (criticalMetaReason) {
+      void sendCriticalMetaAlert({ reason: criticalMetaReason }).catch(error => console.warn("[Meta alert] Webhook delivery failed:", error instanceof Error ? error.message : "unknown"));
+      await recordOperationalAlert({ dbOverride: db, integration: "meta", title: "Credenciais Meta exigem renovação", message: `A integração Meta registrou ${criticalMetaReason}. Renove manualmente o token de acesso do Instagram.` });
+    }
     if (input.status === "failed" && isCriticalIngestionFailure(failureText)) {
       await recordOperationalAlert({ dbOverride: db, integration: "pipeline", title: "Falha crítica na ingestão", message: `A rotina ${id} registrou timeout ou erro HTTP 5xx: ${failureText}` });
     }

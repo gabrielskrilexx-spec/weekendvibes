@@ -756,3 +756,11 @@
 - [x] Criar teste E2E mobile para abrir InfoWindow por toque
 - [x] Validar fechamento do InfoWindow por toque e ausência de erros no console
 - [x] Executar TypeScript, Vitest, E2E/build e publicar checkpoint
+
+## Painel de saúde e alertas críticos da Meta
+- [x] Auditar ingestão, painel admin, tabela ingestionRuns e classificação blocked_credentials
+- [x] Implementar rota restrita de saúde com último status e métricas do lote
+- [x] Implementar serviço Discord webhook sem expor secrets e com deduplicação segura do alerta crítico
+- [x] Disparar alerta para blocked_credentials e códigos Meta 190/467 com instrução de renovação
+- [x] Solicitar/configurar DISCORD_WEBHOOK_URL e validar lógica com testes Vitest
+- [x] Validar TypeScript, Vitest, build, segurança e publicar checkpoint
