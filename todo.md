@@ -694,3 +694,8 @@
 - [x] Identificar a causa da falha HTTP 500 e tratar erros de token, permissões, rate limit e upstream sem vazar segredos
 - [x] Adicionar testes de regressão e documentação operacional
 - [x] Validar TypeScript, Vitest, build, logs e publicar checkpoint se houver alteração
+## Indicador de integração Meta no painel
+- [x] Auditar a fonte operacional de status e última sincronização bem-sucedida
+- [x] Criar contrato protegido e indicador visual com estados ativo, degradado, falha e nunca sincronizado
+- [x] Adicionar testes de autorização, estados, timestamp e responsividade
+- [x] Validar TypeScript, Vitest, build, screenshots e publicar checkpoint

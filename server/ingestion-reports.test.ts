@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildWeeklyTrendForTest, isCriticalIngestionFailure, isZeroMediaMetaRunForTest } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildWeeklyTrendForTest, isCriticalIngestionFailure, isZeroMediaMetaRunForTest } from "./ingestion-reports";
 
 describe("ingestion report critical failures", () => {
   it("classifies timeout failures", () => {
@@ -41,5 +41,21 @@ describe("weekly ingestion trend and Meta zero-media signal", () => {
     expect(today.structuredEvents).toBe(2);
     expect(today.imported).toBe(2);
     expect(today.zeroMediaRuns).toBe(1);
+  });
+});
+
+describe("Meta integration status", () => {
+  const base = new Date("2026-08-18T10:00:00.000Z");
+
+  it("reports the latest status and last successful synchronization", () => {
+    expect(buildMetaIntegrationStatusForTest([
+      { status: "succeeded", startedAt: base, finishedAt: new Date("2026-08-18T10:05:00.000Z") },
+      { status: "failed", startedAt: new Date("2026-08-18T11:00:00.000Z"), finishedAt: new Date("2026-08-18T11:01:00.000Z") },
+    ])).toEqual({ status: "failed", lastSuccessfulSync: "2026-08-18T10:05:00.000Z", lastAttempt: "2026-08-18T11:00:00.000Z" });
+  });
+
+  it("distinguishes degraded and never-synchronized states", () => {
+    expect(buildMetaIntegrationStatusForTest([{ status: "partial", startedAt: base }]).status).toBe("degraded");
+    expect(buildMetaIntegrationStatusForTest([])).toEqual({ status: "never", lastSuccessfulSync: null, lastAttempt: null });
   });
 });

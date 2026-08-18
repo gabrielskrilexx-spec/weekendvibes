@@ -92,19 +92,38 @@ export async function finishIngestionRun(id: number | undefined, input: { status
   }
 }
 
+export type MetaIntegrationStatus = {
+  status: "active" | "degraded" | "failed" | "never";
+  lastSuccessfulSync: string | null;
+  lastAttempt: string | null;
+};
+
+export function buildMetaIntegrationStatusForTest(runs: Array<{ status: string; startedAt: Date; finishedAt?: Date | null }>): MetaIntegrationStatus {
+  const ordered = [...runs].sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
+  const latest = ordered[0];
+  const successful = ordered.find(run => run.status === "succeeded");
+  const status = latest?.status === "succeeded" ? "active" : latest?.status === "failed" ? "failed" : latest ? "degraded" : "never";
+  return {
+    status,
+    lastSuccessfulSync: successful ? (successful.finishedAt ?? successful.startedAt).toISOString() : null,
+    lastAttempt: latest ? latest.startedAt.toISOString() : null,
+  };
+}
+
 export async function listIngestionReport(size = 20) {
   const db = await getDb();
-  if (!db) return { runs: [], alerts: [], criticalAlerts: [], sourceMetrics: [], weeklyTrend: [], totals: { succeeded: 0, failed: 0, partial: 0, imported: 0 } };
+  if (!db) return { runs: [], alerts: [], criticalAlerts: [], sourceMetrics: [], weeklyTrend: [], metaStatus: { status: "never" as const, lastSuccessfulSync: null, lastAttempt: null }, totals: { succeeded: 0, failed: 0, partial: 0, imported: 0 } };
   const safeSize = Math.min(Math.max(size, 1), 50);
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const runs = await db.select().from(ingestionRuns).orderBy(desc(ingestionRuns.startedAt)).limit(safeSize);
   const trendRuns = await db.select().from(ingestionRuns).where(gte(ingestionRuns.startedAt, cutoff)).orderBy(desc(ingestionRuns.startedAt)).limit(500);
+  const metaRuns = await db.select({ status: ingestionRuns.status, startedAt: ingestionRuns.startedAt, finishedAt: ingestionRuns.finishedAt }).from(ingestionRuns).where(eq(ingestionRuns.sourceKey, "instagram")).orderBy(desc(ingestionRuns.startedAt)).limit(100);
   const alerts = await db.select({ id: operationalAlerts.id, integration: operationalAlerts.integration, title: operationalAlerts.title, message: operationalAlerts.message, isResolved: operationalAlerts.isResolved, createdAt: operationalAlerts.createdAt }).from(operationalAlerts).orderBy(desc(operationalAlerts.createdAt)).limit(safeSize);
   const [totals] = await db.select({ succeeded: sql<number>`sum(status = 'succeeded')`, failed: sql<number>`sum(status = 'failed')`, partial: sql<number>`sum(status = 'partial')`, imported: sql<number>`coalesce(sum(importedCount), 0)` }).from(ingestionRuns);
   const sourceRows = await db.select({ sourceKey: ingestionRuns.sourceKey, imported: sql<number>`coalesce(sum(${ingestionRuns.importedCount}), 0)`, runs: sql<number>`count(*)`, failed: sql<number>`sum(status = 'failed')` }).from(ingestionRuns).groupBy(ingestionRuns.sourceKey).orderBy(desc(sql`sum(${ingestionRuns.importedCount})`));
   const sourceMetrics = sourceRows.filter(row => row.sourceKey).map(row => ({ sourceKey: String(row.sourceKey), imported: Number(row.imported ?? 0), runs: Number(row.runs ?? 0), failed: Number(row.failed ?? 0) }));
   const criticalAlerts = alerts.filter(alert => isCriticalIngestionFailure(`${alert.title} ${alert.message}`));
-  return { runs, alerts, criticalAlerts, sourceMetrics, weeklyTrend: buildWeeklyTrend(trendRuns), totals: { succeeded: Number(totals?.succeeded ?? 0), failed: Number(totals?.failed ?? 0), partial: Number(totals?.partial ?? 0), imported: Number(totals?.imported ?? 0) } };
+  return { runs, alerts, criticalAlerts, sourceMetrics, weeklyTrend: buildWeeklyTrend(trendRuns), metaStatus: buildMetaIntegrationStatusForTest(metaRuns), totals: { succeeded: Number(totals?.succeeded ?? 0), failed: Number(totals?.failed ?? 0), partial: Number(totals?.partial ?? 0), imported: Number(totals?.imported ?? 0) } };
 }
 
 export async function reprocessIngestionSource(sourceKey: "public" | "instagram") {
