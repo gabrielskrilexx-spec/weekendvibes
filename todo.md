@@ -821,3 +821,8 @@
 - [x] Validar contagens, duplicidades, coordenadas inválidas e estado degraded sem expor dados sensíveis
 - [x] Adicionar resumo operacional semanal ao painel administrativo restrito
 - [x] Atualizar testes, documentação, validar TypeScript/Vitest/E2E/build e publicar checkpoint
+
+## Periodicidade oficial da ingestão Instagram
+- [x] Mudar a rotina oficial de ingestão do Instagram de terça-feira para quarta-feira às 10:00 em America/Sao_Paulo
+- [x] Confirmar Heartbeat e schedules internos sincronizados, mantendo o schedule diário redundante pausado
+- [x] Atualizar documentação, testes de periodicidade, validar configuração e publicar checkpoint

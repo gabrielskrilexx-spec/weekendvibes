@@ -11,3 +11,7 @@ Enabled: true
 Callback publicado: ingestão pública e ingestão Instagram, ambos protegidos por autenticação cron.
 
 Nota: o painel consulta o serviço Heartbeat via `listHeartbeatJobs`; a seleção deve usar o nome exato do schedule, sem regex ou task UID hardcoded. Se o metadata opcional de timezone/runMode não vier na resposta do SDK, o painel deve mostrar ausência de metadata em vez de inventar valores.
+
+## Configuração vigente — 2026-08-18
+
+O schedule diário redundante foi pausado. A rotina oficial passou a ser o Heartbeat `weekendvibes-ingest-instagram`, task UID `NjYqyJXDmbAEaVGhdJVwZA`, com cron UTC `0 0 13 * * 3`, equivalente a quartas-feiras às 10:00 em `America/Sao_Paulo`. Está habilitado e tem próxima execução prevista para `2026-08-19T13:00:00Z`.

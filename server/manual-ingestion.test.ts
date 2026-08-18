@@ -13,34 +13,34 @@ vi.mock("./instagram-pipeline", () => ({ InstagramIntegrationFailure: class Inst
 vi.mock("./_core/notification", () => ({ notifyOwner: vi.fn() }));
 vi.mock("./_core/heartbeat", () => ({ listHeartbeatJobs: mocks.listHeartbeatJobs }));
 
-import { getNextTuesdayExecution, getTuesdayRoutineStatus, runTuesdayRoutineNow } from "./manual-ingestion";
+import { getNextWednesdayExecution, getWednesdayRoutineStatus, runWednesdayRoutineNow } from "./manual-ingestion";
 
-describe("manual Tuesday routine", () => {
+describe("manual Wednesday routine", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.listHeartbeatJobs.mockResolvedValue({ total: 1, actorUserId: "owner", jobs: [{ taskUid: "runtime-uid", name: "qualquer nome", description: "Agenda semanal", cronExpression: "0 0 10 * * 2", isEnable: true, timezone: "America/Sao_Paulo", runMode: "full_auto", nextExecutionAt: "2026-08-18T13:00:00.000Z", lastExecutedAt: "2026-08-12T15:04:27.093Z" }] });
+    mocks.listHeartbeatJobs.mockResolvedValue({ total: 1, actorUserId: "owner", jobs: [{ taskUid: "runtime-uid", name: "qualquer nome", description: "Agenda semanal", cronExpression: "0 0 10 * * 3", isEnable: true, timezone: "America/Sao_Paulo", runMode: "full_auto", nextExecutionAt: "2026-08-19T13:00:00.000Z", lastExecutedAt: "2026-08-12T15:04:27.093Z" }] });
   });
-  it("calcula a próxima terça às 10h no fuso de São Paulo", async () => {
-    expect(getNextTuesdayExecution(new Date("2026-08-12T15:00:00.000Z"))).toBe("2026-08-18T13:00:00.000Z");
-    const status = await getTuesdayRoutineStatus(new Date("2026-08-12T15:00:00.000Z"));
-    expect(status.cron).toBe("0 0 10 * * 2");
+  it("calcula a próxima quarta às 10h no fuso de São Paulo", async () => {
+    expect(getNextWednesdayExecution(new Date("2026-08-12T15:00:00.000Z"))).toBe("2026-08-19T13:00:00.000Z");
+    const status = await getWednesdayRoutineStatus(new Date("2026-08-12T15:00:00.000Z"));
+    expect(status.cron).toBe("0 0 10 * * 3");
     expect(status.timezone).toBe("America/Sao_Paulo");
     expect(status.runMode).toBe("full_auto");
-    expect(status.nextExecutionAt).toBe("2026-08-18T13:00:00.000Z");
+    expect(status.nextExecutionAt).toBe("2026-08-19T13:00:00.000Z");
     expect(status.lastExecutedAt).toBe("2026-08-12T15:04:27.093Z");
     expect(status.source).toBe("heartbeat");
   });
   it("retorna metadata indisponível quando nenhum job estruturado corresponde à rotina", async () => {
-    mocks.listHeartbeatJobs.mockResolvedValue({ total: 1, actorUserId: "owner", jobs: [{ cronExpression: "0 0 10 * * 2", isEnable: true, timezone: "America/Sao_Paulo", runMode: "manual" }] });
-    const status = await getTuesdayRoutineStatus();
+    mocks.listHeartbeatJobs.mockResolvedValue({ total: 1, actorUserId: "owner", jobs: [{ cronExpression: "0 0 10 * * 3", isEnable: true, timezone: "America/Sao_Paulo", runMode: "manual" }] });
+    const status = await getWednesdayRoutineStatus();
     expect(status.source).toBe("metadata-unavailable");
     expect(status.nextExecutionAt).toBeNull();
     expect(status.runMode).toBeNull();
   });
 
   it("compartilha a execução em andamento e não dispara duas coletas", async () => {
-    const first = runTuesdayRoutineNow();
-    const second = runTuesdayRoutineNow();
+    const first = runWednesdayRoutineNow();
+    const second = runWednesdayRoutineNow();
     expect(first).toBe(second);
     await first;
     expect(mocks.archiveExpiredSoldOutEvents).toHaveBeenCalledTimes(1);

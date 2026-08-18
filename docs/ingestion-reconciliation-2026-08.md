@@ -2,7 +2,7 @@
 
 ## Schedule oficial
 
-O schedule configurado **WeekendVibe — ingestão Instagram** foi colocado em pausa para eliminar a execução diária redundante. A rotina oficial permanece o Heartbeat semanal de terça-feira. A verificação posterior mostrou o schedule redundante com status `pause`; nenhum novo schedule foi criado.
+O schedule configurado **WeekendVibe — ingestão Instagram** foi colocado em pausa para eliminar a execução diária redundante. A rotina oficial permanece o Heartbeat semanal de quarta-feira às 10:00 em `America/Sao_Paulo` (13:00 UTC). A verificação posterior mostrou o schedule redundante com status `pause`; nenhum novo schedule foi criado.
 
 ## Reconciliação determinística
 

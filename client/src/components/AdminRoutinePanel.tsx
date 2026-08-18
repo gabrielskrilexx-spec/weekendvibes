@@ -25,10 +25,10 @@ export default function AdminRoutinePanel() {
     <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <div className="flex items-center gap-2 text-orange-200"><CalendarClock size={18} /><p className="text-xs font-black uppercase tracking-[0.2em]">Automação da agenda</p></div>
-        <h2 id="routine-title" className="mt-2 text-xl font-black">Rotina de terça-feira</h2>
-        {status.isLoading ? <p className="mt-2 text-sm text-zinc-400">Consultando a próxima execução…</p> : status.isError ? <p className="mt-2 text-sm text-red-200">Não foi possível consultar o schedule.</p> : <><p className="mt-2 text-sm text-zinc-300">Próxima execução: <strong className="text-white">{formatExecution(status.data?.nextExecutionAt)}</strong></p><p className="mt-1 text-xs text-zinc-500">Terças-feiras às 10:00 · {status.data?.timezone} · modo {status.data?.runMode}</p></>}
+        <h2 id="routine-title" className="mt-2 text-xl font-black">Rotina de quarta-feira</h2>
+        {status.isLoading ? <p className="mt-2 text-sm text-zinc-400">Consultando a próxima execução…</p> : status.isError ? <p className="mt-2 text-sm text-red-200">Não foi possível consultar o schedule.</p> : <><p className="mt-2 text-sm text-zinc-300">Próxima execução: <strong className="text-white">{formatExecution(status.data?.nextExecutionAt)}</strong></p><p className="mt-1 text-xs text-zinc-500">Quartas-feiras às 10:00 · {status.data?.timezone} · modo {status.data?.runMode}</p></>}
       </div>
-      <button type="button" onClick={confirmRun} disabled={runNow.isPending || status.data?.isRunning || status.isLoading} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-400 to-fuchsia-500 px-4 py-3 text-sm font-black text-zinc-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50" aria-label="Executar rotina de terça-feira agora" title="Executar rotina de terça-feira agora">
+      <button type="button" onClick={confirmRun} disabled={runNow.isPending || status.data?.isRunning || status.isLoading} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-400 to-fuchsia-500 px-4 py-3 text-sm font-black text-zinc-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50" aria-label="Executar rotina de quarta-feira agora" title="Executar rotina de quarta-feira agora">
         {runNow.isPending ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />} {runNow.isPending ? "Executando…" : "Executar agora"}
       </button>
     </div>

@@ -38,28 +38,28 @@ async function executeRoutine(): Promise<ManualRoutineResult> {
   }
 }
 
-export function runTuesdayRoutineNow() {
+export function runWednesdayRoutineNow() {
   if (activeRun) return activeRun;
   activeRun = executeRoutine().finally(() => { activeRun = null; });
   return activeRun;
 }
 
-export function isTuesdayRoutineRunning() {
+export function isWednesdayRoutineRunning() {
   return activeRun !== null;
 }
 
-export function getNextTuesdayExecution(now = new Date()) {
+export function getNextWednesdayExecution(now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short" }).formatToParts(now);
   const values = Object.fromEntries(parts.filter(part => part.type !== "literal").map(part => [part.type, part.value]));
   const localDate = new Date(Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day), 13, 0, 0));
   const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(values.weekday);
-  let daysUntil = (2 - weekday + 7) % 7;
+  let daysUntil = (3 - weekday + 7) % 7;
   if (daysUntil === 0 && localDate.getTime() <= now.getTime()) daysUntil = 7;
   localDate.setUTCDate(localDate.getUTCDate() + daysUntil);
   return localDate.toISOString();
 }
 
-export async function getTuesdayRoutineStatus(now = new Date()) {
+export async function getWednesdayRoutineStatus(now = new Date()) {
   const fallback = {
     enabled: false,
     runMode: null as string | null,
@@ -67,12 +67,12 @@ export async function getTuesdayRoutineStatus(now = new Date()) {
     cron: null as string | null,
     nextExecutionAt: null as string | null,
     lastExecutedAt: null as string | null,
-    isRunning: isTuesdayRoutineRunning(),
+    isRunning: isWednesdayRoutineRunning(),
     source: "metadata-unavailable" as const,
   };
   try {
     const { jobs } = await listHeartbeatJobs("", { page: 1, pageSize: 100 });
-    const job = jobs.find(item => item.isEnable === true && item.cronExpression === "0 0 10 * * 2" && (!item.timezone || item.timezone === "America/Sao_Paulo") && (!item.runMode || item.runMode === "full_auto"));
+    const job = jobs.find(item => item.isEnable === true && item.cronExpression === "0 0 10 * * 3" && (!item.timezone || item.timezone === "America/Sao_Paulo") && (!item.runMode || item.runMode === "full_auto"));
     if (!job) return fallback;
     const hasCompleteMetadata = Boolean(job.timezone && job.runMode && job.nextExecutionAt);
     return {
@@ -80,9 +80,9 @@ export async function getTuesdayRoutineStatus(now = new Date()) {
       runMode: job.runMode ?? "full_auto",
       timezone: job.timezone ?? "America/Sao_Paulo",
       cron: job.cronExpression,
-      nextExecutionAt: job.nextExecutionAt ?? getNextTuesdayExecution(now),
+      nextExecutionAt: job.nextExecutionAt ?? getNextWednesdayExecution(now),
       lastExecutedAt: job.lastExecutedAt ?? null,
-      isRunning: isTuesdayRoutineRunning(),
+      isRunning: isWednesdayRoutineRunning(),
       source: (hasCompleteMetadata ? "heartbeat" : "heartbeat-derived") as "heartbeat" | "heartbeat-derived",
     };
   } catch (error) {

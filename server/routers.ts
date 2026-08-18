@@ -5,7 +5,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { deleteEvent, getEventBySlug, listEvents, listRecentInstagramAgendaEvents, listTodayEvents, resolveOperationalAlert, saveEvent, updateEvent, listFavoriteEventIds, toggleFavoriteEvent, setEventReminder, listUserReminders, listIngestionSources, updateIngestionSource } from "./db";
 import { invokeLLM } from "./_core/llm";
-import { getTuesdayRoutineStatus, runTuesdayRoutineNow } from "./manual-ingestion";
+import { getWednesdayRoutineStatus, runWednesdayRoutineNow } from "./manual-ingestion";
 import { listIngestionReport, reprocessIngestionSource } from "./ingestion-reports";
 import { createLocationAlias, deleteLocationAlias, listLocationAliases, updateLocationAlias } from "./db";
 import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
@@ -49,8 +49,8 @@ export const appRouter = router({
     }),
   }),
   adminRoutine: router({
-    status: adminOnly.query(() => getTuesdayRoutineStatus()),
-    runNow: adminOnly.mutation(async () => runTuesdayRoutineNow()),
+    status: adminOnly.query(() => getWednesdayRoutineStatus()),
+    runNow: adminOnly.mutation(async () => runWednesdayRoutineNow()),
   }),
   locationAliases: router({
     list: adminOnly.query(() => listLocationAliases()),
