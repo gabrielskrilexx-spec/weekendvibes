@@ -100,7 +100,7 @@ describe("scheduled Instagram ingestion", () => {
     });
     try {
       const result = await runInstagramPipeline();
-      expect(result).toEqual({ receivedPosts: 1, approvedPosts: 1, structuredEvents: 1, imported: 1 });
+      expect(result).toMatchObject({ receivedPosts: 1, approvedPosts: 1, structuredEvents: 1, imported: 1, persisted: 1, duplicates: 0, missingCoordinates: 1 });
       expect(saveEvent).toHaveBeenCalledWith(expect.objectContaining({ sourceUrl, title: "Sábado no Moby" }));
     } finally {
       globalThis.fetch = originalFetch;
@@ -119,7 +119,7 @@ describe("scheduled Instagram ingestion", () => {
     });
     try {
       const result = await runInstagramPipeline();
-      expect(result).toEqual({ receivedPosts: 1, approvedPosts: 1, structuredEvents: 1, imported: 1 });
+      expect(result).toMatchObject({ receivedPosts: 1, approvedPosts: 1, structuredEvents: 1, imported: 1, persisted: 1, duplicates: 0, missingCoordinates: 1 });
       expect(saveEvent).toHaveBeenCalledWith(expect.objectContaining({ sourceUrl, city: "Santos", genre: "house_eletronica", isPublished: 1, isArchived: 0 }));
     } finally {
       globalThis.fetch = originalFetch;

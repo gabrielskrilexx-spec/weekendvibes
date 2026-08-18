@@ -355,11 +355,12 @@ export async function saveEvent(data: InsertEvent) {
   if (existing[0]) {
     await db.update(events).set({ ...normalized, updatedAt: new Date() }).where(eq(events.id, existing[0].id));
     await queueGeocoding(existing[0].id, normalized, db);
-    return;
+    return { created: false };
   }
   const inserted = await db.insert(events).values(normalized).onDuplicateKeyUpdate({ set: { ...normalized, updatedAt: new Date() } });
   const eventId = Number(inserted[0]?.insertId ?? 0);
   if (eventId > 0) await queueGeocoding(eventId, normalized, db);
+  return { created: eventId > 0 };
 }
 
 export async function updateEvent(id: number, input: Partial<InsertEvent>) {

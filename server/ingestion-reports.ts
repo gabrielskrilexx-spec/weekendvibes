@@ -61,6 +61,21 @@ function buildWeeklyTrend(runs: Array<{ routine: string; sourceKey: string | nul
   return Array.from(buckets.values());
 }
 
+function buildWeeklyOperationalSummary(runs: Array<{ details: unknown }>) {
+  const summary = { runs: runs.length, retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, inconsistentRuns: 0, degradedRuns: 0 };
+  for (const run of runs) {
+    const details = parseDetails(run.details);
+    summary.retries += findMetric(details, "retries");
+    summary.fallbackList += findMetric(details, "fallbackList");
+    summary.duplicates += findMetric(details, "duplicates");
+    summary.missingCoordinates += findMetric(details, "missingCoordinates");
+    summary.outOfBoundsCoordinates += findMetric(details, "outOfBoundsCoordinates");
+    summary.inconsistentRuns += findMetric(details, "consistent") === 0 && findMetric(details, "read") > 0 ? 1 : 0;
+    summary.degradedRuns += findMetric(details, "degraded") > 0 ? 1 : 0;
+  }
+  return summary;
+}
+
 export async function startIngestionRun(input: { routine: string; sourceKey?: string }) {
   try {
     const db = await getDb();
@@ -108,6 +123,10 @@ export async function finishIngestionRun(id: number | undefined, input: { status
       void sendCriticalMetaAlert({ reason: criticalMetaReason }).catch(error => console.warn("[Meta alert] Webhook delivery failed:", error instanceof Error ? error.message : "unknown"));
       await recordOperationalAlert({ dbOverride: db, integration: "meta", title: "Credenciais Meta exigem renovação", message: `A integração Meta registrou ${criticalMetaReason}. Renove manualmente o token de acesso do Instagram.` });
     }
+    const reconciliation = input.details && typeof input.details === "object" ? (input.details as { reconciliation?: { consistent?: boolean; missingCoordinates?: number; outOfBoundsCoordinates?: number; issues?: string[] } }).reconciliation : undefined;
+    if (reconciliation && (!reconciliation.consistent || Number(reconciliation.missingCoordinates ?? 0) > 0 || Number(reconciliation.outOfBoundsCoordinates ?? 0) > 0)) {
+      await recordOperationalAlert({ dbOverride: db, integration: "pipeline", title: "Reconciliação da ingestão requer atenção", message: `A execução ${id} registrou inconsistências ou qualidade geográfica abaixo do esperado. Verifique as métricas agregadas no painel administrativo.` });
+    }
     if (input.status === "failed" && isCriticalIngestionFailure(failureText)) {
       await recordOperationalAlert({ dbOverride: db, integration: "pipeline", title: "Falha crítica na ingestão", message: `A rotina ${id} registrou timeout ou erro HTTP 5xx: ${failureText}` });
     }
@@ -140,7 +159,7 @@ export function buildMetaIntegrationStatusForTest(runs: Array<{ status: string; 
 
 export async function listIngestionReport(size = 20) {
   const db = await getDb();
-  if (!db) return { runs: [], alerts: [], criticalAlerts: [], sourceMetrics: [], weeklyTrend: [], metaStatus: { status: "never" as const, lastSuccessfulSync: null, lastAttempt: null }, totals: { succeeded: 0, failed: 0, partial: 0, imported: 0 } };
+  if (!db) return { runs: [], alerts: [], criticalAlerts: [], sourceMetrics: [], weeklyTrend: [], weeklySummary: { runs: 0, retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, inconsistentRuns: 0, degradedRuns: 0 }, metaStatus: { status: "never" as const, lastSuccessfulSync: null, lastAttempt: null }, totals: { succeeded: 0, failed: 0, partial: 0, imported: 0 } };
   const safeSize = Math.min(Math.max(size, 1), 50);
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const runs = await db.select().from(ingestionRuns).orderBy(desc(ingestionRuns.startedAt)).limit(safeSize);
@@ -151,7 +170,7 @@ export async function listIngestionReport(size = 20) {
   const sourceRows = await db.select({ sourceKey: ingestionRuns.sourceKey, imported: sql<number>`coalesce(sum(${ingestionRuns.importedCount}), 0)`, runs: sql<number>`count(*)`, failed: sql<number>`sum(status = 'failed')` }).from(ingestionRuns).groupBy(ingestionRuns.sourceKey).orderBy(desc(sql`sum(${ingestionRuns.importedCount})`));
   const sourceMetrics = sourceRows.filter(row => row.sourceKey).map(row => ({ sourceKey: String(row.sourceKey), imported: Number(row.imported ?? 0), runs: Number(row.runs ?? 0), failed: Number(row.failed ?? 0) }));
   const criticalAlerts = alerts.filter(alert => isCriticalIngestionFailure(`${alert.title} ${alert.message}`));
-  return { runs, alerts, criticalAlerts, sourceMetrics, weeklyTrend: buildWeeklyTrend(trendRuns), metaStatus: buildMetaIntegrationStatusForTest(metaRuns), totals: { succeeded: Number(totals?.succeeded ?? 0), failed: Number(totals?.failed ?? 0), partial: Number(totals?.partial ?? 0), imported: Number(totals?.imported ?? 0) } };
+  return { runs, alerts, criticalAlerts, sourceMetrics, weeklyTrend: buildWeeklyTrend(trendRuns), weeklySummary: buildWeeklyOperationalSummary(trendRuns), metaStatus: buildMetaIntegrationStatusForTest(metaRuns), totals: { succeeded: Number(totals?.succeeded ?? 0), failed: Number(totals?.failed ?? 0), partial: Number(totals?.partial ?? 0), imported: Number(totals?.imported ?? 0) } };
 }
 
 export async function reprocessIngestionSource(sourceKey: "public" | "instagram") {

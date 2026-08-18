@@ -3,6 +3,7 @@ import { runIngestionPipeline } from "./ingestion";
 import { getMetaFailureStatus, isGracefullyDegradedMetaFailure, runInstagramPipeline } from "./instagram-pipeline";
 import { processPendingGeocoding } from "./geocoding";
 import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
+import { reconcileIngestionResult } from "./reconciliation";
 
 export type AgendaStepOptions = { archive?: boolean; track?: boolean; sourceKey?: string };
 
@@ -10,8 +11,22 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
   const runId = await startIngestionRun({ routine, sourceKey });
   try {
     const result = await work();
-    const imported = Number((result as { imported?: number })?.imported ?? 0);
-    await finishIngestionRun(runId, { status: "succeeded", importedCount: imported, details: result, routine, sourceKey });
+    const raw = result as Record<string, unknown>;
+    const imported = Number(raw.imported ?? 0);
+    const read = Number(raw.read ?? raw.receivedPosts ?? raw.discovered ?? 0);
+    const filtered = Number(raw.filtered ?? Math.max(0, read - Number(raw.approvedPosts ?? raw.matchedSources ?? 0)));
+    const reconciliation = reconcileIngestionResult({
+      read,
+      filtered,
+      persisted: Number(raw.persisted ?? imported),
+      duplicates: Number(raw.duplicates ?? 0),
+      missingCoordinates: Number(raw.missingCoordinates ?? 0),
+      outOfBoundsCoordinates: Number(raw.outOfBoundsCoordinates ?? 0),
+      degraded: raw.degraded === true,
+      retries: Number(raw.retries ?? 0),
+      fallbackList: Number(raw.fallbackList ?? 0),
+    });
+    await finishIngestionRun(runId, { status: "succeeded", importedCount: imported, counts: reconciliation.counts, details: { ...raw, reconciliation }, routine, sourceKey });
     return result;
   } catch (error) {
     const degraded = sourceKey === "instagram" && isGracefullyDegradedMetaFailure(error);
@@ -21,9 +36,9 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
       failedCount: degraded ? 0 : 1,
       httpStatus: degraded ? 200 : 500,
       counts: { read: 0, filtered: 0, persisted: 0 },
-      details: degraded
-        ? { degraded: true, integration: "meta", upstreamStatus, imported: 0, counts: { read: 0, filtered: 0, persisted: 0 } }
-        : { message: error instanceof Error ? error.message : String(error) },
+        details: degraded
+        ? { degraded: true, integration: "meta", upstreamStatus, imported: 0, counts: { read: 0, filtered: 0, persisted: 0 }, reconciliation: reconcileIngestionResult({ degraded: true }) }
+        : { message: error instanceof Error ? error.message : String(error), reconciliation: reconcileIngestionResult({}) },
       routine,
       sourceKey,
     });

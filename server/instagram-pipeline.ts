@@ -298,20 +298,24 @@ export async function runInstagramPipeline() {
 
   const structuredEvents = await extractStructuredEvents(approvedPosts);
   let imported = 0;
+  let duplicates = 0;
+  let missingCoordinates = 0;
   for (const event of structuredEvents) {
     const eventDate = new Date(event.eventDate);
     if (Number.isNaN(eventDate.getTime()) || !containsTargetVenue(`${event.locationName} ${event.address}`, activeAliases)) continue;
     const sourceUrl = event.sourceUrl.startsWith("https://www.instagram.com/") ? event.sourceUrl : "";
     if (!sourceUrl) continue;
     const sourceHash = crypto.createHash("md5").update(`${sourceUrl}|${eventDate.toISOString().slice(0, 10)}|${event.title}`).digest("hex");
-    await saveEvent({
+    const saved = await saveEvent({
       title: event.title, slug: `${event.title.toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}-${eventDate.getTime()}`,
       description: event.summary, eventDate, locationName: event.locationName, address: event.address, city: event.city,
       category: event.category, genre: event.genre, priceCents: event.priceCents || 0, priceNote: event.priceCents ? undefined : "Preço não informado na agenda do Instagram",
       ticketStatus: event.priceCents ? "available" : "unknown", sourceUrl, imageUrl: event.imageUrl || undefined, latitude: undefined, longitude: undefined,
       sourceHash, sourceType: INSTAGRAM_AGENDA_SOURCE_TYPE, isPublished: 1, isArchived: 0,
     });
+    if (saved?.created === false) duplicates += 1;
+    missingCoordinates += 1;
     imported += 1;
   }
-  return { receivedPosts: posts.length, approvedPosts: approvedPosts.length, structuredEvents: structuredEvents.length, imported };
+  return { receivedPosts: posts.length, approvedPosts: approvedPosts.length, structuredEvents: structuredEvents.length, imported, persisted: imported, filtered: Math.max(0, posts.length - approvedPosts.length), duplicates, missingCoordinates, outOfBoundsCoordinates: 0 };
 }

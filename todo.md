@@ -814,3 +814,10 @@
 - [x] Extrair controlador do mapa para máquina de estados explícita
 - [x] Adicionar schemas e testes de contrato para Meta, Routes API e relay do Maps
 - [x] Validar TypeScript, Vitest, E2E e build, documentar e publicar checkpoint
+
+## Saneamento de schedules e reconciliação operacional
+- [x] Desativar o schedule diário redundante da ingestão Instagram e manter apenas o Heartbeat semanal de terça-feira
+- [x] Implementar reconciliação determinística pós-ingestão para Instagram e fontes públicas
+- [x] Validar contagens, duplicidades, coordenadas inválidas e estado degraded sem expor dados sensíveis
+- [x] Adicionar resumo operacional semanal ao painel administrativo restrito
+- [x] Atualizar testes, documentação, validar TypeScript/Vitest/E2E/build e publicar checkpoint

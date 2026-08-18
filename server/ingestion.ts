@@ -132,6 +132,9 @@ export async function runIngestionPipeline() {
 
   const payload = JSON.parse(String(structured.choices?.[0]?.message?.content ?? "{\"events\":[]}")) as { events: Array<Record<string, string | number>> };
   let imported = 0;
+  let duplicates = 0;
+  let missingCoordinates = 0;
+  let outOfBoundsCoordinates = 0;
   for (const event of payload.events) {
     const date = new Date(String(event.eventDate));
     const city = String(event.city);
@@ -141,8 +144,17 @@ export async function runIngestionPipeline() {
     const sourceHash = crypto.createHash("md5").update(`${normalizeSlug(String(event.sourceUrl))}:${normalizeSlug(String(event.title))}:${date.toISOString().slice(0, 10)}`).digest("hex");
     const sourceUrl = String(event.sourceUrl);
     const sourceType = sourceUrl.includes("ingresse.com") ? "ingresse" : "public_source";
-    await saveEvent({ title: String(event.title), slug: `${normalizeSlug(String(event.title))}-${date.getTime()}`, description: String(event.summary), eventDate: date, locationName: String(event.locationName), address: String(event.address), city, category: category as "show" | "balada" | "evento_musical", genre, priceCents: Number(event.priceCents) || 0, sourceUrl, sourceType, imageUrl: String(event.imageUrl || ""), latitude: String(event.latitude || ""), longitude: String(event.longitude || ""), sourceHash, isPublished: 1 });
+    const latitude = String(event.latitude || "");
+    const longitude = String(event.longitude || "");
+    if (!latitude || !longitude) missingCoordinates += 1;
+    else {
+      const lat = Number(latitude);
+      const lng = Number(longitude);
+      if (!(lat >= -24.15 && lat <= -23.85 && lng >= -46.45 && lng <= -46.05)) outOfBoundsCoordinates += 1;
+    }
+    const saved = await saveEvent({ title: String(event.title), slug: `${normalizeSlug(String(event.title))}-${date.getTime()}`, description: String(event.summary), eventDate: date, locationName: String(event.locationName), address: String(event.address), city, category: category as "show" | "balada" | "evento_musical", genre, priceCents: Number(event.priceCents) || 0, sourceUrl, sourceType, imageUrl: String(event.imageUrl || ""), latitude, longitude, sourceHash, isPublished: 1 });
+    if (saved?.created === false) duplicates += 1;
     imported += 1;
   }
-  return { imported, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length };
+  return { imported, persisted: imported, read: candidateUrls.length, filtered: Math.max(0, candidateUrls.length - sourcePages.length), duplicates, missingCoordinates, outOfBoundsCoordinates, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length };
 }
