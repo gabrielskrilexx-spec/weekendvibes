@@ -13,6 +13,7 @@ describe("Legal page", () => {
     expect(markup).toContain('href="#termos"');
     expect(markup).toContain('id="contato"');
     expect(markup).toContain("weekendvibes.of@gmail.com");
+    expect(markup).toContain('href="mailto:weekendvibes.of@gmail.com"');
     expect(markup).not.toContain("Antes da publicação definitiva");
   });
 

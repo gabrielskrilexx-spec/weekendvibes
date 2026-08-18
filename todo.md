@@ -721,3 +721,8 @@
 - [x] Substituir o texto provisório de contato pelo e-mail oficial weekendvibes.of@gmail.com
 - [x] Atualizar ou criar teste da página legal para validar o novo contato
 - [x] Validar e publicar checkpoint da alteração
+
+## Link mailto no contato legal
+- [x] Transformar o e-mail da seção de contato em link clicável mailto
+- [x] Atualizar o teste da página legal para validar href e acessibilidade do link
+- [x] Validar e publicar checkpoint da alteração

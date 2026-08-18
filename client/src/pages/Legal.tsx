@@ -67,7 +67,7 @@ export default function Legal() {
 
           <section id="contato" aria-labelledby="contact-title" className="border-t border-white/10 pt-12">
             <h2 id="contact-title" className="text-2xl font-black text-white sm:text-3xl">Contato e solicitações</h2>
-            <p className="mt-4">Para dúvidas sobre privacidade, solicitações de titulares ou correções de informações de eventos, utilize o e-mail weekendvibes.of@gmail.com.</p>
+            <p className="mt-4">Para dúvidas sobre privacidade, solicitações de titulares ou correções de informações de eventos, utilize o e-mail <a href="mailto:weekendvibes.of@gmail.com" className="font-semibold text-orange-200 underline decoration-orange-200/60 underline-offset-4 transition hover:text-yellow-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">weekendvibes.of@gmail.com</a>.</p>
           </section>
         </article>
       </div>
