@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Event, InsertEvent, InsertUser, events, users, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs } from "../drizzle/schema";
+import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -253,14 +254,15 @@ export async function listTodayEvents(options: { size?: number } = {}) {
   return listEvents({ date: saoPauloDateKey(), size: options.size ?? 12 });
 }
 
-export async function listEvents(filters: { day?: string; date?: string; startDate?: string; endDate?: string; timeFrom?: string; timeTo?: string; city?: string; category?: string; genre?: string; venue?: string; minPriceCents?: number; maxPriceCents?: number; page?: number; size?: number } = {}) {
+export async function listEvents(filters: { day?: string; date?: string; startDate?: string; endDate?: string; timeFrom?: string; timeTo?: string; city?: string; category?: string; genre?: string; venue?: string; neighborhood?: string; minPriceCents?: number; maxPriceCents?: number; page?: number; size?: number } = {}) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [eq(events.isPublished, 1), eq(events.isArchived, 0), sql`${events.city} IN (${sql.join(ALLOWED_CITIES.map(city => sql`${city}`), sql`, `)})`];
   if (filters.city && filters.city !== "Todas" && ALLOWED_CITIES.includes(filters.city as typeof ALLOWED_CITIES[number])) conditions.push(eq(events.city, filters.city));
   if (filters.category && filters.category !== "Todas") conditions.push(eq(events.category, filters.category as Event["category"]));
   if (filters.genre) conditions.push(eq(events.genre, filters.genre));
-  if (filters.venue?.trim()) { const venueSearch = `%${filters.venue.trim()}%`; conditions.push(or(like(events.locationName, venueSearch), like(events.address, venueSearch))!); }
+  if (filters.venue?.trim()) { const venueSearch = `%${filters.venue.trim()}%`; conditions.push(or(like(events.title, venueSearch), like(events.locationName, venueSearch), like(events.address, venueSearch), like(events.neighborhood, venueSearch), like(events.formattedAddress, venueSearch))!); }
+  if (filters.neighborhood?.trim()) { conditions.push(like(events.neighborhood, `%${filters.neighborhood.trim()}%`)); }
   if (filters.minPriceCents !== undefined) conditions.push(sql`${events.priceCents} >= ${filters.minPriceCents}`);
   if (filters.maxPriceCents !== undefined) conditions.push(sql`${events.priceCents} <= ${filters.maxPriceCents}`);
   if (filters.date) conditions.push(sql`DATE(${events.eventDate}) = ${filters.date}`);
@@ -331,23 +333,45 @@ export async function getEventBySlug(slug: string, dbOverride?: Awaited<ReturnTy
   return rows[0];
 }
 
+function normalizeEventLocation(data: InsertEvent) {
+  const address = data.address ? normalizeLocationText(data.address) : null;
+  const neighborhood = data.neighborhood?.trim() || extractNeighborhood(address, data.locationName, data.city as "Santos" | "Guarujá");
+  const formattedAddress = data.formattedAddress?.trim() || address;
+  return { ...data, address, neighborhood, formattedAddress };
+}
+
+async function queueGeocoding(eventId: number, data: InsertEvent, db: Awaited<ReturnType<typeof getDb>>) {
+  if (!db || (data.latitude && data.longitude)) return;
+  const rawAddress = data.address || data.locationName;
+  await db.insert(geocodingJobs).values({ eventId, addressHash: geocodingAddressHash(rawAddress, data.city), status: "pending", attempts: 0 }).onDuplicateKeyUpdate({ set: { addressHash: geocodingAddressHash(rawAddress, data.city), status: "pending", lastError: null, updatedAt: new Date() } });
+}
+
 export async function saveEvent(data: InsertEvent) {
   if (!ALLOWED_CITIES.includes(data.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos em Santos e Guarujá");
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const existing = await db.select({ id: events.id }).from(events).where(and(sql`${events.sourceUrl} = ${data.sourceUrl}`, eq(events.eventDate, data.eventDate))).limit(1);
+  const normalized = normalizeEventLocation(data);
+  const existing = await db.select({ id: events.id }).from(events).where(and(sql`${events.sourceUrl} = ${normalized.sourceUrl}`, eq(events.eventDate, normalized.eventDate))).limit(1);
   if (existing[0]) {
-    await db.update(events).set({ ...data, updatedAt: new Date() }).where(eq(events.id, existing[0].id));
+    await db.update(events).set({ ...normalized, updatedAt: new Date() }).where(eq(events.id, existing[0].id));
+    await queueGeocoding(existing[0].id, normalized, db);
     return;
   }
-  await db.insert(events).values(data).onDuplicateKeyUpdate({ set: { ...data, updatedAt: new Date() } });
+  const inserted = await db.insert(events).values(normalized).onDuplicateKeyUpdate({ set: { ...normalized, updatedAt: new Date() } });
+  const eventId = Number(inserted[0]?.insertId ?? 0);
+  if (eventId > 0) await queueGeocoding(eventId, normalized, db);
 }
 
 export async function updateEvent(id: number, input: Partial<InsertEvent>) {
   if (input.city && !ALLOWED_CITIES.includes(input.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos em Santos e Guarujá");
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  await db.update(events).set({ ...input, updatedAt: new Date() }).where(eq(events.id, id));
+  const normalized = { ...input, ...(input.address !== undefined ? { address: input.address ? normalizeLocationText(input.address) : null } : {}), updatedAt: new Date() };
+  await db.update(events).set(normalized).where(eq(events.id, id));
+  if (input.address !== undefined || input.locationName !== undefined || !input.latitude || !input.longitude) {
+    const current = await db.select({ address: events.address, locationName: events.locationName, city: events.city, latitude: events.latitude, longitude: events.longitude }).from(events).where(eq(events.id, id)).limit(1);
+    if (current[0]) await queueGeocoding(id, { ...current[0], address: current[0].address ?? undefined, locationName: current[0].locationName, city: current[0].city, latitude: current[0].latitude ?? undefined, longitude: current[0].longitude ?? undefined } as InsertEvent, db);
+  }
 }
 
 export async function deleteEvent(id: number) {

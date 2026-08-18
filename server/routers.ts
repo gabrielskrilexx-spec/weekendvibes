@@ -22,6 +22,8 @@ const eventInput = z.object({
   endDate: z.coerce.date().optional(),
   locationName: z.string().trim().min(2).max(180),
   address: z.string().trim().max(300).optional(),
+  neighborhood: z.string().trim().max(120).optional(),
+  formattedAddress: z.string().trim().max(360).optional(),
   city: z.enum(["Santos", "Guarujá"]),
   category: z.enum(["show", "balada", "evento_musical"]),
   genre: z.enum(["funk", "house_eletronica", "samba_pagode", "rap_trap"]).optional(),
@@ -70,7 +72,7 @@ export const appRouter = router({
     update: adminOnly.input(z.object({ id: z.number().int().positive(), isEnabled: z.boolean(), priority: z.number().int().min(1).max(1000), frequencyMinutes: z.number().int().min(60).max(525600) })).mutation(({ input }) => updateIngestionSource(input.id, input)),
   }),
   events: router({
-    list: publicProcedure.input(z.object({ day: safeFilter(20), date: safeFilter(20), startDate: safeFilter(30), endDate: safeFilter(30), timeFrom: safeFilter(10), timeTo: safeFilter(10), city: z.enum(["Santos", "Guarujá"]).optional(), category: z.enum(["show", "balada", "evento_musical"]).optional(), genre: z.enum(["funk", "house_eletronica", "samba_pagode", "rap_trap"]).optional(), venue: safeFilter(180), minPriceCents: z.number().int().min(0).max(10_000_000).optional(), maxPriceCents: z.number().int().min(0).max(10_000_000).optional(), page: z.number().int().min(1).max(10000).optional(), size: z.number().int().min(1).max(100).optional() }).optional()).query(({ input }) => listEvents(input ?? {})),
+    list: publicProcedure.input(z.object({ day: safeFilter(20), date: safeFilter(20), startDate: safeFilter(30), endDate: safeFilter(30), timeFrom: safeFilter(10), timeTo: safeFilter(10), city: z.enum(["Santos", "Guarujá"]).optional(), category: z.enum(["show", "balada", "evento_musical"]).optional(), genre: z.enum(["funk", "house_eletronica", "samba_pagode", "rap_trap"]).optional(), venue: safeFilter(180), neighborhood: safeFilter(120), minPriceCents: z.number().int().min(0).max(10_000_000).optional(), maxPriceCents: z.number().int().min(0).max(10_000_000).optional(), page: z.number().int().min(1).max(10000).optional(), size: z.number().int().min(1).max(100).optional() }).optional()).query(({ input }) => listEvents(input ?? {})),
     today: publicProcedure.input(z.object({ size: z.number().int().min(1).max(20).optional() }).optional()).query(({ input }) => listTodayEvents(input ?? {})),
     recentInstagramAgenda: publicProcedure.input(z.object({ lookbackDays: z.number().int().min(1).max(14).optional(), size: z.number().int().min(1).max(12).optional() }).optional()).query(({ input }) => listRecentInstagramAgendaEvents(input ?? {})),
     bySlug: publicProcedure.input(z.object({ slug: z.string().trim().min(3).max(180).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/) })).query(({ input }) => getEventBySlug(input.slug)),

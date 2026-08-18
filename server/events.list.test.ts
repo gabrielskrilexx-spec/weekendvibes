@@ -9,7 +9,7 @@ describe("events.list", () => {
       req: { protocol: "https", headers: {} } as TrpcContext["req"],
       res: {} as TrpcContext["res"],
     };
-    const result = await appRouter.createCaller(ctx).events.list({ day: "sexta", city: "Santos", size: 10 });
+    const result = await appRouter.createCaller(ctx).events.list({ day: "sexta", city: "Santos", neighborhood: "Gonzaga", size: 10 });
     expect(Array.isArray(result)).toBe(true);
   });
 });

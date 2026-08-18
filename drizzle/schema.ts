@@ -34,6 +34,8 @@ export const events = mysqlTable("events", {
   endDate: timestamp("endDate"),
   locationName: varchar("locationName", { length: 255 }).notNull(),
   address: varchar("address", { length: 500 }),
+  neighborhood: varchar("neighborhood", { length: 160 }),
+  formattedAddress: varchar("formattedAddress", { length: 500 }),
   city: varchar("city", { length: 100 }).notNull(),
   category: mysqlEnum("category", ["show", "balada", "evento_musical"]).notNull(),
   genre: varchar("genre", { length: 80 }),
@@ -129,6 +131,20 @@ export const geocodingJobs = mysqlTable("geocodingJobs", {
 
 export type GeocodingJob = typeof geocodingJobs.$inferSelect;
 export type InsertGeocodingJob = typeof geocodingJobs.$inferInsert;
+
+export const geocodingAuditLogs = mysqlTable("geocodingAuditLogs", {
+  id: int("id").autoincrement().primaryKey(),
+  eventId: int("eventId").notNull(),
+  city: varchar("city", { length: 100 }).notNull(),
+  rawAddress: varchar("rawAddress", { length: 500 }),
+  normalizedAddress: varchar("normalizedAddress", { length: 500 }),
+  status: mysqlEnum("status", ["invalid", "fallback", "rejected", "succeeded"]).notNull(),
+  message: varchar("message", { length: 1000 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type GeocodingAuditLog = typeof geocodingAuditLogs.$inferSelect;
+export type InsertGeocodingAuditLog = typeof geocodingAuditLogs.$inferInsert;
 
 export const locationAliases = mysqlTable("locationAliases", {
   id: int("id").autoincrement().primaryKey(),

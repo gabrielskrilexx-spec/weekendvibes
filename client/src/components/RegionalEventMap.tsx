@@ -94,6 +94,11 @@ function routeSelectorId(clusterId: string) {
   return `route-selector-${clusterId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 }
 
+const CITY_BOUNDS: Record<"Santos" | "Guarujá", google.maps.LatLngBoundsLiteral> = {
+  Santos: { north: -23.91, south: -23.99, east: -46.28, west: -46.45 },
+  "Guarujá": { north: -23.94, south: -24.04, east: -46.14, west: -46.33 },
+};
+
 export const MAP_LEGEND_ITEMS = [
   { key: "santos", label: "Santos", color: "#f97316", description: "eventos em Santos" },
   { key: "guaruja", label: "Guarujá", color: "#d946ef", description: "eventos no Guarujá" },
@@ -278,6 +283,17 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange }: Re
     document.body.style.overflow = "hidden";
     return () => { document.removeEventListener("keydown", onKeyDown); document.body.style.overflow = previousOverflow; };
   }, [isFullscreen]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const activeCities = (Object.keys(cityFilters) as Array<"Santos" | "Guarujá">).filter(city => cityFilters[city]);
+    if (activeCities.length === 1) {
+      map.fitBounds(CITY_BOUNDS[activeCities[0]], 32);
+    } else if (activeCities.length === 2) {
+      map.fitBounds(BAIXADA_BOUNDS, 24);
+    }
+  }, [cityFilters]);
 
   useEffect(() => {
     markersRef.current.forEach(marker => { marker.map = null; });

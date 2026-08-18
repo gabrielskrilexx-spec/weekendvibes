@@ -681,3 +681,10 @@
 - [x] Gerar link direto do Google Maps com destino exato ou fallback aproximado por cidade
 - [x] Cobrir link, escape, acessibilidade e abertura externa com testes
 - [x] Validar TypeScript, Vitest, build, responsividade e publicar checkpoint
+## Precisão geográfica, busca e auditoria de endereços
+- [x] Auditar pipeline de ingestão, schema de eventos, busca pública e sincronização mapa-lista
+- [x] Normalizar endereços, restringir geocodificação a Santos/Guarujá e aplicar fallbacks regionais seguros
+- [x] Persistir bairro e endereco_formatado com coordenadas válidas e registrar falhas de endereço
+- [x] Aprimorar busca por evento, bairro, rua e estabelecimento com atualização instantânea do mapa
+- [x] Adicionar filtros geográficos e enquadramento suave por cidade/bairro/raio
+- [x] Criar testes unitários e de integração, documentação técnica, validar build e publicar checkpoint
