@@ -783,3 +783,9 @@
 - [x] Persistir a escolha mapa/lista no localStorage com leitura segura no cliente
 - [x] Restaurar a preferência após recarregamento sem quebrar SSR ou testes
 - [x] Atualizar testes Vitest/Playwright, validar TypeScript/build e publicar checkpoint
+
+## Recuperação automática do mapa ao voltar a conexão
+- [x] Auditar o listener online e o ciclo de retry do fallback do mapa
+- [x] Recarregar automaticamente o mapa no evento browser online sem loops
+- [x] Cobrir o comportamento com Vitest/Playwright e validar build
+- [x] Publicar checkpoint da melhoria

@@ -148,3 +148,40 @@ test.describe("Mapa dos rolês — recuperação e preferência de visualizaçã
     await expect(page.getByTestId("view-mode-toggle")).toBeVisible();
   });
 });
+
+  test("recarrega automaticamente quando a conexão é restabelecida", async ({ page }) => {
+    await mockApplicationApis(page);
+    await page.addInitScript(() => {
+      let online = false;
+      Object.defineProperty(navigator, "onLine", { configurable: true, get: () => online });
+      Object.defineProperty(window, "__setMapOnline", {
+        configurable: true,
+        value: () => {
+          online = true;
+          window.dispatchEvent(new Event("online"));
+        },
+      });
+    });
+
+    let relayAttempts = 0;
+    await page.route("**/api/maps/javascript**", async route => {
+      relayAttempts += 1;
+      if (relayAttempts === 1) {
+        await route.abort("failed");
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/javascript",
+        body: "window.google={maps:{Map:function(){},}}; window.__weekendVibesMapsReady&&window.__weekendVibesMapsReady();",
+      });
+    });
+
+    await page.goto("/");
+    await page.getByRole("heading", { name: "Mapa dos rolês" }).scrollIntoViewIfNeeded();
+    await expect(page.getByRole("alert")).toContainText("Parece que você está sem conexão.");
+
+    await page.evaluate(() => (window as unknown as { __setMapOnline: () => void }).__setMapOnline());
+    await expect.poll(() => relayAttempts).toBeGreaterThanOrEqual(2);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  });

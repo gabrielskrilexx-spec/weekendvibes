@@ -216,7 +216,15 @@ export function MapView({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const updateConnectivity = () => setIsOffline(!window.navigator.onLine);
+    const updateConnectivity = () => {
+      const isOnline = window.navigator.onLine;
+      setIsOffline(!isOnline);
+      if (isOnline && loadError && !isMapReady) {
+        setLoadError(false);
+        setIsVisible(true);
+        setRetryNonce(value => value + 1);
+      }
+    };
     updateConnectivity();
     window.addEventListener("online", updateConnectivity);
     window.addEventListener("offline", updateConnectivity);
@@ -224,7 +232,7 @@ export function MapView({
       window.removeEventListener("online", updateConnectivity);
       window.removeEventListener("offline", updateConnectivity);
     };
-  }, []);
+  }, [isMapReady, loadError]);
 
   useEffect(() => {
     if (!lazy || !mapContainer.current || typeof IntersectionObserver === "undefined") {
