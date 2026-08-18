@@ -770,3 +770,10 @@
 - [x] Verificar se o projeto expõe diagnóstico seguro de chave, APIs e domínio
 - [x] Corrigir qualquer configuração controlável no código sem expor credenciais
 - [x] Validar testes/build e documentar os ajustes externos necessários no Google Cloud
+
+## Fallback do mapa e alternância mapa/lista
+- [x] Auditar estados de erro do Google Maps e a lista pública de eventos
+- [x] Implementar mensagem amigável de falha com ação de recuperação
+- [x] Criar alternador acessível entre mapa interativo e lista detalhada
+- [x] Preservar filtros, dados e responsividade nos dois modos
+- [x] Atualizar testes Vitest/Playwright, validar TypeScript/build e publicar checkpoint
