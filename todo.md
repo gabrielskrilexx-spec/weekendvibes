@@ -796,3 +796,6 @@
 - [x] Exibir indicador visual durante tentativas de reconexão
 - [x] Adicionar botão de recarregamento manual quando o retry automático falhar
 - [x] Atualizar testes Vitest/Playwright, validar TypeScript/build e publicar checkpoint
+
+## Acesso à lista no erro do mapa
+- [x] Adicionar botão “Ver em Lista” diretamente no estado de erro do mapa e validar a troca para o modo lista

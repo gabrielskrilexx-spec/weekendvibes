@@ -134,6 +134,10 @@ test.describe("Mapa dos rolês — recuperação e preferência de visualizaçã
 
     await expect(page.getByRole("alert")).toContainText("Parece que você está sem conexão.");
     await expect(page.getByRole("alert")).toContainText("Verifique sua internet e tente novamente.");
+    await expect(page.getByRole("button", { name: "Ver em Lista" })).toBeVisible();
+    await page.getByRole("button", { name: "Ver em Lista" }).click();
+    await expect(page.getByTestId("detailed-event-list")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Lista detalhada" })).toHaveAttribute("aria-pressed", "true");
   });
 
   test("persiste a escolha de lista detalhada após recarregar", async ({ page }) => {
