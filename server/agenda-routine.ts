@@ -1,6 +1,6 @@
 import { archiveExpiredSoldOutEvents } from "./db";
 import { runIngestionPipeline } from "./ingestion";
-import { runInstagramPipeline } from "./instagram-pipeline";
+import { getMetaFailureStatus, isGracefullyDegradedMetaFailure, runInstagramPipeline } from "./instagram-pipeline";
 import { processPendingGeocoding } from "./geocoding";
 import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
 
@@ -14,7 +14,19 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
     await finishIngestionRun(runId, { status: "succeeded", importedCount: imported, details: result, routine, sourceKey });
     return result;
   } catch (error) {
-    await finishIngestionRun(runId, { status: "failed", failedCount: 1, details: { message: error instanceof Error ? error.message : String(error) }, routine, sourceKey });
+    const degraded = sourceKey === "instagram" && isGracefullyDegradedMetaFailure(error);
+    const upstreamStatus = degraded ? getMetaFailureStatus(error) ?? 503 : undefined;
+    await finishIngestionRun(runId, {
+      status: degraded ? "partial" : "failed",
+      failedCount: degraded ? 0 : 1,
+      httpStatus: degraded ? 200 : 500,
+      counts: { read: 0, filtered: 0, persisted: 0 },
+      details: degraded
+        ? { degraded: true, integration: "meta", upstreamStatus, imported: 0, counts: { read: 0, filtered: 0, persisted: 0 } }
+        : { message: error instanceof Error ? error.message : String(error) },
+      routine,
+      sourceKey,
+    });
     throw error;
   }
 }

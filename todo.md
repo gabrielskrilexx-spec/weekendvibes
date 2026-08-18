@@ -699,3 +699,20 @@
 - [x] Criar contrato protegido e indicador visual com estados ativo, degradado, falha e nunca sincronizado
 - [x] Adicionar testes de autorização, estados, timestamp e responsividade
 - [x] Validar TypeScript, Vitest, build, screenshots e publicar checkpoint
+## Auditoria da ingestão automática de terça-feira
+- [x] Definir a janela da execução das 10:00 America/Sao_Paulo e localizar o callback correspondente
+- [x] Consultar logs de produção e ingestionRuns sem expor credenciais
+- [x] Correlacionar HTTP, duração, modo degradado e contagens de mídias/eventos
+- [x] Entregar relatório operacional com novos eventos persistidos
+## Observabilidade completa em execuções degradadas
+- [x] Auditar schema e fluxos que criam/atualizam ingestionRuns em falhas precoces
+- [x] Persistir obrigatoriamente duration_ms, httpStatus e contagens zeradas quando degraded=true
+- [x] Atualizar testes para Meta degradada, erro interno e execução bem-sucedida
+- [x] Atualizar documentação, validar TypeScript/Vitest/build e publicar checkpoint
+
+## Observabilidade de execuções degradadas — agosto de 2026
+- [x] Adicionar duration_ms, httpStatus e counts à tabela ingestionRuns e aplicar a migração 0015_aromatic_black_tom
+- [x] Persistir métricas completas em execuções bem-sucedidas, falhas internas e degradações Meta
+- [x] Expor durationMs e counts no callback agendado do Instagram, com zeros explícitos em degraded=true
+- [x] Cobrir normalização e persistência dos contadores com testes Vitest
+- [x] Executar validação final completa e publicar checkpoint da observabilidade

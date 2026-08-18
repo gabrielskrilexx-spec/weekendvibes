@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMetaIntegrationStatusForTest, buildWeeklyTrendForTest, isCriticalIngestionFailure, isZeroMediaMetaRunForTest } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildWeeklyTrendForTest, isCriticalIngestionFailure, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest } from "./ingestion-reports";
 
 describe("ingestion report critical failures", () => {
   it("classifies timeout failures", () => {
@@ -41,6 +41,16 @@ describe("weekly ingestion trend and Meta zero-media signal", () => {
     expect(today.structuredEvents).toBe(2);
     expect(today.imported).toBe(2);
     expect(today.zeroMediaRuns).toBe(1);
+  });
+});
+
+describe("persisted ingestion observability", () => {
+  it("normalizes a degraded Meta run to explicit zero counters", () => {
+    expect(normalizeIngestionCountsForTest({ details: { degraded: true, upstreamStatus: 503 }, counts: { read: 0, filtered: 0, persisted: 0 } })).toMatchObject({ read: 0, filtered: 0, persisted: 0, approved: 0, structured: 0 });
+  });
+
+  it("derives filtered and persisted counters from a successful pipeline result", () => {
+    expect(normalizeIngestionCountsForTest({ details: { archived: 0, result: { receivedPosts: 7, approvedPosts: 3, structuredEvents: 2, imported: 2 } } })).toMatchObject({ read: 7, filtered: 4, persisted: 2, approved: 3, structured: 2 });
   });
 });
 

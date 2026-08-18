@@ -72,13 +72,35 @@ export async function startIngestionRun(input: { routine: string; sourceKey?: st
   }
 }
 
-export async function finishIngestionRun(id: number | undefined, input: { status: "succeeded" | "failed" | "partial"; importedCount?: number; failedCount?: number; details?: unknown; routine?: string; sourceKey?: string }) {
+export type IngestionCounts = { read: number; filtered: number; persisted: number; [key: string]: number };
+
+export function normalizeIngestionCountsForTest(input: { counts?: Partial<IngestionCounts>; details?: unknown; importedCount?: number }): IngestionCounts {
+  return normalizeCounts(input);
+}
+
+function normalizeCounts(input: { counts?: Partial<IngestionCounts>; details?: unknown; importedCount?: number }): IngestionCounts {
+  const details = input.details && typeof input.details === "object" ? input.details as Record<string, unknown> : {};
+  const nested = details.result && typeof details.result === "object" ? details.result as Record<string, unknown> : details;
+  const read = Number(input.counts?.read ?? nested.receivedPosts ?? nested.read ?? 0);
+  const approved = Number(input.counts?.approved ?? nested.approvedPosts ?? nested.approved ?? 0);
+  const structured = Number(input.counts?.structured ?? nested.structuredEvents ?? nested.structured ?? 0);
+  const persisted = Number(input.counts?.persisted ?? nested.imported ?? input.importedCount ?? 0);
+  const filtered = Number(input.counts?.filtered ?? Math.max(0, read - approved));
+  return { ...input.counts, read, filtered, persisted, approved, structured };
+}
+
+export async function finishIngestionRun(id: number | undefined, input: { status: "succeeded" | "failed" | "partial"; importedCount?: number; failedCount?: number; details?: unknown; routine?: string; sourceKey?: string; durationMs?: number; httpStatus?: number; counts?: Partial<IngestionCounts> }) {
   if (!id) return;
   try {
     const db = await getDb();
     if (!db) return;
-    const serializedDetails = input.details ? JSON.stringify(input.details).slice(0, 20000) : null;
-    await db.update(ingestionRuns).set({ status: input.status, importedCount: input.importedCount ?? 0, failedCount: input.failedCount ?? 0, details: serializedDetails, finishedAt: new Date() }).where(eq(ingestionRuns.id, id));
+    const [existing] = await db.select({ startedAt: ingestionRuns.startedAt }).from(ingestionRuns).where(eq(ingestionRuns.id, id)).limit(1);
+    const finishedAt = new Date();
+    const durationMs = Math.max(0, Math.round(input.durationMs ?? (existing?.startedAt ? finishedAt.getTime() - new Date(existing.startedAt).getTime() : 0)));
+    const counts = normalizeCounts(input);
+    const serializedCounts = JSON.stringify(counts);
+    const serializedDetails = input.details !== undefined ? JSON.stringify(input.details).slice(0, 20000) : null;
+    await db.update(ingestionRuns).set({ status: input.status, importedCount: input.importedCount ?? counts.persisted, failedCount: input.failedCount ?? 0, durationMs, httpStatus: input.httpStatus ?? (input.status === "failed" ? 500 : 200), counts: serializedCounts, details: serializedDetails, finishedAt }).where(eq(ingestionRuns.id, id));
     const failureText = serializedDetails ?? "";
     if (input.status === "failed" && isCriticalIngestionFailure(failureText)) {
       await recordOperationalAlert({ dbOverride: db, integration: "pipeline", title: "Falha crítica na ingestão", message: `A rotina ${id} registrou timeout ou erro HTTP 5xx: ${failureText}` });

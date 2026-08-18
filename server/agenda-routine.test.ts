@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./db", () => ({ archiveExpiredSoldOutEvents: mocks.archiveExpiredSoldOutEvents }));
 vi.mock("./ingestion", () => ({ runIngestionPipeline: mocks.runIngestionPipeline }));
-vi.mock("./instagram-pipeline", () => ({ runInstagramPipeline: mocks.runInstagramPipeline }));
+vi.mock("./instagram-pipeline", () => ({ runInstagramPipeline: mocks.runInstagramPipeline, isGracefullyDegradedMetaFailure: vi.fn().mockReturnValue(false), getMetaFailureStatus: vi.fn().mockReturnValue(null) }));
 
 import { AGENDA_ROUTINE_COMPOSITION, runFullAgendaRoutine, runInstagramAgendaStep, runPublicAgendaStep } from "./agenda-routine";
 

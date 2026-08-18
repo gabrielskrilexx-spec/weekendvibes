@@ -16,7 +16,8 @@ const integrationTitles: Record<OperationalIntegration, string> = {
 };
 
 export async function ingestInstagramHandler(req: Request, res: Response) {
-  const startedAt = new Date().toISOString();
+  const startedAtMs = Date.now();
+  const startedAt = new Date(startedAtMs).toISOString();
   let user;
   try {
     user = await sdk.authenticateRequest(req);
@@ -29,7 +30,8 @@ export async function ingestInstagramHandler(req: Request, res: Response) {
 
   try {
     const { archived, result } = await runInstagramAgendaStep();
-    return res.json({ ok: true, startedAt, finishedAt: new Date().toISOString(), archived, result });
+    const finishedAt = new Date().toISOString();
+    return res.json({ ok: true, startedAt, finishedAt, durationMs: Date.now() - startedAtMs, archived, result, counts: { read: Number(result.receivedPosts ?? 0), filtered: Math.max(0, Number(result.receivedPosts ?? 0) - Number(result.approvedPosts ?? 0)), persisted: Number(result.imported ?? 0) } });
   } catch (error) {
     const integration: OperationalIntegration = error instanceof InstagramIntegrationFailure ? error.integration : "pipeline";
     const safeError = redactError(error);
@@ -41,7 +43,8 @@ export async function ingestInstagramHandler(req: Request, res: Response) {
         console.warn("[Instagram] Could not persist degraded Meta alert", redactError(alertError));
       }
       console.warn("[Instagram] Meta upstream unavailable; degraded run with no imported events", { status });
-      return res.status(200).json({ ok: true, degraded: true, integration: "meta", error: "upstream_unavailable", upstreamStatus: status, imported: 0, startedAt, finishedAt: new Date().toISOString() });
+      const finishedAt = new Date().toISOString();
+      return res.status(200).json({ ok: true, degraded: true, integration: "meta", error: "upstream_unavailable", upstreamStatus: status, imported: 0, counts: { read: 0, filtered: 0, persisted: 0 }, durationMs: Date.now() - startedAtMs, startedAt, finishedAt });
     }
     try {
       await recordOperationalAlert({ integration, title: integrationTitles[integration], message: "A ingestão automática falhou. Consulte o painel operacional." });
