@@ -733,3 +733,10 @@
 - [x] Validar ou corrigir InfoWindows dark com imagem, título, data, local e detalhes
 - [x] Atualizar testes e verificar responsividade desktop/mobile
 - [x] Validar TypeScript/Vitest/build e publicar checkpoint
+
+## Suíte E2E de interatividade do mapa
+- [x] Auditar dependências e infraestrutura E2E existentes
+- [x] Implementar cenário headless para toggles de Santos e Guarujá
+- [x] Verificar no navegador o desaparecimento/retorno de pins e reajuste de clusters
+- [x] Garantir mocks controlados do mapa e ausência de erros no console
+- [x] Executar E2E, TypeScript, Vitest/build e publicar checkpoint
