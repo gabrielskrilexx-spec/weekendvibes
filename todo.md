@@ -799,3 +799,11 @@
 
 ## Acesso à lista no erro do mapa
 - [x] Adicionar botão “Ver em Lista” diretamente no estado de erro do mapa e validar a troca para o modo lista
+
+## Auditoria técnica de qualidade e health check
+- [x] Auditar tratamento de exceções, tipagem, ciclo de vida, UX, acessibilidade, segurança e validação de payloads
+- [x] Corrigir defeitos confirmados e atualizar testes/documentação da auditoria
+- [x] Executar validação completa e publicar checkpoint da auditoria
+- [x] Corrigir lookup de marker por cluster no RegionalEventMap para reabrir/atualizar InfoWindows ao selecionar uma região
+- [x] Garantir limpeza de intervalos e timeouts internos do loader singleton do Google Maps
+- [x] Adicionar testes de regressão para os achados corrigidos e documentar o health check

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { directionsUrl, filterEventsForMap, locationControlLabel, MAP_LEGEND_ITEMS, markerTooltipContent, popupContent, routeDetailsFromResult, routeOptionsFromResult, shouldShowTouchTooltip, visibleEventIdsForBounds } from "./RegionalEventMap";
+import { directionsUrl, filterEventsForMap, indexFirstClusterMarker, locationControlLabel, MAP_LEGEND_ITEMS, markerTooltipContent, popupContent, routeDetailsFromResult, routeOptionsFromResult, shouldShowTouchTooltip, visibleEventIdsForBounds } from "./RegionalEventMap";
 import { ShortLivedCache } from "@/lib/shortLivedCache";
 
 describe("map legend and touch interaction", () => {
@@ -12,6 +12,13 @@ describe("map legend and touch interaction", () => {
     expect(shouldShowTouchTooltip(null, "santos")).toBe(true);
     expect(shouldShowTouchTooltip("guaruja", "santos")).toBe(true);
     expect(shouldShowTouchTooltip("santos", "santos")).toBe(false);
+  });
+
+  it("indexa o primeiro marker pelo ID do cluster e não o substitui", () => {
+    const index = new Map<string, string>();
+    indexFirstClusterMarker(index, "santos", "marker-1");
+    indexFirstClusterMarker(index, "santos", "marker-2");
+    expect(index.get("santos")).toBe("marker-1");
   });
 });
 

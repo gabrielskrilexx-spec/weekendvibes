@@ -117,6 +117,8 @@ function loadMapScript(): Promise<void> {
     const script = document.createElement("script");
     let settled = false;
     let scriptUrl: string | null = null;
+    let pollTimer: number | null = null;
+    let timeoutTimer: number | null = null;
     const previousAuthFailure = window.gm_authFailure;
     const onWindowError = (event: Event) => {
       const target = event.target as HTMLScriptElement | null;
@@ -126,6 +128,8 @@ function loadMapScript(): Promise<void> {
     };
     const cleanup = () => {
       window.removeEventListener("error", onWindowError, true);
+      if (pollTimer !== null) window.clearInterval(pollTimer);
+      if (timeoutTimer !== null) window.clearTimeout(timeoutTimer);
       script.remove();
       if (scriptUrl) URL.revokeObjectURL(scriptUrl);
       delete window[MAPS_READY_CALLBACK];
@@ -157,21 +161,21 @@ function loadMapScript(): Promise<void> {
     script.onload = () => {
       // Poll briefly for browser/proxy variants that finish the bootstrap after onload.
       let attempts = 0;
-      const poll = window.setInterval(() => {
+      pollTimer = window.setInterval(() => {
         if (settled) {
-          window.clearInterval(poll);
+          if (pollTimer !== null) window.clearInterval(pollTimer);
           return;
         }
         if (window.google?.maps?.Map) {
-          window.clearInterval(poll);
+          if (pollTimer !== null) window.clearInterval(pollTimer);
           succeed();
           return;
         }
         attempts += 1;
-        if (attempts >= 50) window.clearInterval(poll);
+        if (attempts >= 50 && pollTimer !== null) window.clearInterval(pollTimer);
       }, 100);
     };
-    window.setTimeout(() => {
+    timeoutTimer = window.setTimeout(() => {
       if (settled) return;
       fail(new Error("Google Maps initialization timeout"));
     }, 15000);

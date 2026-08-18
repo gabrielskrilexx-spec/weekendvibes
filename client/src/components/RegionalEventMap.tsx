@@ -111,6 +111,10 @@ export function shouldShowTouchTooltip(currentClusterId: string | null, nextClus
   return currentClusterId !== nextClusterId;
 }
 
+export function indexFirstClusterMarker<T>(index: Map<string, T>, clusterId: string, marker: T) {
+  if (!index.has(clusterId)) index.set(clusterId, marker);
+}
+
 export function locationControlLabel(status: "idle" | "loading" | "ready" | "denied" | "unavailable") {
   if (status === "loading") return "Localizando…";
   if (status === "ready") return "Minha localização";
@@ -349,7 +353,7 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange, onVi
         infoWindowRef.current?.open({ map: mapRef.current, anchor: marker });
       });
       markersRef.current.push(marker);
-      clusterMarkersRef.current.set(event.id.toString(), marker);
+      indexFirstClusterMarker(clusterMarkersRef.current, cluster.id, marker);
       return marker;
     });
     markerClustererRef.current = new MarkerClusterer({ map: mapRef.current, markers });
