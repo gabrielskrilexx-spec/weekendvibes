@@ -16,6 +16,7 @@ const days = [{ label: "Todos", value: "" }, { label: "Sexta", value: "sexta" },
 const cities = ["Todas", "Santos", "Guarujá"];
 const categories = ["Todas", "show", "balada", "evento_musical"];
 const genres = [{ label: "Todos os gêneros", value: "" }, { label: "Funk", value: "funk" }, { label: "House/Eletrônica", value: "house_eletronica" }, { label: "Samba/Pagode", value: "samba_pagode" }, { label: "Rap/Trap", value: "rap_trap" }];
+const VIEW_MODE_STORAGE_KEY = "weekendvibes:view-mode";
 
 export default function Home() {
   const { theme, toggleTheme, highContrast, toggleContrast } = useTheme();
@@ -32,7 +33,11 @@ export default function Home() {
   const [timeTo, setTimeTo] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [visibleMapEventIds, setVisibleMapEventIds] = useState<number[] | null>(null);
-  const [viewMode, setViewMode] = useState<"map" | "list">("map");
+  const [viewMode, setViewMode] = useState<"map" | "list">(() => {
+    if (typeof window === "undefined") return "map";
+    const stored = window.localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+    return stored === "list" ? "list" : "map";
+  });
   const eventsQuery = trpc.events.list.useQuery({ day: day || undefined, city: city === "Santos" || city === "Guarujá" ? city : undefined, category: category === "show" || category === "balada" || category === "evento_musical" ? category : undefined, genre: genre === "funk" || genre === "house_eletronica" || genre === "samba_pagode" || genre === "rap_trap" ? genre : undefined, venue: venue.trim() || undefined, neighborhood: neighborhood.trim() || undefined, date: date || undefined, minPriceCents: minPrice ? Number(minPrice) * 100 : undefined, maxPriceCents: maxPrice ? Number(maxPrice) * 100 : undefined, timeFrom: timeFrom || undefined, timeTo: timeTo || undefined, size: 40 });
   const agendaQuery = trpc.events.recentInstagramAgenda.useQuery({ lookbackDays: 5, size: 8 });
   const agendaState = getAgendaWeekState({ isLoading: agendaQuery.isLoading, isError: agendaQuery.isError, events: agendaQuery.data });
@@ -40,6 +45,9 @@ export default function Home() {
   const events = useMemo(() => eventsQuery.data ?? [], [eventsQuery.data]);
   const visibleEvents = useMemo(() => visibleMapEventIds === null ? events : events.filter(event => visibleMapEventIds.includes(event.id)), [events, visibleMapEventIds]);
   useEffect(() => { setVisibleMapEventIds(null); }, [events]);
+  useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
+  }, [viewMode]);
 
 
   return (
@@ -75,7 +83,7 @@ export default function Home() {
         <div className="mt-10 grid gap-8 lg:grid-cols-[1.25fr_.75fr]">
           <div>
             <div className="mb-4 flex items-end justify-between border-b border-white/10 pb-3"><div><p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">Agenda em destaque</p><h2 className="mt-1 text-3xl font-black tracking-tight text-white">Escolha sua vibe</h2></div><span className="text-sm text-zinc-500">{visibleEvents.length} de {events.length} rolês no mapa</span></div>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div className="inline-flex rounded-2xl border border-white/10 bg-white/[0.03] p-1" role="group" aria-label="Modo de visualização dos eventos"><button type="button" aria-pressed={viewMode === "map"} onClick={() => setViewMode("map")} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 ${viewMode === "map" ? "bg-orange-300 text-zinc-950" : "text-zinc-400 hover:text-white"}`}><MapIcon size={15} /> Mapa</button><button type="button" aria-pressed={viewMode === "list"} onClick={() => setViewMode("list")} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 ${viewMode === "list" ? "bg-fuchsia-400 text-zinc-950" : "text-zinc-400 hover:text-white"}`}><ListIcon size={15} /> Lista detalhada</button></div><span className="text-xs text-zinc-500">{viewMode === "map" ? "Explore por localização" : "Veja todos os detalhes"}</span></div>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div data-testid="view-mode-toggle" className="inline-flex rounded-2xl border border-white/10 bg-white/[0.03] p-1" role="group" aria-label="Modo de visualização dos eventos"><button type="button" aria-pressed={viewMode === "map"} onClick={() => setViewMode("map")} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 ${viewMode === "map" ? "bg-orange-300 text-zinc-950" : "text-zinc-400 hover:text-white"}`}><MapIcon size={15} /> Mapa</button><button type="button" aria-pressed={viewMode === "list"} onClick={() => setViewMode("list")} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 ${viewMode === "list" ? "bg-fuchsia-400 text-zinc-950" : "text-zinc-400 hover:text-white"}`}><ListIcon size={15} /> Lista detalhada</button></div><span className="text-xs text-zinc-500">{viewMode === "map" ? "Explore por localização" : "Veja todos os detalhes"}</span></div>
             {eventsQuery.isLoading && <EventGridSkeleton count={4} />}
             {eventsQuery.isError && <div className="flex items-start gap-3 rounded-3xl border border-orange-300/20 bg-orange-300/10 p-6 text-orange-100"><WifiOff className="mt-1 shrink-0" /><div><p className="font-black">A agenda está temporariamente offline.</p><p className="mt-1 text-sm text-orange-100/70">O layout continua funcionando. Tente novamente em instantes ou confira os filtros.</p></div></div>}
             {!eventsQuery.isLoading && !eventsQuery.isError && events.length > 0 && visibleEvents.length === 0 && <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-10 text-center text-zinc-400">Nenhum evento está visível nesta área do mapa. Aproxime ou mova o mapa para encontrar outros rolês.</div>}

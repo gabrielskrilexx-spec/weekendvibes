@@ -777,3 +777,9 @@
 - [x] Criar alternador acessível entre mapa interativo e lista detalhada
 - [x] Preservar filtros, dados e responsividade nos dois modos
 - [x] Atualizar testes Vitest/Playwright, validar TypeScript/build e publicar checkpoint
+
+## Conectividade do mapa e preferência de visualização
+- [x] Exibir alerta amigável quando a falha do mapa for compatível com perda de conexão
+- [x] Persistir a escolha mapa/lista no localStorage com leitura segura no cliente
+- [x] Restaurar a preferência após recarregamento sem quebrar SSR ou testes
+- [x] Atualizar testes Vitest/Playwright, validar TypeScript/build e publicar checkpoint

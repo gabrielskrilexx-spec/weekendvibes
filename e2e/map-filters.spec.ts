@@ -122,3 +122,29 @@ test.describe("Mapa dos rolês — filtros e clustering", () => {
     await expect(page.getByTestId("map-canvas")).toHaveAttribute("data-cluster-count", "2");
   });
 });
+
+
+test.describe("Mapa dos rolês — recuperação e preferência de visualização", () => {
+  test("avisa quando a conexão impede o carregamento do mapa", async ({ page }) => {
+    await mockApplicationApis(page);
+    await page.addInitScript(() => Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false }));
+    await page.route("**/api/maps/javascript**", route => route.abort("failed"));
+    await page.goto("/");
+    await page.getByRole("heading", { name: "Mapa dos rolês" }).scrollIntoViewIfNeeded();
+
+    await expect(page.getByRole("alert")).toContainText("Parece que você está sem conexão.");
+    await expect(page.getByRole("alert")).toContainText("Verifique sua internet e tente novamente.");
+  });
+
+  test("persiste a escolha de lista detalhada após recarregar", async ({ page }) => {
+    await openMap(page);
+    await page.getByRole("button", { name: "Lista detalhada" }).click();
+    await expect(page.getByTestId("detailed-event-list")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Lista detalhada" })).toHaveAttribute("aria-pressed", "true");
+
+    await page.reload();
+    await expect(page.getByTestId("detailed-event-list")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Lista detalhada" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("view-mode-toggle")).toBeVisible();
+  });
+});
