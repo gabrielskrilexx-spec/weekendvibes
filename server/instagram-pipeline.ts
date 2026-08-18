@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { INSTAGRAM_AGENDA_SOURCE_TYPE, listActiveLocationAliasValues, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent } from "./db";
 import { containsTargetVenue } from "./ingestion";
+import { parseMetaBusinessDiscovery } from "./contracts/external";
 
 const META_GRAPH_BASE_URL = "https://graph.facebook.com/v26.0";
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
@@ -185,19 +186,22 @@ export async function extractOcrText(imageUrl: string) {
   }
 }
 
-function metaPostsFromPayload(payload: any, target: (typeof INSTAGRAM_TARGETS)[number]): InstagramPost[] {
-  const media = payload?.business_discovery?.media?.data;
-  if (!Array.isArray(media)) return [];
-  return media.map((item: any) => ({
-    id: item.id,
-    caption: item.caption,
-    timestamp: item.timestamp,
-    permalink: item.permalink,
-    media_url: item.media_url,
-    displayUrl: item.media_url,
-    ownerUsername: item.username ?? target.username,
-    mediaType: "post",
-  }));
+function metaPostsFromPayload(payload: unknown, target: (typeof INSTAGRAM_TARGETS)[number]): InstagramPost[] {
+  try {
+    const parsed = parseMetaBusinessDiscovery(payload);
+    return parsed.business_discovery.media.data.map(item => ({
+      id: item.id,
+      caption: item.caption ?? undefined,
+      timestamp: item.timestamp ?? undefined,
+      permalink: item.permalink ?? undefined,
+      media_url: item.media_url ?? undefined,
+      displayUrl: item.media_url ?? undefined,
+      ownerUsername: item.username ?? target.username,
+      mediaType: "post",
+    }));
+  } catch (error) {
+    throw new InstagramIntegrationFailure("meta", "Meta Graph API retornou payload fora do contrato", { cause: error });
+  }
 }
 
 async function fetchMetaBusinessDiscoveryPosts(token: string, accountId: string): Promise<InstagramPost[]> {

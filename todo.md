@@ -807,3 +807,10 @@
 - [x] Corrigir lookup de marker por cluster no RegionalEventMap para reabrir/atualizar InfoWindows ao selecionar uma região
 - [x] Garantir limpeza de intervalos e timeouts internos do loader singleton do Google Maps
 - [x] Adicionar testes de regressão para os achados corrigidos e documentar o health check
+
+## Resiliência do mapa e contratos externos
+- [x] Auditar telemetria, controlador do mapa e respostas externas Meta/Routes/relay
+- [x] Implementar analytics de fallback e métricas estruturadas de retry
+- [x] Extrair controlador do mapa para máquina de estados explícita
+- [x] Adicionar schemas e testes de contrato para Meta, Routes API e relay do Maps
+- [x] Validar TypeScript, Vitest, E2E e build, documentar e publicar checkpoint

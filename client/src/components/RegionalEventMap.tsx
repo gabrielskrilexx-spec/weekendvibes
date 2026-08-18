@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { LocateFixed, Maximize2, Navigation, Route, Users, X } from "lucide-react";
 import { MapView, WEEKENDVIBES_MAP_STYLE } from "@/components/Map";
+import { parseRoutesApiResponse } from "@/lib/mapContracts";
 import { BAIXADA_BOUNDS, clusterLabel, groupEventsByRegion, mapCoordinatesFor, type ClusterableEvent, type EventCluster } from "@/lib/eventClusters";
 import { distanceInKm, estimateMinutes, formatDistance, formatDuration, TRAVEL_MODES, type Coordinates, type TravelMode } from "@/lib/mapTravel";
 import { createDirectionsCache, type ShortLivedCache } from "@/lib/shortLivedCache";
@@ -222,7 +223,8 @@ export default function RegionalEventMap({ events, onVisibleEventIdsChange, onVi
       };
       if (mode === "driving") request.routingPreference = "TRAFFIC_AWARE";
       const result = await routeApi.computeRoutes(request);
-      const routes = routeOptionsFromResult(result as DirectionsResultLike);
+      const validatedResult = parseRoutesApiResponse(result);
+      const routes = routeOptionsFromResult(validatedResult as DirectionsResultLike);
       if (routes.length > 0) directionsCacheRef.current.set(cacheKey, routes);
       setLiveRoutes(current => ({ ...current, [cluster.id]: routes }));
       setSelectedRouteIndex(current => ({ ...current, [cluster.id]: 0 }));
