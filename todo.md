@@ -826,3 +826,10 @@
 - [x] Mudar a rotina oficial de ingestão do Instagram de terça-feira para quarta-feira às 10:00 em America/Sao_Paulo
 - [x] Confirmar Heartbeat e schedules internos sincronizados, mantendo o schedule diário redundante pausado
 - [x] Atualizar documentação, testes de periodicidade, validar configuração e publicar checkpoint
+
+## Evolução do painel operacional administrativo
+- [x] Implementar indicador de freshness para feed e fontes
+- [x] Adicionar alertas acionáveis com severidade, estado e contexto sanitizado
+- [x] Construir timeline correlacionada de Heartbeat, ingestionRuns e retries
+- [x] Adicionar reconciliação visual por fonte com read, filtered, persisted e duplicidades
+- [x] Atualizar testes, documentação, validar TypeScript/Vitest/E2E/build e publicar checkpoint

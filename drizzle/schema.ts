@@ -61,6 +61,10 @@ export type InsertEvent = typeof events.$inferInsert;
 export const operationalAlerts = mysqlTable("operationalAlerts", {
   id: int("id").autoincrement().primaryKey(),
   integration: mysqlEnum("integration", ["meta", "public", "ocr", "openai", "pipeline"]).notNull(),
+  severity: mysqlEnum("severity", ["INFO", "WARNING", "CRITICAL"]).default("WARNING").notNull(),
+  alertType: varchar("alertType", { length: 80 }).default("operational").notNull(),
+  slaMinutes: int("slaMinutes").default(1440).notNull(),
+  runId: varchar("runId", { length: 32 }),
   title: varchar("title", { length: 180 }).notNull(),
   message: text("message").notNull(),
   fingerprint: varchar("fingerprint", { length: 64 }).notNull().unique(),

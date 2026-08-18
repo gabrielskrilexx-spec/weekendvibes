@@ -105,23 +105,31 @@ export function isRecentInstagramAgendaEvent(event: Pick<Event, "sourceType" | "
 }
 
 export type OperationalIntegration = "meta" | "public" | "ocr" | "openai" | "pipeline";
+export type OperationalSeverity = "INFO" | "WARNING" | "CRITICAL";
 export function operationalAlertFingerprint(integration: OperationalIntegration, message: string) {
   return createHash("sha256").update(`${integration}:${message.trim()}`).digest("hex");
 }
 
-export async function recordOperationalAlert(input: { integration: OperationalIntegration; title: string; message: string; dbOverride?: Awaited<ReturnType<typeof getDb>> }) {
+export async function recordOperationalAlert(input: { integration: OperationalIntegration; title: string; message: string; severity?: OperationalSeverity; alertType?: string; slaMinutes?: number; runId?: number | string; dbOverride?: Awaited<ReturnType<typeof getDb>> }) {
   const db = input.dbOverride ?? await getDb();
   if (!db) return undefined;
   const message = input.message.trim().slice(0, 20000);
+  const severity = input.severity ?? "WARNING";
+  const slaMinutes = Math.min(Math.max(Math.round(input.slaMinutes ?? (severity === "CRITICAL" ? 60 : severity === "WARNING" ? 240 : 1440)), 5), 10080);
+  const runId = input.runId === undefined ? null : String(input.runId).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32) || null;
   const values: InsertOperationalAlert = {
     integration: input.integration,
+    severity,
+    alertType: input.alertType?.trim().slice(0, 80) || "operational",
+    slaMinutes,
+    runId,
     title: input.title.trim().slice(0, 180),
     message,
     fingerprint: operationalAlertFingerprint(input.integration, message),
     isResolved: 0,
   };
   await db.insert(operationalAlerts).values(values).onDuplicateKeyUpdate({
-    set: { title: values.title, message: values.message, isResolved: 0, updatedAt: new Date() },
+    set: { severity: values.severity, alertType: values.alertType, slaMinutes: values.slaMinutes, runId: values.runId, title: values.title, message: values.message, isResolved: 0, updatedAt: new Date() },
   });
   return values;
 }

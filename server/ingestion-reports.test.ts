@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMetaIntegrationStatusForTest, buildWeeklyTrendForTest, isCriticalIngestionFailure, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, buildWeeklyTrendForTest, getFreshnessState, isCriticalIngestionFailure, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest } from "./ingestion-reports";
 
 describe("ingestion report critical failures", () => {
   it("classifies timeout failures", () => {
@@ -17,6 +17,28 @@ describe("ingestion report critical failures", () => {
   });
 });
 
+
+describe("freshness and source reconciliation", () => {
+  const now = new Date("2026-08-18T12:00:00.000Z");
+
+  it("classifies freshness against the configured frequency", () => {
+    expect(getFreshnessState(new Date(now.getTime() - 30 * 60000), 60, now)).toBe("healthy");
+    expect(getFreshnessState(new Date(now.getTime() - 100 * 60000), 60, now)).toBe("delayed");
+    expect(getFreshnessState(new Date(now.getTime() - 200 * 60000), 60, now)).toBe("critical");
+    expect(getFreshnessState(null, 60, now)).toBe("never");
+  });
+
+  it("aggregates read, filtered, persisted and duplicates per source", () => {
+    expect(buildSourceReconciliationForTest([
+      { sourceKey: "instagram", importedCount: 2, details: { read: 7, filtered: 3, persisted: 2, duplicates: 1, missingCoordinates: 1 } },
+      { sourceKey: "instagram", importedCount: 1, details: { read: 4, filtered: 2, persisted: 1, duplicates: 2, outOfBoundsCoordinates: 1 } },
+    ])).toEqual([{ sourceKey: "instagram", read: 11, filtered: 5, persisted: 3, duplicates: 3, invalidCoordinates: 1, outOfBoundsCoordinates: 1, runs: 2 }]);
+  });
+
+  it("builds a source freshness view with explicit states", () => {
+    expect(buildFreshnessForTest([{ sourceKey: "instagram", lastSuccessAt: new Date(now.getTime() - 500 * 60000), expectedMinutes: 60 }], now)[0].state).toBe("critical");
+  });
+});
 
 describe("weekly ingestion trend and Meta zero-media signal", () => {
   it("classifies a successful Instagram run with zero received posts as a Meta permission signal", () => {
