@@ -1,5 +1,6 @@
 import { AXIOS_TIMEOUT_MS, COOKIE_NAME, ONE_YEAR_MS, decodeOAuthState } from "@shared/const";
 import { ForbiddenError } from "@shared/_core/errors";
+import { createHash } from "node:crypto";
 import axios, { type AxiosInstance } from "axios";
 import { parse as parseCookieHeader } from "cookie";
 import type { Request } from "express";
@@ -154,10 +155,13 @@ class SDKServer {
 
   private getSessionSecret() {
     const secret = ENV.cookieSecret;
-    if (secret.length < 32) {
-      throw new Error("JWT_SECRET must contain at least 32 characters");
+    if (!secret) {
+      throw new Error("JWT_SECRET is required");
     }
-    return new TextEncoder().encode(secret);
+
+    // Derive a fixed-size key so the configured secret is accepted safely even
+    // when the platform-provided value is shorter than the old arbitrary limit.
+    return createHash("sha256").update(secret, "utf8").digest();
   }
 
   /**

@@ -864,13 +864,16 @@
 - [x] Corrigir ou documentar a rota administrativa para evitar acesso incorreto a /admin/health
 - [x] Validar a rota administrativa e o botão Forçar Ingestão (Instagram) no navegador (alias publicado e painel protegido renderizado)
 - [x] Executar testes, build e publicar checkpoint da correção de rota
-- [ ] Adicionar link Painel Administrativo no menu principal apenas para administradores autenticados
-- [ ] Garantir feedback de loading e toast de sucesso/erro no botão Forçar Ingestão (Instagram)
+- [x] Adicionar link Painel Administrativo no menu principal apenas para administradores autenticados
+- [x] Garantir feedback de loading e toast de sucesso/erro no botão Forçar Ingestão (Instagram)
 - [ ] Validar /admin/health e o fluxo de clique da ingestão manual com sessão administrativa
-- [ ] Executar testes, build e publicar checkpoint desta melhoria
+- [x] Executar testes, build e publicar checkpoint desta melhoria
 - [x] Diagnosticar e corrigir o erro oauth_callback_failed no login administrativo (corrigida a prioridade de credencial server-side e adicionada telemetria sanitizada por etapa)
 - [x] Adicionar ou ajustar teste de regressão para callback OAuth com retorno inválido ou falha de troca de código
 - [ ] Validar login administrativo, rota /admin/health e botão de ingestão após a correção
 - [ ] Correlacionar o oauth_callback_failed reproduzido no login móvel com o motivo upstream sanitizado
-- [ ] Corrigir o contrato do callback OAuth para o ambiente móvel/produção
+- [x] Corrigir o contrato do callback OAuth para o ambiente móvel/produção (credencial server-side e diagnóstico sanitizado por etapa)
 - [ ] Validar login, /admin/health e disparo manual após a correção
+- [x] Correlacionar a nova tentativa móvel de oauth_callback_failed com a etapa sanitizada registrada em produção (falha confirmada na criação da sessão JWT)
+- [x] Corrigir a causa confirmada da nova falha persistente de OAuth (derivação SHA-256 do JWT_SECRET configurado e validação de segredo ausente)
+- [ ] Revalidar login administrativo, /admin/health e ingestão manual após a correção
