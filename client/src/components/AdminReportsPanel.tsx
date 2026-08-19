@@ -55,7 +55,7 @@ export default function AdminReportsPanel() {
         sonnerToast.warning("Relatório atualizado", { description: message });
         return;
       }
-      const safeMessage = error.message === "Unable to transform response from server" ? "A execução foi registrada, mas o relatório ainda está sendo atualizado." : error.message;
+      const safeMessage = error.message === "Unable to transform response from server" ? "A execução foi registrada; consulte o relatório atualizado para ver as contagens." : error.message;
       setReprocessFeedback({ tone: "error", message: `Falha em ${labelForSource(variables.sourceKey)}: ${safeMessage}` });
       sonnerToast.error("Não foi possível executar a ingestão", { description: `${labelForSource(variables.sourceKey)}: ${safeMessage}` });
     },
