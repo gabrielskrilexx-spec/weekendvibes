@@ -32,6 +32,7 @@ function Router() {
         <Route path="/" component={Home} />
         <Route path="/eventos/:slug" component={EventDetail} />
         <Route path="/admin" component={Admin} />
+        <Route path="/admin/health" component={Admin} />
         <Route path="/404" component={NotFound} />
         <Route path="/acesso-negado" component={AccessDenied} />
         <Route path="/sessao-expirada" component={SessionExpired} />

@@ -858,5 +858,9 @@
 - [x] Adicionar testes de autorização, loading, erro, sucesso e invalidação das queries
 - [x] Validar TypeScript, Vitest, E2E e build; documentar e publicar checkpoint
 - [x] Corrigir mock hoisted do Sonner e validar o botão Forçar Ingestão (Instagram) no Admin Panel
-- [ ] Resolver referência legada getTuesdayRoutineStatus nos logs do servidor
+- [x] Resolver referência legada getTuesdayRoutineStatus nos logs do servidor (nenhuma referência no código atual; ocorrência observada apenas em log histórico)
 - [ ] Validar manualmente o botão Forçar Ingestão (Instagram) no navegador com sessão administrativa
+- [x] Confirmar o caminho de rota frontend atualmente configurado para o Painel Administrativo e o botão de ingestão manual
+- [x] Corrigir ou documentar a rota administrativa para evitar acesso incorreto a /admin/health
+- [ ] Validar a rota administrativa e o botão Forçar Ingestão (Instagram) no navegador
+- [x] Executar testes, build e publicar checkpoint da correção de rota
