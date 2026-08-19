@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, buildWeeklyTrendForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, sanitizeReprocessErrorForTest } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, buildWeeklyTrendForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest } from "./ingestion-reports";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
 
 describe("manual reprocess error transport", () => {
@@ -11,6 +11,20 @@ describe("manual reprocess error transport", () => {
 
   it("keeps ordinary errors bounded", () => {
     expect(sanitizeReprocessErrorForTest(new Error("x".repeat(500)))).toHaveLength(240);
+  });
+
+  it("normalizes report rows into JSON-safe primitives", () => {
+    const run = serializeIngestionRunForTest({ id: 7, routine: "manual-reprocess", sourceKey: "instagram", status: "succeeded", importedCount: 2, failedCount: 0, durationMs: 100, httpStatus: 200, counts: '{"read":2}', details: '{"imported":2}', startedAt: new Date("2026-08-19T10:00:00.000Z"), finishedAt: new Date("2026-08-19T10:00:01.000Z") });
+    const alert = serializeOperationalAlertForTest({ id: 3, integration: "meta", severity: "WARNING", alertType: "freshness", slaMinutes: 60, runId: "7", title: "Atenção", message: "Sem dados", isResolved: 0, createdAt: new Date("2026-08-19T10:00:00.000Z") });
+    expect(() => JSON.stringify({ run, alert })).not.toThrow();
+    expect(run.startedAt).toBe("2026-08-19T10:00:00.000Z");
+    expect(alert.createdAt).toBe("2026-08-19T10:00:00.000Z");
+  });
+
+  it("normalizes nested report values before the tRPC transformer", () => {
+    const normalized = normalizeReportForTransport({ count: BigInt(3), error: new Error("internal"), nested: { value: 4 } });
+    expect(normalized).toEqual({ count: 3, error: { name: "Error", message: "internal" }, nested: { value: 4 } });
+    expect(() => JSON.stringify(normalized)).not.toThrow();
   });
 
   it("builds a transport-safe tRPC error without the upstream cause", () => {

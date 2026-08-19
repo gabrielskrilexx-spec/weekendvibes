@@ -883,3 +883,4 @@
 - [x] Corrigir o retorno serializável da mutation de reprocessamento do Instagram e adicionar regressão para erro sanitizado
 - [x] Isolar e corrigir a falha persistente de transformação no retorno da mutation manual após execução autenticada (TRPCError explícito sem causa externa e regressão adicionada)
 - [x] Envolver toda a mutation manual no tratamento sanitizado e normalizar o retorno de sucesso para valores primitivos
+- [x] Isolar a requisição tRPC/refetch que ainda retorna Unable to transform response e corrigir seu contrato (normalização recursiva de BigInt, Error e valores aninhados)

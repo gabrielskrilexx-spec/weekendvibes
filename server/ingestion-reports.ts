@@ -120,6 +120,49 @@ export function buildSourceReconciliationForTest(runs: Array<{ sourceKey: string
   return Array.from(grouped.values()).sort((a, b) => b.persisted - a.persisted);
 }
 
+export function serializeIngestionRunForTest(run: typeof ingestionRuns.$inferSelect) {
+  return {
+    id: Number(run.id),
+    routine: String(run.routine ?? ""),
+    sourceKey: run.sourceKey == null ? null : String(run.sourceKey),
+    status: String(run.status),
+    importedCount: Number(run.importedCount ?? 0),
+    failedCount: Number(run.failedCount ?? 0),
+    durationMs: run.durationMs == null ? null : Number(run.durationMs),
+    httpStatus: run.httpStatus == null ? null : Number(run.httpStatus),
+    counts: run.counts == null ? null : String(run.counts),
+    details: run.details == null ? null : String(run.details),
+    startedAt: new Date(run.startedAt).toISOString(),
+    finishedAt: run.finishedAt == null ? null : new Date(run.finishedAt).toISOString(),
+  };
+}
+
+export function serializeOperationalAlertForTest(alert: {
+  id: number;
+  integration: string;
+  severity: string;
+  alertType: string | null;
+  slaMinutes: number | null;
+  runId: string | null;
+  title: string;
+  message: string;
+  isResolved: number;
+  createdAt: Date;
+}) {
+  return {
+    id: Number(alert.id),
+    integration: String(alert.integration ?? ""),
+    severity: String(alert.severity),
+    alertType: alert.alertType == null ? null : String(alert.alertType),
+    slaMinutes: alert.slaMinutes == null ? null : Number(alert.slaMinutes),
+    runId: alert.runId == null ? null : String(alert.runId),
+    title: String(alert.title ?? ""),
+    message: String(alert.message ?? ""),
+    isResolved: Number(alert.isResolved ?? 0),
+    createdAt: new Date(alert.createdAt).toISOString(),
+  };
+}
+
 function buildWeeklyOperationalSummary(runs: Array<{ details: unknown }>) {
   const summary = { runs: runs.length, retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, inconsistentRuns: 0, degradedRuns: 0 };
   for (const run of runs) {
@@ -227,6 +270,14 @@ export function buildMetaIntegrationStatusForTest(runs: Array<{ status: string; 
   };
 }
 
+export function normalizeReportForTransport<T>(payload: T): T {
+  return JSON.parse(JSON.stringify(payload, (_key, value: unknown) => {
+    if (typeof value === "bigint") return Number(value);
+    if (value instanceof Error) return { name: value.name, message: value.message.slice(0, 240) };
+    return value;
+  })) as T;
+}
+
 export async function listIngestionReport(size = 20) {
   const db = await getDb();
   if (!db) return { runs: [], alerts: [], criticalAlerts: [], sourceMetrics: [], freshness: [], timeline: [], reconciliationBySource: [], weeklyTrend: [], weeklySummary: { runs: 0, retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, inconsistentRuns: 0, degradedRuns: 0 }, metaStatus: { status: "never" as const, lastSuccessfulSync: null, lastAttempt: null }, totals: { succeeded: 0, failed: 0, partial: 0, imported: 0 } };
@@ -247,8 +298,10 @@ export async function listIngestionReport(size = 20) {
   timeline.push(...alerts.map(alert => ({ id: `alert-${alert.id}`, runId: alert.runId ?? "—", kind: "alert" as const, timestamp: new Date(alert.createdAt).toISOString(), label: alert.title, status: alert.severity, sourceKey: alert.integration })));
   timeline.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   timeline.splice(80);
-  const criticalAlerts = alerts.filter(alert => alert.severity === "CRITICAL" || isCriticalIngestionFailure(`${alert.title} ${alert.message}`));
-  return { runs, alerts, criticalAlerts, sourceMetrics, freshness, timeline, reconciliationBySource: buildSourceReconciliationForTest(trendRuns), weeklyTrend: buildWeeklyTrend(trendRuns), weeklySummary: buildWeeklyOperationalSummary(trendRuns), metaStatus: buildMetaIntegrationStatusForTest(metaRuns), totals: { succeeded: Number(totals?.succeeded ?? 0), failed: Number(totals?.failed ?? 0), partial: Number(totals?.partial ?? 0), imported: Number(totals?.imported ?? 0) } };
+  const serializableRuns = runs.map(serializeIngestionRunForTest);
+  const serializableAlerts = alerts.map(serializeOperationalAlertForTest);
+  const criticalAlerts = serializableAlerts.filter(alert => alert.severity === "CRITICAL" || isCriticalIngestionFailure(`${alert.title} ${alert.message}`));
+  return normalizeReportForTransport({ runs: serializableRuns, alerts: serializableAlerts, criticalAlerts, sourceMetrics, freshness, timeline, reconciliationBySource: buildSourceReconciliationForTest(trendRuns), weeklyTrend: buildWeeklyTrend(trendRuns), weeklySummary: buildWeeklyOperationalSummary(trendRuns), metaStatus: buildMetaIntegrationStatusForTest(metaRuns), totals: { succeeded: Number(totals?.succeeded ?? 0), failed: Number(totals?.failed ?? 0), partial: Number(totals?.partial ?? 0), imported: Number(totals?.imported ?? 0) } });
 }
 
 export function sanitizeReprocessErrorForTest(error: unknown) {
