@@ -6,5 +6,6 @@ export const ENV = {
   ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
-  forgeApiKey: process.env.VITE_FRONTEND_FORGE_API_KEY || process.env.BUILT_IN_FORGE_API_KEY || "",
+  // Never use a VITE_* frontend credential for server-side integrations.
+  forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
 };

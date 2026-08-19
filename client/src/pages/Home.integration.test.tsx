@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 const mocks = vi.hoisted(() => ({
   events: { data: [], isLoading: false, isError: false },
   agenda: { data: undefined as unknown, isLoading: true, isError: false },
+  user: null as { role: string } | null,
 }));
 
 vi.mock("wouter", () => ({ Link: ({ href, children, ...props }: { href: string; children: React.ReactNode }) => <a href={href} {...props}>{children}</a> }));
@@ -12,7 +13,7 @@ vi.mock("wouter", () => ({ Link: ({ href, children, ...props }: { href: string; 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     useUtils: () => ({ operationalAlerts: { list: { invalidate: vi.fn() } }, events: { favoriteIds: { invalidate: vi.fn() }, reminders: { invalidate: vi.fn() } } }),
-    auth: { me: { useQuery: () => ({ data: null }) } },
+    auth: { me: { useQuery: () => ({ data: mocks.user }) } },
     operationalAlerts: {
       list: { useQuery: () => ({ data: [], isLoading: false, isError: false }) },
       resolve: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
@@ -45,6 +46,20 @@ const agendaEvent = {
 };
 
 describe("Home / Agenda da Semana", () => {
+  it("oculta o link administrativo para usuários não administradores", () => {
+    mocks.user = null;
+    expect(renderToStaticMarkup(<Home />)).not.toContain("Painel Administrativo");
+    mocks.user = { role: "user" };
+    expect(renderToStaticMarkup(<Home />)).not.toContain("Painel Administrativo");
+  });
+
+  it("exibe o link administrativo somente para administradores", () => {
+    mocks.user = { role: "admin" };
+    const markup = renderToStaticMarkup(<Home />);
+    expect(markup).toContain('href="/admin/health"');
+    expect(markup).toContain("Painel Administrativo");
+  });
+
   it("renderiza loading, empty e success a partir da query dedicada", () => {
     mocks.agenda = { data: undefined, isLoading: true, isError: false };
     expect(renderToStaticMarkup(<Home />)).toContain("Carregando Agenda da Semana");
@@ -53,6 +68,7 @@ describe("Home / Agenda da Semana", () => {
     expect(renderToStaticMarkup(<Home />)).toContain("Nenhum evento recente da Agenda da Semana");
 
     mocks.agenda = { data: [agendaEvent], isLoading: false, isError: false };
+    mocks.user = null;
     expect(renderToStaticMarkup(<Home />)).toContain("Agenda Moby");
   });
 });
