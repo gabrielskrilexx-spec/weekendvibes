@@ -900,3 +900,7 @@
 - [x] Corrigir o erro “Unable to transform response from server” no retorno da mutation manual do Instagram.
 - [x] Garantir payload de sucesso e erro estritamente serializável, sem `cause` ou objetos externos.
 - [x] Adicionar regressão do contrato da mutation para resposta segura; repetir a execução autorizada consultando `ingestionRuns` e o alerta Meta.
+
+## Correção do wrapper de ingestão — 19/08/2026
+- [x] Sanitizar o erro relançado por `trackedStep` e impedir que falhas de persistência substituam o ACK operacional.
+- [ ] Revalidar o botão Instagram em produção e consultar o run correspondente sem dados sensíveis.

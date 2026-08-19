@@ -7,6 +7,16 @@ import { reconcileIngestionResult } from "./reconciliation";
 
 export type AgendaStepOptions = { archive?: boolean; track?: boolean; sourceKey?: string };
 
+export function sanitizeAgendaStepErrorForTest(error: unknown, sourceKey: string, upstreamStatus?: number | null, degraded = false) {
+  if (sourceKey === "instagram") {
+    if (upstreamStatus === 400) return "Falha na integração Meta (HTTP 400)";
+    if (degraded) return "Execução degradada da integração Meta";
+    if (upstreamStatus) return `Falha na integração Meta (HTTP ${upstreamStatus})`;
+    return "Falha na integração Meta";
+  }
+  return error instanceof Error ? error.message.slice(0, 240) : "Falha durante a execução da agenda";
+}
+
 async function trackedStep<T>(routine: string, sourceKey: string, work: () => Promise<T>) {
   const runId = await startIngestionRun({ routine, sourceKey });
   try {
@@ -32,21 +42,30 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
     const degraded = sourceKey === "instagram" && isGracefullyDegradedMetaFailure(error);
     const upstreamStatus = sourceKey === "instagram" ? getMetaFailureStatus(error) : undefined;
     const blockedCredentials = sourceKey === "instagram" && upstreamStatus === 400;
-    const safeMessage = error instanceof Error ? error.message : String(error);
-    await finishIngestionRun(runId, {
-      status: degraded ? "partial" : "failed",
-      failedCount: degraded ? 0 : 1,
-      httpStatus: degraded ? 200 : blockedCredentials ? 400 : 500,
-      counts: { read: 0, filtered: 0, persisted: 0 },
-      details: degraded
-        ? { degraded: true, integration: "meta", upstreamStatus, imported: 0, counts: { read: 0, filtered: 0, persisted: 0 }, reconciliation: reconcileIngestionResult({ degraded: true }) }
-        : blockedCredentials
-          ? { integration: "meta", blocked_credentials: true, upstreamStatus: 400, error: "meta_credentials_or_permissions", counts: { read: 0, filtered: 0, persisted: 0 }, reconciliation: reconcileIngestionResult({}) }
-          : { message: safeMessage, reconciliation: reconcileIngestionResult({}) },
-      routine,
-      sourceKey,
-    });
-    throw error;
+    const safeMessage = sanitizeAgendaStepErrorForTest(error, sourceKey, upstreamStatus, degraded);
+    try {
+      await finishIngestionRun(runId, {
+        status: degraded ? "partial" : "failed",
+        failedCount: degraded ? 0 : 1,
+        httpStatus: degraded ? 200 : blockedCredentials ? 400 : 500,
+        counts: { read: 0, filtered: 0, persisted: 0 },
+        details: degraded
+          ? { degraded: true, integration: "meta", upstreamStatus, imported: 0, counts: { read: 0, filtered: 0, persisted: 0 }, reconciliation: reconcileIngestionResult({ degraded: true }) }
+          : blockedCredentials
+            ? { integration: "meta", blocked_credentials: true, upstreamStatus: 400, error: "meta_credentials_or_permissions", counts: { read: 0, filtered: 0, persisted: 0 }, reconciliation: reconcileIngestionResult({}) }
+            : { message: safeMessage, reconciliation: reconcileIngestionResult({}) },
+        routine,
+        sourceKey,
+      });
+    } catch (persistError) {
+      console.error("[Agenda routine] Falha ao persistir resultado sanitizado", {
+        routine,
+        sourceKey,
+        runId,
+        error: persistError instanceof Error ? persistError.message.slice(0, 160) : "unknown",
+      });
+    }
+    throw new Error(safeMessage);
   }
 }
 

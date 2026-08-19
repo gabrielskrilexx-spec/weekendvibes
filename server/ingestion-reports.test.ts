@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, buildWeeklyTrendForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest } from "./ingestion-reports";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
+import { sanitizeAgendaStepErrorForTest } from "./agenda-routine";
 
 describe("manual reprocess error transport", () => {
   it("sanitizes integration failures before tRPC transport", () => {
@@ -11,6 +12,14 @@ describe("manual reprocess error transport", () => {
 
   it("keeps ordinary errors bounded", () => {
     expect(sanitizeReprocessErrorForTest(new Error("x".repeat(500)))).toHaveLength(240);
+  });
+
+  it("sanitizes the upstream agenda error before it is rethrown", () => {
+    const error = new InstagramIntegrationFailure("meta", "upstream body with accessToken=secret", { cause: { accessToken: "secret" } });
+    expect(sanitizeAgendaStepErrorForTest(error, "instagram", 400)).toBe("Falha na integração Meta (HTTP 400)");
+    expect(sanitizeAgendaStepErrorForTest(error, "instagram", 503)).toBe("Falha na integração Meta (HTTP 503)");
+    expect(sanitizeAgendaStepErrorForTest(error, "instagram", null, true)).toBe("Execução degradada da integração Meta");
+    expect(sanitizeAgendaStepErrorForTest(error, "instagram")).not.toContain("secret");
   });
 
   it("normalizes report rows into JSON-safe primitives", () => {
