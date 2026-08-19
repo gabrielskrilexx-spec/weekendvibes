@@ -886,3 +886,12 @@
 - [x] Isolar a requisição tRPC/refetch que ainda retorna Unable to transform response e corrigir seu contrato (normalização recursiva de BigInt, Error e valores aninhados)
 - [x] Retornar ACK literal na mutation e absorver falhas do refetch sem alterar o resultado da ingestão
 - [x] Consultar a execução manual mais recente em ingestionRuns e correlacionar saúde/alertas sem expor credenciais (identificada execução public-agenda e warning Meta pendente)
+- [ ] Ajustar o botão Forçar Ingestão (Instagram) para chamar instagram-agenda e registrar a rotina correta
+- [ ] Diferenciar feedback visual entre eventos persistidos, execução sem novos eventos e alertas Meta
+- [ ] Executar validação autorizada da rota Instagram e consultar ingestionRuns/alerta Meta
+
+## Correção da ingestão manual Instagram — 19/08/2026
+- [x] Corrigir o botão Forçar Ingestão (Instagram) para registrar e executar explicitamente a rotina `instagram-agenda`.
+- [x] Diferenciar feedback de ingestão com eventos persistidos, execução sem novos eventos/degradação e erro.
+- [x] Atualizar testes do painel para validar rotina, contagens e mensagens sanitizadas.
+- [x] Validar TypeScript, Vitest, build e revisar o estado operacional da Meta.

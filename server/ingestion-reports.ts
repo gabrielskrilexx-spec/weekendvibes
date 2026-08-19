@@ -324,12 +324,27 @@ export async function reprocessIngestionSource(sourceKey: "public" | "instagram"
     const active = await listIngestionReport(20);
     const running = active.runs.some(run => run.status === "running" && run.sourceKey === sourceKey);
     if (running) throw new Error("Essa fonte já está em processamento");
+    if (sourceKey === "instagram") {
+      const { runInstagramAgendaStep } = await import("./agenda-routine");
+      const result = await runInstagramAgendaStep();
+      const pipeline = (result as { result?: Record<string, unknown> }).result ?? {};
+      const imported = Number(pipeline.imported ?? 0);
+      const counts = {
+        read: Number(pipeline.read ?? pipeline.receivedPosts ?? 0),
+        filtered: Number(pipeline.filtered ?? 0),
+        persisted: Number(pipeline.persisted ?? imported),
+        duplicates: Number(pipeline.duplicates ?? 0),
+      };
+      return { ok: true as const, sourceKey: "instagram", routine: "instagram-agenda" as const, imported, counts, degraded: pipeline.degraded === true };
+    }
     runId = await startIngestionRun({ routine: "manual-reprocess", sourceKey });
-    const { runAgendaStepForScheduler } = await import("./agenda-routine");
-    const result = await runAgendaStepForScheduler(sourceKey);
-    const imported = Number((result as { result?: { imported?: number } })?.result?.imported ?? 0);
-    await finishIngestionRun(runId, { status: "succeeded", importedCount: imported, details: { imported }, routine: "manual-reprocess", sourceKey });
-    return { ok: true, sourceKey: String(sourceKey), imported };
+    const { runPublicAgendaStep } = await import("./agenda-routine");
+    const result = await runPublicAgendaStep();
+    const pipeline = (result as { result?: Record<string, unknown> }).result ?? {};
+    const imported = Number(pipeline.imported ?? 0);
+    const counts = { read: Number(pipeline.read ?? 0), filtered: Number(pipeline.filtered ?? 0), persisted: Number(pipeline.persisted ?? imported), duplicates: Number(pipeline.duplicates ?? 0) };
+    await finishIngestionRun(runId, { status: "succeeded", importedCount: imported, details: { imported, counts }, routine: "manual-reprocess", sourceKey });
+    return { ok: true as const, sourceKey: "public" as const, routine: "manual-reprocess" as const, imported, counts, degraded: false };
   } catch (error) {
     const safeMessage = sanitizeReprocessErrorForTest(error);
     if (runId) await finishIngestionRun(runId, { status: "failed", failedCount: 1, details: { message: safeMessage }, routine: "manual-reprocess", sourceKey });

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   reportRefetch: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
+  toastWarning: vi.fn(),
 }));
 
 
@@ -31,7 +32,7 @@ const reportData = {
   alerts: [],
 };
 
-vi.mock("sonner", () => ({ toast: { success: mocks.toastSuccess, error: mocks.toastError } }));
+vi.mock("sonner", () => ({ toast: { success: mocks.toastSuccess, warning: mocks.toastWarning, error: mocks.toastError } }));
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     ingestionReports: {
@@ -49,6 +50,7 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     mocks.reportRefetch.mockReset();
     mocks.toastSuccess.mockReset();
     mocks.toastError.mockReset();
+    mocks.toastWarning.mockReset();
     mutationOptions = {};
     mutationState = { isPending: false };
   });
@@ -71,16 +73,24 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     expect(JSON.stringify(tree!.toJSON())).toContain("Forçar Ingestão (Instagram)");
   });
 
-  it("atualiza relatórios e notifica sucesso ou erro", async () => {
+  it("diferencia sucesso com novos eventos de execução sem novos eventos", async () => {
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminReportsPanel />); });
     await act(async () => { tree!.root.findByProps({ "data-testid": "force-instagram-ingestion" }).props.onClick(); });
-    await act(async () => { mutationOptions.onSuccess?.({ ok: true }, { sourceKey: "instagram" }); });
+    await act(async () => { mutationOptions.onSuccess?.({ ok: true, routine: "instagram-agenda", imported: 2, counts: { read: 4, filtered: 2, persisted: 2, duplicates: 0 }, degraded: false }, { sourceKey: "instagram" }); });
     expect(mocks.reportRefetch).toHaveBeenCalledTimes(1);
-    expect(mocks.toastSuccess).toHaveBeenCalledWith("Ingestão iniciada", expect.objectContaining({ description: expect.stringContaining("Instagram") }));
+    expect(mocks.toastSuccess).toHaveBeenCalledWith("Ingestão concluída", expect.objectContaining({ description: expect.stringContaining("2 novos eventos cadastrados") }));
 
-    await act(async () => { mutationOptions.onError?.(new Error("falha controlada"), { sourceKey: "instagram" }); });
+    await act(async () => { mutationOptions.onSuccess?.({ ok: true, routine: "instagram-agenda", imported: 0, counts: { read: 0, filtered: 0, persisted: 0, duplicates: 0 }, degraded: true }, { sourceKey: "instagram" }); });
     expect(mocks.reportRefetch).toHaveBeenCalledTimes(2);
+    expect(mocks.toastWarning).toHaveBeenCalledWith("Ingestão sem novos eventos", expect.objectContaining({ description: expect.stringContaining("modo degradado da Meta") }));
+  });
+
+  it("mantém o erro sanitizado e atualiza os relatórios", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    await act(async () => { mutationOptions.onError?.(new Error("falha controlada"), { sourceKey: "instagram" }); });
+    expect(mocks.reportRefetch).toHaveBeenCalledTimes(1);
     expect(mocks.toastError).toHaveBeenCalledWith("Não foi possível executar a ingestão", expect.objectContaining({ description: expect.stringContaining("falha controlada") }));
   });
 });

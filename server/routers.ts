@@ -61,7 +61,7 @@ export const appRouter = router({
   ingestionReports: router({
     summary: adminOnly.query(() => listIngestionReport()),
     geocoding: adminOnly.query(() => listGeocodingSummary()),
-    reprocess: adminOnly.input(z.object({ sourceKey: z.enum(["public", "instagram"]) })).mutation(async ({ input }) => { await reprocessIngestionSource(input.sourceKey); return { ok: true as const }; }),
+    reprocess: adminOnly.input(z.object({ sourceKey: z.enum(["public", "instagram"]) })).mutation(({ input }) => reprocessIngestionSource(input.sourceKey)),
     geocodeNow: adminOnly.mutation(() => processPendingGeocoding(10)),
   }),
   operationalAlerts: router({
