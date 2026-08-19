@@ -871,3 +871,6 @@
 - [x] Diagnosticar e corrigir o erro oauth_callback_failed no login administrativo (corrigida a prioridade de credencial server-side e adicionada telemetria sanitizada por etapa)
 - [x] Adicionar ou ajustar teste de regressão para callback OAuth com retorno inválido ou falha de troca de código
 - [ ] Validar login administrativo, rota /admin/health e botão de ingestão após a correção
+- [ ] Correlacionar o oauth_callback_failed reproduzido no login móvel com o motivo upstream sanitizado
+- [ ] Corrigir o contrato do callback OAuth para o ambiente móvel/produção
+- [ ] Validar login, /admin/health e disparo manual após a correção
