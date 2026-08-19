@@ -18,6 +18,7 @@ let mutationOptions: {
 } = {};
 let mutationState = { isPending: false };
 
+let latestReportData: typeof reportData;
 const reportData = {
   totals: { succeeded: 1, failed: 0, partial: 0, imported: 2 },
   metaStatus: { status: "active", lastSuccessfulSync: "2026-08-19T13:00:00.000Z" },
@@ -31,12 +32,13 @@ const reportData = {
   criticalAlerts: [],
   alerts: [],
 };
+latestReportData = reportData;
 
 vi.mock("sonner", () => ({ toast: { success: mocks.toastSuccess, warning: mocks.toastWarning, error: mocks.toastError } }));
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     ingestionReports: {
-      summary: { useQuery: () => ({ data: reportData, refetch: mocks.reportRefetch }) },
+      summary: { useQuery: () => ({ data: latestReportData, refetch: mocks.reportRefetch }) },
       geocoding: { useQuery: () => ({ data: { pending: 0, processing: 0, succeeded: 0, failed: 0 }, refetch: vi.fn() }) },
       geocodeNow: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
       reprocess: { useMutation: (options: typeof mutationOptions) => { mutationOptions = options; return { ...mutationState, mutate: mocks.mutate }; } },
@@ -48,6 +50,8 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
   beforeEach(() => {
     mocks.mutate.mockReset();
     mocks.reportRefetch.mockReset();
+    latestReportData = reportData;
+    mocks.reportRefetch.mockImplementation(() => Promise.resolve({ data: latestReportData }));
     mocks.toastSuccess.mockReset();
     mocks.toastError.mockReset();
     mocks.toastWarning.mockReset();
@@ -77,11 +81,13 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminReportsPanel />); });
     await act(async () => { tree!.root.findByProps({ "data-testid": "force-instagram-ingestion" }).props.onClick(); });
-    await act(async () => { mutationOptions.onSuccess?.({ ok: true, routine: "instagram-agenda", imported: 2, counts: { read: 4, filtered: 2, persisted: 2, duplicates: 0 }, degraded: false }, { sourceKey: "instagram" }); });
+    latestReportData = { ...reportData, runs: [{ sourceKey: "instagram", routine: "instagram-agenda", status: "succeeded", importedCount: 2, details: { counts: { persisted: 2 } } }] } as typeof reportData;
+    await act(async () => { await mutationOptions.onSuccess?.(true, { sourceKey: "instagram" }); });
     expect(mocks.reportRefetch).toHaveBeenCalledTimes(1);
     expect(mocks.toastSuccess).toHaveBeenCalledWith("Ingestão concluída", expect.objectContaining({ description: expect.stringContaining("2 novos eventos cadastrados") }));
 
-    await act(async () => { mutationOptions.onSuccess?.({ ok: true, routine: "instagram-agenda", imported: 0, counts: { read: 0, filtered: 0, persisted: 0, duplicates: 0 }, degraded: true }, { sourceKey: "instagram" }); });
+    latestReportData = { ...reportData, runs: [{ sourceKey: "instagram", routine: "instagram-agenda", status: "partial", importedCount: 0, details: { counts: { persisted: 0 }, degraded: true } }] } as typeof reportData;
+    await act(async () => { await mutationOptions.onSuccess?.(true, { sourceKey: "instagram" }); });
     expect(mocks.reportRefetch).toHaveBeenCalledTimes(2);
     expect(mocks.toastWarning).toHaveBeenCalledWith("Ingestão sem novos eventos", expect.objectContaining({ description: expect.stringContaining("modo degradado da Meta") }));
   });

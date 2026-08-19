@@ -62,19 +62,8 @@ export const appRouter = router({
     summary: adminOnly.query(() => listIngestionReport()),
     geocoding: adminOnly.query(() => listGeocodingSummary()),
     reprocess: adminOnly.input(z.object({ sourceKey: z.enum(["public", "instagram"]) })).mutation(async ({ input }) => {
-      try {
-        return await reprocessIngestionSource(input.sourceKey);
-      } catch (error) {
-        return {
-          ok: false as const,
-          sourceKey: input.sourceKey,
-          routine: input.sourceKey === "instagram" ? "instagram-agenda" as const : "manual-reprocess" as const,
-          imported: 0,
-          counts: { read: 0, filtered: 0, persisted: 0, duplicates: 0 },
-          degraded: false,
-          error: sanitizeReprocessErrorForTest(error),
-        };
-      }
+      await reprocessIngestionSource(input.sourceKey);
+      return true as const;
     }),
     geocodeNow: adminOnly.mutation(() => processPendingGeocoding(10)),
   }),

@@ -9,28 +9,28 @@ const reprocessSources = ["public", "instagram"] as const;
 const freshnessCopy = { healthy: { label: "Atualizada", tone: "text-emerald-300", dot: "bg-emerald-300" }, delayed: { label: "Atrasada", tone: "text-yellow-200", dot: "bg-yellow-200" }, critical: { label: "Crítica", tone: "text-red-300", dot: "bg-red-300" }, never: { label: "Nunca sincronizada", tone: "text-zinc-400", dot: "bg-zinc-500" } } as const;
 const severityCopy = { INFO: "border-cyan-300/20 bg-cyan-300/5 text-cyan-100", WARNING: "border-yellow-300/20 bg-yellow-300/5 text-yellow-100", CRITICAL: "border-red-300/30 bg-red-300/10 text-red-100" } as const;
 const formatAge = (value: string | null | undefined) => value ? new Intl.RelativeTimeFormat("pt-BR", { numeric: "auto" }).format(-Math.round((Date.now() - new Date(value).getTime()) / 86400000), "day") : "sem registro";
+const summarizeLatestRun = (value: unknown, sourceKey: string) => {
+  const rows = value && typeof value === "object" && Array.isArray((value as { runs?: unknown[] }).runs) ? (value as { runs: unknown[] }).runs : [];
+  const run = rows.find(item => item && typeof item === "object" && (item as { sourceKey?: unknown }).sourceKey === sourceKey) as { routine?: unknown; status?: unknown; importedCount?: unknown; details?: unknown } | undefined;
+  const details = run?.details && typeof run.details === "object" ? run.details as { counts?: unknown; degraded?: unknown } : {};
+  const counts = details.counts && typeof details.counts === "object" ? details.counts as { persisted?: unknown } : {};
+  return { routine: typeof run?.routine === "string" ? run.routine : sourceKey === "instagram" ? "instagram-agenda" : "manual-reprocess", status: run?.status, persisted: Number(counts.persisted ?? run?.importedCount ?? 0), degraded: details.degraded === true || run?.status === "partial" };
+};
 
 export default function AdminReportsPanel() {
   const [reprocessFeedback, setReprocessFeedback] = useState<{ tone: "success" | "warning" | "error"; message: string } | null>(null);
   const report = trpc.ingestionReports.summary.useQuery(undefined, { refetchInterval: 30_000 });
   const geocoding = trpc.ingestionReports.geocoding.useQuery(undefined, { refetchInterval: 30_000 });
   const reprocess = trpc.ingestionReports.reprocess.useMutation({
-    onSuccess: (result, variables) => {
-      const persisted = Number(result.counts?.persisted ?? result.imported ?? 0);
-      const degraded = result.degraded === true;
-      const routine = result.routine ?? (variables.sourceKey === "instagram" ? "instagram-agenda" : "manual-reprocess");
-      const hasNewEvents = result.ok === true && persisted > 0 && !degraded;
-      const safeError = "error" in result && typeof result.error === "string" ? result.error : "A integração não concluiu a execução.";
-      const failed = result.ok !== true;
-      const message = failed
-        ? `Falha na rotina ${routine}: ${safeError}`
-        : hasNewEvents
-          ? `${persisted} novo${persisted === 1 ? "" : "s"} evento${persisted === 1 ? "" : "s"} cadastrado${persisted === 1 ? "" : "s"} pela rotina ${routine}.`
-          : `Rotina ${routine} executada, mas nenhum novo evento foi persistido${degraded ? " (modo degradado da Meta)" : ""}.`;
-      setReprocessFeedback({ tone: failed ? "error" : hasNewEvents ? "success" : "warning", message });
-      void Promise.resolve(report.refetch({ throwOnError: false })).catch(() => undefined);
-      if (failed) sonnerToast.error("Falha na ingestão", { description: message });
-      else if (hasNewEvents) sonnerToast.success("Ingestão concluída", { description: message });
+    onSuccess: async (_ack, variables) => {
+      const refreshed = await report.refetch({ throwOnError: false });
+      const outcome = summarizeLatestRun(refreshed.data, variables.sourceKey);
+      const hasNewEvents = outcome.status === "succeeded" && outcome.persisted > 0 && !outcome.degraded;
+      const message = hasNewEvents
+        ? `${outcome.persisted} novo${outcome.persisted === 1 ? "" : "s"} evento${outcome.persisted === 1 ? "" : "s"} cadastrado${outcome.persisted === 1 ? "" : "s"} pela rotina ${outcome.routine}.`
+        : `Rotina ${outcome.routine} executada, mas nenhum novo evento foi persistido${outcome.degraded ? " (modo degradado da Meta)" : ""}.`;
+      setReprocessFeedback({ tone: hasNewEvents ? "success" : "warning", message });
+      if (hasNewEvents) sonnerToast.success("Ingestão concluída", { description: message });
       else sonnerToast.warning("Ingestão sem novos eventos", { description: message });
     },
     onError: (error, variables) => {
