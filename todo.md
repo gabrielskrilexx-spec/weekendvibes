@@ -884,3 +884,4 @@
 - [x] Isolar e corrigir a falha persistente de transformação no retorno da mutation manual após execução autenticada (TRPCError explícito sem causa externa e regressão adicionada)
 - [x] Envolver toda a mutation manual no tratamento sanitizado e normalizar o retorno de sucesso para valores primitivos
 - [x] Isolar a requisição tRPC/refetch que ainda retorna Unable to transform response e corrigir seu contrato (normalização recursiva de BigInt, Error e valores aninhados)
+- [x] Retornar ACK literal na mutation e absorver falhas do refetch sem alterar o resultado da ingestão

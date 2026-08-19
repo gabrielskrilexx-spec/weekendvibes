@@ -17,12 +17,12 @@ export default function AdminReportsPanel() {
   const reprocess = trpc.ingestionReports.reprocess.useMutation({
     onSuccess: (_result, variables) => {
       setReprocessFeedback({ tone: "success", message: `Ingestão de ${labelForSource(variables.sourceKey)} concluída e relatórios atualizados.` });
-      void report.refetch();
+      void Promise.resolve(report.refetch({ throwOnError: false })).catch(() => undefined);
       sonnerToast.success("Ingestão iniciada", { description: `A rotina de ${labelForSource(variables.sourceKey)} foi executada pelo painel administrativo.` });
     },
     onError: (error, variables) => {
       setReprocessFeedback({ tone: "error", message: `Falha em ${labelForSource(variables.sourceKey)}: ${error.message}` });
-      void report.refetch();
+      void Promise.resolve(report.refetch({ throwOnError: false })).catch(() => undefined);
       sonnerToast.error("Não foi possível executar a ingestão", { description: `${labelForSource(variables.sourceKey)}: ${error.message}` });
     },
   });
