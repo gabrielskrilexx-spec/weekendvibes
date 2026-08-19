@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, buildWeeklyTrendForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, buildWeeklyTrendForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest } from "./ingestion-reports";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
 
 describe("manual reprocess error transport", () => {
@@ -24,6 +24,12 @@ describe("manual reprocess error transport", () => {
   it("normalizes nested report values before the tRPC transformer", () => {
     const normalized = normalizeReportForTransport({ count: BigInt(3), error: new Error("internal"), nested: { value: 4 } });
     expect(normalized).toEqual({ count: 3, error: { name: "Error", message: "internal" }, nested: { value: 4 } });
+    expect(() => JSON.stringify(normalized)).not.toThrow();
+  });
+
+  it("normalizes the manual Instagram result to JSON-safe primitives", () => {
+    const normalized = normalizeManualReprocessResultForTest({ ok: true, sourceKey: "instagram", routine: "instagram-agenda", imported: BigInt(2), counts: { read: BigInt(4), filtered: 2, persisted: 2, duplicates: 1 }, degraded: true, unsafe: new Error("hidden") });
+    expect(normalized).toEqual({ ok: true, sourceKey: "instagram", routine: "instagram-agenda", imported: 2, counts: { read: 4, filtered: 2, persisted: 2, duplicates: 1 }, degraded: true });
     expect(() => JSON.stringify(normalized)).not.toThrow();
   });
 

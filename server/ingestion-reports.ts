@@ -318,6 +318,24 @@ export function createSanitizedReprocessErrorForTest(error: unknown) {
   return new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: sanitizeReprocessErrorForTest(error) });
 }
 
+export function normalizeManualReprocessResultForTest(input: unknown) {
+  const value = input && typeof input === "object" ? input as Record<string, unknown> : {};
+  const counts = value.counts && typeof value.counts === "object" ? value.counts as Record<string, unknown> : {};
+  return {
+    ok: value.ok === true,
+    sourceKey: value.sourceKey === "instagram" ? "instagram" : "public",
+    routine: value.routine === "instagram-agenda" ? "instagram-agenda" : "manual-reprocess",
+    imported: Number.isFinite(Number(value.imported)) ? Number(value.imported) : 0,
+    counts: {
+      read: Number.isFinite(Number(counts.read)) ? Number(counts.read) : 0,
+      filtered: Number.isFinite(Number(counts.filtered)) ? Number(counts.filtered) : 0,
+      persisted: Number.isFinite(Number(counts.persisted)) ? Number(counts.persisted) : 0,
+      duplicates: Number.isFinite(Number(counts.duplicates)) ? Number(counts.duplicates) : 0,
+    },
+    degraded: value.degraded === true,
+  } as const;
+}
+
 export async function reprocessIngestionSource(sourceKey: "public" | "instagram") {
   let runId: number | undefined;
   try {
@@ -335,7 +353,7 @@ export async function reprocessIngestionSource(sourceKey: "public" | "instagram"
         persisted: Number(pipeline.persisted ?? imported),
         duplicates: Number(pipeline.duplicates ?? 0),
       };
-      return { ok: true as const, sourceKey: "instagram", routine: "instagram-agenda" as const, imported, counts, degraded: pipeline.degraded === true };
+      return normalizeManualReprocessResultForTest({ ok: true, sourceKey: "instagram", routine: "instagram-agenda", imported, counts, degraded: pipeline.degraded === true });
     }
     runId = await startIngestionRun({ routine: "manual-reprocess", sourceKey });
     const { runPublicAgendaStep } = await import("./agenda-routine");
@@ -344,7 +362,7 @@ export async function reprocessIngestionSource(sourceKey: "public" | "instagram"
     const imported = Number(pipeline.imported ?? 0);
     const counts = { read: Number(pipeline.read ?? 0), filtered: Number(pipeline.filtered ?? 0), persisted: Number(pipeline.persisted ?? imported), duplicates: Number(pipeline.duplicates ?? 0) };
     await finishIngestionRun(runId, { status: "succeeded", importedCount: imported, details: { imported, counts }, routine: "manual-reprocess", sourceKey });
-    return { ok: true as const, sourceKey: "public" as const, routine: "manual-reprocess" as const, imported, counts, degraded: false };
+    return normalizeManualReprocessResultForTest({ ok: true, sourceKey: "public", routine: "manual-reprocess", imported, counts, degraded: false });
   } catch (error) {
     const safeMessage = sanitizeReprocessErrorForTest(error);
     if (runId) await finishIngestionRun(runId, { status: "failed", failedCount: 1, details: { message: safeMessage }, routine: "manual-reprocess", sourceKey });
