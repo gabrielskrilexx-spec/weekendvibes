@@ -866,17 +866,17 @@
 - [x] Executar testes, build e publicar checkpoint da correção de rota
 - [x] Adicionar link Painel Administrativo no menu principal apenas para administradores autenticados
 - [x] Garantir feedback de loading e toast de sucesso/erro no botão Forçar Ingestão (Instagram)
-- [ ] Validar /admin/health e o fluxo de clique da ingestão manual com sessão administrativa
+- [x] Validar /admin/health e o fluxo de clique da ingestão manual com sessão administrativa (painel autenticado e resposta recebida sem erro de transformação)
 - [x] Executar testes, build e publicar checkpoint desta melhoria
 - [x] Diagnosticar e corrigir o erro oauth_callback_failed no login administrativo (corrigida a prioridade de credencial server-side e adicionada telemetria sanitizada por etapa)
 - [x] Adicionar ou ajustar teste de regressão para callback OAuth com retorno inválido ou falha de troca de código
-- [ ] Validar login administrativo, rota /admin/health e botão de ingestão após a correção
+- [x] Validar login administrativo, rota /admin/health e botão de ingestão após a correção (login e painel confirmados em produção)
 - [x] Correlacionar o oauth_callback_failed reproduzido no login móvel com o motivo upstream sanitizado (falha na criação da sessão JWT)
 - [x] Corrigir o contrato do callback OAuth para o ambiente móvel/produção (credencial server-side e diagnóstico sanitizado por etapa)
-- [ ] Validar login, /admin/health e disparo manual após a correção
+- [x] Validar login, /admin/health e disparo manual após a correção (execução registrada; falha operacional upstream exibida de forma sanitizada)
 - [x] Correlacionar a nova tentativa móvel de oauth_callback_failed com a etapa sanitizada registrada em produção (falha confirmada na criação da sessão JWT)
 - [x] Corrigir a causa confirmada da nova falha persistente de OAuth (derivação SHA-256 do JWT_SECRET configurado e validação de segredo ausente)
-- [ ] Revalidar login administrativo, /admin/health e ingestão manual após a correção
+- [x] Revalidar login administrativo, /admin/health e ingestão manual após a correção (última execução recebida sem falha do transformer)
 - [x] Diagnosticar ERR_SSL_PROTOCOL_ERROR no domínio publicado e confirmar se afeta HTTPS, OAuth e /admin/health (reproduzido por curl e handshake TLS)
 - [x] Corrigir ou isolar a configuração/propgagação do domínio publicada (isolado na borda HTTPS/DNS do domínio; preview do projeto responde normalmente)
 - [x] Validar HTTPS funcional antes de retomar login e ingestão manual (domínio publicado voltou a responder e o painel foi alcançado)
@@ -885,3 +885,4 @@
 - [x] Envolver toda a mutation manual no tratamento sanitizado e normalizar o retorno de sucesso para valores primitivos
 - [x] Isolar a requisição tRPC/refetch que ainda retorna Unable to transform response e corrigir seu contrato (normalização recursiva de BigInt, Error e valores aninhados)
 - [x] Retornar ACK literal na mutation e absorver falhas do refetch sem alterar o resultado da ingestão
+- [x] Consultar a execução manual mais recente em ingestionRuns e correlacionar saúde/alertas sem expor credenciais (identificada execução public-agenda e warning Meta pendente)
