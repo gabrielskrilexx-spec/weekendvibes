@@ -40,10 +40,24 @@ export default function AdminReportsPanel() {
       if (hasNewEvents) sonnerToast.success("Ingestão concluída", { description: message });
       else sonnerToast.warning("Ingestão sem novos eventos", { description: message });
     },
-    onError: (error, variables) => {
-      setReprocessFeedback({ tone: "error", message: `Falha em ${labelForSource(variables.sourceKey)}: ${error.message}` });
-      void Promise.resolve(report.refetch({ throwOnError: false })).catch(() => undefined);
-      sonnerToast.error("Não foi possível executar a ingestão", { description: `${labelForSource(variables.sourceKey)}: ${error.message}` });
+    onError: async (error, variables) => {
+      let refreshedData: unknown = report.data;
+      try {
+        const refreshed = await report.refetch({ throwOnError: false });
+        refreshedData = refreshed.data ?? report.data;
+      } catch {
+        // O relatório pode estar temporariamente indisponível; não mascarar o erro original.
+      }
+      const outcome = summarizeLatestRun(refreshedData, variables.sourceKey);
+      if (outcome.status && outcome.routine === "instagram-agenda") {
+        const message = `Rotina ${outcome.routine} concluída; o relatório persistido indica ${outcome.persisted} novo${outcome.persisted === 1 ? "" : "s"} evento${outcome.persisted === 1 ? "" : "s"}.`;
+        setReprocessFeedback({ tone: outcome.degraded || outcome.persisted === 0 ? "warning" : "success", message });
+        sonnerToast.warning("Relatório atualizado", { description: message });
+        return;
+      }
+      const safeMessage = error.message === "Unable to transform response from server" ? "A execução foi registrada, mas o relatório ainda está sendo atualizado." : error.message;
+      setReprocessFeedback({ tone: "error", message: `Falha em ${labelForSource(variables.sourceKey)}: ${safeMessage}` });
+      sonnerToast.error("Não foi possível executar a ingestão", { description: `${labelForSource(variables.sourceKey)}: ${safeMessage}` });
     },
   });
   const geocodeNow = trpc.ingestionReports.geocodeNow.useMutation({ onSuccess: () => geocoding.refetch() });
