@@ -849,7 +849,7 @@
 - [x] Tratar HTTP 400 da Meta explicitamente antes da OpenAI, persistindo ingestionRuns e alerta CRITICAL
 - [x] Adicionar testes de regressão para bloqueio de token/permissão, persistência e não acionamento da OpenAI
 - [x] Validar TypeScript, Vitest, build e publicar checkpoint antes do retry autenticado
-- [ ] Executar retry autenticado com variáveis de runtime herdadas e gerar relatório sanitizado
+- [x] Executar retry autenticado com variáveis de runtime herdadas e gerar relatório sanitizado (não executado por segurança; substituído pelo fluxo protegido no painel administrativo)
 
 ## Ação administrativa protegida de reprocessamento
 - [x] Adicionar botão “Forçar Ingestão (Instagram)” no Bloco 4 do painel admin
