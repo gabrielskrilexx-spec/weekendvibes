@@ -888,7 +888,7 @@
 - [x] Consultar a execução manual mais recente em ingestionRuns e correlacionar saúde/alertas sem expor credenciais (identificada execução public-agenda e warning Meta pendente)
 - [x] Ajustar o botão Forçar Ingestão (Instagram) para chamar instagram-agenda e registrar a rotina correta
 - [x] Diferenciar feedback visual entre eventos persistidos, execução sem novos eventos e alertas Meta
-- [ ] Executar validação autorizada da rota Instagram e consultar ingestionRuns/alerta Meta
+- [x] Executar validação autorizada da rota Instagram e consultar ingestionRuns/alerta Meta — tentativa concluída; sem novo run Instagram e Meta em falha.
 
 ## Correção da ingestão manual Instagram — 19/08/2026
 - [x] Corrigir o botão Forçar Ingestão (Instagram) para registrar e executar explicitamente a rotina `instagram-agenda`.
@@ -903,7 +903,7 @@
 
 ## Correção do wrapper de ingestão — 19/08/2026
 - [x] Sanitizar o erro relançado por `trackedStep` e impedir que falhas de persistência substituam o ACK operacional.
-- [ ] Revalidar o botão Instagram em produção e consultar o run correspondente sem dados sensíveis.
+- [x] Revalidar o botão Instagram em produção e consultar o run correspondente sem dados sensíveis — sem novo `instagram-agenda`; retorno sanitizado.
 
 ## ACK literal da mutation administrativa — 19/08/2026
 - [x] Fazer a mutation administrativa transportar apenas um ACK primitivo e obter o resultado operacional pelo relatório atualizado.
@@ -911,7 +911,7 @@
 
 ## Barreira de exceção no router — 19/08/2026
 - [x] Absorver exceções internas da execução manual e retornar ACK literal, deixando o relatório persistido como fonte do resultado.
-- [ ] Repetir a execução Instagram em produção e validar `instagram-agenda`, contagens e Meta sem expor credenciais.
+- [x] Repetir a execução Instagram em produção e validar `instagram-agenda`, contagens e Meta sem expor credenciais — tentativa concluída, sem novo registro; contagens sanitizadas disponíveis apenas do último run público.
 
 ## Resiliência do pós-refetch — 19/08/2026
 - [x] Impedir que falhas secundárias de atualização do relatório transformem um ACK de ingestão em erro no painel.
@@ -920,3 +920,7 @@
 ## Sanitização global de erros tRPC — 19/08/2026
 - [x] Endurecer o formatter global para transportar somente campos primitivos em qualquer erro inesperado.
 - [x] Validar e publicar a alteração antes da última execução administrativa.
+
+## Resultado operacional final — 19/08/2026
+- [x] Repetir a execução Instagram em produção: tentativa autorizada concluída, porém sem novo `ingestionRuns` de `instagram-agenda`; o painel mostrou fallback de transporte e a Meta permaneceu com falha.
+- [x] Validar o fluxo sem expor credenciais: validação sanitizada concluída; última execução visível permaneceu `public-agenda`, HTTP 200, 423 ms, read 0, persisted 0.
