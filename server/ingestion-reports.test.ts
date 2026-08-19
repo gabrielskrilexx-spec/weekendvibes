@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, buildWeeklyTrendForTest, getFreshnessState, isCriticalIngestionFailure, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, sanitizeReprocessErrorForTest } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, buildWeeklyTrendForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, sanitizeReprocessErrorForTest } from "./ingestion-reports";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
 
 describe("manual reprocess error transport", () => {
@@ -11,6 +11,15 @@ describe("manual reprocess error transport", () => {
 
   it("keeps ordinary errors bounded", () => {
     expect(sanitizeReprocessErrorForTest(new Error("x".repeat(500)))).toHaveLength(240);
+  });
+
+  it("builds a transport-safe tRPC error without the upstream cause", () => {
+    const error = new InstagramIntegrationFailure("meta", "Meta failure", { cause: { accessToken: "secret" } });
+    const transportError = createSanitizedReprocessErrorForTest(error);
+    expect(transportError.code).toBe("INTERNAL_SERVER_ERROR");
+    expect(transportError.message).toBe("Falha na integração meta");
+    expect(transportError.cause).toBeUndefined();
+    expect(JSON.stringify(transportError)).not.toContain("secret");
   });
 });
 

@@ -881,3 +881,4 @@
 - [x] Corrigir ou isolar a configuração/propgagação do domínio publicada (isolado na borda HTTPS/DNS do domínio; preview do projeto responde normalmente)
 - [ ] Validar HTTPS funcional antes de retomar login e ingestão manual
 - [x] Corrigir o retorno serializável da mutation de reprocessamento do Instagram e adicionar regressão para erro sanitizado
+- [x] Isolar e corrigir a falha persistente de transformação no retorno da mutation manual após execução autenticada (TRPCError explícito sem causa externa e regressão adicionada)

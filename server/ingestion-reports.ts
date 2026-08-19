@@ -1,4 +1,5 @@
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { desc, eq, gte, sql } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
 import { ingestionRuns, operationalAlerts, ingestionSources } from "../drizzle/schema";
 import { classifyCriticalMetaReason, sendCriticalMetaAlert } from "./meta-alert-webhook";
 import { getDb, recordOperationalAlert } from "./db";
@@ -260,6 +261,10 @@ export function sanitizeReprocessErrorForTest(error: unknown) {
   return "Falha desconhecida durante o reprocessamento";
 }
 
+export function createSanitizedReprocessErrorForTest(error: unknown) {
+  return new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: sanitizeReprocessErrorForTest(error) });
+}
+
 export async function reprocessIngestionSource(sourceKey: "public" | "instagram") {
   const active = await listIngestionReport(20);
   const running = active.runs.some(run => run.status === "running" && run.sourceKey === sourceKey);
@@ -274,7 +279,7 @@ export async function reprocessIngestionSource(sourceKey: "public" | "instagram"
   } catch (error) {
     const safeMessage = sanitizeReprocessErrorForTest(error);
     await finishIngestionRun(runId, { status: "failed", failedCount: 1, details: { message: safeMessage }, routine: "manual-reprocess", sourceKey });
-    throw new Error(safeMessage);
+    throw createSanitizedReprocessErrorForTest(error);
   }
 }
 
