@@ -35,6 +35,11 @@ export async function ingestInstagramHandler(req: Request, res: Response) {
   } catch (error) {
     const integration: OperationalIntegration = error instanceof InstagramIntegrationFailure ? error.integration : "pipeline";
     const safeError = redactError(error);
+    const metaStatus = integration === "meta" ? getMetaFailureStatus(error) : undefined;
+    if (metaStatus === 400) {
+      console.error("[Instagram] Meta credentials or permissions rejected", { integration: "meta", upstreamStatus: 400 });
+      return res.status(400).json({ ok: false, degraded: false, integration: "meta", error: "meta_credentials_or_permissions", upstreamStatus: 400, counts: { read: 0, filtered: 0, persisted: 0 }, durationMs: Date.now() - startedAtMs, startedAt, finishedAt: new Date().toISOString() });
+    }
     if (isGracefullyDegradedMetaFailure(error)) {
       const status = getMetaFailureStatus(error);
       try {

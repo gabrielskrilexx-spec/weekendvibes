@@ -30,15 +30,19 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
     return result;
   } catch (error) {
     const degraded = sourceKey === "instagram" && isGracefullyDegradedMetaFailure(error);
-    const upstreamStatus = degraded ? getMetaFailureStatus(error) ?? 503 : undefined;
+    const upstreamStatus = sourceKey === "instagram" ? getMetaFailureStatus(error) : undefined;
+    const blockedCredentials = sourceKey === "instagram" && upstreamStatus === 400;
+    const safeMessage = error instanceof Error ? error.message : String(error);
     await finishIngestionRun(runId, {
       status: degraded ? "partial" : "failed",
       failedCount: degraded ? 0 : 1,
-      httpStatus: degraded ? 200 : 500,
+      httpStatus: degraded ? 200 : blockedCredentials ? 400 : 500,
       counts: { read: 0, filtered: 0, persisted: 0 },
-        details: degraded
+      details: degraded
         ? { degraded: true, integration: "meta", upstreamStatus, imported: 0, counts: { read: 0, filtered: 0, persisted: 0 }, reconciliation: reconcileIngestionResult({ degraded: true }) }
-        : { message: error instanceof Error ? error.message : String(error), reconciliation: reconcileIngestionResult({}) },
+        : blockedCredentials
+          ? { integration: "meta", blocked_credentials: true, upstreamStatus: 400, error: "meta_credentials_or_permissions", counts: { read: 0, filtered: 0, persisted: 0 }, reconciliation: reconcileIngestionResult({}) }
+          : { message: safeMessage, reconciliation: reconcileIngestionResult({}) },
       routine,
       sourceKey,
     });

@@ -178,7 +178,7 @@ export async function finishIngestionRun(id: number | undefined, input: { status
     const criticalMetaReason = classifyCriticalMetaReason(failureText);
     if (criticalMetaReason) {
       void sendCriticalMetaAlert({ reason: criticalMetaReason }).catch(error => console.warn("[Meta alert] Webhook delivery failed:", error instanceof Error ? error.message : "unknown"));
-      await recordOperationalAlert({ dbOverride: db, integration: "meta", title: "Credenciais Meta exigem renovação", message: `A integração Meta registrou ${criticalMetaReason}. Renove manualmente o token de acesso do Instagram.` });
+      await recordOperationalAlert({ dbOverride: db, integration: "meta", severity: "CRITICAL", alertType: "credential_blocked", runId: id, title: "Credenciais Meta exigem renovação", message: `A integração Meta registrou ${criticalMetaReason}. Renove manualmente o token de acesso do Instagram.` });
     }
     const reconciliation = input.details && typeof input.details === "object" ? (input.details as { reconciliation?: { consistent?: boolean; read?: number; persisted?: number; duplicates?: number; missingCoordinates?: number; outOfBoundsCoordinates?: number; issues?: string[] } }).reconciliation : undefined;
     if (reconciliation) {

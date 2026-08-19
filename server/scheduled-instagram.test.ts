@@ -49,6 +49,18 @@ describe("scheduled Instagram ingestion", () => {
     expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, degraded: true, integration: "meta", error: "upstream_unavailable", upstreamStatus: 503, imported: 0 }));
   });
 
+  it("trata Meta HTTP 400 como bloqueio de credencial antes do downstream", async () => {
+    vi.spyOn(sdk, "authenticateRequest").mockResolvedValue({ isCron: true } as never);
+    const pipeline = vi.spyOn(await import("./instagram-pipeline"), "runInstagramPipeline").mockRejectedValueOnce(new InstagramIntegrationFailure("meta", "Meta Graph API retornou HTTP 400: acesso bloqueado"));
+    const res = { json: vi.fn().mockReturnThis(), status: vi.fn().mockReturnThis() } as never;
+
+    await ingestInstagramHandler({} as never, res);
+
+    expect(pipeline).toHaveBeenCalledOnce();
+    expect((res as any).status).toHaveBeenCalledWith(400);
+    expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: false, degraded: false, integration: "meta", error: "meta_credentials_or_permissions", upstreamStatus: 400, counts: { read: 0, filtered: 0, persisted: 0 } }));
+  });
+
   it("mantém HTTP 500 para falha interna sem status upstream conhecido", async () => {
     vi.spyOn(sdk, "authenticateRequest").mockResolvedValue({ isCron: true } as never);
     vi.spyOn(await import("./instagram-pipeline"), "runInstagramPipeline").mockRejectedValueOnce(new InstagramIntegrationFailure("meta", "Falha de configuração local"));

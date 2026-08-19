@@ -840,3 +840,13 @@
 - [x] Persistir alertas com deduplicação, fingerprint e correlação por execução
 - [x] Integrar alertas aos fluxos de ingestão e ao painel administrativo
 - [x] Atualizar testes, documentação, validar TypeScript/Vitest/E2E/build e publicar checkpoint
+
+## Disparo extraordinário de ingestão Instagram
+- [x] Criar disparo único para 20/08/2026 às 10:00 em America/Sao_Paulo sem alterar o Heartbeat semanal
+- [x] Verificar o task UID, horário UTC equivalente e desativação automática após a execução
+
+## Resiliência e retry da Meta
+- [ ] Tratar HTTP 400 da Meta explicitamente antes da OpenAI, persistindo ingestionRuns e alerta CRITICAL
+- [ ] Adicionar testes de regressão para bloqueio de token/permissão, persistência e não acionamento da OpenAI
+- [ ] Validar TypeScript, Vitest, build e publicar checkpoint antes do retry autenticado
+- [ ] Executar retry autenticado com variáveis de runtime herdadas e gerar relatório sanitizado
