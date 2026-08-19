@@ -5,6 +5,17 @@ import type { TrpcContext } from "./context";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
+  errorFormatter({ shape }) {
+    return {
+      ...shape,
+      message: String(shape.message).slice(0, 240),
+      data: {
+        code: String(shape.data?.code ?? "INTERNAL_SERVER_ERROR"),
+        httpStatus: Number(shape.data?.httpStatus ?? 500),
+        path: shape.data?.path ? String(shape.data.path) : undefined,
+      },
+    };
+  },
 });
 
 export const router = t.router;

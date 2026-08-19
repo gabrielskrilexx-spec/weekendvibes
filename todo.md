@@ -916,3 +916,7 @@
 ## Resiliência do pós-refetch — 19/08/2026
 - [x] Impedir que falhas secundárias de atualização do relatório transformem um ACK de ingestão em erro no painel.
 - [x] Publicar a proteção e confirmar a execução Instagram com o relatório mais recente disponível.
+
+## Sanitização global de erros tRPC — 19/08/2026
+- [x] Endurecer o formatter global para transportar somente campos primitivos em qualquer erro inesperado.
+- [x] Validar e publicar a alteração antes da última execução administrativa.
