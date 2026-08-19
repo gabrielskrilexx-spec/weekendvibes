@@ -3,7 +3,7 @@ import { sdk } from "./_core/sdk";
 import { notifyOwner } from "./_core/notification";
 import { InstagramIntegrationFailure, isGracefullyDegradedMetaFailure, getMetaFailureStatus } from "./instagram-pipeline";
 import { recordOperationalAlert, OperationalIntegration } from "./db";
-import { runInstagramAgendaStep } from "./agenda-routine";
+import { AgendaStepFailure, runInstagramAgendaStep } from "./agenda-routine";
 import { HttpError } from "@shared/_core/errors";
 import { redactError } from "./_core/security";
 
@@ -33,15 +33,19 @@ export async function ingestInstagramHandler(req: Request, res: Response) {
     const finishedAt = new Date().toISOString();
     return res.json({ ok: true, startedAt, finishedAt, durationMs: Date.now() - startedAtMs, archived, result, counts: { read: Number(result.receivedPosts ?? 0), filtered: Math.max(0, Number(result.receivedPosts ?? 0) - Number(result.approvedPosts ?? 0)), persisted: Number(result.imported ?? 0) } });
   } catch (error) {
-    const integration: OperationalIntegration = error instanceof InstagramIntegrationFailure ? error.integration : "pipeline";
+    const integration: OperationalIntegration = error instanceof AgendaStepFailure
+      ? error.integration
+      : error instanceof InstagramIntegrationFailure ? error.integration : "pipeline";
     const safeError = redactError(error);
-    const metaStatus = integration === "meta" ? getMetaFailureStatus(error) : undefined;
+    const metaStatus = integration === "meta"
+      ? error instanceof AgendaStepFailure ? error.upstreamStatus : getMetaFailureStatus(error)
+      : undefined;
     if (metaStatus === 400) {
       console.error("[Instagram] Meta credentials or permissions rejected", { integration: "meta", upstreamStatus: 400 });
       return res.status(400).json({ ok: false, degraded: false, integration: "meta", error: "meta_credentials_or_permissions", upstreamStatus: 400, counts: { read: 0, filtered: 0, persisted: 0 }, durationMs: Date.now() - startedAtMs, startedAt, finishedAt: new Date().toISOString() });
     }
-    if (isGracefullyDegradedMetaFailure(error)) {
-      const status = getMetaFailureStatus(error);
+    if (error instanceof AgendaStepFailure ? error.degraded : isGracefullyDegradedMetaFailure(error)) {
+      const status = error instanceof AgendaStepFailure ? error.upstreamStatus : getMetaFailureStatus(error);
       try {
         await recordOperationalAlert({ integration: "meta", title: integrationTitles.meta, message: `A API da Meta respondeu HTTP ${status}; a execução foi concluída sem importar dados.` });
       } catch (alertError) {

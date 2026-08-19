@@ -62,7 +62,12 @@ export const appRouter = router({
     summary: adminOnly.query(() => listIngestionReport()),
     geocoding: adminOnly.query(() => listGeocodingSummary()),
     reprocess: adminOnly.input(z.object({ sourceKey: z.enum(["public", "instagram"]) })).mutation(async ({ input }) => {
-      await reprocessIngestionSource(input.sourceKey);
+      try {
+        await reprocessIngestionSource(input.sourceKey);
+      } catch {
+        // O resultado operacional já é persistido em ingestionRuns; a mutation
+        // transporta apenas um ACK literal para impedir vazamento de Error/cause.
+      }
       return true as const;
     }),
     geocodeNow: adminOnly.mutation(() => processPendingGeocoding(10)),

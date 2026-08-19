@@ -908,3 +908,7 @@
 ## ACK literal da mutation administrativa — 19/08/2026
 - [x] Fazer a mutation administrativa transportar apenas um ACK primitivo e obter o resultado operacional pelo relatório atualizado.
 - [x] Adicionar regressão do ACK literal e publicar; repetir a execução Instagram em produção permanece pendente.
+
+## Barreira de exceção no router — 19/08/2026
+- [x] Absorver exceções internas da execução manual e retornar ACK literal, deixando o relatório persistido como fonte do resultado.
+- [ ] Repetir a execução Instagram em produção e validar `instagram-agenda`, contagens e Meta sem expor credenciais.

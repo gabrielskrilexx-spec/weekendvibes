@@ -1,6 +1,18 @@
 import { archiveExpiredSoldOutEvents } from "./db";
 import { runIngestionPipeline } from "./ingestion";
 import { getMetaFailureStatus, isGracefullyDegradedMetaFailure, runInstagramPipeline } from "./instagram-pipeline";
+
+export class AgendaStepFailure extends Error {
+  constructor(
+    message: string,
+    readonly integration: "meta" | "ocr" | "openai" | "pipeline",
+    readonly upstreamStatus?: number,
+    readonly degraded = false,
+  ) {
+    super(message);
+    this.name = "AgendaStepFailure";
+  }
+}
 import { processPendingGeocoding } from "./geocoding";
 import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
 import { reconcileIngestionResult } from "./reconciliation";
@@ -65,7 +77,11 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
         error: persistError instanceof Error ? persistError.message.slice(0, 160) : "unknown",
       });
     }
-    throw new Error(safeMessage);
+    const integration = sourceKey === "instagram" && error && typeof error === "object" && "integration" in error
+      ? String((error as { integration?: unknown }).integration)
+      : sourceKey === "instagram" ? "meta" : "pipeline";
+    const normalizedIntegration = integration === "ocr" || integration === "openai" || integration === "meta" ? integration : "pipeline";
+    throw new AgendaStepFailure(safeMessage, normalizedIntegration, upstreamStatus ?? undefined, degraded);
   }
 }
 
