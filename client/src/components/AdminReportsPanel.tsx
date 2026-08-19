@@ -20,12 +20,17 @@ export default function AdminReportsPanel() {
       const degraded = result.degraded === true;
       const routine = result.routine ?? (variables.sourceKey === "instagram" ? "instagram-agenda" : "manual-reprocess");
       const hasNewEvents = result.ok === true && persisted > 0 && !degraded;
-      const message = hasNewEvents
-        ? `${persisted} novo${persisted === 1 ? "" : "s"} evento${persisted === 1 ? "" : "s"} cadastrado${persisted === 1 ? "" : "s"} pela rotina ${routine}.`
-        : `Rotina ${routine} executada, mas nenhum novo evento foi persistido${degraded ? " (modo degradado da Meta)" : ""}.`;
-      setReprocessFeedback({ tone: hasNewEvents ? "success" : "warning", message });
+      const safeError = "error" in result && typeof result.error === "string" ? result.error : "A integração não concluiu a execução.";
+      const failed = result.ok !== true;
+      const message = failed
+        ? `Falha na rotina ${routine}: ${safeError}`
+        : hasNewEvents
+          ? `${persisted} novo${persisted === 1 ? "" : "s"} evento${persisted === 1 ? "" : "s"} cadastrado${persisted === 1 ? "" : "s"} pela rotina ${routine}.`
+          : `Rotina ${routine} executada, mas nenhum novo evento foi persistido${degraded ? " (modo degradado da Meta)" : ""}.`;
+      setReprocessFeedback({ tone: failed ? "error" : hasNewEvents ? "success" : "warning", message });
       void Promise.resolve(report.refetch({ throwOnError: false })).catch(() => undefined);
-      if (hasNewEvents) sonnerToast.success("Ingestão concluída", { description: message });
+      if (failed) sonnerToast.error("Falha na ingestão", { description: message });
+      else if (hasNewEvents) sonnerToast.success("Ingestão concluída", { description: message });
       else sonnerToast.warning("Ingestão sem novos eventos", { description: message });
     },
     onError: (error, variables) => {

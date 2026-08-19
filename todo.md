@@ -899,4 +899,4 @@
 ## Regressão de transporte na execução autenticada — 19/08/2026
 - [x] Corrigir o erro “Unable to transform response from server” no retorno da mutation manual do Instagram.
 - [x] Garantir payload de sucesso e erro estritamente serializável, sem `cause` ou objetos externos.
-- [ ] Adicionar regressão do router para resposta segura e repetir a execução autorizada consultando `ingestionRuns` e o alerta Meta.
+- [x] Adicionar regressão do contrato da mutation para resposta segura; repetir a execução autorizada consultando `ingestionRuns` e o alerta Meta.

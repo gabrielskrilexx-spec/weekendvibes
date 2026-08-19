@@ -1,5 +1,6 @@
 import { desc, eq, gte, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import { isGracefullyDegradedMetaFailure } from "./instagram-pipeline";
 import { ingestionRuns, operationalAlerts, ingestionSources } from "../drizzle/schema";
 import { classifyCriticalMetaReason, sendCriticalMetaAlert } from "./meta-alert-webhook";
 import { getDb, recordOperationalAlert } from "./db";
@@ -366,7 +367,15 @@ export async function reprocessIngestionSource(sourceKey: "public" | "instagram"
   } catch (error) {
     const safeMessage = sanitizeReprocessErrorForTest(error);
     if (runId) await finishIngestionRun(runId, { status: "failed", failedCount: 1, details: { message: safeMessage }, routine: "manual-reprocess", sourceKey });
-    throw createSanitizedReprocessErrorForTest(error);
+    return {
+      ok: false as const,
+      sourceKey,
+      routine: sourceKey === "instagram" ? "instagram-agenda" as const : "manual-reprocess" as const,
+      imported: 0,
+      counts: { read: 0, filtered: 0, persisted: 0, duplicates: 0 },
+      degraded: sourceKey === "instagram" && isGracefullyDegradedMetaFailure(error),
+      error: safeMessage,
+    };
   }
 }
 
