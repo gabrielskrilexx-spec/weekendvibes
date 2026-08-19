@@ -6,7 +6,7 @@ import { adminProcedure, publicProcedure, protectedProcedure, router } from "./_
 import { deleteEvent, getEventBySlug, listEvents, listRecentInstagramAgendaEvents, listTodayEvents, resolveOperationalAlert, saveEvent, updateEvent, listFavoriteEventIds, toggleFavoriteEvent, setEventReminder, listUserReminders, listIngestionSources, updateIngestionSource } from "./db";
 import { invokeLLM } from "./_core/llm";
 import { getWednesdayRoutineStatus, runWednesdayRoutineNow } from "./manual-ingestion";
-import { listIngestionReport, reprocessIngestionSource } from "./ingestion-reports";
+import { listIngestionReport, reprocessIngestionSource, sanitizeReprocessErrorForTest } from "./ingestion-reports";
 import { createLocationAlias, deleteLocationAlias, listLocationAliases, updateLocationAlias } from "./db";
 import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
 
@@ -61,7 +61,21 @@ export const appRouter = router({
   ingestionReports: router({
     summary: adminOnly.query(() => listIngestionReport()),
     geocoding: adminOnly.query(() => listGeocodingSummary()),
-    reprocess: adminOnly.input(z.object({ sourceKey: z.enum(["public", "instagram"]) })).mutation(({ input }) => reprocessIngestionSource(input.sourceKey)),
+    reprocess: adminOnly.input(z.object({ sourceKey: z.enum(["public", "instagram"]) })).mutation(async ({ input }) => {
+      try {
+        return await reprocessIngestionSource(input.sourceKey);
+      } catch (error) {
+        return {
+          ok: false as const,
+          sourceKey: input.sourceKey,
+          routine: input.sourceKey === "instagram" ? "instagram-agenda" as const : "manual-reprocess" as const,
+          imported: 0,
+          counts: { read: 0, filtered: 0, persisted: 0, duplicates: 0 },
+          degraded: false,
+          error: sanitizeReprocessErrorForTest(error),
+        };
+      }
+    }),
     geocodeNow: adminOnly.mutation(() => processPendingGeocoding(10)),
   }),
   operationalAlerts: router({
