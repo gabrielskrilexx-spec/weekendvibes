@@ -912,3 +912,7 @@
 ## Barreira de exceção no router — 19/08/2026
 - [x] Absorver exceções internas da execução manual e retornar ACK literal, deixando o relatório persistido como fonte do resultado.
 - [ ] Repetir a execução Instagram em produção e validar `instagram-agenda`, contagens e Meta sem expor credenciais.
+
+## Resiliência do pós-refetch — 19/08/2026
+- [x] Impedir que falhas secundárias de atualização do relatório transformem um ACK de ingestão em erro no painel.
+- [x] Publicar a proteção e confirmar a execução Instagram com o relatório mais recente disponível.

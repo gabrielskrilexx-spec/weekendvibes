@@ -23,8 +23,15 @@ export default function AdminReportsPanel() {
   const geocoding = trpc.ingestionReports.geocoding.useQuery(undefined, { refetchInterval: 30_000 });
   const reprocess = trpc.ingestionReports.reprocess.useMutation({
     onSuccess: async (_ack, variables) => {
-      const refreshed = await report.refetch({ throwOnError: false });
-      const outcome = summarizeLatestRun(refreshed.data, variables.sourceKey);
+      let refreshedData: unknown = report.data;
+      try {
+        const refreshed = await report.refetch({ throwOnError: false });
+        refreshedData = refreshed.data ?? report.data;
+      } catch {
+        // O ACK confirma a execução; uma falha secundária de atualização não deve
+        // convertê-la em erro visual nem ocultar o resultado operacional já salvo.
+      }
+      const outcome = summarizeLatestRun(refreshedData, variables.sourceKey);
       const hasNewEvents = outcome.status === "succeeded" && outcome.persisted > 0 && !outcome.degraded;
       const message = hasNewEvents
         ? `${outcome.persisted} novo${outcome.persisted === 1 ? "" : "s"} evento${outcome.persisted === 1 ? "" : "s"} cadastrado${outcome.persisted === 1 ? "" : "s"} pela rotina ${outcome.routine}.`
