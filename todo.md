@@ -846,7 +846,17 @@
 - [x] Verificar o task UID, horário UTC equivalente e desativação automática após a execução
 
 ## Resiliência e retry da Meta
-- [ ] Tratar HTTP 400 da Meta explicitamente antes da OpenAI, persistindo ingestionRuns e alerta CRITICAL
-- [ ] Adicionar testes de regressão para bloqueio de token/permissão, persistência e não acionamento da OpenAI
-- [ ] Validar TypeScript, Vitest, build e publicar checkpoint antes do retry autenticado
+- [x] Tratar HTTP 400 da Meta explicitamente antes da OpenAI, persistindo ingestionRuns e alerta CRITICAL
+- [x] Adicionar testes de regressão para bloqueio de token/permissão, persistência e não acionamento da OpenAI
+- [x] Validar TypeScript, Vitest, build e publicar checkpoint antes do retry autenticado
 - [ ] Executar retry autenticado com variáveis de runtime herdadas e gerar relatório sanitizado
+
+## Ação administrativa protegida de reprocessamento
+- [x] Adicionar botão “Forçar Ingestão (Instagram)” no Bloco 4 do painel admin
+- [x] Conectar a ação a endpoint/mutation protegida por sessão admin, com bloqueio de concorrência
+- [x] Exibir loading, toast de sucesso/erro e atualizar execuções/freshness automaticamente
+- [x] Adicionar testes de autorização, loading, erro, sucesso e invalidação das queries
+- [x] Validar TypeScript, Vitest, E2E e build; documentar e publicar checkpoint
+- [x] Corrigir mock hoisted do Sonner e validar o botão Forçar Ingestão (Instagram) no Admin Panel
+- [ ] Resolver referência legada getTuesdayRoutineStatus nos logs do servidor
+- [ ] Validar manualmente o botão Forçar Ingestão (Instagram) no navegador com sessão administrativa
