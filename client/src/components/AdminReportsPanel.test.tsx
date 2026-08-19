@@ -67,6 +67,14 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     expect(JSON.stringify(tree!.toJSON())).toContain("db6cf437");
   });
 
+  it("exibe a ação de limpeza de cache do painel", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    const button = tree!.root.findByProps({ "data-testid": "clear-client-cache" });
+    expect(button.props["aria-label"]).toBe("Limpar cache do painel");
+    expect(JSON.stringify(tree!.toJSON())).toContain("Limpar Cache");
+  });
+
   it("dispara a mutation protegida com a fonte Instagram", async () => {
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminReportsPanel />); });

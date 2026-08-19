@@ -930,3 +930,8 @@
 - [x] Garantir headers `no-store`/`no-cache` nas rotas e chamadas administrativas de ingestão, sem permitir cache estático da mutation.
 - [x] Cobrir a tag e os headers com testes e validar TypeScript, Vitest, build e bundle publicado.
 - [x] Publicar a alteração e confirmar a tag visível no painel.
+
+## Limpeza de cache e redeploy — 19/08/2026
+- [x] Adicionar botão administrativo `Limpar Cache` que invalide caches locais do cliente e recarregue o bundle.
+- [x] Limpar `.vite`, `dist` e demais artefatos de build aplicáveis e executar rebuild do zero.
+- [ ] Publicar novo checkpoint/redeploy e verificar HTML, versão e headers no domínio público.

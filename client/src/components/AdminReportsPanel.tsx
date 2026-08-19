@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, Loader2, MapPin, RefreshCw, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Loader2, MapPin, RefreshCw, Trash2, XCircle } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
 import { trpc } from "@/lib/trpc";
 
@@ -62,6 +62,22 @@ export default function AdminReportsPanel() {
     },
   });
   const geocodeNow = trpc.ingestionReports.geocodeNow.useMutation({ onSuccess: () => geocoding.refetch() });
+  const clearClientCache = async () => {
+    try {
+      if (typeof window !== "undefined" && "caches" in window) {
+        const cacheNames = await window.caches.keys();
+        await Promise.all(cacheNames.map(cacheName => window.caches.delete(cacheName)));
+      }
+      sonnerToast.success("Cache local invalidado", { description: "O painel será recarregado com o bundle mais recente." });
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.set("cache", `${adminBuildTag}-${Date.now()}`);
+        window.location.replace(url.toString());
+      }
+    } catch {
+      sonnerToast.error("Não foi possível limpar o cache", { description: "Recarregue a página manualmente e tente novamente." });
+    }
+  };
   const data = report.data;
   const metaStatus = data?.metaStatus?.status ?? "never";
   const metaStatusCopy = {
@@ -81,7 +97,7 @@ export default function AdminReportsPanel() {
   return <section aria-labelledby="reports-heading" className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-5 sm:p-7">
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div><p className="text-xs font-black uppercase tracking-[0.2em] text-yellow-200">Observabilidade</p><h2 id="reports-heading" className="mt-1 text-xl font-black">Relatórios operacionais</h2><p className="mt-1 text-sm text-zinc-400">Acompanhe a saúde da ingestão e reexecute uma fonte sem duplicar eventos.</p><p data-testid="admin-build-version" className="mt-2 text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">Versão do painel: {adminBuildTag}</p></div>
-      <button type="button" onClick={() => report.refetch()} aria-label="Atualizar relatórios" className="inline-flex items-center gap-2 self-start rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-200 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300"><RefreshCw size={15} /> Atualizar</button>
+      <div className="flex flex-wrap gap-2 self-start"><button type="button" onClick={() => report.refetch()} aria-label="Atualizar relatórios" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-200 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300"><RefreshCw size={15} /> Atualizar</button><button type="button" onClick={clearClientCache} aria-label="Limpar cache do painel" data-testid="clear-client-cache" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-yellow-300/30 px-3 py-2 text-xs font-bold text-yellow-100 hover:bg-yellow-300/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300"><Trash2 size={15} /> Limpar Cache</button></div>
     </div>
     <div className="mt-5 grid gap-3 sm:grid-cols-4">{cards.map(item => <div key={item.label} className="rounded-2xl border border-white/10 bg-black/10 p-4"><item.icon size={17} className={item.tone} /><p className="mt-3 text-2xl font-black">{item.value}</p><p className="text-xs text-zinc-500">{item.label}</p></div>)}</div>
     <div className={`mt-5 rounded-2xl border p-4 ${metaStatusCopy.tone}`} aria-live="polite" data-testid="meta-integration-status">
