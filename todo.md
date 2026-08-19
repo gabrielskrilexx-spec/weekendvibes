@@ -871,7 +871,7 @@
 - [x] Diagnosticar e corrigir o erro oauth_callback_failed no login administrativo (corrigida a prioridade de credencial server-side e adicionada telemetria sanitizada por etapa)
 - [x] Adicionar ou ajustar teste de regressão para callback OAuth com retorno inválido ou falha de troca de código
 - [ ] Validar login administrativo, rota /admin/health e botão de ingestão após a correção
-- [ ] Correlacionar o oauth_callback_failed reproduzido no login móvel com o motivo upstream sanitizado
+- [x] Correlacionar o oauth_callback_failed reproduzido no login móvel com o motivo upstream sanitizado (falha na criação da sessão JWT)
 - [x] Corrigir o contrato do callback OAuth para o ambiente móvel/produção (credencial server-side e diagnóstico sanitizado por etapa)
 - [ ] Validar login, /admin/health e disparo manual após a correção
 - [x] Correlacionar a nova tentativa móvel de oauth_callback_failed com a etapa sanitizada registrada em produção (falha confirmada na criação da sessão JWT)
@@ -879,6 +879,7 @@
 - [ ] Revalidar login administrativo, /admin/health e ingestão manual após a correção
 - [x] Diagnosticar ERR_SSL_PROTOCOL_ERROR no domínio publicado e confirmar se afeta HTTPS, OAuth e /admin/health (reproduzido por curl e handshake TLS)
 - [x] Corrigir ou isolar a configuração/propgagação do domínio publicada (isolado na borda HTTPS/DNS do domínio; preview do projeto responde normalmente)
-- [ ] Validar HTTPS funcional antes de retomar login e ingestão manual
+- [x] Validar HTTPS funcional antes de retomar login e ingestão manual (domínio publicado voltou a responder e o painel foi alcançado)
 - [x] Corrigir o retorno serializável da mutation de reprocessamento do Instagram e adicionar regressão para erro sanitizado
 - [x] Isolar e corrigir a falha persistente de transformação no retorno da mutation manual após execução autenticada (TRPCError explícito sem causa externa e regressão adicionada)
+- [x] Envolver toda a mutation manual no tratamento sanitizado e normalizar o retorno de sucesso para valores primitivos

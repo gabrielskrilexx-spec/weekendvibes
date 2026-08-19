@@ -266,19 +266,20 @@ export function createSanitizedReprocessErrorForTest(error: unknown) {
 }
 
 export async function reprocessIngestionSource(sourceKey: "public" | "instagram") {
-  const active = await listIngestionReport(20);
-  const running = active.runs.some(run => run.status === "running" && run.sourceKey === sourceKey);
-  if (running) throw new Error("Essa fonte já está em processamento");
-  const runId = await startIngestionRun({ routine: "manual-reprocess", sourceKey });
+  let runId: number | undefined;
   try {
+    const active = await listIngestionReport(20);
+    const running = active.runs.some(run => run.status === "running" && run.sourceKey === sourceKey);
+    if (running) throw new Error("Essa fonte já está em processamento");
+    runId = await startIngestionRun({ routine: "manual-reprocess", sourceKey });
     const { runAgendaStepForScheduler } = await import("./agenda-routine");
     const result = await runAgendaStepForScheduler(sourceKey);
     const imported = Number((result as { result?: { imported?: number } })?.result?.imported ?? 0);
     await finishIngestionRun(runId, { status: "succeeded", importedCount: imported, details: { imported }, routine: "manual-reprocess", sourceKey });
-    return { ok: true, sourceKey, imported };
+    return { ok: true, sourceKey: String(sourceKey), imported };
   } catch (error) {
     const safeMessage = sanitizeReprocessErrorForTest(error);
-    await finishIngestionRun(runId, { status: "failed", failedCount: 1, details: { message: safeMessage }, routine: "manual-reprocess", sourceKey });
+    if (runId) await finishIngestionRun(runId, { status: "failed", failedCount: 1, details: { message: safeMessage }, routine: "manual-reprocess", sourceKey });
     throw createSanitizedReprocessErrorForTest(error);
   }
 }
