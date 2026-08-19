@@ -1,5 +1,5 @@
 import "dotenv/config";
-import express from "express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
@@ -53,11 +53,17 @@ async function startServer() {
   app.use("/api/maps", createRateLimit({ windowMs: 60 * 1000, max: 30, name: "maps-script" }));
   registerMapsJavascriptRoute(app);
   registerOAuthRoutes(app);
-  app.post("/api/scheduled/ingest-events", ingestEventsHandler);
-  app.post("/api/scheduled/ingest-full-agenda", ingestFullAgendaHandler);
-  app.post("/api/scheduled/ingest-event-documents", ingestAgentDocumentsHandler);
-  app.post("/api/scheduled/ingest-instagram", ingestInstagramHandler);
-  app.post("/api/scheduled/monitor-heartbeat", heartbeatMonitorHandler);
+  const noStoreScheduledResponse = (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    next();
+  };
+  app.post("/api/scheduled/ingest-events", noStoreScheduledResponse, ingestEventsHandler);
+  app.post("/api/scheduled/ingest-full-agenda", noStoreScheduledResponse, ingestFullAgendaHandler);
+  app.post("/api/scheduled/ingest-event-documents", noStoreScheduledResponse, ingestAgentDocumentsHandler);
+  app.post("/api/scheduled/ingest-instagram", noStoreScheduledResponse, ingestInstagramHandler);
+  app.post("/api/scheduled/monitor-heartbeat", noStoreScheduledResponse, heartbeatMonitorHandler);
   // tRPC API
   app.use(
     "/api/trpc",

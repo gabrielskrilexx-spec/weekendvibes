@@ -924,3 +924,9 @@
 ## Resultado operacional final — 19/08/2026
 - [x] Repetir a execução Instagram em produção: tentativa autorizada concluída, porém sem novo `ingestionRuns` de `instagram-agenda`; o painel mostrou fallback de transporte e a Meta permaneceu com falha.
 - [x] Validar o fluxo sem expor credenciais: validação sanitizada concluída; última execução visível permaneceu `public-agenda`, HTTP 200, 423 ms, read 0, persisted 0.
+
+## Auditoria de propagação e versionamento — 19/08/2026
+- [x] Exibir uma tag de versão inequívoca no cabeçalho ou rodapé do painel administrativo.
+- [x] Garantir headers `no-store`/`no-cache` nas rotas e chamadas administrativas de ingestão, sem permitir cache estático da mutation.
+- [x] Cobrir a tag e os headers com testes e validar TypeScript, Vitest, build e bundle publicado.
+- [x] Publicar a alteração e confirmar a tag visível no painel.

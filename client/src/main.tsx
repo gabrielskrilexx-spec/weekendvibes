@@ -61,8 +61,13 @@ const trpcClient = trpc.createClient({
         return {};
       },
       fetch(input, init) {
+        const headers = new Headers(init?.headers);
+        headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+        headers.set("Pragma", "no-cache");
         return globalThis.fetch(input, {
           ...(init ?? {}),
+          headers,
+          cache: "no-store",
           credentials: "include",
         });
       },

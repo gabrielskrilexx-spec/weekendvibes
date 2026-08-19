@@ -59,6 +59,14 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     mutationState = { isPending: false };
   });
 
+  it("exibe uma tag de versão para auditoria do bundle", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    const versionTag = tree!.root.findByProps({ "data-testid": "admin-build-version" });
+    expect(String(versionTag.props.children)).toContain("Versão do painel:");
+    expect(JSON.stringify(tree!.toJSON())).toContain("db6cf437");
+  });
+
   it("dispara a mutation protegida com a fonte Instagram", async () => {
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminReportsPanel />); });
