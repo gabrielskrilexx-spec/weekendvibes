@@ -3,6 +3,7 @@ import { ingestionRuns, operationalAlerts, ingestionSources } from "../drizzle/s
 import { classifyCriticalMetaReason, sendCriticalMetaAlert } from "./meta-alert-webhook";
 import { getDb, recordOperationalAlert } from "./db";
 import { buildFreshnessCriticalAlert, buildReconciliationDivergenceAlert } from "./operational-alert-rules";
+import { InstagramIntegrationFailure, getMetaFailureStatus } from "./instagram-pipeline";
 
 export function isCriticalIngestionFailure(details: unknown) {
   const text = typeof details === "string" ? details : JSON.stringify(details ?? "");
@@ -249,6 +250,16 @@ export async function listIngestionReport(size = 20) {
   return { runs, alerts, criticalAlerts, sourceMetrics, freshness, timeline, reconciliationBySource: buildSourceReconciliationForTest(trendRuns), weeklyTrend: buildWeeklyTrend(trendRuns), weeklySummary: buildWeeklyOperationalSummary(trendRuns), metaStatus: buildMetaIntegrationStatusForTest(metaRuns), totals: { succeeded: Number(totals?.succeeded ?? 0), failed: Number(totals?.failed ?? 0), partial: Number(totals?.partial ?? 0), imported: Number(totals?.imported ?? 0) } };
 }
 
+export function sanitizeReprocessErrorForTest(error: unknown) {
+  if (error instanceof InstagramIntegrationFailure) {
+    const status = getMetaFailureStatus(error);
+    const suffix = status ? ` (HTTP ${status})` : "";
+    return `Falha na integração ${error.integration}${suffix}`;
+  }
+  if (error instanceof Error) return error.message.slice(0, 240);
+  return "Falha desconhecida durante o reprocessamento";
+}
+
 export async function reprocessIngestionSource(sourceKey: "public" | "instagram") {
   const active = await listIngestionReport(20);
   const running = active.runs.some(run => run.status === "running" && run.sourceKey === sourceKey);
@@ -258,11 +269,12 @@ export async function reprocessIngestionSource(sourceKey: "public" | "instagram"
     const { runAgendaStepForScheduler } = await import("./agenda-routine");
     const result = await runAgendaStepForScheduler(sourceKey);
     const imported = Number((result as { result?: { imported?: number } })?.result?.imported ?? 0);
-    await finishIngestionRun(runId, { status: "succeeded", importedCount: imported, details: result, routine: "manual-reprocess", sourceKey });
+    await finishIngestionRun(runId, { status: "succeeded", importedCount: imported, details: { imported }, routine: "manual-reprocess", sourceKey });
     return { ok: true, sourceKey, imported };
   } catch (error) {
-    await finishIngestionRun(runId, { status: "failed", failedCount: 1, details: { message: error instanceof Error ? error.message : String(error) }, routine: "manual-reprocess", sourceKey });
-    throw error;
+    const safeMessage = sanitizeReprocessErrorForTest(error);
+    await finishIngestionRun(runId, { status: "failed", failedCount: 1, details: { message: safeMessage }, routine: "manual-reprocess", sourceKey });
+    throw new Error(safeMessage);
   }
 }
 

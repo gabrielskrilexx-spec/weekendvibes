@@ -877,3 +877,7 @@
 - [x] Correlacionar a nova tentativa móvel de oauth_callback_failed com a etapa sanitizada registrada em produção (falha confirmada na criação da sessão JWT)
 - [x] Corrigir a causa confirmada da nova falha persistente de OAuth (derivação SHA-256 do JWT_SECRET configurado e validação de segredo ausente)
 - [ ] Revalidar login administrativo, /admin/health e ingestão manual após a correção
+- [x] Diagnosticar ERR_SSL_PROTOCOL_ERROR no domínio publicado e confirmar se afeta HTTPS, OAuth e /admin/health (reproduzido por curl e handshake TLS)
+- [x] Corrigir ou isolar a configuração/propgagação do domínio publicada (isolado na borda HTTPS/DNS do domínio; preview do projeto responde normalmente)
+- [ ] Validar HTTPS funcional antes de retomar login e ingestão manual
+- [x] Corrigir o retorno serializável da mutation de reprocessamento do Instagram e adicionar regressão para erro sanitizado

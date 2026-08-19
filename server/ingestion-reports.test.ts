@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, buildWeeklyTrendForTest, getFreshnessState, isCriticalIngestionFailure, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, buildWeeklyTrendForTest, getFreshnessState, isCriticalIngestionFailure, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, sanitizeReprocessErrorForTest } from "./ingestion-reports";
+import { InstagramIntegrationFailure } from "./instagram-pipeline";
+
+describe("manual reprocess error transport", () => {
+  it("sanitizes integration failures before tRPC transport", () => {
+    const error = new InstagramIntegrationFailure("meta", "Meta Graph API request failed with HTTP 400", { cause: { accessToken: "secret" } });
+    expect(sanitizeReprocessErrorForTest(error)).toBe("Falha na integração meta (HTTP 400)");
+    expect(sanitizeReprocessErrorForTest(error)).not.toContain("secret");
+  });
+
+  it("keeps ordinary errors bounded", () => {
+    expect(sanitizeReprocessErrorForTest(new Error("x".repeat(500)))).toHaveLength(240);
+  });
+});
 
 describe("ingestion report critical failures", () => {
   it("classifies timeout failures", () => {
