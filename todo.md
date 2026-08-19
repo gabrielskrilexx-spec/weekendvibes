@@ -934,4 +934,4 @@
 ## Limpeza de cache e redeploy — 19/08/2026
 - [x] Adicionar botão administrativo `Limpar Cache` que invalide caches locais do cliente e recarregue o bundle.
 - [x] Limpar `.vite`, `dist` e demais artefatos de build aplicáveis e executar rebuild do zero.
-- [ ] Publicar novo checkpoint/redeploy e verificar HTML, versão e headers no domínio público.
+- [x] Publicar novo checkpoint/redeploy e verificar HTML, versão e headers no domínio público — checkpoint `fd4c626a` publicado; headers `no-cache/no-store` confirmados, rebuild local contém `db6cf437` e `clear-client-cache`, mas o HTML público ainda referencia assets antigos, indicando propagação/CDN pendente.
