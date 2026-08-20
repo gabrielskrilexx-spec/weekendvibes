@@ -1083,3 +1083,14 @@
 - [x] Executar ingestão focada do perfil @ativahouse sem expor credenciais; run 4140004 concluído com HTTP 200.
 - [x] Consultar o novo ingestionRuns e extrair rejectedEvents e rejectionReasons do run 4140004.
 - [x] Entregar o motivo exato sanitizado: `past_event` e `outside_target_venue` em 4/4 eventos; URL válida em 4/4.
+
+## Detalhamento dos rejeitados do run 4140004 — 20/08/2026
+- [x] Consultar e confirmar que venue e data individuais não foram preservados; apenas índice, fingerprint e flags sanitizadas existem.
+- [x] Entregar tabela sanitizada dos quatro eventos, sem inventar valores ausentes.
+
+## Instrumentação de campos extraídos nas rejeições — 20/08/2026
+- [x] Armazenar venueNormalized, cityNormalized e eventDateIso em cada rejeição final.
+- [x] Adicionar testes para sanitização e persistência dos novos campos.
+- [x] Validar TypeScript, Vitest e build.
+- [x] Executar ingestão focada do @ativahouse e consultar o novo run 4170001.
+- [x] Entregar motivos e valores extraídos sem conteúdo bruto sensível.

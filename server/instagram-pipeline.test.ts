@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchInstagramPosts, fetchInstagramStories, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent } from "./instagram-pipeline";
+import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramStories, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent } from "./instagram-pipeline";
 
 describe("Instagram weekend pipeline", () => {
   it("accepts broad agenda signals without exact phrase or hashtag requirements", () => {
@@ -32,7 +32,24 @@ describe("Instagram weekend pipeline", () => {
       sourceUrl: "http://example.com/post",
     }, [], new Date("2026-08-20T12:00:00.000Z"));
     expect(reasons).toEqual(expect.arrayContaining(["past_event", "outside_target_venue", "invalid_source_url"]));
-    expect(summarizeStructuredRejections([{ index: 0, eventKey: "abc123", reasons, sourceUrlValid: false, eventDateValid: false }])).toMatchObject({ past_event: 1, outside_target_venue: 1, invalid_source_url: 1 });
+    expect(summarizeStructuredRejections([{ index: 0, eventKey: "abc123", reasons, sourceUrlValid: false, eventDateValid: false, venueNormalized: "", cityNormalized: "", eventDateIso: null }])).toMatchObject({ past_event: 1, outside_target_venue: 1, invalid_source_url: 1 });
+  });
+
+  it("stores sanitized venue, city and ISO date diagnostics for rejected events", () => {
+    const rejection = createStructuredEventRejection({
+      title: "Evento",
+      eventDate: "2026-08-19T22:00:00.000Z",
+      locationName: "  Casa   do   Mar  ",
+      city: "Guarujá",
+      sourceUrl: "https://www.instagram.com/p/abc/",
+    }, 2, ["past_event", "outside_target_venue"]);
+    expect(rejection).toMatchObject({
+      venueNormalized: "Casa do Mar",
+      cityNormalized: "Guarujá",
+      eventDateIso: "2026-08-19T22:00:00.000Z",
+      eventDateValid: false,
+      sourceUrlValid: true,
+    });
   });
 
   it("accepts a future event from an allowed city, venue and Instagram URL", () => {

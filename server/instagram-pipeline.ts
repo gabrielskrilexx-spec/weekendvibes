@@ -87,6 +87,9 @@ export type StructuredEventRejection = {
   reasons: StructuredRejectionReason[];
   sourceUrlValid: boolean;
   eventDateValid: boolean;
+  venueNormalized: string;
+  cityNormalized: string;
+  eventDateIso: string | null;
 };
 
 const ALLOWED_CITIES = new Set(["Santos", "Guarujá"]);
@@ -95,6 +98,28 @@ const ALLOWED_GENRES = new Set(["funk", "house_eletronica", "samba_pagode", "rap
 
 function eventDiagnosticKey(event: Partial<StructuredEvent>, index: number) {
   return crypto.createHash("sha256").update(`${event.sourceUrl ?? ""}|${event.eventDate ?? ""}|${event.title ?? ""}|${index}`).digest("hex").slice(0, 16);
+}
+
+function normalizeDiagnosticText(value: unknown, maxLength = 120) {
+  return String(value ?? "").normalize("NFC").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function normalizedEventDateIso(value: unknown) {
+  const parsed = new Date(String(value ?? ""));
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+export function createStructuredEventRejection(event: Partial<StructuredEvent>, index: number, reasons: StructuredRejectionReason[]): StructuredEventRejection {
+  return {
+    index,
+    eventKey: eventDiagnosticKey(event, index),
+    reasons,
+    sourceUrlValid: reasons.includes("invalid_source_url") === false,
+    eventDateValid: reasons.includes("invalid_date") === false && reasons.includes("past_event") === false,
+    venueNormalized: normalizeDiagnosticText(event.locationName),
+    cityNormalized: normalizeDiagnosticText(event.city),
+    eventDateIso: normalizedEventDateIso(event.eventDate),
+  };
 }
 
 export function validateStructuredInstagramEvent(event: Partial<StructuredEvent>, activeAliases: string[] = [], now = new Date()): StructuredRejectionReason[] {
@@ -358,13 +383,7 @@ export async function runInstagramPipeline() {
     const event = structuredEvents[index];
     const reasons = validateStructuredInstagramEvent(event, activeAliases);
     if (reasons.length > 0) {
-      rejectedEvents.push({
-        index,
-        eventKey: eventDiagnosticKey(event, index),
-        reasons,
-        sourceUrlValid: reasons.includes("invalid_source_url") === false,
-        eventDateValid: reasons.includes("invalid_date") === false && reasons.includes("past_event") === false,
-      });
+      rejectedEvents.push(createStructuredEventRejection(event, index, reasons));
       continue;
     }
     const eventDate = new Date(event.eventDate);
