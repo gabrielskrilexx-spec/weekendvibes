@@ -935,3 +935,13 @@
 - [x] Adicionar botão administrativo `Limpar Cache` que invalide caches locais do cliente e recarregue o bundle.
 - [x] Limpar `.vite`, `dist` e demais artefatos de build aplicáveis e executar rebuild do zero.
 - [x] Publicar novo checkpoint/redeploy e verificar HTML, versão e headers no domínio público — checkpoint `fd4c626a` publicado; headers `no-cache/no-store` confirmados, rebuild local contém `db6cf437` e `clear-client-cache`, mas o HTML público ainda referencia assets antigos, indicando propagação/CDN pendente.
+
+## Diagnóstico da execução Instagram — 19/08/2026
+- [x] Consultar o `ingestionRuns` mais recente da rotina Instagram e extrair status, motivo e contagens sanitizadas.
+- [x] Confirmar se o alerta WARNING da Meta persiste e entregar o diagnóstico operacional sem credenciais.
+
+## Handler transacional de alertas — 19/08/2026
+- [x] Implementar fingerprint determinística e upsert deduplicado em `operationalAlerts`.
+- [x] Disparar notificação somente para alerta novo/reaberto, preservando payload sanitizado.
+- [x] Adicionar testes Vitest para falha repetida, nova fingerprint, degradação e recuperação.
+- [x] Validar TypeScript, Vitest, build e publicar o checkpoint.

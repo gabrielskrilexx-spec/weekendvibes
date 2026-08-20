@@ -2,15 +2,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "./_core/sdk";
 import { ingestInstagramHandler } from "./scheduled-instagram";
 import { hasRegionalHashtag, runInstagramPipeline, InstagramIntegrationFailure } from "./instagram-pipeline";
-import { archiveExpiredSoldOutEvents, recordOperationalAlert, saveEvent } from "./db";
+import { archiveExpiredSoldOutEvents, saveEvent } from "./db";
+import { handleIngestionFailureAlert } from "./ingestion-failure-alerts";
+
+vi.mock("./ingestion-failure-alerts", () => ({
+  handleIngestionFailureAlert: vi.fn().mockResolvedValue({ fingerprint: "test", notified: false, reopened: false, deduplicated: false }),
+}));
 
 vi.mock("./db", () => ({
   INSTAGRAM_AGENDA_SOURCE_TYPE: "instagram_agenda_weekend",
+  getDb: vi.fn().mockResolvedValue(null),
   archiveExpiredSoldOutEvents: vi.fn().mockResolvedValue(0),
   listActiveLocationAliasValues: vi.fn().mockResolvedValue([]),
   listEnabledInstagramSources: vi.fn().mockResolvedValue([]),
   markIngestionSourceResult: vi.fn().mockResolvedValue(undefined),
-  recordOperationalAlert: vi.fn().mockResolvedValue(undefined),
   saveEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -23,7 +28,7 @@ describe("scheduled Instagram ingestion", () => {
     vi.restoreAllMocks();
     vi.mocked(saveEvent).mockClear();
     vi.mocked(archiveExpiredSoldOutEvents).mockClear();
-    vi.mocked(recordOperationalAlert).mockClear();
+    vi.mocked(handleIngestionFailureAlert).mockClear();
     process.env.META_INSTAGRAM_TOKEN = "test-meta-token";
     process.env.META_INSTAGRAM_ACCOUNT_ID = "17841438723866203";
     process.env.OPENAI_API_KEY = "test-openai";
@@ -44,7 +49,7 @@ describe("scheduled Instagram ingestion", () => {
 
     await ingestInstagramHandler({} as never, res);
 
-    expect(recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ integration: "meta", title: "Falha na API oficial do Instagram", message: "A API da Meta respondeu HTTP 503; a execução foi concluída sem importar dados." }));
+    expect(handleIngestionFailureAlert).toHaveBeenCalledWith(expect.objectContaining({ integration: "meta", routine: "instagram-agenda", status: 503, severity: "WARNING" }));
     expect((res as any).status).toHaveBeenCalledWith(200);
     expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, degraded: true, integration: "meta", error: "upstream_unavailable", upstreamStatus: 503, imported: 0 }));
   });
@@ -79,7 +84,7 @@ describe("scheduled Instagram ingestion", () => {
 
     await ingestInstagramHandler({} as never, res);
 
-    expect(recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ integration }));
+    expect(handleIngestionFailureAlert).toHaveBeenCalledWith(expect.objectContaining({ integration, routine: "instagram-agenda", severity: "CRITICAL" }), expect.anything());
     expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: false, integration }));
   });
 

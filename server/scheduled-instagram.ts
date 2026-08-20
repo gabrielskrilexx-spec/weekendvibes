@@ -2,7 +2,8 @@ import type { Request, Response } from "express";
 import { sdk } from "./_core/sdk";
 import { notifyOwner } from "./_core/notification";
 import { InstagramIntegrationFailure, isGracefullyDegradedMetaFailure, getMetaFailureStatus } from "./instagram-pipeline";
-import { recordOperationalAlert, OperationalIntegration } from "./db";
+import { OperationalIntegration } from "./db";
+import { handleIngestionFailureAlert } from "./ingestion-failure-alerts";
 import { AgendaStepFailure, runInstagramAgendaStep } from "./agenda-routine";
 import { HttpError } from "@shared/_core/errors";
 import { redactError } from "./_core/security";
@@ -41,13 +42,18 @@ export async function ingestInstagramHandler(req: Request, res: Response) {
       ? error instanceof AgendaStepFailure ? error.upstreamStatus : getMetaFailureStatus(error)
       : undefined;
     if (metaStatus === 400) {
+      try {
+        await handleIngestionFailureAlert({ routine: "instagram-agenda", sourceKey: "instagram", integration: "meta", status: 400, errorCode: "200", message: "A API da Meta rejeitou credenciais ou permissões.", severity: "CRITICAL" }, { notify: async notification => { await notifyOwner({ title: notification.title, content: notification.message }); } });
+      } catch (alertError) {
+        console.warn("[Instagram] Could not persist Meta credential alert", redactError(alertError));
+      }
       console.error("[Instagram] Meta credentials or permissions rejected", { integration: "meta", upstreamStatus: 400 });
       return res.status(400).json({ ok: false, degraded: false, integration: "meta", error: "meta_credentials_or_permissions", upstreamStatus: 400, counts: { read: 0, filtered: 0, persisted: 0 }, durationMs: Date.now() - startedAtMs, startedAt, finishedAt: new Date().toISOString() });
     }
     if (error instanceof AgendaStepFailure ? error.degraded : isGracefullyDegradedMetaFailure(error)) {
       const status = error instanceof AgendaStepFailure ? error.upstreamStatus : getMetaFailureStatus(error);
       try {
-        await recordOperationalAlert({ integration: "meta", title: integrationTitles.meta, message: `A API da Meta respondeu HTTP ${status}; a execução foi concluída sem importar dados.` });
+        await handleIngestionFailureAlert({ routine: "instagram-agenda", sourceKey: "instagram", integration: "meta", status, message: `A API da Meta respondeu HTTP ${status}; a execução foi concluída sem importar dados.`, severity: "WARNING" });
       } catch (alertError) {
         console.warn("[Instagram] Could not persist degraded Meta alert", redactError(alertError));
       }
@@ -56,7 +62,7 @@ export async function ingestInstagramHandler(req: Request, res: Response) {
       return res.status(200).json({ ok: true, degraded: true, integration: "meta", error: "upstream_unavailable", upstreamStatus: status, imported: 0, counts: { read: 0, filtered: 0, persisted: 0 }, durationMs: Date.now() - startedAtMs, startedAt, finishedAt });
     }
     try {
-      await recordOperationalAlert({ integration, title: integrationTitles[integration], message: "A ingestão automática falhou. Consulte o painel operacional." });
+      await handleIngestionFailureAlert({ routine: "instagram-agenda", sourceKey: "instagram", integration, status: 500, message: "A ingestão automática falhou. Consulte o painel operacional.", severity: "CRITICAL" }, { notify: async notification => { await notifyOwner({ title: notification.title, content: notification.message }); } });
     } catch (alertError) {
       console.warn("[Instagram] Could not persist operational alert", redactError(alertError));
     }
