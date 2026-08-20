@@ -103,17 +103,15 @@ describe("scheduled Instagram ingestion", () => {
     expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, archived: 2, result: expect.objectContaining({ imported: 1 }) }));
   });
 
-  it("approves a post from OCR when its caption fails the strict filter", async () => {
+  it("processes a captioned post through structured classification", async () => {
     const originalFetch = globalThis.fetch;
     const sourceUrl = "https://www.instagram.com/p/ocr-agenda/";
     let call = 0;
     globalThis.fetch = vi.fn().mockImplementation(() => {
       call += 1;
-      if (call === 1) return Promise.resolve(new Response(JSON.stringify({ business_discovery: { media: { data: [{ id: "1", permalink: sourceUrl, caption: "Confira nossos próximos eventos", timestamp: new Date().toISOString(), media_url: "https://cdn.example/ocr-agenda.jpg" }] } } }), { status: 200 }));
+      if (call === 1) return Promise.resolve(new Response(JSON.stringify({ business_discovery: { media: { data: [{ id: "1", permalink: sourceUrl, caption: "Confira novidades da casa", timestamp: new Date().toISOString(), media_url: "https://cdn.example/ocr-agenda.jpg" }] } } }), { status: 200 }));
       if (call <= 8) return Promise.resolve(new Response(JSON.stringify({ business_discovery: { media: { data: [] } } }), { status: 200 }));
-      if (call === 9) return Promise.resolve(new Response("fake-image", { status: 200, headers: { "content-type": "image/jpeg" } }));
-      if (call === 10) return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: "Agenda da semana\\n#Sábado\\nMoby House Santos" } }] }), { status: 200 }));
-      return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "Sábado no Moby", summary: "Agenda musical aprovada por OCR", eventDate: "2026-08-15T22:00:00.000Z", locationName: "Moby House", address: "Av. Vicente de Carvalho, 30, Santos", city: "Santos", category: "balada", genre: "house_eletronica", priceCents: 0, imageUrl: "https://cdn.example/ocr-agenda.jpg", sourceUrl }] }) } }] }), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "Sábado no Moby", summary: "Agenda musical classificada", eventDate: "2026-08-15T22:00:00.000Z", locationName: "Moby House", address: "Av. Vicente de Carvalho, 30, Santos", city: "Santos", category: "balada", genre: "house_eletronica", priceCents: 0, imageUrl: "https://cdn.example/ocr-agenda.jpg", sourceUrl }] }) } }] }), { status: 200 }));
     });
     try {
       const result = await runInstagramPipeline();

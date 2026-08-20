@@ -1056,3 +1056,13 @@
 - [x] Ajustar a regra de filtro de agenda de forma específica e documentada para `@ativahouse`.
 - [x] Reexecutar a ingestão focada e consultar o novo run com contagens persistidas.
 - [x] Verificar o schedule oficial `instagram-agenda` e registrar como será validado o próximo ciclo automático.
+
+## Filtro inicial flexível do Instagram — 20/08/2026
+- [x] Substituir a exigência estrita por gate permissivo de legendas não vazias, mantendo classificação final pela IA.
+- [ ] Adicionar regressões para termos aceitos, textos irrelevantes e normalização de acentos.
+- [x] Executar Vitest, TypeScript e build de produção.
+- [x] Reprocessar `@ativahouse` e confirmar filtered e eventos estruturados; persistência permanece pendente após validações finais.
+- [ ] Publicar checkpoint após validação.
+
+- [ ] Instrumentar motivos de descarte após a classificação estruturada (`invalid_date`, `outside_target_venue`, `invalid_source_url`) para explicar eventos não persistidos.
+- [ ] Avaliar os 3 eventos estruturados do run 4110015 e ajustar somente validações de dados comprovadamente válidos; não relaxar cidade, data ou URL sem evidência.

@@ -2,11 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import { fetchInstagramPosts, fetchInstagramStories, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback } from "./instagram-pipeline";
 
 describe("Instagram weekend pipeline", () => {
-  it("requires the exact agenda phrase and one allowed hashtag", () => {
+  it("accepts broad agenda signals without exact phrase or hashtag requirements", () => {
     expect(hasApprovedAgendaText("Agenda da semana\n#Sexta-Feira")).toBe(true);
-    expect(hasApprovedAgendaText("Agenda semanal\n#Sexta-Feira")).toBe(false);
-    expect(hasApprovedAgendaText("Agenda da semana\n#sexta-feira")).toBe(false);
-    expect(hasApprovedAgendaText("Agenda da semana\n#Domingo")).toBe(false);
+    expect(hasApprovedAgendaText("Agenda semanal\n#Sexta-Feira")).toBe(true);
+    expect(hasApprovedAgendaText("Agenda da semana\n#sexta-feira")).toBe(true);
+    expect(hasApprovedAgendaText("Agenda da semana\n#Domingo")).toBe(true);
+    expect(hasApprovedAgendaText("Confira novidades da casa")).toBe(true);
   });
 
   it("recognizes the regional hashtags without weakening the strict agenda filter", () => {

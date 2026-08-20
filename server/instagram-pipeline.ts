@@ -102,11 +102,16 @@ export function hasRegionalHashtag(text: string) {
   return REGIONAL_HASHTAGS.some(hashtag => text.includes(hashtag));
 }
 
-export function hasApprovedAgendaText(text: string, username?: string) {
-  if (!text.includes("Agenda da semana")) return false;
-  const normalizedUsername = username?.replace(/^@/, "").trim().toLowerCase();
-  if (normalizedUsername === "ativahouse") return true;
-  return text.includes("#Sexta-Feira") || text.includes("#Sábado");
+function normalizeAgendaText(text: string) {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+/**
+ * Gate inicial deliberadamente permissivo: a OpenAI é a autoridade para
+ * classificar relevância, data, cidade e gênero do evento.
+ */
+export function hasApprovedAgendaText(text: string, _username?: string) {
+  return normalizeAgendaText(text).trim().length > 0;
 }
 
 function postUrl(post: InstagramPost) {
@@ -293,14 +298,15 @@ export async function runInstagramPipeline() {
   const activeAliases = await listActiveLocationAliasValues();
   const posts = deduplicateInstagramPosts(await fetchInstagramPosts());
   const approvedPosts: Array<{ post: InstagramPost; rawText: string }> = [];
+  const forceFocusedRun = process.env.INGESTION_FORCE_INSTAGRAM === "1";
   for (const post of posts) {
-    if (!isWithinInstagramLookback(post)) continue;
+    if (!forceFocusedRun && !isWithinInstagramLookback(post)) continue;
     const caption = String(post.caption ?? post.text ?? "");
     const postUsername = post.ownerUsername ?? post.username;
-    const ocrText = hasApprovedAgendaText(caption, postUsername) ? "" : await extractOcrText(String(post.displayUrl ?? post.imageUrl ?? post.media_url ?? ""));
-    const rawText = [caption, ocrText].filter(Boolean).join("\n");
+    const ocrText = caption.trim() ? "" : await extractOcrText(String(post.displayUrl ?? post.imageUrl ?? post.media_url ?? ""));
+    const rawText = [caption, ocrText].filter(value => value.trim()).join("\n");
     const regionalMarker = hasRegionalHashtag(rawText) ? "\nREGIONAL_HASHTAG_MATCH: Santos/Guarujá" : "";
-    if (hasApprovedAgendaText(rawText, postUsername)) approvedPosts.push({ post, rawText: `${rawText}${regionalMarker}` });
+    if (rawText.trim()) approvedPosts.push({ post, rawText: `${rawText}${regionalMarker}` });
   }
 
   const structuredEvents = await extractStructuredEvents(approvedPosts);
