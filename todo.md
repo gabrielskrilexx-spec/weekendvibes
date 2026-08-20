@@ -1073,3 +1073,13 @@
 - [x] Adicionar testes para motivos de rejeição, alerta e deduplicação.
 - [x] Validar TypeScript, Vitest e build de produção.
 - [x] Publicar checkpoint com diagnóstico sanitizado.
+
+## Auditoria dos payloads estruturados do run 4110015 — 20/08/2026
+- [x] Consultar os detalhes persistidos do run 4110015 e confirmar que os 3 payloads individuais não existem no registro histórico.
+- [x] Comparar os agregados disponíveis com as validações finais de data, cidade/local, URL, coordenadas e tipagem; nenhuma causa por evento pode ser comprovada retrospectivamente.
+- [x] Entregar resumo sanitizado, distinguindo causa comprovada de hipótese não verificável.
+
+## Reteste focado de rejeições do @ativahouse — 20/08/2026
+- [x] Executar ingestão focada do perfil @ativahouse sem expor credenciais; run 4140004 concluído com HTTP 200.
+- [x] Consultar o novo ingestionRuns e extrair rejectedEvents e rejectionReasons do run 4140004.
+- [x] Entregar o motivo exato sanitizado: `past_event` e `outside_target_venue` em 4/4 eventos; URL válida em 4/4.
