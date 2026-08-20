@@ -76,8 +76,13 @@ export function isWithinRegionalBounds(latitude: number, longitude: number) {
 }
 
 export function buildRegionalGeocodingQuery(address: string | null | undefined, locationName: string | null | undefined, city: "Santos" | "Guarujá") {
-  const cleaned = normalizeLocationText(address || locationName || "");
-  return `${cleaned}, ${city}, São Paulo, Brasil`;
+  const cleaned = normalizeLocationText(address || locationName || "")
+    .replace(/\bAlmeida de Morais\b/gi, "Almeida de Moraes");
+  const venue = normalizeLocationText(locationName);
+  const neighborhood = extractNeighborhood(address, locationName, city);
+  return [cleaned, venue, neighborhood, city, "São Paulo", "Brasil"]
+    .filter(Boolean)
+    .join(", ");
 }
 
 export type RegionalFallback = ReturnType<typeof getRegionalFallback>;

@@ -1,4 +1,6 @@
-import { recordOperationalAlert } from "./db";
+import { desc, eq } from "drizzle-orm";
+import { ingestionRuns } from "../drizzle/schema";
+import { getDb, recordOperationalAlert } from "./db";
 import { listHeartbeatJobs } from "./_core/heartbeat";
 import { notifyOwner } from "./_core/notification";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
@@ -59,15 +61,24 @@ export function getNextWednesdayExecution(now = new Date()) {
   return localDate.toISOString();
 }
 
+async function getRecentInstagramRuns() {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({ id: ingestionRuns.id, routine: ingestionRuns.routine, sourceKey: ingestionRuns.sourceKey, status: ingestionRuns.status, startedAt: ingestionRuns.startedAt, finishedAt: ingestionRuns.finishedAt, httpStatus: ingestionRuns.httpStatus, durationMs: ingestionRuns.durationMs, importedCount: ingestionRuns.importedCount }).from(ingestionRuns).where(eq(ingestionRuns.sourceKey, "instagram")).orderBy(desc(ingestionRuns.startedAt)).limit(6);
+  return rows.map(row => ({ id: row.id, routine: row.routine, sourceKey: row.sourceKey, status: row.status, startedAt: new Date(row.startedAt).toISOString(), finishedAt: row.finishedAt ? new Date(row.finishedAt).toISOString() : null, httpStatus: row.httpStatus, durationMs: row.durationMs, importedCount: row.importedCount }));
+}
+
 export async function getWednesdayRoutineStatus(now = new Date()) {
+  const recentRuns = await getRecentInstagramRuns();
   const fallback = {
     enabled: false,
     runMode: null as string | null,
     timezone: null as string | null,
     cron: null as string | null,
     nextExecutionAt: null as string | null,
-    lastExecutedAt: null as string | null,
+    lastExecutedAt: recentRuns[0]?.finishedAt ?? null,
     isRunning: isWednesdayRoutineRunning(),
+    recentRuns,
     source: "metadata-unavailable" as const,
   };
   try {
@@ -81,8 +92,9 @@ export async function getWednesdayRoutineStatus(now = new Date()) {
       timezone: job.timezone ?? "America/Sao_Paulo",
       cron: job.cronExpression,
       nextExecutionAt: job.nextExecutionAt ?? getNextWednesdayExecution(now),
-      lastExecutedAt: job.lastExecutedAt ?? null,
+      lastExecutedAt: recentRuns[0]?.finishedAt ?? job.lastExecutedAt ?? null,
       isRunning: isWednesdayRoutineRunning(),
+      recentRuns,
       source: (hasCompleteMetadata ? "heartbeat" : "heartbeat-derived") as "heartbeat" | "heartbeat-derived",
     };
   } catch (error) {

@@ -5,9 +5,10 @@ const mocks = vi.hoisted(() => ({
   runIngestionPipeline: vi.fn().mockResolvedValue({ imported: 2 }),
   runInstagramPipeline: vi.fn().mockResolvedValue({ imported: 1 }),
   listHeartbeatJobs: vi.fn(),
+  getDb: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock("./db", () => ({ archiveExpiredSoldOutEvents: mocks.archiveExpiredSoldOutEvents, recordOperationalAlert: vi.fn() }));
+vi.mock("./db", () => ({ archiveExpiredSoldOutEvents: mocks.archiveExpiredSoldOutEvents, recordOperationalAlert: vi.fn(), getDb: mocks.getDb }));
 vi.mock("./ingestion", () => ({ runIngestionPipeline: mocks.runIngestionPipeline }));
 vi.mock("./instagram-pipeline", () => ({ InstagramIntegrationFailure: class InstagramIntegrationFailure extends Error {}, runInstagramPipeline: mocks.runInstagramPipeline }));
 vi.mock("./_core/notification", () => ({ notifyOwner: vi.fn() }));

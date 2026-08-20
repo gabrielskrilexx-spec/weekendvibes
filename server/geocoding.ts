@@ -4,6 +4,7 @@ import { getDb } from "./db";
 import { buildRegionalGeocodingQuery, extractNeighborhood, geocodingAddressHash, getRegionalFallback, isWithinRegionalBounds, normalizeLocationText } from "./location";
 
 export const GEOCODING_PROVIDER = "nominatim-regional" as const;
+const ARCGIS_GEOCODING_PROVIDER = "arcgis-regional" as const;
 const MAX_ATTEMPTS = 3;
 
 export { geocodingAddressHash, normalizeLocationText };
@@ -45,12 +46,22 @@ export async function processPendingGeocoding(limit = 5) {
       const response = await fetch(url, { headers: { "user-agent": "WeekendVibes/1.0 (regional-event-geocoding)" }, signal: AbortSignal.timeout(8_000) });
       if (!response.ok) throw new Error(`Provider respondeu ${response.status}`);
       const results = await response.json() as Array<{ lat?: string; lon?: string; display_name?: string; importance?: number; address?: { neighbourhood?: string; suburb?: string; city?: string; town?: string } }>;
+      let resolved: { latitude: string; longitude: string; formattedAddress: string; neighborhood?: string | null; provider: string; confidence: "high" | "medium" } | null = null;
       const result = results.find(candidate => isValidCoordinate(candidate.lat) && isValidCoordinate(candidate.lon) && isWithinRegionalBounds(Number(candidate.lat), Number(candidate.lon)));
-      if (!result?.lat || !result.lon) throw new Error("Endereço não localizado dentro de Santos/Guarujá");
-      const resolvedNeighborhood = result.address?.neighbourhood ?? result.address?.suburb ?? neighborhood;
-      await db.update(events).set({ latitude: result.lat, longitude: result.lon, neighborhood: resolvedNeighborhood?.slice(0, 160) ?? null, formattedAddress: (result.display_name ?? `${normalizedAddress}, ${event.city} - SP`).slice(0, 500), locationPrecision: "exact", updatedAt: new Date() }).where(eq(events.id, event.id));
-      await db.update(geocodingJobs).set({ status: "succeeded", provider: GEOCODING_PROVIDER, confidence: (result.importance ?? 0) >= 0.5 ? "high" : "medium", processedAt: new Date(), updatedAt: new Date() }).where(eq(geocodingJobs.id, job.id));
-      await auditGeocoding(db, { eventId: event.id, city: event.city, rawAddress, normalizedAddress, status: "succeeded", message: "Endereço normalizado e localizado dentro do limite regional." });
+      if (result?.lat && result.lon) {
+        resolved = { latitude: result.lat, longitude: result.lon, neighborhood: result.address?.neighbourhood ?? result.address?.suburb ?? neighborhood, formattedAddress: (result.display_name ?? `${normalizedAddress}, ${event.city} - SP`).slice(0, 500), provider: GEOCODING_PROVIDER, confidence: (result.importance ?? 0) >= 0.5 ? "high" : "medium" };
+      } else {
+        const arcgisUrl = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates";
+        const arcgisResponse = await fetch(`${arcgisUrl}?f=json&maxLocations=5&outFields=*&address=${encodeURIComponent(normalizedAddress)}&city=${encodeURIComponent(event.city)}&region=SP&countryCode=BRA`, { headers: { "user-agent": "WeekendVibes/1.0 (regional-event-geocoding)" }, signal: AbortSignal.timeout(8_000) });
+        if (!arcgisResponse.ok) throw new Error(`Provedores não localizaram o endereço (ArcGIS HTTP ${arcgisResponse.status})`);
+        const arcgisPayload = await arcgisResponse.json() as { candidates?: Array<{ address?: string; score?: number; location?: { x?: number; y?: number }; attributes?: { Nbrhd?: string; District?: string } }> };
+        const candidate = arcgisPayload.candidates?.find(item => Number(item.score ?? 0) >= 90 && isValidCoordinate(item.location?.y) && isValidCoordinate(item.location?.x) && isWithinRegionalBounds(Number(item.location?.y), Number(item.location?.x)));
+        if (candidate?.location?.y !== undefined && candidate.location.x !== undefined) resolved = { latitude: String(candidate.location.y), longitude: String(candidate.location.x), neighborhood: candidate.attributes?.Nbrhd ?? candidate.attributes?.District ?? neighborhood, formattedAddress: (candidate.address ?? `${normalizedAddress}, ${event.city} - SP`).slice(0, 500), provider: ARCGIS_GEOCODING_PROVIDER, confidence: Number(candidate.score ?? 0) >= 98 ? "high" : "medium" };
+      }
+      if (!resolved) throw new Error("Endereço não localizado dentro de Santos/Guarujá");
+      await db.update(events).set({ latitude: resolved.latitude, longitude: resolved.longitude, neighborhood: resolved.neighborhood?.slice(0, 160) ?? null, formattedAddress: resolved.formattedAddress, locationPrecision: "exact", updatedAt: new Date() }).where(eq(events.id, event.id));
+      await db.update(geocodingJobs).set({ status: "succeeded", provider: resolved.provider, confidence: resolved.confidence, processedAt: new Date(), updatedAt: new Date() }).where(eq(geocodingJobs.id, job.id));
+      await auditGeocoding(db, { eventId: event.id, city: event.city, rawAddress, normalizedAddress, status: "succeeded", message: `Endereço normalizado e localizado dentro do limite regional via ${resolved.provider}.` });
       succeeded += 1;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

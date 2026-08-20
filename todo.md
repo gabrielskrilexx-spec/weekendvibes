@@ -1101,3 +1101,11 @@
 - [x] Adicionar testes para allowlist e regras de ano/data.
 - [x] Validar TypeScript, Vitest e build; 64 arquivos e 220 testes aprovados.
 - [x] Executar ingestão focada e confirmar 3 eventos persistidos no run 4170004.
+
+## Geocodificação e recorrência da Agenda da Semana — 20/08/2026
+- [x] Identificar os 3 eventos Ativa House sem coordenadas e executar geocodificação automática idempotente.
+- [x] Persistir latitude/longitude somente após validação regional e registrar auditoria do resultado; fallback ArcGIS regional aprovado.
+- [x] Confirmar e ajustar a consulta/carrossel da Agenda da Semana para exibir os eventos Ativa House.
+- [x] Adicionar visualização administrativa das próximas execuções automáticas e do histórico recente.
+- [x] Adicionar testes de geocodificação, agenda e monitoramento de recorrência.
+- [x] Validar TypeScript, Vitest e build; 64 arquivos e 221 testes aprovados; checkpoint pendente.

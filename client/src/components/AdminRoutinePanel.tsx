@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CalendarClock, CheckCircle2, Loader2, Play, ShieldAlert } from "lucide-react";
+import { CalendarClock, CheckCircle2, Clock3, Loader2, Play, ShieldAlert } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
 const formatExecution = (value?: string | null) => value ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(new Date(value)) : "Calculando…";
@@ -33,6 +33,10 @@ export default function AdminRoutinePanel() {
       </button>
     </div>
     <div className="mt-5 flex items-start gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 text-xs text-zinc-400"><ShieldAlert size={16} className="mt-0.5 shrink-0 text-yellow-200" /><span>O disparo manual usa a mesma proteção administrativa, é idempotente e bloqueia uma segunda execução enquanto a primeira estiver em andamento.</span></div>
+    <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4" aria-labelledby="routine-history-title">
+      <div className="flex items-center gap-2"><Clock3 size={16} className="text-fuchsia-200" /><h3 id="routine-history-title" className="text-xs font-black uppercase tracking-[0.18em] text-fuchsia-100">Recorrência Instagram</h3></div>
+      {status.data?.recentRuns?.length ? <div className="mt-3 space-y-2">{status.data.recentRuns.map(run => <div key={run.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs"><div><p className="font-bold text-zinc-200">Run #{run.id} · {run.routine}</p><p className="text-zinc-500">{formatExecution(run.finishedAt ?? run.startedAt)} · HTTP {run.httpStatus ?? "—"} · {run.durationMs ?? "—"} ms</p></div><span className={`rounded-full px-2 py-1 font-black uppercase ${run.status === "succeeded" ? "bg-emerald-300/15 text-emerald-200" : run.status === "running" ? "bg-yellow-300/15 text-yellow-100" : "bg-red-300/15 text-red-200"}`}>{run.status}</span></div>)}</div> : <p className="mt-3 text-xs text-zinc-500">Nenhuma execução Instagram registrada ainda.</p>}
+    </div>
     {feedback && <div role="status" className={`mt-4 flex items-start gap-2 rounded-2xl border p-3 text-sm ${feedback.type === "success" ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-100" : "border-red-300/20 bg-red-300/10 text-red-100"}`}>{feedback.type === "success" ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> : <ShieldAlert size={16} className="mt-0.5 shrink-0" />}{feedback.text}</div>}
   </section>;
 }
