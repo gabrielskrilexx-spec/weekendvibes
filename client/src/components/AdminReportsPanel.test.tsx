@@ -115,6 +115,14 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     expect(mocks.reportRefetch).toHaveBeenCalledTimes(1);
     expect(mocks.toastError).toHaveBeenCalledWith("Não foi possível executar a ingestão", expect.objectContaining({ description: expect.stringContaining("falha controlada") }));
   });
+
+  it("notifica explicitamente quando o transporte falha sem confirmar um novo run", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    await act(async () => { mutationOptions.onError?.(new Error("Unable to transform response from server"), { sourceKey: "instagram" }); });
+    expect(mocks.toastError).toHaveBeenCalledWith("Não foi possível executar a ingestão", expect.objectContaining({ description: expect.stringContaining("nenhum resultado novo foi confirmado") }));
+    expect(mocks.toastError).not.toHaveBeenCalledWith("Relatório atualizado", expect.anything());
+  });
 });
 
 afterEach(() => {

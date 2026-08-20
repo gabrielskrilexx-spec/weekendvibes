@@ -950,3 +950,9 @@
 - [x] Reiniciar o backend/serviços gerenciados para recarregar os secrets Meta atualizados — concluído às 13:27:47.
 - [x] Executar `instagram-agenda` após o restart e consultar status, motivo e contagens sem expor tokens — tentativa realizada, mas nenhum novo run foi criado após o clique público.
 - [x] Confirmar se o alerta Meta foi resolvido ou permanece pendente — permanece WARNING não resolvido.
+
+## Auditoria da rota de ingestão — 20/08/2026
+- [x] Confirmar a URL/ambiente efetivamente usado pelo botão `Forçar Ingestão (Instagram)` — usa a mutation tRPC protegida com `sourceKey: "instagram"`, despachando `instagram-agenda`; nenhuma divergência encontrada.
+- [x] Corrigir divergência de ambiente, se existir, e exibir erro visual para falhas silenciosas da chamada — não havia divergência; fallback explícito implementado.
+- [x] Adicionar testes para erro de rede, resposta não-OK e ACK inválido — regressão de transporte adicionada e testes do painel aprovados.
+- [x] Validar o endpoint de produção via cURL sem imprimir ou armazenar credenciais — HTTP 403 por autenticação cron ausente; sem validação Meta alegada.
