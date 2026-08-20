@@ -1064,5 +1064,12 @@
 - [x] Reprocessar `@ativahouse` e confirmar filtered e eventos estruturados; persistência permanece pendente após validações finais.
 - [ ] Publicar checkpoint após validação.
 
-- [ ] Instrumentar motivos de descarte após a classificação estruturada (`invalid_date`, `outside_target_venue`, `invalid_source_url`) para explicar eventos não persistidos.
+- [x] Instrumentar motivos de descarte após a classificação estruturada, com diagnóstico sanitizado por evento.
 - [ ] Avaliar os 3 eventos estruturados do run 4110015 e ajustar somente validações de dados comprovadamente válidos; não relaxar cidade, data ou URL sem evidência.
+## Rejeições finais e alerta de persistência — 20/08/2026
+- [x] Analisar o run 4110015: o registro histórico contém apenas agregados (`structured=3`, `persisted=0`) e não preservou os payloads individuais; as regras finais aplicáveis foram formalizadas para diagnóstico nas próximas execuções.
+- [x] Registrar motivo detalhado e sanitizado por evento rejeitado na validação final.
+- [x] Alertar e deduplicar o cenário structured > 0 e persisted = 0 via fingerprint operacional.
+- [x] Adicionar testes para motivos de rejeição, alerta e deduplicação.
+- [x] Validar TypeScript, Vitest e build de produção.
+- [x] Publicar checkpoint com diagnóstico sanitizado.

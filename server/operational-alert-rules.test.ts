@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFreshnessCriticalAlert, buildReconciliationDivergenceAlert } from "./operational-alert-rules";
+import { buildFreshnessCriticalAlert, buildReconciliationDivergenceAlert, buildStructuredPersistenceMismatchAlert } from "./operational-alert-rules";
 
 describe("automatic operational alert rules", () => {
   const now = new Date("2026-08-18T12:00:00.000Z");
@@ -13,6 +13,12 @@ describe("automatic operational alert rules", () => {
     const alert = buildFreshnessCriticalAlert({ sourceKey: "public:ingresse", sourceName: "Ingresse", state: "critical", lastSuccessAt: new Date("2026-08-18T08:00:00.000Z"), expectedMinutes: 60, now });
     expect(alert).toMatchObject({ alertType: "freshness_critical", severity: "CRITICAL", slaMinutes: 60, integration: "pipeline" });
     expect(alert?.message).toContain("public:ingresse");
+  });
+
+  it("creates a warning when AI structured events are not persisted", () => {
+    expect(buildStructuredPersistenceMismatchAlert({ sourceKey: "instagram", runId: 4110015, structured: 3, persisted: 0, rejectionReasons: { invalid_date: 2, outside_target_venue: 1 } })).toMatchObject({ integration: "pipeline", alertType: "structured_not_persisted", severity: "WARNING", slaMinutes: 240 });
+    expect(buildStructuredPersistenceMismatchAlert({ sourceKey: "instagram", structured: 3, persisted: 1 })).toBeNull();
+    expect(buildStructuredPersistenceMismatchAlert({ sourceKey: "instagram", structured: 0, persisted: 0 })).toBeNull();
   });
 
   it("ignores consistent reconciliation results", () => {

@@ -111,7 +111,7 @@ describe("scheduled Instagram ingestion", () => {
       call += 1;
       if (call === 1) return Promise.resolve(new Response(JSON.stringify({ business_discovery: { media: { data: [{ id: "1", permalink: sourceUrl, caption: "Confira novidades da casa", timestamp: new Date().toISOString(), media_url: "https://cdn.example/ocr-agenda.jpg" }] } } }), { status: 200 }));
       if (call <= 8) return Promise.resolve(new Response(JSON.stringify({ business_discovery: { media: { data: [] } } }), { status: 200 }));
-      return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "Sábado no Moby", summary: "Agenda musical classificada", eventDate: "2026-08-15T22:00:00.000Z", locationName: "Moby House", address: "Av. Vicente de Carvalho, 30, Santos", city: "Santos", category: "balada", genre: "house_eletronica", priceCents: 0, imageUrl: "https://cdn.example/ocr-agenda.jpg", sourceUrl }] }) } }] }), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "Sábado no Moby", summary: "Agenda musical classificada", eventDate: "2099-08-15T22:00:00.000Z", locationName: "Moby House", address: "Av. Vicente de Carvalho, 30, Santos", city: "Santos", category: "balada", genre: "house_eletronica", priceCents: 0, imageUrl: "https://cdn.example/ocr-agenda.jpg", sourceUrl }] }) } }] }), { status: 200 }));
     });
     try {
       const result = await runInstagramPipeline();
@@ -130,7 +130,7 @@ describe("scheduled Instagram ingestion", () => {
       call += 1;
       if (call === 1) return Promise.resolve(new Response(JSON.stringify({ business_discovery: { media: { data: [{ id: "1", permalink: sourceUrl, caption: "Agenda da semana\\n#Sexta-Feira", timestamp: new Date().toISOString(), media_url: "https://cdn.example/agenda.jpg" }] } } }), { status: 200 }));
       if (call <= 8) return Promise.resolve(new Response(JSON.stringify({ business_discovery: { media: { data: [] } } }), { status: 200 }));
-      return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "Sexta no Moby", summary: "Agenda musical", eventDate: "2026-08-14T22:00:00.000Z", locationName: "Moby House", address: "Av. Vicente de Carvalho, 30, Santos", city: "Santos", category: "balada", genre: "house_eletronica", priceCents: 0, imageUrl: "https://cdn.example/agenda.jpg", sourceUrl }] }) } }] }), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "Sexta no Moby", summary: "Agenda musical", eventDate: "2099-08-14T22:00:00.000Z", locationName: "Moby House", address: "Av. Vicente de Carvalho, 30, Santos", city: "Santos", category: "balada", genre: "house_eletronica", priceCents: 0, imageUrl: "https://cdn.example/agenda.jpg", sourceUrl }] }) } }] }), { status: 200 }));
     });
     try {
       const result = await runInstagramPipeline();

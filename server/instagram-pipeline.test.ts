@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchInstagramPosts, fetchInstagramStories, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback } from "./instagram-pipeline";
+import { fetchInstagramPosts, fetchInstagramStories, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent } from "./instagram-pipeline";
 
 describe("Instagram weekend pipeline", () => {
   it("accepts broad agenda signals without exact phrase or hashtag requirements", () => {
@@ -15,6 +15,40 @@ describe("Instagram weekend pipeline", () => {
     expect(hasRegionalHashtag("Agenda da semana #Sábado #Santos")).toBe(true);
     expect(hasRegionalHashtag("Agenda da semana #Sábado #PraiaGrande")).toBe(false);
     expect(hasApprovedAgendaText("Agenda da semana #Sábado #Guarujá")).toBe(true);
+  });
+
+  it("records specific final validation reasons without exposing raw event content", () => {
+    const reasons = validateStructuredInstagramEvent({
+      title: "Evento de teste",
+      summary: "Resumo",
+      eventDate: "2026-08-19T22:00:00.000Z",
+      locationName: "Local desconhecido",
+      address: "Endereço não verificável",
+      city: "São Paulo" as "Santos",
+      category: "show",
+      genre: "funk",
+      priceCents: 0,
+      imageUrl: "",
+      sourceUrl: "http://example.com/post",
+    }, [], new Date("2026-08-20T12:00:00.000Z"));
+    expect(reasons).toEqual(expect.arrayContaining(["past_event", "outside_target_venue", "invalid_source_url"]));
+    expect(summarizeStructuredRejections([{ index: 0, eventKey: "abc123", reasons, sourceUrlValid: false, eventDateValid: false }])).toMatchObject({ past_event: 1, outside_target_venue: 1, invalid_source_url: 1 });
+  });
+
+  it("accepts a future event from an allowed city, venue and Instagram URL", () => {
+    expect(validateStructuredInstagramEvent({
+      title: "Sexta musical",
+      summary: "Show",
+      eventDate: "2026-08-21T22:00:00.000Z",
+      locationName: "Moby House",
+      address: "Santos",
+      city: "Santos",
+      category: "show",
+      genre: "funk",
+      priceCents: 0,
+      imageUrl: "",
+      sourceUrl: "https://www.instagram.com/p/abc123/",
+    }, [], new Date("2026-08-20T12:00:00.000Z"))).toEqual([]);
   });
 
   it("accepts only posts from the last five days", () => {

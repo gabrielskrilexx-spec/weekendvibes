@@ -5,7 +5,7 @@ export type AutomaticAlert = {
   title: string;
   message: string;
   severity: "WARNING" | "CRITICAL";
-  alertType: "freshness_critical" | "reconciliation_divergence";
+  alertType: "freshness_critical" | "reconciliation_divergence" | "structured_not_persisted";
   slaMinutes: number;
 };
 
@@ -32,6 +32,31 @@ export function buildFreshnessCriticalAlert(input: FreshnessAlertInput): Automat
     severity: "CRITICAL",
     alertType: "freshness_critical",
     slaMinutes: 60,
+  };
+}
+
+export type StructuredPersistenceMismatchInput = {
+  sourceKey: string;
+  runId?: number | string;
+  structured: number;
+  persisted: number;
+  rejectionReasons?: Record<string, number>;
+};
+
+export function buildStructuredPersistenceMismatchAlert(input: StructuredPersistenceMismatchInput): AutomaticAlert | null {
+  if (input.structured <= 0 || input.persisted > 0) return null;
+  const reasons = Object.entries(input.rejectionReasons ?? {})
+    .filter(([, count]) => Number(count) > 0)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([reason, count]) => `${reason}=${count}`)
+    .join(", ");
+  return {
+    integration: "pipeline",
+    title: `Eventos estruturados não persistidos: ${input.sourceKey}`,
+    message: `A rotina ${input.sourceKey} estruturou ${input.structured} evento(s), mas persistiu ${input.persisted}. ${reasons ? `Motivos registrados: ${reasons}. ` : ""}Revise a validação final dos dados antes de repetir a ingestão.`,
+    severity: "WARNING",
+    alertType: "structured_not_persisted",
+    slaMinutes: 240,
   };
 }
 

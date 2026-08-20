@@ -4,7 +4,7 @@ import { isGracefullyDegradedMetaFailure } from "./instagram-pipeline";
 import { ingestionRuns, operationalAlerts, ingestionSources } from "../drizzle/schema";
 import { classifyCriticalMetaReason, sendCriticalMetaAlert } from "./meta-alert-webhook";
 import { getDb, recordOperationalAlert } from "./db";
-import { buildFreshnessCriticalAlert, buildReconciliationDivergenceAlert } from "./operational-alert-rules";
+import { buildFreshnessCriticalAlert, buildReconciliationDivergenceAlert, buildStructuredPersistenceMismatchAlert } from "./operational-alert-rules";
 import { InstagramIntegrationFailure, getMetaFailureStatus } from "./instagram-pipeline";
 
 export function isCriticalIngestionFailure(details: unknown) {
@@ -26,6 +26,20 @@ function findMetric(details: unknown, key: string): number {
     if (found !== 0) return found;
   }
   return 0;
+}
+
+function findRecord(details: unknown, key: string): Record<string, number> {
+  if (!details || typeof details !== "object") return {};
+  const record = details as Record<string, unknown>;
+  const direct = record[key];
+  if (direct && typeof direct === "object" && !Array.isArray(direct)) {
+    return Object.fromEntries(Object.entries(direct).filter(([, value]) => typeof value === "number").map(([name, value]) => [name, Number(value)]));
+  }
+  for (const value of Object.values(record)) {
+    const found = findRecord(value, key);
+    if (Object.keys(found).length > 0) return found;
+  }
+  return {};
 }
 
 export type FreshnessState = "healthy" | "delayed" | "critical" | "never";
@@ -227,6 +241,16 @@ export async function finishIngestionRun(id: number | undefined, input: { status
       await recordOperationalAlert({ dbOverride: db, integration: "meta", severity: "CRITICAL", alertType: "credential_blocked", runId: id, title: "Credenciais Meta exigem renovação", message: `A integração Meta registrou ${criticalMetaReason}. Renove manualmente o token de acesso do Instagram.` });
     }
     const reconciliation = input.details && typeof input.details === "object" ? (input.details as { reconciliation?: { consistent?: boolean; read?: number; persisted?: number; duplicates?: number; missingCoordinates?: number; outOfBoundsCoordinates?: number; issues?: string[] } }).reconciliation : undefined;
+    const structuredPersistenceAlert = buildStructuredPersistenceMismatchAlert({
+      sourceKey: input.sourceKey ?? input.routine ?? "unknown",
+      runId: id,
+      structured: counts.structured,
+      persisted: counts.persisted,
+      rejectionReasons: findRecord(input.details, "rejectionReasons"),
+    });
+    if (structuredPersistenceAlert) {
+      await recordOperationalAlert({ dbOverride: db, ...structuredPersistenceAlert, runId: id });
+    }
     if (reconciliation) {
       const reconciliationAlert = buildReconciliationDivergenceAlert({
         sourceKey: input.sourceKey ?? input.routine ?? "unknown",

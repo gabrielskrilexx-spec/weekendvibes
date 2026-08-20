@@ -65,7 +65,7 @@ export type InstagramPost = {
   mediaType?: InstagramMediaOrigin;
 };
 
-type StructuredEvent = {
+export type StructuredEvent = {
   title: string;
   summary: string;
   eventDate: string;
@@ -78,6 +78,46 @@ type StructuredEvent = {
   imageUrl: string;
   sourceUrl: string;
 };
+
+export type StructuredRejectionReason = "invalid_date" | "past_event" | "outside_target_venue" | "invalid_source_url" | "missing_required_field" | "invalid_category" | "invalid_genre";
+
+export type StructuredEventRejection = {
+  index: number;
+  eventKey: string;
+  reasons: StructuredRejectionReason[];
+  sourceUrlValid: boolean;
+  eventDateValid: boolean;
+};
+
+const ALLOWED_CITIES = new Set(["Santos", "Guarujá"]);
+const ALLOWED_CATEGORIES = new Set(["show", "balada", "evento_musical"]);
+const ALLOWED_GENRES = new Set(["funk", "house_eletronica", "samba_pagode", "rap_trap"]);
+
+function eventDiagnosticKey(event: Partial<StructuredEvent>, index: number) {
+  return crypto.createHash("sha256").update(`${event.sourceUrl ?? ""}|${event.eventDate ?? ""}|${event.title ?? ""}|${index}`).digest("hex").slice(0, 16);
+}
+
+export function validateStructuredInstagramEvent(event: Partial<StructuredEvent>, activeAliases: string[] = [], now = new Date()): StructuredRejectionReason[] {
+  const reasons: StructuredRejectionReason[] = [];
+  const requiredFields = [event.title, event.summary, event.eventDate, event.locationName, event.address, event.city, event.category, event.genre, event.sourceUrl];
+  if (requiredFields.some(value => typeof value !== "string" || value.trim().length === 0)) reasons.push("missing_required_field");
+  const parsedDate = new Date(String(event.eventDate ?? ""));
+  if (Number.isNaN(parsedDate.getTime())) reasons.push("invalid_date");
+  else if (parsedDate.getTime() <= now.getTime()) reasons.push("past_event");
+  if (!ALLOWED_CITIES.has(String(event.city))) reasons.push("outside_target_venue");
+  if (!containsTargetVenue(`${String(event.locationName ?? "")} ${String(event.address ?? "")}`, activeAliases)) reasons.push("outside_target_venue");
+  if (typeof event.sourceUrl !== "string" || !/^https:\/\/www\.instagram\.com\/(p|reel|tv)\//i.test(event.sourceUrl)) reasons.push("invalid_source_url");
+  if (!ALLOWED_CATEGORIES.has(String(event.category))) reasons.push("invalid_category");
+  if (!ALLOWED_GENRES.has(String(event.genre))) reasons.push("invalid_genre");
+  return Array.from(new Set(reasons));
+}
+
+export function summarizeStructuredRejections(rejections: StructuredEventRejection[]) {
+  return rejections.reduce<Record<string, number>>((summary, rejection) => {
+    for (const reason of rejection.reasons) summary[reason] = (summary[reason] ?? 0) + 1;
+    return summary;
+  }, {});
+}
 
 function requiredEnv(name: string) {
   const value = process.env[name]?.trim();
@@ -313,11 +353,22 @@ export async function runInstagramPipeline() {
   let imported = 0;
   let duplicates = 0;
   let missingCoordinates = 0;
-  for (const event of structuredEvents) {
+  const rejectedEvents: StructuredEventRejection[] = [];
+  for (let index = 0; index < structuredEvents.length; index += 1) {
+    const event = structuredEvents[index];
+    const reasons = validateStructuredInstagramEvent(event, activeAliases);
+    if (reasons.length > 0) {
+      rejectedEvents.push({
+        index,
+        eventKey: eventDiagnosticKey(event, index),
+        reasons,
+        sourceUrlValid: reasons.includes("invalid_source_url") === false,
+        eventDateValid: reasons.includes("invalid_date") === false && reasons.includes("past_event") === false,
+      });
+      continue;
+    }
     const eventDate = new Date(event.eventDate);
-    if (Number.isNaN(eventDate.getTime()) || !containsTargetVenue(`${event.locationName} ${event.address}`, activeAliases)) continue;
-    const sourceUrl = event.sourceUrl.startsWith("https://www.instagram.com/") ? event.sourceUrl : "";
-    if (!sourceUrl) continue;
+    const sourceUrl = event.sourceUrl;
     const sourceHash = crypto.createHash("md5").update(`${sourceUrl}|${eventDate.toISOString().slice(0, 10)}|${event.title}`).digest("hex");
     const saved = await saveEvent({
       title: event.title, slug: `${event.title.toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}-${eventDate.getTime()}`,
@@ -330,5 +381,17 @@ export async function runInstagramPipeline() {
     missingCoordinates += 1;
     imported += 1;
   }
-  return { receivedPosts: posts.length, approvedPosts: approvedPosts.length, structuredEvents: structuredEvents.length, imported, persisted: imported, filtered: Math.max(0, posts.length - approvedPosts.length), duplicates, missingCoordinates, outOfBoundsCoordinates: 0 };
+  return {
+    receivedPosts: posts.length,
+    approvedPosts: approvedPosts.length,
+    structuredEvents: structuredEvents.length,
+    imported,
+    persisted: imported,
+    filtered: Math.max(0, posts.length - approvedPosts.length),
+    duplicates,
+    missingCoordinates,
+    outOfBoundsCoordinates: 0,
+    rejectedEvents,
+    rejectionReasons: summarizeStructuredRejections(rejectedEvents),
+  };
 }
