@@ -34,6 +34,8 @@ const normalizeSlug = (value: string) => value.toLowerCase().normalize("NFD").re
 const normalizeText = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
 export function getConfiguredSourceUrls() {
+  const focused = process.env.INGESTION_FOCUS_URLS;
+  if (focused !== undefined) return Array.from(new Set(focused.split(",").map(value => value.trim()).filter(Boolean)));
   const configured = process.env.INGESTION_SOURCE_URL ?? process.env.INGESTION_SOURCE_URLS;
   if (configured !== undefined) {
     const configuredUrls = configured.split(",").map(value => value.trim()).filter(Boolean);
@@ -107,13 +109,17 @@ export async function runIngestionPipeline() {
   const candidateUrls = await discoverCandidatePages();
   if (candidateUrls.length === 0) return { imported: 0, skipped: true, reason: "Nenhuma fonte de ingestão configurada" };
   const pages = await Promise.allSettled(candidateUrls.map(fetchPublicPage));
-  const sourcePages = pages
+  const fulfilledPages = pages
     .filter((result): result is PromiseFulfilledResult<{ url: string; html: string; text: string; imageUrl: string }> => result.status === "fulfilled")
-    .filter(result => matchesTargetVenue(result.value.text))
     .map(result => result.value);
+  const fetchFailed = pages.filter(result => result.status === "rejected").length;
+  const outsideTargetVenue = fulfilledPages.filter(page => !matchesTargetVenue(page.text)).length;
+  const sourcePages = fulfilledPages.filter(page => matchesTargetVenue(page.text));
+  const filteredByReason = { fetchFailed, outsideTargetVenue, invalidStructuredEvent: 0 };
+  const filteredSourceUrls = pages.flatMap((result, index) => result.status === "rejected" || !matchesTargetVenue(result.status === "fulfilled" ? result.value.text : "") ? [candidateUrls[index]] : []);
 
   if (sourcePages.length === 0) {
-    return { imported: 0, skipped: false, discovered: candidateUrls.length, matchedSources: 0, reason: "Nenhum evento dos locais-alvo encontrado nas fontes públicas" };
+    return { imported: 0, persisted: 0, read: candidateUrls.length, filtered: candidateUrls.length, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: false, discovered: candidateUrls.length, matchedSources: 0, filteredByReason, filteredSourceUrls, reason: "Nenhum evento dos locais-alvo encontrado nas fontes públicas" };
   }
 
   const rawText = sourcePages
@@ -140,7 +146,10 @@ export async function runIngestionPipeline() {
     const city = String(event.city);
     const category = String(event.category);
     const genre = String(event.genre);
-    if (Number.isNaN(date.getTime()) || (city !== "Santos" && city !== "Guarujá") || !matchesTargetVenue(`${event.locationName} ${event.address}`) || !["show", "balada", "evento_musical"].includes(category) || !["funk", "house_eletronica", "samba_pagode", "rap_trap"].includes(genre)) continue;
+    if (Number.isNaN(date.getTime()) || (city !== "Santos" && city !== "Guarujá") || !matchesTargetVenue(`${event.locationName} ${event.address}`) || !["show", "balada", "evento_musical"].includes(category) || !["funk", "house_eletronica", "samba_pagode", "rap_trap"].includes(genre)) {
+      filteredByReason.invalidStructuredEvent += 1;
+      continue;
+    }
     const sourceHash = crypto.createHash("md5").update(`${normalizeSlug(String(event.sourceUrl))}:${normalizeSlug(String(event.title))}:${date.toISOString().slice(0, 10)}`).digest("hex");
     const sourceUrl = String(event.sourceUrl);
     const sourceType = sourceUrl.includes("ingresse.com") ? "ingresse" : "public_source";
@@ -156,5 +165,5 @@ export async function runIngestionPipeline() {
     if (saved?.created === false) duplicates += 1;
     imported += 1;
   }
-  return { imported, persisted: imported, read: candidateUrls.length, filtered: Math.max(0, candidateUrls.length - sourcePages.length), duplicates, missingCoordinates, outOfBoundsCoordinates, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length };
+  return { imported, persisted: imported, read: candidateUrls.length, filtered: Math.max(0, candidateUrls.length - sourcePages.length), duplicates, missingCoordinates, outOfBoundsCoordinates, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length, filteredByReason, filteredSourceUrls };
 }

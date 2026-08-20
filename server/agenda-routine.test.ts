@@ -10,10 +10,15 @@ vi.mock("./db", () => ({ archiveExpiredSoldOutEvents: mocks.archiveExpiredSoldOu
 vi.mock("./ingestion", () => ({ runIngestionPipeline: mocks.runIngestionPipeline }));
 vi.mock("./instagram-pipeline", () => ({ runInstagramPipeline: mocks.runInstagramPipeline, isGracefullyDegradedMetaFailure: vi.fn().mockReturnValue(false), getMetaFailureStatus: vi.fn().mockReturnValue(null) }));
 
-import { AGENDA_ROUTINE_COMPOSITION, runFullAgendaRoutine, runInstagramAgendaStep, runPublicAgendaStep } from "./agenda-routine";
+import { AGENDA_ROUTINE_COMPOSITION, normalizeTrackedStepResultForTest, runFullAgendaRoutine, runInstagramAgendaStep, runPublicAgendaStep } from "./agenda-routine";
 
 describe("agenda routine composition", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("normaliza o resultado aninhado da fonte pública para persistência operacional", () => {
+    expect(normalizeTrackedStepResultForTest({ archived: 0, result: { read: 60, filtered: 58, persisted: 1, duplicates: 1 } })).toEqual({ read: 60, filtered: 58, persisted: 1, duplicates: 1 });
+    expect(normalizeTrackedStepResultForTest({ read: 3, filtered: 2, persisted: 1 })).toEqual({ read: 3, filtered: 2, persisted: 1 });
+  });
 
   it("compõe o fluxo completo manual com arquivamento único e as duas fontes", async () => {
     const result = await runFullAgendaRoutine();

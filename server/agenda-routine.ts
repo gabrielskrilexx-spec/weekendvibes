@@ -29,11 +29,20 @@ export function sanitizeAgendaStepErrorForTest(error: unknown, sourceKey: string
   return error instanceof Error ? error.message.slice(0, 240) : "Falha durante a execução da agenda";
 }
 
+export function normalizeTrackedStepResultForTest(result: unknown): Record<string, unknown> {
+  if (!result || typeof result !== "object") return {};
+  const outer = result as Record<string, unknown>;
+  if (outer.result && typeof outer.result === "object" && !Array.isArray(outer.result)) {
+    return outer.result as Record<string, unknown>;
+  }
+  return outer;
+}
+
 async function trackedStep<T>(routine: string, sourceKey: string, work: () => Promise<T>) {
   const runId = await startIngestionRun({ routine, sourceKey });
   try {
     const result = await work();
-    const raw = result as Record<string, unknown>;
+    const raw = normalizeTrackedStepResultForTest(result);
     const imported = Number(raw.imported ?? 0);
     const read = Number(raw.read ?? raw.receivedPosts ?? raw.discovered ?? 0);
     const filtered = Number(raw.filtered ?? Math.max(0, read - Number(raw.approvedPosts ?? raw.matchedSources ?? 0)));

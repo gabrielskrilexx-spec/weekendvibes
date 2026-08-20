@@ -956,3 +956,26 @@
 - [x] Corrigir divergência de ambiente, se existir, e exibir erro visual para falhas silenciosas da chamada — não havia divergência; fallback explícito implementado.
 - [x] Adicionar testes para erro de rede, resposta não-OK e ACK inválido — regressão de transporte adicionada e testes do painel aprovados.
 - [x] Validar o endpoint de produção via cURL sem imprimir ou armazenar credenciais — HTTP 403 por autenticação cron ausente; sem validação Meta alegada.
+
+## Execução direta server-side Instagram — 20/08/2026
+- [x] Localizar a função/handler seguro para disparar `instagram-agenda` diretamente no backend.
+- [x] Executar a rotina sem imprimir ou acessar tokens em texto claro.
+- [x] Consultar o novo `ingestionRuns`, contagens e alerta Meta após a execução.
+
+## Diagnóstico server-side do token Meta — 20/08/2026
+- [x] Verificar presença, comprimento e fingerprint não reversível da variável efetivamente carregada pelo processo.
+- [x] Executar a chamada direta à Graph API sem imprimir o token ou colocá-lo na linha de comando.
+- [x] Comparar a resposta direta com o erro do pipeline e entregar diagnóstico sanitizado.
+
+## Execução direta de Fontes Públicas — 20/08/2026
+- [x] Executar a rotina `public-agenda` diretamente no backend, sem usar o botão do painel.
+- [x] Consultar o `ingestionRuns` correspondente e validar status, duração e contagens agregadas.
+- [x] Entregar resumo sanitizado de mídias processadas, filtradas, persistidas, duplicidades e degradação.
+
+- [x] Corrigir a normalização de métricas em `trackedStep` para desembrulhar `result` aninhado e persistir no `ingestionRuns` os mesmos read/filtered/persisted/duplicates retornados pelo pipeline público.
+
+## Correção de contadores e investigação de fontes filtradas — 20/08/2026
+- [x] Corrigir `trackedStep` para normalizar o payload aninhado de `public-agenda` antes de persistir `ingestionRuns`.
+- [x] Adicionar teste de regressão para read, filtered, persisted e duplicates no run público.
+- [x] Executar novamente apenas as fontes públicas com itens filtrados e registrar motivos agregados de descarte.
+- [x] Validar TypeScript, Vitest e build; preparar checkpoint após a correção.
