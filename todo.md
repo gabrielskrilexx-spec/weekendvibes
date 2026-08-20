@@ -1059,13 +1059,13 @@
 
 ## Filtro inicial flexível do Instagram — 20/08/2026
 - [x] Substituir a exigência estrita por gate permissivo de legendas não vazias, mantendo classificação final pela IA.
-- [ ] Adicionar regressões para termos aceitos, textos irrelevantes e normalização de acentos.
+- [x] Adicionar regressões para termos aceitos, textos irrelevantes e normalização de acentos.
 - [x] Executar Vitest, TypeScript e build de produção.
 - [x] Reprocessar `@ativahouse` e confirmar filtered e eventos estruturados; persistência permanece pendente após validações finais.
-- [ ] Publicar checkpoint após validação.
+- [x] Publicar checkpoint após validação.
 
 - [x] Instrumentar motivos de descarte após a classificação estruturada, com diagnóstico sanitizado por evento.
-- [ ] Avaliar os 3 eventos estruturados do run 4110015 e ajustar somente validações de dados comprovadamente válidos; não relaxar cidade, data ou URL sem evidência.
+- [x] Avaliar o run 4110015: sem payloads individuais persistidos, não houve base para relaxar cidade, data ou URL; as validações foram mantidas e o diagnóstico detalhado passou a ser capturado.
 ## Rejeições finais e alerta de persistência — 20/08/2026
 - [x] Analisar o run 4110015: o registro histórico contém apenas agregados (`structured=3`, `persisted=0`) e não preservou os payloads individuais; as regras finais aplicáveis foram formalizadas para diagnóstico nas próximas execuções.
 - [x] Registrar motivo detalhado e sanitizado por evento rejeitado na validação final.
