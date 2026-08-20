@@ -208,7 +208,9 @@ async function fetchMetaBusinessDiscoveryPosts(token: string, accountId: string)
   const posts: InstagramPost[] = [];
   const configuredSources = (await listEnabledInstagramSources()) ?? [];
   const configuredHandles = new Set(configuredSources.map(source => source.handle?.replace(/^@/, "").toLowerCase()).filter(Boolean));
-  const targets = (configuredSources.length ? INSTAGRAM_TARGETS.filter(target => configuredHandles.has(target.username.toLowerCase())) : INSTAGRAM_TARGETS).slice().sort((left, right) => {
+  const focusedHandle = process.env.INGESTION_FOCUS_INSTAGRAM?.trim().replace(/^@/, "").toLowerCase();
+  const configuredTargets = configuredSources.length ? INSTAGRAM_TARGETS.filter(target => configuredHandles.has(target.username.toLowerCase())) : INSTAGRAM_TARGETS;
+  const targets = (focusedHandle ? configuredTargets.filter(target => target.username.toLowerCase() === focusedHandle) : configuredTargets).slice().sort((left, right) => {
     const leftPriority = configuredSources.find(source => source.handle?.replace(/^@/, "").toLowerCase() === left.username.toLowerCase())?.priority ?? 50;
     const rightPriority = configuredSources.find(source => source.handle?.replace(/^@/, "").toLowerCase() === right.username.toLowerCase())?.priority ?? 50;
     return leftPriority - rightPriority;

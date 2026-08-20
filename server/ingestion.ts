@@ -38,7 +38,13 @@ export function getConfiguredSourceUrls() {
   if (focused !== undefined) return Array.from(new Set(focused.split(",").map(value => value.trim()).filter(Boolean)));
   const configured = process.env.INGESTION_SOURCE_URL ?? process.env.INGESTION_SOURCE_URLS;
   if (configured !== undefined) {
-    const configuredUrls = configured.split(",").map(value => value.trim()).filter(Boolean);
+    let configuredUrls: string[];
+    try {
+      const parsed = JSON.parse(configured);
+      configuredUrls = Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string").map(value => value.trim()).filter(Boolean) : [];
+    } catch {
+      configuredUrls = configured.split(",").map(value => value.trim()).filter(Boolean);
+    }
     if (configuredUrls.length === 0) return [];
     return Array.from(new Set([...configuredUrls, ...DEFAULT_SOURCE_URLS]));
   }

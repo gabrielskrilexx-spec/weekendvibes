@@ -15,6 +15,17 @@ describe("ingestion source configuration", () => {
 });
 
 
+describe("JSON public source configuration", () => {
+  it("does not leak brackets or quotes into configured URLs", () => {
+    vi.stubEnv("INGESTION_SOURCE_URLS", JSON.stringify(["https://example.com/a", "https://example.com/b"]));
+    const urls = getConfiguredSourceUrls();
+    expect(urls).toContain("https://example.com/a");
+    expect(urls).toContain("https://example.com/b");
+    expect(urls.every(url => !/[\\[\\]\\\"']/.test(url))).toBe(true);
+    vi.unstubAllEnvs();
+  });
+});
+
 describe("public event discovery", () => {
   it("extracts Articket and Blacktag event links from source HTML", async () => {
     const { extractPublicEventLinks, containsTargetVenue } = await import("./ingestion");

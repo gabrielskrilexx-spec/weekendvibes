@@ -979,3 +979,10 @@
 - [x] Adicionar teste de regressão para read, filtered, persisted e duplicates no run público.
 - [x] Executar novamente apenas as fontes públicas com itens filtrados e registrar motivos agregados de descarte.
 - [x] Validar TypeScript, Vitest e build; preparar checkpoint após a correção.
+
+## Manutenção operacional Meta e fontes públicas — 20/08/2026
+- [x] Auditar alertas de Apify/OpenAI anteriores a 20/08/2026 e preservar contagem/status antes da resolução.
+- [x] Resolver ou marcar como resolvidos apenas os alertas históricos elegíveis, sem apagar o histórico.
+- [x] Auditar `INGESTION_SOURCE_URLS` e testar URLs públicas configuradas, registrando falhas por fonte.
+- [x] Executar sincronização manual de um perfil Instagram ativo e consultar o `ingestionRuns` correspondente.
+- [x] Diagnosticar se persistem falhas de processamento/persistência com zero eventos após a sincronização.
