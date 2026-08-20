@@ -15,23 +15,23 @@ describe("AgendaWeekHighlight", () => {
     expect(renderToStaticMarkup(<AgendaWeekHighlight state="ready" events={[event]} />)).toContain("Sexta no Moby");
   });
 
-  it("destaca o evento substituído com as tags Novo e Atualizado", () => {
+  it("destaca o evento capturado recentemente com as tags Capturado hoje e Atualizado", () => {
     const updatedEvent = { ...event, id: 2, slug: "nosso-after-14-08", title: "Nosso After", createdAt: new Date(Date.now() - 60_000) };
     const updatedMarkup = renderToStaticMarkup(<AgendaWeekHighlight state="ready" events={[updatedEvent]} />);
     const regularMarkup = renderToStaticMarkup(<AgendaWeekHighlight state="ready" events={[event]} />);
-    expect(updatedMarkup).toContain("Novo");
-    expect(updatedMarkup).toContain("aria-label=\"Evento novo\"");
+    expect(updatedMarkup).toContain("Capturado hoje");
+    expect(updatedMarkup).toContain("aria-label=\"Evento capturado nas últimas 24 horas\"");
     expect(updatedMarkup).toContain("new-event-badge");
     expect(updatedMarkup).toContain("Atualizado");
     expect(updatedMarkup).toContain("aria-label=\"Evento atualizado\"");
-    expect(regularMarkup).not.toContain("Novo");
+    expect(regularMarkup).not.toContain("Capturado hoje");
     expect(regularMarkup).not.toContain("Atualizado");
   });
 
-  it("considera somente eventos criados no intervalo dos últimos sete dias", () => {
+  it("considera somente eventos capturados nas últimas 24 horas", () => {
     const now = Date.parse("2026-08-13T12:00:00.000Z");
-    expect(isNewEvent("2026-08-06T12:00:00.000Z", now)).toBe(true);
-    expect(isNewEvent("2026-08-06T11:59:59.999Z", now)).toBe(false);
+    expect(isNewEvent("2026-08-12T12:00:01.000Z", now)).toBe(true);
+    expect(isNewEvent("2026-08-12T11:59:59.999Z", now)).toBe(false);
     expect(isNewEvent("2026-08-13T12:00:01.000Z", now)).toBe(false);
     expect(isNewEvent("data inválida", now)).toBe(false);
     expect(isNewEvent(null, now)).toBe(false);

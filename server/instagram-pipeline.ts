@@ -390,6 +390,7 @@ export async function runInstagramPipeline() {
   let duplicates = 0;
   let missingCoordinates = 0;
   const rejectedEvents: StructuredEventRejection[] = [];
+  const persistedEventIds: number[] = [];
   for (let index = 0; index < structuredEvents.length; index += 1) {
     const event = structuredEvents[index];
     const reasons = validateStructuredInstagramEvent(event, activeAliases);
@@ -408,9 +409,11 @@ export async function runInstagramPipeline() {
       sourceHash, sourceType: INSTAGRAM_AGENDA_SOURCE_TYPE, isPublished: 1, isArchived: 0,
     });
     if (saved?.created === false) duplicates += 1;
+    if (saved?.id) persistedEventIds.push(saved.id);
     missingCoordinates += 1;
     imported += 1;
   }
+  const rejectionReasons = summarizeStructuredRejections(rejectedEvents);
   return {
     receivedPosts: posts.length,
     approvedPosts: approvedPosts.length,
@@ -422,6 +425,14 @@ export async function runInstagramPipeline() {
     missingCoordinates,
     outOfBoundsCoordinates: 0,
     rejectedEvents,
-    rejectionReasons: summarizeStructuredRejections(rejectedEvents),
+    rejectionReasons,
+    persistedEventIds,
+    dateFilterValidation: {
+      timezone: "America/Sao_Paulo",
+      today: saoPauloCalendarDate(new Date()),
+      structuredEvents: structuredEvents.length,
+      pastEventsRejected: rejectionReasons.past_event ?? 0,
+      acceptedTodayOrFuture: Math.max(0, structuredEvents.length - (rejectionReasons.past_event ?? 0)),
+    },
   };
 }

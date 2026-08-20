@@ -1120,3 +1120,10 @@
 - [x] Otimizar espaçamento, proporções de imagem e legibilidade em viewport mobile.
 - [x] Garantir controles de navegação acessíveis ao toque e teclado.
 - [x] Validar visualmente em mobile, TypeScript, 64 arquivos/221 testes Vitest e build; publicar checkpoint.
+
+## Badge de captura e resumo da próxima ingestão — 20/08/2026
+- [x] Exibir badge Capturado hoje/Novo para eventos criados ou atualizados nas últimas 24 horas.
+- [x] Registrar resumo pós-execução com mídias lidas, processadas, IDs persistidos e validação de data civil em São Paulo.
+- [x] Adicionar testes para janela de 24 horas, resumo operacional e filtro de data.
+- [x] Executar simulação segura de ingestão e verificar badge em viewport mobile; execução operacional real permanece para o próximo ciclo automático.
+- [x] Validar TypeScript, Vitest e build; 64 arquivos/221 testes aprovados; publicar checkpoint.

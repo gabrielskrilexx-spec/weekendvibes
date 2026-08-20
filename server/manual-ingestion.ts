@@ -64,8 +64,14 @@ export function getNextWednesdayExecution(now = new Date()) {
 async function getRecentInstagramRuns() {
   const db = await getDb();
   if (!db) return [];
-  const rows = await db.select({ id: ingestionRuns.id, routine: ingestionRuns.routine, sourceKey: ingestionRuns.sourceKey, status: ingestionRuns.status, startedAt: ingestionRuns.startedAt, finishedAt: ingestionRuns.finishedAt, httpStatus: ingestionRuns.httpStatus, durationMs: ingestionRuns.durationMs, importedCount: ingestionRuns.importedCount }).from(ingestionRuns).where(eq(ingestionRuns.sourceKey, "instagram")).orderBy(desc(ingestionRuns.startedAt)).limit(6);
-  return rows.map(row => ({ id: row.id, routine: row.routine, sourceKey: row.sourceKey, status: row.status, startedAt: new Date(row.startedAt).toISOString(), finishedAt: row.finishedAt ? new Date(row.finishedAt).toISOString() : null, httpStatus: row.httpStatus, durationMs: row.durationMs, importedCount: row.importedCount }));
+  const rows = await db.select({ id: ingestionRuns.id, routine: ingestionRuns.routine, sourceKey: ingestionRuns.sourceKey, status: ingestionRuns.status, startedAt: ingestionRuns.startedAt, finishedAt: ingestionRuns.finishedAt, httpStatus: ingestionRuns.httpStatus, durationMs: ingestionRuns.durationMs, importedCount: ingestionRuns.importedCount, details: ingestionRuns.details }).from(ingestionRuns).where(eq(ingestionRuns.sourceKey, "instagram")).orderBy(desc(ingestionRuns.startedAt)).limit(6);
+  return rows.map(row => {
+    const parsedDetails = typeof row.details === "string" ? (() => { try { return JSON.parse(row.details) as unknown; } catch { return {}; } })() : row.details;
+    const details = parsedDetails && typeof parsedDetails === "object" ? parsedDetails as Record<string, unknown> : {};
+    const persistedEventIds = Array.isArray(details.persistedEventIds) ? details.persistedEventIds.filter((id): id is number => typeof id === "number") : [];
+    const dateFilterValidation = details.dateFilterValidation && typeof details.dateFilterValidation === "object" ? details.dateFilterValidation : null;
+    return { id: row.id, routine: row.routine, sourceKey: row.sourceKey, status: row.status, startedAt: new Date(row.startedAt).toISOString(), finishedAt: row.finishedAt ? new Date(row.finishedAt).toISOString() : null, httpStatus: row.httpStatus, durationMs: row.durationMs, importedCount: row.importedCount, readCount: typeof details.receivedPosts === "number" ? details.receivedPosts : 0, processedCount: typeof details.structuredEvents === "number" ? details.structuredEvents : 0, persistedEventIds, dateFilterValidation };
+  });
 }
 
 export async function getWednesdayRoutineStatus(now = new Date()) {
