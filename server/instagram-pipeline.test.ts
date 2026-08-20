@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramStories, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent } from "./instagram-pipeline";
+import { createStructuredEventRejection, fetchInstagramPosts, normalizeStructuredEventDate, fetchInstagramStories, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent } from "./instagram-pipeline";
 
 describe("Instagram weekend pipeline", () => {
+  it("preserves the Sao Paulo civil day for date-only structured events", () => {
+    expect(normalizeStructuredEventDate("2026-08-20").toISOString()).toBe("2026-08-20T15:00:00.000Z");
+  });
+
   it("accepts broad agenda signals without exact phrase or hashtag requirements", () => {
     expect(hasApprovedAgendaText("Agenda da semana\n#Sexta-Feira")).toBe(true);
     expect(hasApprovedAgendaText("Agenda semanal\n#Sexta-Feira")).toBe(true);

@@ -355,8 +355,22 @@ async function queueGeocoding(eventId: number, data: InsertEvent, db: Awaited<Re
   await db.insert(geocodingJobs).values({ eventId, addressHash: geocodingAddressHash(rawAddress, data.city), status: "pending", attempts: 0 }).onDuplicateKeyUpdate({ set: { addressHash: geocodingAddressHash(rawAddress, data.city), status: "pending", lastError: null, updatedAt: new Date() } });
 }
 
+function saoPauloCalendarDateForDb(value: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(value);
+  const values = Object.fromEntries(parts.filter(part => part.type !== "literal").map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+export function assertEventDateIsCurrentOrFuture(eventDate: Date, now = new Date()) {
+  if (!(eventDate instanceof Date) || Number.isNaN(eventDate.getTime())) throw new Error("Evento rejeitado: data nula ou inválida");
+  const eventDay = saoPauloCalendarDateForDb(eventDate);
+  const today = saoPauloCalendarDateForDb(now);
+  if (eventDay < today) throw new Error("Evento rejeitado: data anterior ao dia atual");
+}
+
 export async function saveEvent(data: InsertEvent) {
   if (!ALLOWED_CITIES.includes(data.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos em Santos e Guarujá");
+  assertEventDateIsCurrentOrFuture(data.eventDate);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const normalized = normalizeEventLocation(data);

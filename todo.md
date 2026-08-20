@@ -1127,3 +1127,12 @@
 - [x] Adicionar testes para janela de 24 horas, resumo operacional e filtro de data.
 - [x] Executar simulação segura de ingestão e verificar badge em viewport mobile; execução operacional real permanece para o próximo ciclo automático.
 - [x] Validar TypeScript, Vitest e build; 64 arquivos/221 testes aprovados; publicar checkpoint.
+
+## Tolerância zero para datas passadas — 20/08/2026
+- [x] Auditar e quantificar eventos com eventDate anterior a 2026-08-20 antes da limpeza; o banco reportou 0 eventos passados.
+- [x] Implementar hard date gate rejeitando data nula, inválida ou anterior à data de referência antes do saveEvent.
+- [x] Reforçar o System Prompt com a data de referência 2026-08-20 e a instrução de não inferir datas passadas como futuras.
+- [x] Executar a limpeza física após confirmar o escopo; DELETE idempotente executado, 0 eventos passados restantes.
+- [x] Adicionar testes para datas passadas, nulas, inválidas e data atual/futura.
+- [x] Executar ingestão focada oficial: 2 eventos persistidos/2 duplicados no resultado sanitizado, sem rejeições passadas; a tabela não criou novo run além do registro existente.
+- [x] Validar TypeScript, 65 arquivos/225 testes Vitest, build e publicar checkpoint.

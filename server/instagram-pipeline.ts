@@ -7,6 +7,7 @@ const META_GRAPH_BASE_URL = "https://graph.facebook.com/v26.0";
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
 const LOOKBACK_DAYS = 5;
+export const INSTAGRAM_REFERENCE_DATE = "2026-08-20";
 
 
 export type InstagramIntegration = "meta" | "ocr" | "openai";
@@ -118,6 +119,12 @@ function saoPauloCalendarDate(value: Date) {
 function eventCalendarDate(value: unknown, parsed: Date) {
   const raw = String(value ?? "").trim();
   return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : saoPauloCalendarDate(parsed);
+}
+
+export function normalizeStructuredEventDate(value: string) {
+  const raw = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return new Date(`${raw}T12:00:00-03:00`);
+  return new Date(raw);
 }
 
 export function createStructuredEventRejection(event: Partial<StructuredEvent>, index: number, reasons: StructuredRejectionReason[]): StructuredEventRejection {
@@ -353,7 +360,7 @@ async function extractStructuredEvents(approvedPosts: Array<{ post: InstagramPos
       model: MODEL,
       temperature: 0,
       messages: [
-        { role: "system", content: `Extraia somente eventos futuros de fim de semana, públicos e musicais, localizados exclusivamente em Santos ou Guarujá. A data mínima aceita é ${new Date().toISOString().slice(0, 10)}; descarte rigorosamente qualquer evento anterior a essa data, inclusive publicações antigas que mencionem eventos já encerrados. Se a legenda informar dia e mês, mas omitir o ano, infira o ano corrente ou o próximo ano que torne a data futura; nunca use um ano passado por padrão. Retorne eventDate em ISO 8601. Use apenas informações presentes no texto bruto. Se data, cidade, endereço ou gênero não forem verificáveis, descarte o evento. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Não invente preços; use 0 quando o texto não informar preço.` },
+        { role: "system", content: `Extraia somente eventos futuros de fim de semana, públicos e musicais, localizados exclusivamente em Santos ou Guarujá. Data de Referência: ${INSTAGRAM_REFERENCE_DATE}. Ignore rigorosamente qualquer postagem ou evento que se refira a data anterior à Data de Referência; não tente inferir datas passadas como futuras. A data mínima aceita é ${INSTAGRAM_REFERENCE_DATE}. Se a legenda informar dia e mês, mas omitir o ano, infira o ano atual ou futuro que torne a data válida a partir da Data de Referência; nunca use um ano passado por padrão. Retorne eventDate em ISO 8601. Use apenas informações presentes no texto bruto. Se data, cidade, endereço ou gênero não forem verificáveis, descarte o evento. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Não invente preços; use 0 quando o texto não informar preço.` },
         { role: "user", content: raw },
       ],
       response_format: { type: "json_schema", json_schema: { name: "instagram_weekend_events", strict: true, schema: {
@@ -398,7 +405,7 @@ export async function runInstagramPipeline() {
       rejectedEvents.push(createStructuredEventRejection(event, index, reasons));
       continue;
     }
-    const eventDate = new Date(event.eventDate);
+    const eventDate = normalizeStructuredEventDate(event.eventDate);
     const sourceUrl = event.sourceUrl;
     const sourceHash = crypto.createHash("md5").update(`${sourceUrl}|${eventDate.toISOString().slice(0, 10)}|${event.title}`).digest("hex");
     const saved = await saveEvent({
