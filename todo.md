@@ -1114,3 +1114,9 @@
 - [x] Corrigir recentInstagramAgenda para comparar por dia civil em America/Sao_Paulo, não por timestamp NOW().
 - [x] Adicionar regressão para evento publicado hoje à meia-noite aparecer após o horário do evento.
 - [x] Validar consulta, frontend, TypeScript, Vitest e build; 64 arquivos e 221 testes aprovados; publicar correção.
+
+## Responsividade mobile da Agenda da Semana — 20/08/2026
+- [x] Ajustar o layout dos cards para telas móveis sem overflow horizontal.
+- [x] Otimizar espaçamento, proporções de imagem e legibilidade em viewport mobile.
+- [x] Garantir controles de navegação acessíveis ao toque e teclado.
+- [x] Validar visualmente em mobile, TypeScript, 64 arquivos/221 testes Vitest e build; publicar checkpoint.
