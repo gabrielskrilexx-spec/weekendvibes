@@ -52,6 +52,22 @@ describe("Instagram weekend pipeline", () => {
     });
   });
 
+  it("accepts Ativa House when its Santos alias is active", () => {
+    expect(validateStructuredInstagramEvent({
+      title: "Ativa House",
+      summary: "Show",
+      eventDate: "2026-08-20T00:00:00.000Z",
+      locationName: "Ativa House",
+      address: "Santos",
+      city: "Santos",
+      category: "show",
+      genre: "funk",
+      priceCents: 0,
+      imageUrl: "",
+      sourceUrl: "https://www.instagram.com/p/ativa/",
+    }, ["ativa house"], new Date("2026-08-20T12:00:00.000Z"))).toEqual([]);
+  });
+
   it("accepts a future event from an allowed city, venue and Instagram URL", () => {
     expect(validateStructuredInstagramEvent({
       title: "Sexta musical",

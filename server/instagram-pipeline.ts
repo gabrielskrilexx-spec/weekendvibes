@@ -109,6 +109,17 @@ function normalizedEventDateIso(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
+function saoPauloCalendarDate(value: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(value);
+  const values = Object.fromEntries(parts.filter(part => part.type !== "literal").map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function eventCalendarDate(value: unknown, parsed: Date) {
+  const raw = String(value ?? "").trim();
+  return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : saoPauloCalendarDate(parsed);
+}
+
 export function createStructuredEventRejection(event: Partial<StructuredEvent>, index: number, reasons: StructuredRejectionReason[]): StructuredEventRejection {
   return {
     index,
@@ -128,7 +139,7 @@ export function validateStructuredInstagramEvent(event: Partial<StructuredEvent>
   if (requiredFields.some(value => typeof value !== "string" || value.trim().length === 0)) reasons.push("missing_required_field");
   const parsedDate = new Date(String(event.eventDate ?? ""));
   if (Number.isNaN(parsedDate.getTime())) reasons.push("invalid_date");
-  else if (parsedDate.getTime() <= now.getTime()) reasons.push("past_event");
+  else if (eventCalendarDate(event.eventDate, parsedDate) < saoPauloCalendarDate(now)) reasons.push("past_event");
   if (!ALLOWED_CITIES.has(String(event.city))) reasons.push("outside_target_venue");
   if (!containsTargetVenue(`${String(event.locationName ?? "")} ${String(event.address ?? "")}`, activeAliases)) reasons.push("outside_target_venue");
   if (typeof event.sourceUrl !== "string" || !/^https:\/\/www\.instagram\.com\/(p|reel|tv)\//i.test(event.sourceUrl)) reasons.push("invalid_source_url");
@@ -342,7 +353,7 @@ async function extractStructuredEvents(approvedPosts: Array<{ post: InstagramPos
       model: MODEL,
       temperature: 0,
       messages: [
-        { role: "system", content: "Extraia somente eventos futuros de fim de semana, públicos e musicais, localizados exclusivamente em Santos ou Guarujá. Use apenas informações presentes no texto bruto. Se data, cidade, endereço ou gênero não forem verificáveis, descarte o evento. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Não invente preços; use 0 quando o texto não informar preço." },
+        { role: "system", content: `Extraia somente eventos futuros de fim de semana, públicos e musicais, localizados exclusivamente em Santos ou Guarujá. A data mínima aceita é ${new Date().toISOString().slice(0, 10)}; descarte rigorosamente qualquer evento anterior a essa data, inclusive publicações antigas que mencionem eventos já encerrados. Se a legenda informar dia e mês, mas omitir o ano, infira o ano corrente ou o próximo ano que torne a data futura; nunca use um ano passado por padrão. Retorne eventDate em ISO 8601. Use apenas informações presentes no texto bruto. Se data, cidade, endereço ou gênero não forem verificáveis, descarte o evento. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Não invente preços; use 0 quando o texto não informar preço.` },
         { role: "user", content: raw },
       ],
       response_format: { type: "json_schema", json_schema: { name: "instagram_weekend_events", strict: true, schema: {

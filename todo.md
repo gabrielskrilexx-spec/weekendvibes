@@ -1094,3 +1094,10 @@
 - [x] Validar TypeScript, Vitest e build.
 - [x] Executar ingestão focada do @ativahouse e consultar o novo run 4170001.
 - [x] Entregar motivos e valores extraídos sem conteúdo bruto sensível.
+
+## Allowlist e normalização de ano do @ativahouse — 20/08/2026
+- [x] Adicionar Ativa House à allowlist de venues de Santos no banco.
+- [x] Atualizar o prompt da OpenAI para rejeitar datas anteriores ao dia corrente e inferir ano atual/futuro quando omitido.
+- [x] Adicionar testes para allowlist e regras de ano/data.
+- [x] Validar TypeScript, Vitest e build; 64 arquivos e 220 testes aprovados.
+- [x] Executar ingestão focada e confirmar 3 eventos persistidos no run 4170004.
