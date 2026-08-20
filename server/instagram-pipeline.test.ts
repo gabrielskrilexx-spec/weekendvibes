@@ -45,11 +45,13 @@ describe("Instagram weekend pipeline", () => {
     const originalFetch = globalThis.fetch;
     process.env.META_INSTAGRAM_TOKEN = "test-meta-token";
     process.env.META_INSTAGRAM_ACCOUNT_ID = "17841438723866203";
+    process.env.INGESTION_FORCE_INSTAGRAM = "1";
     globalThis.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 10, message: "Application does not have permission for this action" } }), { status: 400 }));
     try {
       await expect(fetchInstagramPosts()).rejects.toThrow("Meta Graph API request failed with 400");
     } finally {
       globalThis.fetch = originalFetch;
+      delete process.env.INGESTION_FORCE_INSTAGRAM;
     }
   });
 });

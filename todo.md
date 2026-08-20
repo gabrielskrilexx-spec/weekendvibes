@@ -986,3 +986,73 @@
 - [x] Auditar `INGESTION_SOURCE_URLS` e testar URLs públicas configuradas, registrando falhas por fonte.
 - [x] Executar sincronização manual de um perfil Instagram ativo e consultar o `ingestionRuns` correspondente.
 - [x] Diagnosticar se persistem falhas de processamento/persistência com zero eventos após a sincronização.
+
+## Reteste Meta em Modo de Desenvolvimento — 20/08/2026
+- [x] Executar sincronização focada server-side do perfil `@ativahouse`.
+- [x] Consultar o novo `ingestionRuns` e comparar HTTP, duração, erro e contagens com a tentativa anterior.
+- [x] Entregar conclusão sanitizada sobre a persistência do bloqueio Business Discovery.
+
+## Diagnóstico isolado do erro Meta — 20/08/2026
+- [x] Correlacionar logs server-side do erro 500 com a falha Meta sanitizada.
+- [x] Executar probes isolados de `/me`, conta Instagram configurada e Business Discovery sem imprimir token.
+- [x] Classificar a causa como token inválido, escopo ausente ou autorização do recurso.
+
+## Checagem Meta Página proprietária — 20/08/2026
+- [x] Executar `/me/accounts?fields=instagram_business_account,permissions` sem expor o token.
+- [x] Verificar se a Página vinculada ao Instagram `17841438723866203` aparece e possui `pages_read_engagement` ou permissão equivalente.
+- [x] Entregar conclusão sanitizada sobre a visibilidade da Página pelo App.
+
+## Reteste com `instagram_manage_insights` — 20/08/2026
+- [x] Executar ingestão focada server-side do perfil `@ativahouse` com o token atualizado.
+- [x] Consultar o novo `ingestionRuns` e comparar erro, duração e contagens.
+- [x] Entregar diagnóstico sanitizado sobre eventual mudança no bloqueio Business Discovery.
+
+## Auditoria completa do Run 4050001 — 20/08/2026
+- [x] Consultar `/me/accounts` e `/me/permissions`, retornando somente IDs, nomes e status dos escopos.
+- [x] Executar probe isolado do Business Discovery para `@ativahouse` sem expor o token.
+- [x] Correlacionar logs detalhados e a mensagem Meta associada ao Run `4050001`.
+
+## Elegibilidade comercial da conta Instagram — 20/08/2026
+- [x] Consultar `/17841438723866203?fields=is_business_account,account_type` sem expor o token.
+- [x] Classificar a resposta da Meta quanto à elegibilidade comercial para Business Discovery.
+
+## Auditoria de ativos Meta — 20/08/2026
+- [x] Executar `/me/accounts` e listar somente IDs e nomes das Páginas visíveis ao token.
+- [x] Consultar `PAGE_ID?fields=instagram_business_account` para a Página encontrada e comparar com `17841438723866203`.
+- [x] Se houver correspondência, executar Business Discovery de `@ativahouse` e registrar status/erro sanitizado.
+
+## Restart para recarregar secrets — 20/08/2026
+- [x] Reiniciar os serviços do projeto WeekendVibes.
+- [x] Confirmar que o backend voltou a operar após o restart.
+
+## Reteste com Página explicitamente selecionada — 20/08/2026
+- [x] Consultar `/me/accounts?fields=id,name,instagram_business_account` com o segredo recém-atualizado.
+- [x] Confirmar correspondência do `instagram_business_account.id` com `17841438723866203`.
+- [x] Não executar ingestão focada do `@ativahouse`: a correspondência não foi confirmada.
+
+## Auditoria do token Meta efetivo — 20/08/2026
+- [x] Comparar presença, comprimento e fingerprint das variáveis Meta carregadas pelo processo.
+- [x] Consultar `/me?fields=id,name` sem expor o token.
+- [x] Executar `/debug_token` e reportar apenas dados sanitizados de validade, tipo, App ID e escopos.
+
+## Reteste com token estendido e ativos atribuídos — 20/08/2026
+- [x] Consultar `/me/accounts?fields=id,name,instagram_business_account` com o token atual.
+- [x] Validar se o `instagram_business_account.id` corresponde a `17841438723866203`.
+- [x] Não executar ingestão do `@ativahouse`: a correspondência não foi confirmada.
+
+## Auditoria de Business Managers do token atual — 20/08/2026
+- [x] Executar `/debug_token` e registrar App ID, user ID, validade e escopos sanitizados.
+- [x] Consultar `/me?fields=id,name` e comparar com o user ID do token.
+- [x] Consultar `/me/businesses` e diagnosticar a permissão ausente para listar Business Managers.
+
+## Business Discovery via Page ID direto — 20/08/2026
+- [x] Auditar se o pipeline depende de `/me/accounts` para resolver a Página.
+- [x] Não configurar Page ID adicional: o pipeline já usa diretamente `META_INSTAGRAM_ACCOUNT_ID` e não depende de `/me/accounts`.
+- [x] Validar que a resolução direta existente permanece tipada e coberta pelos testes; TypeScript e testes passaram.
+- [x] Executar ingestão focada do `@ativahouse` e consultar o run, incluindo persistência.
+
+## Regra de agenda do Ativa House — 20/08/2026
+- [x] Capturar e apresentar legendas/hashtags das 25 mídias filtradas no run 4080001.
+- [x] Ajustar a regra de filtro de agenda de forma específica e documentada para `@ativahouse`.
+- [x] Reexecutar a ingestão focada e consultar o novo run com contagens persistidas.
+- [x] Verificar o schedule oficial `instagram-agenda` e registrar como será validado o próximo ciclo automático.

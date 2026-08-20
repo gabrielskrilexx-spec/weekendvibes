@@ -102,8 +102,11 @@ export function hasRegionalHashtag(text: string) {
   return REGIONAL_HASHTAGS.some(hashtag => text.includes(hashtag));
 }
 
-export function hasApprovedAgendaText(text: string) {
-  return text.includes("Agenda da semana") && (text.includes("#Sexta-Feira") || text.includes("#Sábado"));
+export function hasApprovedAgendaText(text: string, username?: string) {
+  if (!text.includes("Agenda da semana")) return false;
+  const normalizedUsername = username?.replace(/^@/, "").trim().toLowerCase();
+  if (normalizedUsername === "ativahouse") return true;
+  return text.includes("#Sexta-Feira") || text.includes("#Sábado");
 }
 
 function postUrl(post: InstagramPost) {
@@ -215,9 +218,10 @@ async function fetchMetaBusinessDiscoveryPosts(token: string, accountId: string)
     const rightPriority = configuredSources.find(source => source.handle?.replace(/^@/, "").toLowerCase() === right.username.toLowerCase())?.priority ?? 50;
     return leftPriority - rightPriority;
   });
+  const forceRefresh = process.env.INGESTION_FORCE_INSTAGRAM === "1";
   for (const target of targets) {
     const source = configuredSources.find(item => item.handle?.replace(/^@/, "").toLowerCase() === target.username.toLowerCase());
-    if (source?.lastSuccessAt && Date.now() - new Date(source.lastSuccessAt).getTime() < source.frequencyMinutes * 60_000) {
+    if (!forceRefresh && source?.lastSuccessAt && Date.now() - new Date(source.lastSuccessAt).getTime() < source.frequencyMinutes * 60_000) {
       await markIngestionSourceResult(source.sourceKey, { status: "skipped", message: "Aguardando a próxima janela configurada." });
       continue;
     }
@@ -292,10 +296,11 @@ export async function runInstagramPipeline() {
   for (const post of posts) {
     if (!isWithinInstagramLookback(post)) continue;
     const caption = String(post.caption ?? post.text ?? "");
-    const ocrText = hasApprovedAgendaText(caption) ? "" : await extractOcrText(String(post.displayUrl ?? post.imageUrl ?? post.media_url ?? ""));
+    const postUsername = post.ownerUsername ?? post.username;
+    const ocrText = hasApprovedAgendaText(caption, postUsername) ? "" : await extractOcrText(String(post.displayUrl ?? post.imageUrl ?? post.media_url ?? ""));
     const rawText = [caption, ocrText].filter(Boolean).join("\n");
     const regionalMarker = hasRegionalHashtag(rawText) ? "\nREGIONAL_HASHTAG_MATCH: Santos/Guarujá" : "";
-    if (hasApprovedAgendaText(rawText)) approvedPosts.push({ post, rawText: `${rawText}${regionalMarker}` });
+    if (hasApprovedAgendaText(rawText, postUsername)) approvedPosts.push({ post, rawText: `${rawText}${regionalMarker}` });
   }
 
   const structuredEvents = await extractStructuredEvents(approvedPosts);
