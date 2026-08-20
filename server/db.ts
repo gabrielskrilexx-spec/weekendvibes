@@ -101,7 +101,7 @@ export function isRecentInstagramAgendaEvent(event: Pick<Event, "sourceType" | "
   const updatedAt = new Date(event.updatedAt);
   const eventDate = new Date(event.eventDate);
   const cutoff = now.getTime() - lookbackDays * 24 * 60 * 60 * 1000;
-  return WEEKLY_AGENDA_SOURCE_TYPES.includes(event.sourceType as typeof WEEKLY_AGENDA_SOURCE_TYPES[number]) && event.isPublished === 1 && event.isArchived === 0 && updatedAt.getTime() >= cutoff && updatedAt.getTime() <= now.getTime() && eventDate.getTime() >= now.getTime();
+  return WEEKLY_AGENDA_SOURCE_TYPES.includes(event.sourceType as typeof WEEKLY_AGENDA_SOURCE_TYPES[number]) && event.isPublished === 1 && event.isArchived === 0 && updatedAt.getTime() >= cutoff && updatedAt.getTime() <= now.getTime() && saoPauloDateKey(eventDate) >= saoPauloDateKey(now);
 }
 
 export type OperationalIntegration = "meta" | "public" | "ocr" | "openai" | "pipeline";
@@ -244,12 +244,13 @@ export async function listRecentInstagramAgendaEvents(options: { lookbackDays?: 
   const lookbackDays = Math.min(Math.max(options.lookbackDays ?? 5, 1), 14);
   const size = Math.min(Math.max(options.size ?? 8, 1), 12);
   const cutoff = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
+  const todayKey = saoPauloDateKey();
   return db.select().from(events).where(and(
     eq(events.isPublished, 1),
     eq(events.isArchived, 0),
     sql`${events.sourceType} IN (${sql.join(WEEKLY_AGENDA_SOURCE_TYPES.map(sourceType => sql`${sourceType}`), sql`, `)})`,
     sql`${events.updatedAt} >= ${cutoff}`,
-    sql`${events.eventDate} >= NOW()`,
+    sql`DATE(${events.eventDate}) >= ${todayKey}`,
     sql`${events.city} IN (${sql.join(ALLOWED_CITIES.map(city => sql`${city}`), sql`, `)})`,
   )).orderBy(asc(events.eventDate), desc(events.createdAt)).limit(size);
 }

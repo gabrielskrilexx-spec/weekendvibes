@@ -1109,3 +1109,8 @@
 - [x] Adicionar visualização administrativa das próximas execuções automáticas e do histórico recente.
 - [x] Adicionar testes de geocodificação, agenda e monitoramento de recorrência.
 - [x] Validar TypeScript, Vitest e build; 64 arquivos e 221 testes aprovados; checkpoint pendente.
+
+## Correção de exibição da Agenda do dia corrente — 20/08/2026
+- [x] Corrigir recentInstagramAgenda para comparar por dia civil em America/Sao_Paulo, não por timestamp NOW().
+- [x] Adicionar regressão para evento publicado hoje à meia-noite aparecer após o horário do evento.
+- [x] Validar consulta, frontend, TypeScript, Vitest e build; 64 arquivos e 221 testes aprovados; publicar correção.

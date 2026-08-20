@@ -85,5 +85,7 @@ describe("events.recentInstagramAgenda", () => {
     expect(isRecentInstagramAgendaEvent(ingresseAgenda, now)).toBe(true);
     expect(isRecentInstagramAgendaEvent(instagramNaoAgenda, now)).toBe(false);
     expect(isRecentInstagramAgendaEvent({ ...agendaReingerida, updatedAt: new Date("2026-08-01T12:00:00.000Z") }, now)).toBe(false);
+    expect(isRecentInstagramAgendaEvent({ ...agendaReingerida, eventDate: new Date("2026-08-12T03:00:00.000Z") }, now)).toBe(true);
+    expect(isRecentInstagramAgendaEvent({ ...agendaReingerida, eventDate: new Date("2026-08-12T02:59:59.000Z") }, now)).toBe(false);
   });
 });
