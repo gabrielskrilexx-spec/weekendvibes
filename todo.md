@@ -945,3 +945,8 @@
 - [x] Disparar notificação somente para alerta novo/reaberto, preservando payload sanitizado.
 - [x] Adicionar testes Vitest para falha repetida, nova fingerprint, degradação e recuperação.
 - [x] Validar TypeScript, Vitest, build e publicar o checkpoint.
+
+## Reload de credenciais Meta — 20/08/2026
+- [x] Reiniciar o backend/serviços gerenciados para recarregar os secrets Meta atualizados — concluído às 13:27:47.
+- [x] Executar `instagram-agenda` após o restart e consultar status, motivo e contagens sem expor tokens — tentativa realizada, mas nenhum novo run foi criado após o clique público.
+- [x] Confirmar se o alerta Meta foi resolvido ou permanece pendente — permanece WARNING não resolvido.
