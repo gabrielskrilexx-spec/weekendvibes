@@ -7,25 +7,27 @@ const META_GRAPH_BASE_URL = "https://graph.facebook.com/v26.0";
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
 const LOOKBACK_DAYS = 5;
-export const INSTAGRAM_REFERENCE_DATE = "2026-08-20";
-
 export function getInstagramSaoPauloDate(now = new Date()) {
   return saoPauloCalendarDate(now);
 }
 
-export function isInstagramReferenceDateAligned(now = new Date()) {
-  return getInstagramSaoPauloDate(now) === INSTAGRAM_REFERENCE_DATE;
+export function getInstagramReferenceDate(now = new Date()) {
+  return getInstagramSaoPauloDate(now);
 }
 
-export async function recordReferenceDateClockAlert(now = new Date()) {
+export function isInstagramReferenceDateAligned(referenceDate: string, now = new Date()) {
+  return getInstagramSaoPauloDate(now) === referenceDate;
+}
+
+export async function recordReferenceDateClockAlert(referenceDate: string, now = new Date()) {
   const systemDate = getInstagramSaoPauloDate(now);
-  if (systemDate === INSTAGRAM_REFERENCE_DATE) return true;
+  if (systemDate === referenceDate) return true;
   await recordOperationalAlert({
     integration: "pipeline",
     alertType: "reference_date_clock_desync",
     severity: "CRITICAL",
     title: "Desalinhamento da data de referência do Instagram",
-    message: `Data de referência ${INSTAGRAM_REFERENCE_DATE} diverge da data do sistema em America/Sao_Paulo (${systemDate}).`,
+    message: `Data de referência ${referenceDate} diverge da data do sistema em America/Sao_Paulo (${systemDate}).`,
   });
   return false;
 }
@@ -372,7 +374,7 @@ function deduplicateInstagramPosts(posts: InstagramPost[]) {
   });
 }
 
-async function extractStructuredEvents(approvedPosts: Array<{ post: InstagramPost; rawText: string }>) {
+async function extractStructuredEvents(referenceDate: string, approvedPosts: Array<{ post: InstagramPost; rawText: string }>) {
   if (approvedPosts.length === 0) return [] as StructuredEvent[];
   const raw = approvedPosts.map(({ post, rawText }) => `SOURCE_URL: ${postUrl(post)}\nACCOUNT: ${post.ownerUsername ?? post.username ?? ""}\nRAW_POST_TEXT: ${rawText}`).join("\n\n").slice(0, 48_000);
   try {
@@ -380,7 +382,7 @@ async function extractStructuredEvents(approvedPosts: Array<{ post: InstagramPos
       model: MODEL,
       temperature: 0,
       messages: [
-        { role: "system", content: `Extraia somente eventos futuros de fim de semana, públicos e musicais, localizados exclusivamente em Santos ou Guarujá. Data de Referência: ${INSTAGRAM_REFERENCE_DATE}. Ignore rigorosamente qualquer postagem ou evento que se refira a data anterior à Data de Referência; não tente inferir datas passadas como futuras. A data mínima aceita é ${INSTAGRAM_REFERENCE_DATE}. Se a legenda informar dia e mês, mas omitir o ano, infira o ano atual ou futuro que torne a data válida a partir da Data de Referência; nunca use um ano passado por padrão. Retorne eventDate em ISO 8601. Use apenas informações presentes no texto bruto. Se data, cidade, endereço ou gênero não forem verificáveis, descarte o evento. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Não invente preços; use 0 quando o texto não informar preço.` },
+        { role: "system", content: `Extraia somente eventos futuros de fim de semana, públicos e musicais, localizados exclusivamente em Santos ou Guarujá. Data de Referência: ${referenceDate}. Ignore rigorosamente qualquer postagem ou evento que se refira a data anterior à Data de Referência; não tente inferir datas passadas como futuras. A data mínima aceita é ${referenceDate}. Se a legenda informar dia e mês, mas omitir o ano, infira o ano atual ou futuro que torne a data válida a partir da Data de Referência; nunca use um ano passado por padrão. Retorne eventDate em ISO 8601. Use apenas informações presentes no texto bruto. Se data, cidade, endereço ou gênero não forem verificáveis, descarte o evento. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Não invente preços; use 0 quando o texto não informar preço.` },
         { role: "user", content: raw },
       ],
       response_format: { type: "json_schema", json_schema: { name: "instagram_weekend_events", strict: true, schema: {
@@ -398,7 +400,8 @@ async function extractStructuredEvents(approvedPosts: Array<{ post: InstagramPos
 }
 
 export async function runInstagramPipeline() {
-  await recordReferenceDateClockAlert();
+  const referenceDate = getInstagramReferenceDate();
+  await recordReferenceDateClockAlert(referenceDate);
   const activeAliases = await listActiveLocationAliasValues();
   const posts = deduplicateInstagramPosts(await fetchInstagramPosts());
   const approvedPosts: Array<{ post: InstagramPost; rawText: string }> = [];
@@ -413,7 +416,7 @@ export async function runInstagramPipeline() {
     if (rawText.trim()) approvedPosts.push({ post, rawText: `${rawText}${regionalMarker}` });
   }
 
-  const structuredEvents = await extractStructuredEvents(approvedPosts);
+  const structuredEvents = await extractStructuredEvents(referenceDate, approvedPosts);
   let imported = 0;
   let duplicates = 0;
   let missingCoordinates = 0;

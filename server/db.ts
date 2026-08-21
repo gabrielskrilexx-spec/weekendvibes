@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, like, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { Event, InsertEvent, InsertUser, events, users, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
@@ -245,12 +245,13 @@ export async function listRecentInstagramAgendaEvents(options: { lookbackDays?: 
   const size = Math.min(Math.max(options.size ?? 8, 1), 12);
   const cutoff = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
   const todayKey = saoPauloDateKey();
+  const saoPauloDayStartUtc = new Date(`${todayKey}T00:00:00-03:00`);
   return db.select().from(events).where(and(
     eq(events.isPublished, 1),
     eq(events.isArchived, 0),
     sql`${events.sourceType} IN (${sql.join(WEEKLY_AGENDA_SOURCE_TYPES.map(sourceType => sql`${sourceType}`), sql`, `)})`,
     sql`${events.updatedAt} >= ${cutoff}`,
-    sql`DATE(${events.eventDate}) >= ${todayKey}`,
+    gte(events.eventDate, saoPauloDayStartUtc),
     sql`${events.city} IN (${sql.join(ALLOWED_CITIES.map(city => sql`${city}`), sql`, `)})`,
   )).orderBy(asc(events.eventDate), desc(events.createdAt)).limit(size);
 }
@@ -266,7 +267,9 @@ export async function listTodayEvents(options: { size?: number } = {}) {
 export async function listEvents(filters: { day?: string; date?: string; startDate?: string; endDate?: string; timeFrom?: string; timeTo?: string; city?: string; category?: string; genre?: string; venue?: string; neighborhood?: string; minPriceCents?: number; maxPriceCents?: number; page?: number; size?: number } = {}) {
   const db = await getDb();
   if (!db) return [];
-  const conditions = [eq(events.isPublished, 1), eq(events.isArchived, 0), sql`${events.city} IN (${sql.join(ALLOWED_CITIES.map(city => sql`${city}`), sql`, `)})`];
+  const todayKey = saoPauloDateKey();
+  const saoPauloDayStartUtc = new Date(`${todayKey}T00:00:00-03:00`);
+  const conditions = [eq(events.isPublished, 1), eq(events.isArchived, 0), gte(events.eventDate, saoPauloDayStartUtc), sql`${events.city} IN (${sql.join(ALLOWED_CITIES.map(city => sql`${city}`), sql`, `)})`];
   if (filters.city && filters.city !== "Todas" && ALLOWED_CITIES.includes(filters.city as typeof ALLOWED_CITIES[number])) conditions.push(eq(events.city, filters.city));
   if (filters.category && filters.category !== "Todas") conditions.push(eq(events.category, filters.category as Event["category"]));
   if (filters.genre) conditions.push(eq(events.genre, filters.genre));

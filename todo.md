@@ -1143,3 +1143,17 @@
 - [x] Exibir no painel total de eventos expurgados e status do último ingestionRun manual ou automático.
 - [x] Adicionar testes unitários e regressões para os três fluxos; 66 arquivos e 228 testes aprovados.
 - [x] Validar TypeScript, Vitest e build; checkpoint pendente.
+
+## Datas dinâmicas e saneamento da Agenda — 21/08/2026
+- [x] Auditar e arquivar eventos com eventDate menor ou igual ao dia atual em America/Sao_Paulo.
+- [x] Tornar a query da Agenda estritamente dinâmica pelo início do dia atual em São Paulo.
+- [x] Remover data fixa do prompt e gerar Data de Referência programaticamente a cada execução.
+- [x] Fazer o hard date gate usar a mesma data dinâmica do prompt.
+- [x] Adicionar regressões para virada de dia, eventos passados e eventos atuais/futuros.
+- [x] Recarregar/verificar a Agenda, executar Vitest, TypeScript e build e publicar checkpoint.
+
+- [x] Aplicar saneamento final de eventos anteriores ao dia civil atual em America/Sao_Paulo
+- [x] Validar filtro dinâmico da Agenda e referência de data dinâmica do pipeline
+- [x] Executar regressão focada e confirmar ingestão/auditoria após a correção de datas
+- [x] Corrigir e validar o gate dinâmico de datas sem datas fixas no prompt ou na persistência
+
