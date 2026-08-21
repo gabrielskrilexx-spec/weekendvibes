@@ -1186,3 +1186,13 @@
 - [x] Adicionar mapa específico à Agenda da Semana com pins somente para coordenadas válidas
 - [x] Renovar sessão e validar visualmente o alerta e o mapa
 - [x] Adicionar testes de threshold e geocodificação, executar Vitest/build e publicar checkpoint
+
+## Propagação pública do checkpoint 4a464f29
+- [x] Sincronizar/reiniciar o ambiente publicado para forçar a versão mais recente
+- [x] Validar no domínio final a versão servida e a ausência de cache antigo
+- [x] Registrar eventual limitação de propagação da infraestrutura e orientar a validação
+
+## Redeploy público da versão 4a464f29
+- [ ] Acionar o redeploy pelo painel de gerenciamento do projeto, se disponível
+- [ ] Confirmar no domínio final a tag 4a464f29
+- [ ] Validar renderização do mapa e presença de coordenadas geocodificadas
