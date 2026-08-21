@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { invokeLLM } from "./_core/llm";
-import { listActiveLocationAliasValues, saveEvent } from "./db";
+import { getIngestionPayloadCache, listActiveLocationAliasValues, saveEvent, saveIngestionPayloadCache } from "./db";
 
 const DEFAULT_SOURCE_URLS = [
   "https://articket.com.br/e/6784/plants-happy-hour",
@@ -34,6 +34,35 @@ const normalizeSlug = (value: string) => value.toLowerCase().normalize("NFD").re
 const normalizeText = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 const stripHtml = (value: string) => value.replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
 const INGRESSE_SITE_API = "https://api-site.ingresse.com/events";
+
+type FetchFailure = { status: number | null; message: string };
+type IngresseCacheStore = {
+  read: typeof getIngestionPayloadCache;
+  write: typeof saveIngestionPayloadCache;
+};
+
+function getHttpStatus(error: unknown) {
+  if (error && typeof error === "object" && "statusCode" in error && typeof (error as { statusCode?: unknown }).statusCode === "number") return Number((error as { statusCode: number }).statusCode);
+  const match = String(error instanceof Error ? error.message : error).match(/\b(?:HTTP|status|respondeu)\s*(\d{3})\b/i);
+  return match ? Number(match[1]) : null;
+}
+
+export function sanitizeFetchFailure(error: unknown): FetchFailure {
+  const status = getHttpStatus(error);
+  const raw = error instanceof Error ? error.message : String(error ?? "Falha desconhecida");
+  const message = raw.replace(/https?:\/\/[^\s]+/gi, "fonte pública").replace(/Bearer\s+[^\s]+/gi, "Bearer [redacted]").slice(0, 240);
+  return { status, message: message || "Falha de coleta da fonte pública" };
+}
+
+function createFetchError(message: string, statusCode: number | null = null) {
+  const error = new Error(message) as Error & { statusCode?: number };
+  if (statusCode !== null) error.statusCode = statusCode;
+  return error;
+}
+
+function ingresseCacheKey(url: string) {
+  return `ingresse:${normalizeSlug(getIngresseSlug(url))}`;
+}
 
 export function getConfiguredSourceUrls() {
   const focused = process.env.INGESTION_FOCUS_URLS;
@@ -94,74 +123,76 @@ function getIngresseSlug(url: string) {
   return decodeURIComponent(segments.at(-1) ?? "");
 }
 
-export async function fetchIngresseEventApi(url: string) {
+export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCacheStore = { read: getIngestionPayloadCache, write: saveIngestionPayloadCache }) {
   const slug = getIngresseSlug(url);
-  if (!slug) throw new Error(`URL Ingresse sem slug de evento: ${url}`);
-  const response = await fetch(`${INGRESSE_SITE_API}/${encodeURIComponent(slug)}`, {
-    headers: { accept: "application/json", "user-agent": "WeekendVibesBot/1.0 (+public-event-ingestion)" },
-    signal: AbortSignal.timeout(12_000),
-  });
-  if (!response.ok) throw new Error(`API pública do Ingresse respondeu ${response.status}`);
-  const payload = await response.json() as Record<string, unknown>;
-  const place = payload.place && typeof payload.place === "object" ? payload.place as Record<string, unknown> : {};
-  const session = Array.isArray(payload.sessions) && payload.sessions[0] && typeof payload.sessions[0] === "object" ? payload.sessions[0] as Record<string, unknown> : {};
-  const location = place.location && typeof place.location === "object" ? place.location as Record<string, unknown> : {};
-  const title = typeof payload.title === "string" ? payload.title : "";
-  const description = typeof payload.description === "string" ? stripHtml(payload.description) : "";
-  const placeName = typeof place.name === "string" ? place.name : "";
-  const city = typeof place.city === "string" ? place.city : "";
-  const address = [place.street, city, place.state].filter((value): value is string => typeof value === "string" && value.trim().length > 0).join(", ");
-  const dateTime = typeof session.dateTime === "string" ? session.dateTime : "";
-  const poster = payload.poster && typeof payload.poster === "object" ? payload.poster as Record<string, unknown> : {};
-  const imageUrl = [poster.large, poster.medium, poster.small].find((value): value is string => typeof value === "string" && value.startsWith("http")) ?? "";
-  const latitude = typeof location.lat === "number" ? String(location.lat) : "";
-  const longitude = typeof location.lon === "number" ? String(location.lon) : "";
-  const text = [title, description, placeName, address, city, dateTime].filter(Boolean).join(" ");
-  if (!title || !dateTime || !placeName) throw new Error(`API pública do Ingresse sem dados essenciais para ${url}`);
-  return {
-    url,
-    html: "",
-    text: text.slice(0, 16_000),
-    imageUrl,
-    structured: {
-      title,
-      summary: description,
-      eventDate: dateTime,
-      locationName: placeName,
-      address,
-      city,
-      category: "balada",
-      genre: "house_eletronica",
-      priceCents: 0,
-      sourceUrl: url,
-      imageUrl,
-      latitude,
-      longitude,
-    },
-  };
+  if (!slug) throw createFetchError(`URL Ingresse sem slug de evento: ${url}`);
+  try {
+    const response = await fetch(`${INGRESSE_SITE_API}/${encodeURIComponent(slug)}`, {
+      headers: { accept: "application/json", "user-agent": "WeekendVibesBot/1.0 (+public-event-ingestion)" },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!response.ok) throw createFetchError(`API pública do Ingresse respondeu ${response.status}`, response.status);
+    const payload = await response.json() as Record<string, unknown>;
+    const place = payload.place && typeof payload.place === "object" ? payload.place as Record<string, unknown> : {};
+    const session = Array.isArray(payload.sessions) && payload.sessions[0] && typeof payload.sessions[0] === "object" ? payload.sessions[0] as Record<string, unknown> : {};
+    const location = place.location && typeof place.location === "object" ? place.location as Record<string, unknown> : {};
+    const title = typeof payload.title === "string" ? payload.title : "";
+    const description = typeof payload.description === "string" ? stripHtml(payload.description) : "";
+    const placeName = typeof place.name === "string" ? place.name : "";
+    const city = typeof place.city === "string" ? place.city : "";
+    const address = [place.street, city, place.state].filter((value): value is string => typeof value === "string" && value.trim().length > 0).join(", ");
+    const dateTime = typeof session.dateTime === "string" ? session.dateTime : "";
+    const poster = payload.poster && typeof payload.poster === "object" ? payload.poster as Record<string, unknown> : {};
+    const imageUrl = [poster.large, poster.medium, poster.small].find((value): value is string => typeof value === "string" && value.startsWith("http")) ?? "";
+    const latitude = typeof location.lat === "number" ? String(location.lat) : "";
+    const longitude = typeof location.lon === "number" ? String(location.lon) : "";
+    const text = [title, description, placeName, address, city, dateTime].filter(Boolean).join(" ");
+    if (!title || !dateTime || !placeName) throw createFetchError(`API pública do Ingresse sem dados essenciais para ${url}`);
+    const structured = { title, summary: description, eventDate: dateTime, locationName: placeName, address, city, category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: url, imageUrl, latitude, longitude };
+    await cacheStore.write({ cacheKey: ingresseCacheKey(url), sourceKey: "public:ingresse", sourceUrl: url, payload: structured, latitude, longitude }).catch(error => console.warn("[Ingestion cache] Could not save Ingresse payload:", sanitizeFetchFailure(error).message));
+    return { url, html: "", text: text.slice(0, 16_000), imageUrl, structured };
+  } catch (error) {
+    const failure = sanitizeFetchFailure(error);
+    const cached = await cacheStore.read(ingresseCacheKey(url)).catch(() => undefined);
+    if (cached) {
+      try {
+        const structured = JSON.parse(cached.payload) as Record<string, string | number>;
+        const text = Object.values(structured).filter(value => typeof value === "string").join(" ");
+        return { url, html: "", text: text.slice(0, 16_000), imageUrl: String(structured.imageUrl ?? ""), structured, cacheFallback: { used: true as const, status: failure.status, message: failure.message }, fetchFailure: failure };
+      } catch {
+        // Ignore malformed cache and preserve the original fetch failure.
+      }
+    }
+    throw Object.assign(error instanceof Error ? error : new Error(failure.message), { fetchFailure: failure });
+  }
 }
 
 async function fetchPublicPage(url: string) {
   if (isIngresseEventUrl(url)) return fetchIngresseEventApi(url);
-  const response = await fetch(url, {
-    headers: {
-      "user-agent": "WeekendVibesBot/1.0 (+public-event-ingestion)",
-      accept: "text/html,application/xhtml+xml",
-    },
-    signal: AbortSignal.timeout(12_000),
-  });
-  if (!response.ok) throw new Error(`Fonte ${url} respondeu ${response.status}`);
-  const html = await response.text();
-  const imageMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
-  const text = html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/\s+/g, " ")
-    .trim();
-  return { url, html, text: text.slice(0, 8000), imageUrl: imageMatch?.[1] ?? "" };
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "user-agent": "WeekendVibesBot/1.0 (+public-event-ingestion)",
+        accept: "text/html,application/xhtml+xml",
+      },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!response.ok) throw createFetchError(`Fonte pública respondeu ${response.status}`, response.status);
+    const html = await response.text();
+    const imageMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!text) throw createFetchError("Fonte pública retornou conteúdo vazio");
+    return { url, html, text: text.slice(0, 8000), imageUrl: imageMatch?.[1] ?? "" };
+  } catch (error) {
+    throw Object.assign(error instanceof Error ? error : new Error(sanitizeFetchFailure(error).message), { fetchFailure: sanitizeFetchFailure(error) });
+  }
 }
 
 async function discoverCandidatePages() {
@@ -182,16 +213,22 @@ export async function runIngestionPipeline() {
   if (candidateUrls.length === 0) return { imported: 0, skipped: true, reason: "Nenhuma fonte de ingestão configurada" };
   const pages = await Promise.allSettled(candidateUrls.map(fetchPublicPage));
   const fulfilledPages = pages
-    .filter((result): result is PromiseFulfilledResult<{ url: string; html: string; text: string; imageUrl: string }> => result.status === "fulfilled")
+    .filter((result): result is PromiseFulfilledResult<{ url: string; html: string; text: string; imageUrl: string; structured?: Record<string, string | number>; cacheFallback?: { used: true; status: number | null; message: string }; fetchFailure?: FetchFailure }> => result.status === "fulfilled")
     .map(result => result.value);
-  const fetchFailed = pages.filter(result => result.status === "rejected").length;
+  const fallbackPages = fulfilledPages.filter(page => page.cacheFallback?.used);
+  const rejectedPages = pages.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+  const fetchFailures = [
+    ...fallbackPages.map(page => ({ sourceUrl: page.url, ...page.cacheFallback, status: page.cacheFallback?.status ?? null })),
+    ...rejectedPages.map((result, index) => ({ sourceUrl: candidateUrls[index], ...sanitizeFetchFailure(result.reason) })),
+  ].map(failure => ({ sourceUrl: String(failure.sourceUrl).slice(0, 1000), status: failure.status ?? null, message: String(failure.message).slice(0, 240), fallbackUsed: "used" in failure && failure.used === true }));
+  const fetchFailed = fetchFailures.length;
   const outsideTargetVenue = fulfilledPages.filter(page => !matchesTargetVenue(page.text)).length;
   const sourcePages = fulfilledPages.filter(page => matchesTargetVenue(page.text));
   const filteredByReason = { fetchFailed, outsideTargetVenue, invalidStructuredEvent: 0 };
   const filteredSourceUrls = pages.flatMap((result, index) => result.status === "rejected" || !matchesTargetVenue(result.status === "fulfilled" ? result.value.text : "") ? [candidateUrls[index]] : []);
 
   if (sourcePages.length === 0) {
-    return { imported: 0, persisted: 0, read: candidateUrls.length, filtered: candidateUrls.length, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: false, discovered: candidateUrls.length, matchedSources: 0, filteredByReason, filteredSourceUrls, reason: "Nenhum evento dos locais-alvo encontrado nas fontes públicas" };
+    return { imported: 0, persisted: 0, read: candidateUrls.length, filtered: candidateUrls.length, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: false, discovered: candidateUrls.length, matchedSources: 0, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, reason: "Nenhum evento dos locais-alvo encontrado nas fontes públicas" };
   }
 
   const apiStructuredEvents = sourcePages
@@ -239,5 +276,5 @@ export async function runIngestionPipeline() {
     if (saved?.created === false) duplicates += 1;
     imported += 1;
   }
-  return { imported, persisted: imported, read: candidateUrls.length, filtered: Math.max(0, candidateUrls.length - sourcePages.length), duplicates, missingCoordinates, outOfBoundsCoordinates, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length, filteredByReason, filteredSourceUrls };
+  return { imported, persisted: imported, read: candidateUrls.length, filtered: Math.max(0, candidateUrls.length - sourcePages.length), duplicates, missingCoordinates, outOfBoundsCoordinates, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls };
 }

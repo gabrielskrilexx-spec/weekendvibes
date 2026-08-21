@@ -64,6 +64,21 @@ describe("public event discovery", () => {
     vi.unstubAllGlobals();
   });
 
+  it("uses the last-known-good payload when the Ingresse API later fails", async () => {
+    const { fetchIngresseEventApi } = await import("./ingestion");
+    const url = "https://www.ingresse.com/laroc-guaruja-apresenta-reveillon-2027-feat-mau-p/";
+    const payload = { title: "Réveillon 2027", summary: "Música eletrônica", eventDate: "2026-12-31T23:00:00+00:00", locationName: "Laroc Club Guarujá", address: "Guarujá", city: "Guarujá", category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: url, imageUrl: "https://example.com/poster.jpg", latitude: "-23.89409", longitude: "-46.18753" };
+    const cache = { cacheKey: "ingresse:laroc-guaruja-apresenta-reveillon-2027-feat-mau-p", sourceKey: "public:ingresse", sourceUrl: url, payload: JSON.stringify(payload), latitude: payload.latitude, longitude: payload.longitude };
+    const cacheStore = { read: vi.fn().mockResolvedValue(cache), write: vi.fn().mockResolvedValue(undefined) };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("indisponível", { status: 503 })));
+    const page = await fetchIngresseEventApi(url, cacheStore);
+    expect(page.cacheFallback).toMatchObject({ used: true, status: 503 });
+    expect(page.fetchFailure).toMatchObject({ status: 503 });
+    expect(page.structured).toMatchObject({ title: "Réveillon 2027", locationName: "Laroc Club Guarujá", latitude: "-23.89409", longitude: "-46.18753" });
+    expect(cacheStore.read).toHaveBeenCalledWith(cache.cacheKey);
+    vi.unstubAllGlobals();
+  });
+
   it("extracts Articket and Blacktag event links from source HTML", async () => {
     const { extractPublicEventLinks, containsTargetVenue } = await import("./ingestion");
     const html = '<a href="/e/123/show-verilonguinho">Show</a><a href="/eventos/456/moby-house">Moby</a><a href="https://example.com/outro">Outro</a>';

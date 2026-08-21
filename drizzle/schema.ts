@@ -122,6 +122,22 @@ export const ingestionRuns = mysqlTable("ingestionRuns", {
 export type IngestionRun = typeof ingestionRuns.$inferSelect;
 export type InsertIngestionRun = typeof ingestionRuns.$inferInsert;
 
+export const ingestionPayloadCache = mysqlTable("ingestionPayloadCache", {
+  id: int("id").autoincrement().primaryKey(),
+  cacheKey: varchar("cacheKey", { length: 255 }).notNull().unique(),
+  sourceKey: varchar("sourceKey", { length: 120 }).notNull(),
+  sourceUrl: varchar("sourceUrl", { length: 1000 }).notNull(),
+  payload: text("payload").notNull(),
+  latitude: varchar("latitude", { length: 32 }),
+  longitude: varchar("longitude", { length: 32 }),
+  lastGoodAt: timestamp("lastGoodAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type IngestionPayloadCache = typeof ingestionPayloadCache.$inferSelect;
+export type InsertIngestionPayloadCache = typeof ingestionPayloadCache.$inferInsert;
+
 export const geocodingJobs = mysqlTable("geocodingJobs", {
   id: int("id").autoincrement().primaryKey(),
   eventId: int("eventId").notNull().unique(),

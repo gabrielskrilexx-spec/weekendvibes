@@ -1271,3 +1271,9 @@
 - [x] Criar alerta específico para fetchFailed da public-agenda e notificação sanitizada
 - [x] Criar painel com próxima execução e última tentativa das rotinas
 - [x] Adicionar testes, validar UI responsiva e publicar checkpoint
+
+- [x] Auditar o adaptador Ingresse, o armazenamento disponível e o contrato de ingestionRuns
+- [x] Implementar cache last-known-good por fonte/slug com fallback sanitizado
+- [x] Padronizar fetchFailed com mensagem sanitizada e status HTTP
+- [x] Adicionar regressão Vitest para falha da API e fallback
+- [x] Validar TypeScript, suíte, build e publicar checkpoint

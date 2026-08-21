@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gte, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Event, InsertEvent, InsertUser, events, users, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs, ingestionPayloadCache, IngestionPayloadCache } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 
@@ -224,6 +224,20 @@ export async function markIngestionSourceResult(sourceKey: string, result: { sta
   const db = dbOverride ?? await getDb();
   if (!db) return;
   await db.update(ingestionSources).set({ lastStatus: result.status, lastSuccessAt: result.status === "succeeded" ? new Date() : undefined, lastMessage: result.message?.slice(0, 1000) ?? null, updatedAt: new Date() }).where(eq(ingestionSources.sourceKey, sourceKey));
+}
+
+export async function getIngestionPayloadCache(cacheKey: string, dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<IngestionPayloadCache | undefined> {
+  const db = dbOverride ?? await getDb();
+  if (!db) return undefined;
+  const [row] = await db.select().from(ingestionPayloadCache).where(eq(ingestionPayloadCache.cacheKey, cacheKey)).limit(1);
+  return row;
+}
+
+export async function saveIngestionPayloadCache(input: { cacheKey: string; sourceKey: string; sourceUrl: string; payload: unknown; latitude?: string; longitude?: string }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return;
+  const serialized = JSON.stringify(input.payload).slice(0, 60000);
+  await db.insert(ingestionPayloadCache).values({ cacheKey: input.cacheKey.slice(0, 255), sourceKey: input.sourceKey.slice(0, 120), sourceUrl: input.sourceUrl.slice(0, 1000), payload: serialized, latitude: input.latitude?.slice(0, 32) ?? null, longitude: input.longitude?.slice(0, 32) ?? null, lastGoodAt: new Date() }).onDuplicateKeyUpdate({ set: { sourceKey: input.sourceKey.slice(0, 120), sourceUrl: input.sourceUrl.slice(0, 1000), payload: serialized, latitude: input.latitude?.slice(0, 32) ?? null, longitude: input.longitude?.slice(0, 32) ?? null, lastGoodAt: new Date(), updatedAt: new Date() } });
 }
 
 export function eventIdentityKey(sourceUrl: string, eventDate: Date | string) {
