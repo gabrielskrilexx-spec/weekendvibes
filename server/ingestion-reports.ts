@@ -213,6 +213,11 @@ export async function startIngestionRun(input: { routine: string; sourceKey?: st
 
 export type IngestionCounts = { read: number; filtered: number; persisted: number; rejectedEvents: number; rejectedPastEvents: number; rejectedOtherReasons: number; [key: string]: number };
 
+export function getPastEventRejectionThreshold() {
+  const raw = Number(process.env.INGESTION_PAST_DATE_REJECTION_THRESHOLD ?? "0.5");
+  return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : 0.5;
+}
+
 function rejectionMetrics(details: unknown) {
   const reasons = findRecord(details, "rejectionReasons");
   const rejectedPastEvents = Math.max(0, Number(reasons.past_event ?? 0));
@@ -319,7 +324,7 @@ export function normalizeReportForTransport<T>(payload: T): T {
 
 export async function listIngestionReport(size = 20) {
   const db = await getDb();
-  if (!db) return { runs: [], alerts: [], criticalAlerts: [], sourceMetrics: [], freshness: [], timeline: [], reconciliationBySource: [], weeklyTrend: [], weeklySummary: { runs: 0, retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, inconsistentRuns: 0, degradedRuns: 0, rejectedEvents: 0, rejectedPastEvents: 0, rejectedOtherReasons: 0 }, metaStatus: { status: "never" as const, lastSuccessfulSync: null, lastAttempt: null }, filterEvaluatedAt: new Date().toISOString(), totals: { succeeded: 0, failed: 0, partial: 0, imported: 0 } };
+  if (!db) return { runs: [], alerts: [], criticalAlerts: [], sourceMetrics: [], freshness: [], timeline: [], reconciliationBySource: [], weeklyTrend: [], weeklySummary: { runs: 0, retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, inconsistentRuns: 0, degradedRuns: 0, rejectedEvents: 0, rejectedPastEvents: 0, rejectedOtherReasons: 0 }, metaStatus: { status: "never" as const, lastSuccessfulSync: null, lastAttempt: null }, filterEvaluatedAt: new Date().toISOString(), pastEventRejectionThreshold: getPastEventRejectionThreshold(), totals: { succeeded: 0, failed: 0, partial: 0, imported: 0 } };
   const safeSize = Math.min(Math.max(size, 1), 50);
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const runs = await db.select().from(ingestionRuns).orderBy(desc(ingestionRuns.startedAt)).limit(safeSize);
@@ -340,7 +345,7 @@ export async function listIngestionReport(size = 20) {
   const serializableRuns = runs.map(serializeIngestionRunForTest);
   const serializableAlerts = alerts.map(serializeOperationalAlertForTest);
   const criticalAlerts = serializableAlerts.filter(alert => alert.severity === "CRITICAL" || isCriticalIngestionFailure(`${alert.title} ${alert.message}`));
-  return normalizeReportForTransport({ runs: serializableRuns, alerts: serializableAlerts, criticalAlerts, sourceMetrics, freshness, timeline, reconciliationBySource: buildSourceReconciliationForTest(trendRuns), weeklyTrend: buildWeeklyTrend(trendRuns), weeklySummary: buildWeeklyOperationalSummary(trendRuns), metaStatus: buildMetaIntegrationStatusForTest(metaRuns), filterEvaluatedAt: new Date().toISOString(), totals: { succeeded: Number(totals?.succeeded ?? 0), failed: Number(totals?.failed ?? 0), partial: Number(totals?.partial ?? 0), imported: Number(totals?.imported ?? 0) } });
+  return normalizeReportForTransport({ runs: serializableRuns, alerts: serializableAlerts, criticalAlerts, sourceMetrics, freshness, timeline, reconciliationBySource: buildSourceReconciliationForTest(trendRuns), weeklyTrend: buildWeeklyTrend(trendRuns), weeklySummary: buildWeeklyOperationalSummary(trendRuns), metaStatus: buildMetaIntegrationStatusForTest(metaRuns), filterEvaluatedAt: new Date().toISOString(), pastEventRejectionThreshold: getPastEventRejectionThreshold(), totals: { succeeded: Number(totals?.succeeded ?? 0), failed: Number(totals?.failed ?? 0), partial: Number(totals?.partial ?? 0), imported: Number(totals?.imported ?? 0) } });
 }
 
 export function sanitizeReprocessErrorForTest(error: unknown) {
@@ -421,7 +426,7 @@ export function buildWeeklyTrendForTest(runs: Array<{ routine: string; sourceKey
   return buildWeeklyTrend(runs);
 }
 
-export function getPastEventRejectionQualityForTest(input: { read: number; rejectedPastEvents: number }, threshold = 0.5) {
+export function getPastEventRejectionQualityForTest(input: { read: number; rejectedPastEvents: number }, threshold = getPastEventRejectionThreshold()) {
   const read = Math.max(0, Number(input.read) || 0);
   const rejectedPastEvents = Math.max(0, Number(input.rejectedPastEvents) || 0);
   const percentage = read === 0 ? 0 : rejectedPastEvents / read;

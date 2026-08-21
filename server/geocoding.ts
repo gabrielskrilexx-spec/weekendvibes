@@ -18,6 +18,40 @@ async function auditGeocoding(db: Awaited<ReturnType<typeof getDb>>, input: { ev
   await db.insert(geocodingAuditLogs).values({ eventId: input.eventId, city: input.city, rawAddress: input.rawAddress?.slice(0, 500) ?? null, normalizedAddress: input.normalizedAddress?.slice(0, 500) ?? null, status: input.status, message: input.message.slice(0, 1000) });
 }
 
+export type RegionalGeocodingResult = { latitude: string; longitude: string; formattedAddress: string; neighborhood?: string | null; provider: string; confidence: "high" | "medium" | "low" };
+
+/** Resolve um local regional sem persistir efeitos colaterais; o caller decide se salva ou enfileira fallback. */
+export async function resolveRegionalCoordinates(input: { locationName?: string | null; address?: string | null; city: "Santos" | "Guarujá" }): Promise<RegionalGeocodingResult | null> {
+  const rawAddress = input.address ?? input.locationName ?? "";
+  const normalizedAddress = normalizeLocationText(rawAddress);
+  const neighborhood = extractNeighborhood(input.address, input.locationName, input.city);
+  if (normalizedAddress.length < 3) {
+    const fallback = getRegionalFallback(0, input.city, rawAddress, input.locationName);
+    return { latitude: fallback.latitude, longitude: fallback.longitude, neighborhood: fallback.neighborhood ?? neighborhood, formattedAddress: fallback.formattedAddress, provider: "regional-fallback", confidence: "low" };
+  }
+  try {
+    const query = buildRegionalGeocodingQuery(input.address, input.locationName, input.city);
+    const viewbox = "-46.46,-23.88,-46.15,-24.08";
+    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=br&bounded=1&viewbox=${viewbox}&q=${encodeURIComponent(query)}`;
+    const response = await fetch(url, { headers: { "user-agent": "WeekendVibes/1.0 (regional-event-geocoding)" }, signal: AbortSignal.timeout(8_000) });
+    if (response.ok) {
+      const results = await response.json() as Array<{ lat?: string; lon?: string; display_name?: string; importance?: number; address?: { neighbourhood?: string; suburb?: string } }>;
+      const result = results.find(candidate => isValidCoordinate(candidate.lat) && isValidCoordinate(candidate.lon) && isWithinRegionalBounds(Number(candidate.lat), Number(candidate.lon)));
+      if (result?.lat && result.lon) return { latitude: result.lat, longitude: result.lon, neighborhood: result.address?.neighbourhood ?? result.address?.suburb ?? neighborhood, formattedAddress: (result.display_name ?? `${normalizedAddress}, ${input.city} - SP`).slice(0, 500), provider: GEOCODING_PROVIDER, confidence: (result.importance ?? 0) >= 0.5 ? "high" : "medium" };
+    }
+    const arcgisUrl = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates";
+    const arcgisResponse = await fetch(`${arcgisUrl}?f=json&maxLocations=5&outFields=*&address=${encodeURIComponent(normalizedAddress)}&city=${encodeURIComponent(input.city)}&region=SP&countryCode=BRA`, { headers: { "user-agent": "WeekendVibes/1.0 (regional-event-geocoding)" }, signal: AbortSignal.timeout(8_000) });
+    if (arcgisResponse.ok) {
+      const payload = await arcgisResponse.json() as { candidates?: Array<{ address?: string; score?: number; location?: { x?: number; y?: number }; attributes?: { Nbrhd?: string; District?: string } }> };
+      const candidate = payload.candidates?.find(item => Number(item.score ?? 0) >= 90 && isValidCoordinate(item.location?.y) && isValidCoordinate(item.location?.x) && isWithinRegionalBounds(Number(item.location?.y), Number(item.location?.x)));
+      if (candidate?.location?.y !== undefined && candidate.location.x !== undefined) return { latitude: String(candidate.location.y), longitude: String(candidate.location.x), neighborhood: candidate.attributes?.Nbrhd ?? candidate.attributes?.District ?? neighborhood, formattedAddress: (candidate.address ?? `${normalizedAddress}, ${input.city} - SP`).slice(0, 500), provider: ARCGIS_GEOCODING_PROVIDER, confidence: Number(candidate.score ?? 0) >= 98 ? "high" : "medium" };
+    }
+  } catch {
+    // A falha upstream não bloqueia a persistência; saveEvent enfileira o fallback assíncrono.
+  }
+  return null;
+}
+
 export async function processPendingGeocoding(limit = 5) {
   const db = await getDb();
   if (!db) return { processed: 0, succeeded: 0, failed: 0, pending: 0 };

@@ -1169,3 +1169,20 @@
 - [x] Expandir o gráfico semanal com mídias lidas, eventos persistidos e rejeitados por data passada
 - [x] Confirmar e documentar a estrutura de latitude/longitude dos eventos para o próximo mapa
 - [x] Validar UI, Vitest, TypeScript e build e publicar checkpoint
+
+## Geocodificação e mapa da Agenda — próxima etapa
+- [x] Tornar configurável o limiar de rejeição por data, mantendo padrão de 50%
+- [x] Integrar geocodificação automática após o hard date gate e antes da persistência
+- [x] Persistir latitude/longitude geocodificadas com evento e manter fallback seguro
+- [x] Exibir mapa com pins dos eventos atuais/futuros que possuem coordenadas válidas
+- [x] Renovar sessão e validar visualmente o painel administrativo
+- [ ] Executar ciclo focado do Ativa House e conferir coordenadas no ingestionRuns/banco
+- [x] Validar testes, TypeScript, build e publicar checkpoint
+
+## Threshold configurável e mapa da Agenda — entrega atual
+- [x] Ler INGESTION_PAST_DATE_REJECTION_THRESHOLD com validação 0..1 e default 0.5
+- [x] Usar o threshold configurável no alerta visual e nos testes operacionais
+- [x] Geocodificar eventos após o hard date gate e persistir latitude/longitude
+- [x] Adicionar mapa específico à Agenda da Semana com pins somente para coordenadas válidas
+- [x] Renovar sessão e validar visualmente o alerta e o mapa
+- [x] Adicionar testes de threshold e geocodificação, executar Vitest/build e publicar checkpoint

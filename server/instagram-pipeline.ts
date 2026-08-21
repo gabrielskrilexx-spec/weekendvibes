@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { INSTAGRAM_AGENDA_SOURCE_TYPE, listActiveLocationAliasValues, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent } from "./db";
 import { containsTargetVenue } from "./ingestion";
 import { parseMetaBusinessDiscovery } from "./contracts/external";
+import { resolveRegionalCoordinates } from "./geocoding";
 
 const META_GRAPH_BASE_URL = "https://graph.facebook.com/v26.0";
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
@@ -430,18 +431,20 @@ export async function runInstagramPipeline() {
       continue;
     }
     const eventDate = normalizeStructuredEventDate(event.eventDate);
+    const coordinates = await resolveRegionalCoordinates({ locationName: event.locationName, address: event.address, city: event.city });
     const sourceUrl = event.sourceUrl;
     const sourceHash = crypto.createHash("md5").update(`${sourceUrl}|${eventDate.toISOString().slice(0, 10)}|${event.title}`).digest("hex");
     const saved = await saveEvent({
       title: event.title, slug: `${event.title.toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}-${eventDate.getTime()}`,
       description: event.summary, eventDate, locationName: event.locationName, address: event.address, city: event.city,
       category: event.category, genre: event.genre, priceCents: event.priceCents || 0, priceNote: event.priceCents ? undefined : "Preço não informado na agenda do Instagram",
-      ticketStatus: event.priceCents ? "available" : "unknown", sourceUrl, imageUrl: event.imageUrl || undefined, latitude: undefined, longitude: undefined,
+      ticketStatus: event.priceCents ? "available" : "unknown", sourceUrl, imageUrl: event.imageUrl || undefined, latitude: coordinates?.latitude, longitude: coordinates?.longitude,
+      neighborhood: coordinates?.neighborhood ?? undefined, formattedAddress: coordinates?.formattedAddress ?? undefined, locationPrecision: coordinates ? (coordinates.confidence === "low" ? "approximate" : "exact") : undefined,
       sourceHash, sourceType: INSTAGRAM_AGENDA_SOURCE_TYPE, isPublished: 1, isArchived: 0,
     });
     if (saved?.created === false) duplicates += 1;
     if (saved?.id) persistedEventIds.push(saved.id);
-    missingCoordinates += 1;
+    if (!coordinates) missingCoordinates += 1;
     imported += 1;
   }
   const rejectionReasons = summarizeStructuredRejections(rejectedEvents);

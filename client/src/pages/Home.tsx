@@ -43,6 +43,7 @@ export default function Home() {
   const agendaQuery = trpc.events.recentInstagramAgenda.useQuery({ lookbackDays: 5, size: 8 });
   const agendaState = getAgendaWeekState({ isLoading: agendaQuery.isLoading, isError: agendaQuery.isError, events: agendaQuery.data });
   const agendaEvents = agendaQuery.data ?? [];
+  const agendaMapEvents = useMemo(() => agendaEvents.filter(event => Number.isFinite(Number(event.latitude)) && Number.isFinite(Number(event.longitude))), [agendaEvents]);
   const events = useMemo(() => eventsQuery.data ?? [], [eventsQuery.data]);
   const visibleEvents = useMemo(() => visibleMapEventIds === null ? events : events.filter(event => visibleMapEventIds.includes(event.id)), [events, visibleMapEventIds]);
   useEffect(() => { setVisibleMapEventIds(null); }, [events]);
@@ -70,6 +71,10 @@ export default function Home() {
       </section>
 
       <AgendaWeekHighlight state={agendaState} events={agendaEvents} />
+      <section aria-labelledby="agenda-map-heading" className="mx-auto mt-6 max-w-7xl px-4 sm:px-6">
+        <div className="mb-3 flex items-end justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-300">Mapa da semana</p><h2 id="agenda-map-heading" className="mt-1 text-2xl font-black text-white">Onde a vibe acontece</h2></div><span className="text-xs text-zinc-500">{agendaMapEvents.length} pins com coordenadas válidas</span></div>
+        {agendaMapEvents.length > 0 ? <RegionalEventMap events={agendaMapEvents} onVisibleEventIdsChange={() => undefined} onViewAsList={() => undefined} /> : <div data-testid="agenda-map-empty" className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 text-sm text-zinc-400">Os eventos da Agenda da Semana ainda não têm coordenadas válidas. A geocodificação será tentada automaticamente durante a ingestão.</div>}
+      </section>
       <TodayEvents />
 
       <section className="mx-auto max-w-7xl px-4 pt-7 sm:px-6">

@@ -89,8 +89,9 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminReportsPanel />); });
     const alert = tree!.root.findByProps({ "data-testid": "past-event-quality-alert" });
-    expect(JSON.stringify(tree!.toJSON())).toContain("ultrapassou 50%");
-    expect(JSON.stringify(tree!.toJSON())).toContain("#77 (60%)");
+    const alertText = alert.findAllByType("p").map(node => node.children.join(" ")).join(" ").replace(/\s+/g, " ");
+    expect(alertText).toContain("ultrapassou 50 %");
+    expect(alertText).toContain("#77 (60%)");
   });
 
   it("renderiza a série semanal de lidas, persistidos e rejeitados", async () => {
