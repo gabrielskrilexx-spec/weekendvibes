@@ -1246,10 +1246,10 @@
 - [x] Corrigir eventual causa no código, dependências ou configuração que impeça a implantação
 - [x] Validar build, testes e checkpoint implantável após a correção
 
-- [ ] Auditar o worker public-agenda e documentar o contrato de INGESTION_SOURCE_URLS
-- [ ] Listar fontes existentes e identificar URLs públicas faltantes
-- [ ] Configurar INGESTION_SOURCE_URLS após validação das fontes
-- [ ] Executar e auditar uma rodada manual da public-agenda
+- [x] Auditar o worker public-agenda e documentar o contrato de INGESTION_SOURCE_URLS
+- [x] Listar fontes existentes e identificar URLs públicas faltantes
+- [x] Configurar INGESTION_SOURCE_URLS após validação das fontes
+- [x] Executar e auditar uma rodada manual da public-agenda
 
 - [x] Configurar INGESTION_FOCUS_URLS com a página do Laroc Guarujá Réveillon 2027
 - [x] Executar manualmente a rotina public-agenda com a fonte focada
