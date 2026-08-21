@@ -1277,3 +1277,9 @@
 - [x] Padronizar fetchFailed com mensagem sanitizada e status HTTP
 - [x] Adicionar regressão Vitest para falha da API e fallback
 - [x] Validar TypeScript, suíte, build e publicar checkpoint
+
+- [x] Auditar botão de exclusão, mutation, permissões e operação no banco
+- [x] Corrigir o backend e o contrato sanitizado de exclusão
+- [x] Corrigir confirmação, loading e atualização da lista no painel
+- [x] Adicionar regressão Vitest e validar TypeScript/build
+- [x] Publicar checkpoint da correção de exclusão

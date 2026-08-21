@@ -6,7 +6,7 @@ vi.mock("./db", () => ({
   getEventBySlug: vi.fn().mockResolvedValue(undefined),
   saveEvent: vi.fn().mockResolvedValue(undefined),
   updateEvent: vi.fn().mockResolvedValue(undefined),
-  deleteEvent: vi.fn().mockResolvedValue(undefined),
+  deleteEvent: vi.fn().mockResolvedValue({ deleted: true }),
   getDb: vi.fn(),
   upsertUser: vi.fn(),
   getUserByOpenId: vi.fn(),
@@ -23,7 +23,11 @@ describe("events admin procedures", () => {
     const caller = appRouter.createCaller(ctx());
     await expect(caller.events.create(base)).resolves.toBeUndefined();
     await expect(caller.events.update({ id: 1, data: { title: "Festival Atualizado" } })).resolves.toBeUndefined();
-    await expect(caller.events.remove({ id: 1 })).resolves.toBeUndefined();
+    await expect(caller.events.remove({ id: 1 })).resolves.toEqual({ deleted: true });
+  });
+  it("rejects invalid event IDs before reaching the database", async () => {
+    const caller = appRouter.createCaller(ctx());
+    await expect(caller.events.remove({ id: 0 })).rejects.toThrow();
   });
   it("rejects regular users", async () => {
     const caller = appRouter.createCaller(ctx("user"));

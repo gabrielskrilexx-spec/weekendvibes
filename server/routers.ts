@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
+import { TRPCError } from "@trpc/server";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -98,7 +99,13 @@ export const appRouter = router({
     setReminder: protectedProcedure.input(z.object({ eventId: z.number().int().positive(), active: z.boolean(), hoursBefore: z.union([z.literal(3), z.literal(24), z.literal(72)]).optional() })).mutation(({ ctx, input }) => setEventReminder(ctx.user.id, input.eventId, input.active, input.hoursBefore ?? 24)),
     create: adminOnly.input(eventInput).mutation(({ input }) => saveEvent(input)),
     update: adminOnly.input(z.object({ id: z.number(), data: eventInput.partial() })).mutation(({ input }) => updateEvent(input.id, input.data)),
-    remove: adminOnly.input(z.object({ id: z.number() })).mutation(({ input }) => deleteEvent(input.id)),
+    remove: adminOnly.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
+      try {
+        return await deleteEvent(input.id);
+      } catch {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível excluir o evento" });
+      }
+    }),
     enrich: adminOnly.input(z.object({ rawText: z.string().trim().min(20).max(12000) })).mutation(async ({ input }) => {
       const response = await invokeLLM({
         model: "gpt-4o-mini",

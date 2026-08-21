@@ -418,9 +418,11 @@ export async function updateEvent(id: number, input: Partial<InsertEvent>) {
 }
 
 export async function deleteEvent(id: number) {
+  if (!Number.isInteger(id) || id <= 0) throw new Error("ID de evento inválido");
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  await db.delete(events).where(eq(events.id, id));
+  const result = await db.delete(events).where(eq(events.id, id));
+  return { deleted: Number((result as { affectedRows?: number }).affectedRows ?? 0) > 0 };
 }
 
 /**
