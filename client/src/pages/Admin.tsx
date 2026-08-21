@@ -15,13 +15,14 @@ type FormState = { title: string; slug: string; description: string; eventDate: 
 const emptyForm: FormState = { title: "", slug: "", description: "", eventDate: "", locationName: "", address: "", city: "Santos", category: "show", genre: "funk", priceCents: 0, sourceUrl: "", imageUrl: "", latitude: "", longitude: "" };
 
 export default function Admin() {
-  const auth = trpc.auth.me.useQuery(); const events = trpc.events.list.useQuery({ size: 100 });
+  const auth = trpc.auth.me.useQuery(); const events = trpc.events.list.useQuery({ size: 100 }); const utils = trpc.useUtils();
   const [notice, setNotice] = useState("");
   const create = trpc.events.create.useMutation({ onSuccess: () => { setNotice("Evento adicionado com sucesso."); setForm(emptyForm); setEditingId(null); events.refetch(); }, onError: error => setNotice(`Não foi possível adicionar: ${error.message}`) });
   const update = trpc.events.update.useMutation({ onSuccess: () => { setNotice("Alterações salvas com sucesso."); setForm(emptyForm); setEditingId(null); events.refetch(); }, onError: error => setNotice(`Não foi possível editar: ${error.message}`) });
   const remove = trpc.events.remove.useMutation({
     onSuccess: result => {
       setNotice(result.deleted ? "Evento removido com sucesso." : "O evento já não estava disponível.");
+      if (result.deleted) utils.events.list.setData({ size: 100 }, current => current?.filter(event => event.id !== result.id));
       void events.refetch();
     },
     onError: error => setNotice(`Não foi possível remover o evento: ${error.message}`),

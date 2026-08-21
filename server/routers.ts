@@ -98,7 +98,15 @@ export const appRouter = router({
     reminders: protectedProcedure.query(({ ctx }) => listUserReminders(ctx.user.id)),
     setReminder: protectedProcedure.input(z.object({ eventId: z.number().int().positive(), active: z.boolean(), hoursBefore: z.union([z.literal(3), z.literal(24), z.literal(72)]).optional() })).mutation(({ ctx, input }) => setEventReminder(ctx.user.id, input.eventId, input.active, input.hoursBefore ?? 24)),
     create: adminOnly.input(eventInput).mutation(({ input }) => saveEvent(input)),
-    update: adminOnly.input(z.object({ id: z.number(), data: eventInput.partial() })).mutation(({ input }) => updateEvent(input.id, input.data)),
+    update: adminOnly.input(z.object({ id: z.number().int().positive(), data: eventInput.partial() })).mutation(async ({ input }) => {
+      try {
+        const result = await updateEvent(input.id, input.data);
+        return { ok: true as const, ...result };
+      } catch (error) {
+        const message = error instanceof Error && /data|ID|cidade|Database|evento/i.test(error.message) ? error.message.slice(0, 180) : "Não foi possível salvar as alterações do evento";
+        throw new TRPCError({ code: "BAD_REQUEST", message });
+      }
+    }),
     remove: adminOnly.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
       try {
         return await deleteEvent(input.id);

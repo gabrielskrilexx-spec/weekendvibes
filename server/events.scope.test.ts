@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import { runIngestionPipeline } from "./ingestion";
 const { listEvents, saveEvent, filterEventsForPublicFeed } = vi.hoisted(() => ({ listEvents: vi.fn(), saveEvent: vi.fn().mockResolvedValue(undefined), filterEventsForPublicFeed: (items: any[], filters: any) => items.filter(event => ["Santos", "Guarujá"].includes(event.city) && ["show", "balada", "evento_musical"].includes(event.category) && (!filters.city || filters.city === "Todas" || event.city === filters.city) && (!filters.category || filters.category === "Todas" || event.category === filters.category) && (!filters.genre || event.genre === filters.genre) && (filters.maxPriceCents === undefined || event.priceCents <= filters.maxPriceCents)) }));
-vi.mock("./db", () => ({ listEvents, saveEvent, filterEventsForPublicFeed, listActiveLocationAliasValues: vi.fn().mockResolvedValue([]), getDb: vi.fn(), getEventBySlug: vi.fn(), updateEvent: vi.fn(), deleteEvent: vi.fn(), upsertUser: vi.fn(), getUserByOpenId: vi.fn() }));
+vi.mock("./db", () => ({ listEvents, saveEvent, filterEventsForPublicFeed, assertEventDateIsCurrentOrFuture: vi.fn(), listActiveLocationAliasValues: vi.fn().mockResolvedValue([]), getIngestionPayloadCache: vi.fn().mockResolvedValue(null), saveIngestionPayloadCache: vi.fn().mockResolvedValue(undefined), getDb: vi.fn(), getEventBySlug: vi.fn(), updateEvent: vi.fn(), deleteEvent: vi.fn(), upsertUser: vi.fn(), getUserByOpenId: vi.fn() }));
 vi.mock("./_core/llm", () => ({ invokeLLM: vi.fn().mockResolvedValue({ choices: [{ message: { content: JSON.stringify({ events: [
-  { title: "Santos Funk", summary: "Show", eventDate: "2026-08-14T20:00:00Z", locationName: "Vallum Garden", address: "Rua Tuyuti, Santos", city: "Santos", category: "show", genre: "funk", priceCents: 0, sourceUrl: "", imageUrl: "", latitude: "", longitude: "" },
-  { title: "Praia Cultural", summary: "Evento", eventDate: "2026-08-14T20:00:00Z", locationName: "Praia", address: "Rua 2", city: "Praia Grande", category: "evento_musical", genre: "funk", priceCents: 0, sourceUrl: "", imageUrl: "", latitude: "", longitude: "" },
-  { title: "Guarujá Gastronomia", summary: "Evento", eventDate: "2026-08-14T20:00:00Z", locationName: "Casa", address: "Rua 3", city: "Guarujá", category: "gastronomia", genre: "funk", priceCents: 0, sourceUrl: "", imageUrl: "", latitude: "", longitude: "" },
+  { title: "Santos Funk", summary: "Show", eventDate: "2030-08-14T20:00:00Z", locationName: "Vallum Garden", address: "Rua Tuyuti, Santos", city: "Santos", category: "show", genre: "funk", priceCents: 0, sourceUrl: "", imageUrl: "", latitude: "", longitude: "" },
+  { title: "Praia Cultural", summary: "Evento", eventDate: "2030-08-14T20:00:00Z", locationName: "Praia", address: "Rua 2", city: "Praia Grande", category: "evento_musical", genre: "funk", priceCents: 0, sourceUrl: "", imageUrl: "", latitude: "", longitude: "" },
+  { title: "Guarujá Gastronomia", summary: "Evento", eventDate: "2030-08-14T20:00:00Z", locationName: "Casa", address: "Rua 3", city: "Guarujá", category: "gastronomia", genre: "funk", priceCents: 0, sourceUrl: "", imageUrl: "", latitude: "", longitude: "" },
 ] }) } }] }) }));
 
 const ctx = { user: null, req: { protocol: "https", headers: {} } as any, res: {} as any };
@@ -35,7 +35,7 @@ describe("event scope", () => {
     const focused = process.env.INGESTION_FOCUS_URLS;
     delete process.env.INGESTION_FOCUS_URLS;
     process.env.INGESTION_SOURCE_URL = "https://source.example/events";
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, text: async () => "Vallum Garden Santos" }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, text: async () => "Vallum Garden Santos", json: async () => ({}) }));
     try {
       await runIngestionPipeline();
       expect(saveEvent).toHaveBeenCalledTimes(1);

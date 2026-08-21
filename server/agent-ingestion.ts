@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { invokeLLM } from "./_core/llm";
-import { saveEvent } from "./db";
+import { assertEventDateIsCurrentOrFuture, saveEvent } from "./db";
 import { containsTargetVenue } from "./ingestion";
 
 export type AgentEventDocument = { sourceUrl: string; text: string; imageUrl?: string };
@@ -35,6 +35,7 @@ export async function ingestAgentDocuments(documents: AgentEventDocument[]) {
     const category = String(event.category);
     const genre = String(event.genre);
     if (Number.isNaN(date.getTime()) || (city !== "Santos" && city !== "Guarujá") || !containsTargetVenue(`${event.locationName} ${event.address}`) || !["show", "balada", "evento_musical"].includes(category) || !["funk", "house_eletronica", "samba_pagode", "rap_trap"].includes(genre)) continue;
+    try { assertEventDateIsCurrentOrFuture(date, new Date(), String(event.title)); } catch { continue; }
     const sourceUrl = String(event.sourceUrl);
     const sourceHash = buildEventSourceHash(sourceUrl, String(event.title), date);
     await saveEvent({ title: String(event.title), slug: `${normalizeSlug(String(event.title))}-${date.getTime()}`, description: String(event.summary), eventDate: date, locationName: String(event.locationName), address: String(event.address), city, category: category as "show" | "balada" | "evento_musical", genre, priceCents: Number(event.priceCents) || 0, sourceUrl, imageUrl: String(event.imageUrl || ""), latitude: String(event.latitude || ""), longitude: String(event.longitude || ""), sourceHash, isPublished: 1 });

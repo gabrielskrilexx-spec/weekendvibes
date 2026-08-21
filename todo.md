@@ -1283,3 +1283,15 @@
 - [x] Corrigir confirmação, loading e atualização da lista no painel
 - [x] Adicionar regressão Vitest e validar TypeScript/build
 - [x] Publicar checkpoint da correção de exclusão
+
+- [x] Auditar contrato de edição tRPC, serialização da resposta e atualização reativa da lista
+- [x] Auditar fluxo de exclusão, permissões, ID e persistência/remoção na interface
+- [x] Auditar validação temporal dos workers Instagram/public-agenda e identificar registros corrompidos
+- [x] Corrigir edição, exclusão e barreira temporal com testes de regressão
+- [x] Limpar somente os registros temporais corrompidos identificados e validar banco
+- [x] Validar TypeScript, Vitest, build e publicar checkpoint
+
+- [x] Corrigir regressões da validação sazonal e do mock temporal no teste de escopo identificadas na auditoria final
+- [x] Executar suíte Vitest completa, TypeScript e build de produção após as correções finais
+- [x] Auditar eventos passados e anomalias temporais remanescentes no banco
+- [x] Confirmar publicação e estabilidade da versão final

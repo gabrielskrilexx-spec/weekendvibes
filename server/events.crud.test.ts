@@ -5,8 +5,8 @@ vi.mock("./db", () => ({
   listEvents: vi.fn().mockResolvedValue([]),
   getEventBySlug: vi.fn().mockResolvedValue(undefined),
   saveEvent: vi.fn().mockResolvedValue(undefined),
-  updateEvent: vi.fn().mockResolvedValue(undefined),
-  deleteEvent: vi.fn().mockResolvedValue({ deleted: true }),
+  updateEvent: vi.fn().mockResolvedValue({ updated: true, id: 1 }),
+  deleteEvent: vi.fn().mockResolvedValue({ deleted: true, id: 1 }),
   getDb: vi.fn(),
   upsertUser: vi.fn(),
   getUserByOpenId: vi.fn(),
@@ -19,11 +19,15 @@ const base = { title: "Festival de Verão", slug: "festival-de-verao", descripti
 const ctx = (role: "admin" | "user" = "admin") => ({ user: { id: 1, openId: "test", name: "Test", email: null, loginMethod: null, role, createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date() }, req: { protocol: "https", headers: {} } as any, res: {} as any });
 
 describe("events admin procedures", () => {
-  it("allows admin CRUD operations", async () => {
+  it("allows admin CRUD operations with serializable contracts", async () => {
     const caller = appRouter.createCaller(ctx());
     await expect(caller.events.create(base)).resolves.toBeUndefined();
-    await expect(caller.events.update({ id: 1, data: { title: "Festival Atualizado" } })).resolves.toBeUndefined();
-    await expect(caller.events.remove({ id: 1 })).resolves.toEqual({ deleted: true });
+    await expect(caller.events.update({ id: 1, data: { title: "Festival Atualizado" } })).resolves.toEqual({ ok: true, updated: true, id: 1 });
+    await expect(caller.events.remove({ id: 1 })).resolves.toEqual({ deleted: true, id: 1 });
+  });
+  it("rejects invalid update IDs before reaching the database", async () => {
+    const caller = appRouter.createCaller(ctx());
+    await expect(caller.events.update({ id: 0, data: { title: "Inválido" } })).rejects.toThrow();
   });
   it("rejects invalid event IDs before reaching the database", async () => {
     const caller = appRouter.createCaller(ctx());

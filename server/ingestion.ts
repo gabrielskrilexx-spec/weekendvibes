@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { invokeLLM } from "./_core/llm";
-import { getIngestionPayloadCache, listActiveLocationAliasValues, saveEvent, saveIngestionPayloadCache } from "./db";
+import { assertEventDateIsCurrentOrFuture, getIngestionPayloadCache, listActiveLocationAliasValues, saveEvent, saveIngestionPayloadCache } from "./db";
 
 const DEFAULT_SOURCE_URLS = [
   "https://articket.com.br/e/6784/plants-happy-hour",
@@ -261,6 +261,7 @@ export async function runIngestionPipeline() {
       filteredByReason.invalidStructuredEvent += 1;
       continue;
     }
+    try { assertEventDateIsCurrentOrFuture(date, new Date(), String(event.title)); } catch { filteredByReason.invalidStructuredEvent += 1; continue; }
     const sourceHash = crypto.createHash("md5").update(`${normalizeSlug(String(event.sourceUrl))}:${normalizeSlug(String(event.title))}:${date.toISOString().slice(0, 10)}`).digest("hex");
     const sourceUrl = String(event.sourceUrl);
     const sourceType = sourceUrl.includes("ingresse.com") ? "ingresse" : "public_source";

@@ -380,16 +380,21 @@ function saoPauloCalendarDateForDb(value: Date) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-export function assertEventDateIsCurrentOrFuture(eventDate: Date, now = new Date()) {
+export function assertEventDateIsCurrentOrFuture(eventDate: Date, now = new Date(), title?: string) {
   if (!(eventDate instanceof Date) || Number.isNaN(eventDate.getTime())) throw new Error("Evento rejeitado: data nula ou inválida");
   const eventDay = saoPauloCalendarDateForDb(eventDate);
   const today = saoPauloCalendarDateForDb(now);
   if (eventDay < today) throw new Error("Evento rejeitado: data anterior ao dia atual");
+  const normalizedTitle = String(title ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const month = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", month: "numeric" }).format(eventDate));
+  if (/\bcarnaval\b/.test(normalizedTitle) && (month < 2 || month > 3)) throw new Error("Evento rejeitado: data incompatível com o tema sazonal Carnaval");
+  if (/(reveillon|ano novo|virada)/.test(normalizedTitle) && month !== 12 && month !== 1) throw new Error("Evento rejeitado: data incompatível com o tema sazonal de Ano Novo");
+  if (/\bnatal\b/.test(normalizedTitle) && month !== 12) throw new Error("Evento rejeitado: data incompatível com o tema sazonal Natal");
 }
 
 export async function saveEvent(data: InsertEvent) {
   if (!ALLOWED_CITIES.includes(data.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos em Santos e Guarujá");
-  assertEventDateIsCurrentOrFuture(data.eventDate);
+  assertEventDateIsCurrentOrFuture(data.eventDate, new Date(), data.title);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const normalized = normalizeEventLocation(data);
@@ -406,15 +411,23 @@ export async function saveEvent(data: InsertEvent) {
 }
 
 export async function updateEvent(id: number, input: Partial<InsertEvent>) {
+  if (!Number.isInteger(id) || id <= 0) throw new Error("ID de evento inválido");
   if (input.city && !ALLOWED_CITIES.includes(input.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos em Santos e Guarujá");
+  if (input.eventDate) assertEventDateIsCurrentOrFuture(input.eventDate, new Date(), input.title);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
+  const existing = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate }).from(events).where(eq(events.id, id)).limit(1);
+  if (!existing[0]) return { updated: false, id } as const;
+  const effectiveDate = input.eventDate ?? existing[0].eventDate;
+  const effectiveTitle = input.title ?? existing[0].title;
+  assertEventDateIsCurrentOrFuture(effectiveDate, new Date(), effectiveTitle);
   const normalized = { ...input, ...(input.address !== undefined ? { address: input.address ? normalizeLocationText(input.address) : null } : {}), updatedAt: new Date() };
   await db.update(events).set(normalized).where(eq(events.id, id));
   if (input.address !== undefined || input.locationName !== undefined || !input.latitude || !input.longitude) {
     const current = await db.select({ address: events.address, locationName: events.locationName, city: events.city, latitude: events.latitude, longitude: events.longitude }).from(events).where(eq(events.id, id)).limit(1);
     if (current[0]) await queueGeocoding(id, { ...current[0], address: current[0].address ?? undefined, locationName: current[0].locationName, city: current[0].city, latitude: current[0].latitude ?? undefined, longitude: current[0].longitude ?? undefined } as InsertEvent, db);
   }
+  return { updated: true, id } as const;
 }
 
 export async function deleteEvent(id: number) {
@@ -422,7 +435,7 @@ export async function deleteEvent(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const result = await db.delete(events).where(eq(events.id, id));
-  return { deleted: Number((result as { affectedRows?: number }).affectedRows ?? 0) > 0 };
+  return { deleted: Number((result as { affectedRows?: number }).affectedRows ?? 0) > 0, id };
 }
 
 /**
