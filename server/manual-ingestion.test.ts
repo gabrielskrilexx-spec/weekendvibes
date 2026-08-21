@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   runInstagramPipeline: vi.fn().mockResolvedValue({ imported: 1 }),
   listHeartbeatJobs: vi.fn(),
   getDb: vi.fn().mockResolvedValue(null),
+  startIngestionRun: vi.fn().mockResolvedValue(9001),
+  finishIngestionRun: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("./db", () => ({ archiveExpiredSoldOutEvents: mocks.archiveExpiredSoldOutEvents, recordOperationalAlert: vi.fn(), getDb: mocks.getDb }));
@@ -13,6 +15,7 @@ vi.mock("./ingestion", () => ({ runIngestionPipeline: mocks.runIngestionPipeline
 vi.mock("./instagram-pipeline", () => ({ InstagramIntegrationFailure: class InstagramIntegrationFailure extends Error {}, runInstagramPipeline: mocks.runInstagramPipeline }));
 vi.mock("./_core/notification", () => ({ notifyOwner: vi.fn() }));
 vi.mock("./_core/heartbeat", () => ({ listHeartbeatJobs: mocks.listHeartbeatJobs }));
+vi.mock("./ingestion-reports", () => ({ startIngestionRun: mocks.startIngestionRun, finishIngestionRun: mocks.finishIngestionRun }));
 
 import { getNextWednesdayExecution, getWednesdayRoutineStatus, runWednesdayRoutineNow } from "./manual-ingestion";
 
@@ -49,5 +52,19 @@ describe("manual Wednesday routine", () => {
     expect(mocks.runInstagramPipeline).toHaveBeenCalledTimes(1);
     expect(mocks.archiveExpiredSoldOutEvents.mock.invocationCallOrder[0]).toBeLessThan(mocks.runIngestionPipeline.mock.invocationCallOrder[0]);
     expect(mocks.runIngestionPipeline.mock.invocationCallOrder[0]).toBeLessThan(mocks.runInstagramPipeline.mock.invocationCallOrder[0]);
+  });
+
+  it("persiste um ingestionRuns manual com trigger e metadados agregados", async () => {
+    mocks.runInstagramPipeline.mockResolvedValue({ persisted: 3, receivedPosts: 7, structuredEvents: 3, persistedEventIds: [11, 12, 13], dateFilterValidation: { referenceDate: "2026-08-20", allEventsOnOrAfterReference: true } });
+    const result = await runWednesdayRoutineNow();
+    expect(result.instagram).toMatchObject({ persisted: 3 });
+    expect(mocks.startIngestionRun).toHaveBeenCalledWith({ routine: "manual-agenda", sourceKey: "manual" });
+    expect(mocks.finishIngestionRun).toHaveBeenCalledWith(9001, expect.objectContaining({
+      routine: "manual-agenda",
+      sourceKey: "manual",
+      status: "succeeded",
+      importedCount: 3,
+      details: expect.objectContaining({ trigger: "manual", instagram: expect.objectContaining({ persistedEventIds: [11, 12, 13] }) }),
+    }));
   });
 });

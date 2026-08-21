@@ -1136,3 +1136,10 @@
 - [x] Adicionar testes para datas passadas, nulas, inválidas e data atual/futura.
 - [x] Executar ingestão focada oficial: 2 eventos persistidos/2 duplicados no resultado sanitizado, sem rejeições passadas; a tabela não criou novo run além do registro existente.
 - [x] Validar TypeScript, 65 arquivos/225 testes Vitest, build e publicar checkpoint.
+
+## Auditoria unificada e sincronização de relógio — 21/08/2026
+- [x] Persistir toda execução manual/bypass em ingestionRuns com trigger manual e metadados agregados.
+- [x] Detectar divergência entre data de referência e data atual em America/Sao_Paulo e criar alerta crítico deduplicável.
+- [x] Exibir no painel total de eventos expurgados e status do último ingestionRun manual ou automático.
+- [x] Adicionar testes unitários e regressões para os três fluxos; 66 arquivos e 228 testes aprovados.
+- [x] Validar TypeScript, Vitest e build; checkpoint pendente.

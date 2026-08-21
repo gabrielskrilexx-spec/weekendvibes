@@ -17,6 +17,7 @@ vi.mock("./db", () => ({
   listEnabledInstagramSources: vi.fn().mockResolvedValue([]),
   markIngestionSourceResult: vi.fn().mockResolvedValue(undefined),
   saveEvent: vi.fn().mockResolvedValue(undefined),
+  recordOperationalAlert: vi.fn().mockResolvedValue({ created: true, fingerprint: "test-clock" }),
 }));
 
 vi.mock("./_core/notification", () => ({

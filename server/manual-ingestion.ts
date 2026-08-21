@@ -1,10 +1,11 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, or } from "drizzle-orm";
 import { ingestionRuns } from "../drizzle/schema";
 import { getDb, recordOperationalAlert } from "./db";
 import { listHeartbeatJobs } from "./_core/heartbeat";
 import { notifyOwner } from "./_core/notification";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
 import { runFullAgendaRoutine } from "./agenda-routine";
+import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
 
 let activeRun: Promise<ManualRoutineResult> | null = null;
 
@@ -20,12 +21,31 @@ const getIntegration = (error: unknown) => error instanceof InstagramIntegration
 
 async function executeRoutine(): Promise<ManualRoutineResult> {
   const startedAt = new Date().toISOString();
+  const startedAtMs = Date.now();
+  const manualRunId = await startIngestionRun({ routine: "manual-agenda", sourceKey: "manual" });
   try {
     const result = await runFullAgendaRoutine();
-    return { ...result, startedAt, finishedAt: new Date().toISOString() };
+    const finishedAt = new Date().toISOString();
+    await finishIngestionRun(manualRunId, {
+      routine: "manual-agenda",
+      sourceKey: "manual",
+      status: "succeeded",
+      importedCount: typeof result.instagram === "object" && result.instagram !== null && "persisted" in result.instagram && typeof result.instagram.persisted === "number" ? result.instagram.persisted : 0,
+      durationMs: Date.now() - startedAtMs,
+      details: { trigger: "manual", archived: result.archived, publicSources: result.publicSources, instagram: result.instagram },
+    });
+    return { ...result, startedAt, finishedAt };
   } catch (error) {
     const integration = getIntegration(error);
     const message = error instanceof Error ? error.message : String(error);
+    await finishIngestionRun(manualRunId, {
+      routine: "manual-agenda",
+      sourceKey: "manual",
+      status: "failed",
+      failedCount: 1,
+      durationMs: Date.now() - startedAtMs,
+      details: { trigger: "manual", error: "manual_ingestion_failed", integration },
+    });
     try {
       await recordOperationalAlert({ integration, title: "Falha na execução manual da agenda", message });
     } catch (alertError) {
@@ -64,13 +84,13 @@ export function getNextWednesdayExecution(now = new Date()) {
 async function getRecentInstagramRuns() {
   const db = await getDb();
   if (!db) return [];
-  const rows = await db.select({ id: ingestionRuns.id, routine: ingestionRuns.routine, sourceKey: ingestionRuns.sourceKey, status: ingestionRuns.status, startedAt: ingestionRuns.startedAt, finishedAt: ingestionRuns.finishedAt, httpStatus: ingestionRuns.httpStatus, durationMs: ingestionRuns.durationMs, importedCount: ingestionRuns.importedCount, details: ingestionRuns.details }).from(ingestionRuns).where(eq(ingestionRuns.sourceKey, "instagram")).orderBy(desc(ingestionRuns.startedAt)).limit(6);
+  const rows = await db.select({ id: ingestionRuns.id, routine: ingestionRuns.routine, sourceKey: ingestionRuns.sourceKey, status: ingestionRuns.status, startedAt: ingestionRuns.startedAt, finishedAt: ingestionRuns.finishedAt, httpStatus: ingestionRuns.httpStatus, durationMs: ingestionRuns.durationMs, importedCount: ingestionRuns.importedCount, details: ingestionRuns.details }).from(ingestionRuns).where(or(eq(ingestionRuns.sourceKey, "instagram"), eq(ingestionRuns.routine, "manual-agenda"))).orderBy(desc(ingestionRuns.startedAt)).limit(6);
   return rows.map(row => {
     const parsedDetails = typeof row.details === "string" ? (() => { try { return JSON.parse(row.details) as unknown; } catch { return {}; } })() : row.details;
     const details = parsedDetails && typeof parsedDetails === "object" ? parsedDetails as Record<string, unknown> : {};
     const persistedEventIds = Array.isArray(details.persistedEventIds) ? details.persistedEventIds.filter((id): id is number => typeof id === "number") : [];
     const dateFilterValidation = details.dateFilterValidation && typeof details.dateFilterValidation === "object" ? details.dateFilterValidation : null;
-    return { id: row.id, routine: row.routine, sourceKey: row.sourceKey, status: row.status, startedAt: new Date(row.startedAt).toISOString(), finishedAt: row.finishedAt ? new Date(row.finishedAt).toISOString() : null, httpStatus: row.httpStatus, durationMs: row.durationMs, importedCount: row.importedCount, readCount: typeof details.receivedPosts === "number" ? details.receivedPosts : 0, processedCount: typeof details.structuredEvents === "number" ? details.structuredEvents : 0, persistedEventIds, dateFilterValidation };
+    return { id: row.id, routine: row.routine, sourceKey: row.sourceKey, trigger: details.trigger === "manual" ? "manual" : "automatic", status: row.status, startedAt: new Date(row.startedAt).toISOString(), finishedAt: row.finishedAt ? new Date(row.finishedAt).toISOString() : null, httpStatus: row.httpStatus, durationMs: row.durationMs, importedCount: row.importedCount, expurgatedCount: typeof details.archived === "number" ? details.archived : 0, readCount: typeof details.receivedPosts === "number" ? details.receivedPosts : 0, processedCount: typeof details.structuredEvents === "number" ? details.structuredEvents : 0, persistedEventIds, dateFilterValidation };
   });
 }
 

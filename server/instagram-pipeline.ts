@@ -9,6 +9,26 @@ const MODEL = "gpt-4o-mini";
 const LOOKBACK_DAYS = 5;
 export const INSTAGRAM_REFERENCE_DATE = "2026-08-20";
 
+export function getInstagramSaoPauloDate(now = new Date()) {
+  return saoPauloCalendarDate(now);
+}
+
+export function isInstagramReferenceDateAligned(now = new Date()) {
+  return getInstagramSaoPauloDate(now) === INSTAGRAM_REFERENCE_DATE;
+}
+
+export async function recordReferenceDateClockAlert(now = new Date()) {
+  const systemDate = getInstagramSaoPauloDate(now);
+  if (systemDate === INSTAGRAM_REFERENCE_DATE) return true;
+  await recordOperationalAlert({
+    integration: "pipeline",
+    alertType: "reference_date_clock_desync",
+    severity: "CRITICAL",
+    title: "Desalinhamento da data de referência do Instagram",
+    message: `Data de referência ${INSTAGRAM_REFERENCE_DATE} diverge da data do sistema em America/Sao_Paulo (${systemDate}).`,
+  });
+  return false;
+}
 
 export type InstagramIntegration = "meta" | "ocr" | "openai";
 
@@ -378,6 +398,7 @@ async function extractStructuredEvents(approvedPosts: Array<{ post: InstagramPos
 }
 
 export async function runInstagramPipeline() {
+  await recordReferenceDateClockAlert();
   const activeAliases = await listActiveLocationAliasValues();
   const posts = deduplicateInstagramPosts(await fetchInstagramPosts());
   const approvedPosts: Array<{ post: InstagramPost; rawText: string }> = [];
