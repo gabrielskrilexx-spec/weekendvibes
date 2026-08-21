@@ -1193,6 +1193,12 @@
 - [x] Registrar eventual limitação de propagação da infraestrutura e orientar a validação
 
 ## Redeploy público da versão 4a464f29
-- [ ] Acionar o redeploy pelo painel de gerenciamento do projeto, se disponível
+- [x] Acionar o redeploy pelo painel de gerenciamento do projeto, se disponível
 - [ ] Confirmar no domínio final a tag 4a464f29
 - [ ] Validar renderização do mapa e presença de coordenadas geocodificadas
+
+## Infraestrutura programática — propagação 4a464f29
+- [x] Investigar CLIs, scripts e endpoints autorizados de deploy/redeploy/cache purge
+- [x] Executar a melhor ação programática disponível sem expor credenciais
+- [x] Verificar o domínio público em loop e registrar a tag observada
+- [x] Documentar comandos inexistentes, bloqueios ou limitações de permissão
