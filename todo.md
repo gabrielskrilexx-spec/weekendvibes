@@ -1236,3 +1236,8 @@
 - [x] Adicionar regressão para resposta sem sessão e ACK administrativo sanitizado
 - [ ] Reexecutar Ativa House após sessão válida e confirmar coordenadas geocodificadas
 - [x] Validar TypeScript, Vitest, build e publicar diagnóstico
+
+- [x] Investigar falha de transporte do botão Forçar Ingestão (Instagram) nos logs e confirmar a rota efetiva
+- [x] Corrigir o handler manual para responder com erro tratado, registrar trigger manual e nunca quebrar o transporte
+- [x] Adicionar regressões Vitest para sucesso, exceção e persistência do ingestionRun manual
+- [x] Validar TypeScript, Vitest, build e checkpoint da correção

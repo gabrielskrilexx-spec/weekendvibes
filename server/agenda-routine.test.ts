@@ -4,11 +4,16 @@ const mocks = vi.hoisted(() => ({
   archiveExpiredSoldOutEvents: vi.fn().mockResolvedValue(4),
   runIngestionPipeline: vi.fn().mockResolvedValue({ imported: 2 }),
   runInstagramPipeline: vi.fn().mockResolvedValue({ imported: 1 }),
+  startIngestionRun: vi.fn().mockResolvedValue(123),
+  finishIngestionRun: vi.fn().mockResolvedValue(undefined),
+  processPendingGeocoding: vi.fn().mockResolvedValue({ processed: 0, succeeded: 0, failed: 0, pending: 0 }),
 }));
 
 vi.mock("./db", () => ({ archiveExpiredSoldOutEvents: mocks.archiveExpiredSoldOutEvents }));
 vi.mock("./ingestion", () => ({ runIngestionPipeline: mocks.runIngestionPipeline }));
 vi.mock("./instagram-pipeline", () => ({ runInstagramPipeline: mocks.runInstagramPipeline, isGracefullyDegradedMetaFailure: vi.fn().mockReturnValue(false), getMetaFailureStatus: vi.fn().mockReturnValue(null) }));
+vi.mock("./ingestion-reports", () => ({ startIngestionRun: mocks.startIngestionRun, finishIngestionRun: mocks.finishIngestionRun }));
+vi.mock("./geocoding", () => ({ processPendingGeocoding: mocks.processPendingGeocoding }));
 
 import { AGENDA_ROUTINE_COMPOSITION, normalizeTrackedStepResultForTest, runFullAgendaRoutine, runInstagramAgendaStep, runPublicAgendaStep } from "./agenda-routine";
 
@@ -35,5 +40,11 @@ describe("agenda routine composition", () => {
     expect(mocks.runIngestionPipeline).toHaveBeenCalledTimes(1);
     expect(mocks.runInstagramPipeline).toHaveBeenCalledTimes(1);
     expect(AGENDA_ROUTINE_COMPOSITION).toEqual(["archiveExpiredSoldOutEvents", "runIngestionPipeline", "runInstagramPipeline"]);
+  });
+
+  it("finaliza o run pré-criado pelo ACK manual com trigger manual", async () => {
+    await runInstagramAgendaStep({ runId: 987, trigger: "manual" });
+    expect(mocks.startIngestionRun).not.toHaveBeenCalled();
+    expect(mocks.finishIngestionRun).toHaveBeenCalledWith(expect.any(Number), expect.objectContaining({ routine: "instagram-agenda", sourceKey: "instagram", details: expect.objectContaining({ trigger: "manual" }) }));
   });
 });

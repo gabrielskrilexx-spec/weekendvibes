@@ -17,7 +17,7 @@ import { processPendingGeocoding } from "./geocoding";
 import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
 import { reconcileIngestionResult } from "./reconciliation";
 
-export type AgendaStepOptions = { archive?: boolean; track?: boolean; sourceKey?: string };
+export type AgendaStepOptions = { archive?: boolean; track?: boolean; sourceKey?: string; runId?: number; trigger?: "manual" | "scheduled" };
 
 export function sanitizeAgendaStepErrorForTest(error: unknown, sourceKey: string, upstreamStatus?: number | null, degraded = false) {
   if (sourceKey === "instagram") {
@@ -38,8 +38,9 @@ export function normalizeTrackedStepResultForTest(result: unknown): Record<strin
   return outer;
 }
 
-async function trackedStep<T>(routine: string, sourceKey: string, work: () => Promise<T>) {
-  const runId = await startIngestionRun({ routine, sourceKey });
+async function trackedStep<T>(routine: string, sourceKey: string, work: () => Promise<T>, options: AgendaStepOptions = {}) {
+  const runId = options.runId ?? await startIngestionRun({ routine, sourceKey });
+  const trigger = options.trigger ?? "scheduled";
   try {
     const result = await work();
     const raw = normalizeTrackedStepResultForTest(result);
@@ -57,7 +58,7 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
       retries: Number(raw.retries ?? 0),
       fallbackList: Number(raw.fallbackList ?? 0),
     });
-    await finishIngestionRun(runId, { status: "succeeded", importedCount: imported, counts: reconciliation.counts, details: { ...raw, reconciliation }, routine, sourceKey });
+    await finishIngestionRun(runId, { status: "succeeded", importedCount: imported, counts: reconciliation.counts, details: { ...raw, reconciliation, trigger }, routine, sourceKey });
     return result;
   } catch (error) {
     const degraded = sourceKey === "instagram" && isGracefullyDegradedMetaFailure(error);
@@ -71,10 +72,10 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
         httpStatus: degraded ? 200 : blockedCredentials ? 400 : 500,
         counts: { read: 0, filtered: 0, persisted: 0 },
         details: degraded
-          ? { degraded: true, integration: "meta", upstreamStatus, imported: 0, counts: { read: 0, filtered: 0, persisted: 0 }, reconciliation: reconcileIngestionResult({ degraded: true }) }
+          ? { degraded: true, integration: "meta", upstreamStatus, imported: 0, counts: { read: 0, filtered: 0, persisted: 0 }, reconciliation: reconcileIngestionResult({ degraded: true }), trigger }
           : blockedCredentials
-            ? { integration: "meta", blocked_credentials: true, upstreamStatus: 400, error: "meta_credentials_or_permissions", counts: { read: 0, filtered: 0, persisted: 0 }, reconciliation: reconcileIngestionResult({}) }
-            : { message: safeMessage, reconciliation: reconcileIngestionResult({}) },
+            ? { integration: "meta", blocked_credentials: true, upstreamStatus: 400, error: "meta_credentials_or_permissions", counts: { read: 0, filtered: 0, persisted: 0 }, reconciliation: reconcileIngestionResult({}), trigger }
+            : { message: safeMessage, reconciliation: reconcileIngestionResult({}), trigger },
         routine,
         sourceKey,
       });
@@ -100,7 +101,7 @@ export async function runPublicAgendaStep(options: AgendaStepOptions = {}) {
     const result = await runIngestionPipeline();
     return { archived, result };
   };
-  return options.track === false ? execute() : trackedStep("public-agenda", options.sourceKey ?? "public", execute);
+  return options.track === false ? execute() : trackedStep("public-agenda", options.sourceKey ?? "public", execute, options);
 }
 
 export async function runInstagramAgendaStep(options: AgendaStepOptions = {}) {
@@ -115,7 +116,7 @@ export async function runInstagramAgendaStep(options: AgendaStepOptions = {}) {
     }
     return { archived, result, geocoding };
   };
-  return options.track === false ? execute() : trackedStep("instagram-agenda", options.sourceKey ?? "instagram", execute);
+  return options.track === false ? execute() : trackedStep("instagram-agenda", options.sourceKey ?? "instagram", execute, options);
 }
 
 export async function runFullAgendaRoutine() {

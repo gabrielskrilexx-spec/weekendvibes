@@ -63,12 +63,20 @@ export const appRouter = router({
     geocoding: adminOnly.query(() => listGeocodingSummary()),
     reprocess: adminOnly.input(z.object({ sourceKey: z.enum(["public", "instagram"]) })).mutation(async ({ input }) => {
       try {
-        await reprocessIngestionSource(input.sourceKey);
+        return await reprocessIngestionSource(input.sourceKey);
       } catch {
-        // O resultado operacional já é persistido em ingestionRuns; a mutation
-        // transporta apenas um ACK literal para impedir vazamento de Error/cause.
+        // Nunca transportar Error/cause do upstream: o serviço já sanitiza a
+        // falha e o fallback mantém o contrato JSON da mutation.
+        return {
+          ok: false as const,
+          sourceKey: input.sourceKey,
+          routine: input.sourceKey === "instagram" ? "instagram-agenda" as const : "manual-reprocess" as const,
+          imported: 0,
+          counts: { read: 0, filtered: 0, persisted: 0, duplicates: 0 },
+          degraded: false,
+          error: "Falha ao iniciar a execução manual",
+        };
       }
-      return true as const;
     }),
     geocodeNow: adminOnly.mutation(() => processPendingGeocoding(10)),
   }),

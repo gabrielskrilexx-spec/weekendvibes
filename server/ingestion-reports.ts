@@ -389,11 +389,19 @@ export async function reprocessIngestionSource(sourceKey: "public" | "instagram"
     if (running) throw new Error("Essa fonte já está em processamento");
     if (sourceKey === "instagram") {
       const { runInstagramAgendaStep } = await import("./agenda-routine");
-      // A rotina Instagram pode envolver Meta, OpenAI e geocodificação e exceder
-      // o timeout da edge. O runInstagramAgendaStep já cria/finaliza seu próprio
-      // ingestionRun; retornamos ACK sanitizado imediatamente e deixamos a rotina
-      // rastreada continuar em segundo plano.
-      void runInstagramAgendaStep().catch(() => undefined);
+      // O registro precisa existir antes do ACK. Em ambientes serverless, lançar
+      // apenas o worker em background antes de inserir o run pode encerrar o
+      // processo após a resposta e perder a auditoria da execução.
+      runId = await startIngestionRun({ routine: "instagram-agenda", sourceKey: "instagram" });
+      if (!runId) {
+        return { ok: false as const, sourceKey, routine: "instagram-agenda" as const, imported: 0, counts: { read: 0, filtered: 0, persisted: 0, duplicates: 0 }, degraded: false, error: "Não foi possível registrar a execução manual" };
+      }
+      void runInstagramAgendaStep({ runId, trigger: "manual" }).catch(error => {
+        console.error("[Manual Instagram] Worker encerrado após registro", {
+          runId,
+          error: sanitizeReprocessErrorForTest(error),
+        });
+      });
       return normalizeManualReprocessResultForTest({
         ok: true,
         sourceKey: "instagram",
