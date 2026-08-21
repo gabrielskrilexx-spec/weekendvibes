@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { directionsUrl, filterEventsForMap, indexFirstClusterMarker, locationControlLabel, MAP_LEGEND_ITEMS, markerTooltipContent, popupContent, routeDetailsFromResult, routeOptionsFromResult, shouldShowTouchTooltip, visibleEventIdsForBounds } from "./RegionalEventMap";
+import { directionsUrl, eventMarkerTooltipContent, filterEventsForMap, indexFirstClusterMarker, locationControlLabel, MAP_LEGEND_ITEMS, markerTooltipContent, popupContent, routeDetailsFromResult, routeOptionsFromResult, shouldShowTouchTooltip, visibleEventIdsForBounds } from "./RegionalEventMap";
 import { ShortLivedCache } from "@/lib/shortLivedCache";
 
 describe("map legend and touch interaction", () => {
@@ -34,6 +34,21 @@ describe("filterEventsForMap", () => {
   });
   it("retorna vazio quando todas as cidades estão desmarcadas", () => {
     expect(filterEventsForMap(events, { Santos: false, "Guarujá": false, exact: true, approximate: true })).toEqual([]);
+  });
+});
+
+describe("eventMarkerTooltipContent", () => {
+  it("exibe o nome e o local do evento no hover do pin", () => {
+    const content = eventMarkerTooltipContent({ id: 9, title: "Festival de Verão", slug: "festival", locationName: "Ativa House", city: "Santos", latitude: "-23.96", longitude: "-46.33" });
+    expect(content).toContain("Festival de Verão");
+    expect(content).toContain("Ativa House");
+    expect(content).toContain('role="tooltip"');
+  });
+
+  it("escapa conteúdo externo e sinaliza coordenada aproximada", () => {
+    const content = eventMarkerTooltipContent({ id: 10, title: "<script>alert(1)</script>", slug: "seguro", locationName: "Local", city: "Santos", latitude: "-23.96", longitude: "-46.33" }, true);
+    expect(content).not.toContain("<script>");
+    expect(content).toContain("Localização aproximada");
   });
 });
 

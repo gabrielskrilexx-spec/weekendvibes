@@ -1204,11 +1204,16 @@
 - [x] Documentar comandos inexistentes, bloqueios ou limitações de permissão
 
 ## Cache-busting de infraestrutura — tentativa final
-- [ ] Inspecionar interfaces internas documentadas para purge/redeploy da edge
-- [ ] Executar uma operação autorizada de invalidação, se disponível
-- [ ] Validar a tag pública após a operação e documentar o resultado
+- [x] Inspecionar interfaces internas documentadas para purge/redeploy da edge
+- [x] Executar uma operação autorizada de invalidação, se disponível
+- [x] Validar a tag pública após a operação e documentar o resultado
 
 ## Tag pública de versão — 4a464f29
 - [x] Atualizar VITE_APP_VERSION para 4a464f29
 - [x] Validar a tag e o endpoint HTTP leve com Vitest
-- [ ] Publicar/reiniciar e confirmar a tag no domínio público
+- [x] Publicar/reiniciar e confirmar a tag no domínio público
+
+## UX do mapa — carregamento e pop-ups
+- [x] Adicionar animação de carregamento enquanto as coordenadas são resolvidas
+- [x] Adicionar pop-up interativo nos pins com nome do evento e local ao passar o mouse
+- [x] Cobrir os novos estados com testes, validar UI e publicar checkpoint
