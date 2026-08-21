@@ -1261,3 +1261,13 @@
 - [x] Adicionar regressões para payload dinâmico e validar TypeScript/Vitest/build
 - [x] Reexecutar a fonte focada do Laroc Guarujá e confirmar persistência/geocodificação
 - [x] Publicar checkpoint da evolução do adaptador Ingresse
+
+- [x] Auditar schedules e handlers atuais de instagram-agenda e public-agenda
+- [x] Definir horários UTC e política de retry compatível com Heartbeat
+- [x] Criar ou atualizar os dois schedules sem duplicação
+- [x] Simular as duas execuções e conferir ingestionRuns
+
+- [x] Auditar infraestrutura de alertas, notificações, schedules e painel administrativo
+- [x] Criar alerta específico para fetchFailed da public-agenda e notificação sanitizada
+- [x] Criar painel com próxima execução e última tentativa das rotinas
+- [x] Adicionar testes, validar UI responsiva e publicar checkpoint

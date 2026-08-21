@@ -3,6 +3,8 @@ import { sdk } from "./_core/sdk";
 import { runFullAgendaRoutine, runPublicAgendaStep } from "./agenda-routine";
 import { HttpError } from "@shared/_core/errors";
 import { redactError } from "./_core/security";
+import { notifyOwner } from "./_core/notification";
+import { handleIngestionFailureAlert } from "./ingestion-failure-alerts";
 
 export async function ingestEventsHandler(req: Request, res: Response) {
   const startedAt = new Date().toISOString();
@@ -19,7 +21,26 @@ export async function ingestEventsHandler(req: Request, res: Response) {
   if (!user.isCron) return res.status(403).json({ error: "cron-only" });
   try {
     const { archived, result } = await runPublicAgendaStep();
-    return res.json({ ok: true, archived, result, startedAt, finishedAt: new Date().toISOString() });
+    const fetchFailed = Number((result as { filteredByReason?: { fetchFailed?: unknown } }).filteredByReason?.fetchFailed ?? 0);
+    if (fetchFailed > 0) {
+      try {
+        await handleIngestionFailureAlert({
+          routine: "public-agenda",
+          sourceKey: "public",
+          integration: "public",
+          status: 502,
+          errorCode: "fetch_failed",
+          alertType: "public_fetch_failed",
+          message: `${fetchFailed} fonte(s) pública(s) não responderam ou não puderam ser coletadas.`,
+          severity: "WARNING",
+        }, { notify: async notification => {
+          await notifyOwner({ title: "Falha de coleta na public-agenda", content: "Uma ou mais fontes públicas não puderam ser coletadas. Consulte o painel operacional para detalhes sanitizados." });
+        }});
+      } catch (alertError) {
+        console.warn("[Scheduled] Could not persist public fetch alert", redactError(alertError));
+      }
+    }
+    return res.json({ ok: true, archived, result, fetchFailed, startedAt, finishedAt: new Date().toISOString() });
   } catch (error) {
     console.error("[Scheduled] routine failed", redactError(error));
     return res.status(500).json({ error: "internal_error" });

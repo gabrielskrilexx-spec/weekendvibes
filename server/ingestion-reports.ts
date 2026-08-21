@@ -6,6 +6,7 @@ import { classifyCriticalMetaReason, sendCriticalMetaAlert } from "./meta-alert-
 import { getDb, recordOperationalAlert } from "./db";
 import { buildFreshnessCriticalAlert, buildReconciliationDivergenceAlert, buildStructuredPersistenceMismatchAlert } from "./operational-alert-rules";
 import { InstagramIntegrationFailure, getMetaFailureStatus } from "./instagram-pipeline";
+import { listHeartbeatJobs } from "./_core/heartbeat";
 
 export function isCriticalIngestionFailure(details: unknown) {
   const text = typeof details === "string" ? details : JSON.stringify(details ?? "");
@@ -322,9 +323,57 @@ export function normalizeReportForTransport<T>(payload: T): T {
   })) as T;
 }
 
+export type RoutineScheduleStatus = {
+  routine: "instagram-agenda" | "public-agenda";
+  label: string;
+  sourceKey: "instagram" | "public";
+  enabled: boolean;
+  cronExpression: string | null;
+  timezone: string | null;
+  nextExecutionAt: string | null;
+  lastExecutionAt: string | null;
+  lastAttemptStatus: string | null;
+  lastRunId: number | null;
+  metadataSource: "heartbeat" | "heartbeat-derived" | "unavailable";
+};
+
+export async function listRoutineScheduleStatus(): Promise<RoutineScheduleStatus[]> {
+  const definitions = [
+    { routine: "instagram-agenda" as const, sourceKey: "instagram" as const, label: "Instagram — Agenda da Semana", path: "/api/scheduled/ingest-instagram" },
+    { routine: "public-agenda" as const, sourceKey: "public" as const, label: "Fontes públicas — Agenda", path: "/api/scheduled/ingest-events" },
+  ];
+  const db = await getDb();
+  const latestRuns = db ? await db.select({ id: ingestionRuns.id, routine: ingestionRuns.routine, sourceKey: ingestionRuns.sourceKey, status: ingestionRuns.status, startedAt: ingestionRuns.startedAt, finishedAt: ingestionRuns.finishedAt }).from(ingestionRuns).orderBy(desc(ingestionRuns.startedAt)).limit(100) : [];
+  let jobs: Awaited<ReturnType<typeof listHeartbeatJobs>>["jobs"] = [];
+  let heartbeatAvailable = true;
+  try {
+    jobs = (await listHeartbeatJobs("", { page: 1, pageSize: 100 })).jobs;
+  } catch (error) {
+    heartbeatAvailable = false;
+    console.warn("[Ingestion reports] Could not load Heartbeat schedules:", error instanceof Error ? error.message.slice(0, 180) : "unknown error");
+  }
+  return definitions.map(definition => {
+    const job = jobs.find(item => item.callbackPath === definition.path || item.name.toLowerCase().includes(definition.routine));
+    const run = latestRuns.find(item => item.sourceKey === definition.sourceKey || item.routine === definition.routine);
+    return {
+      routine: definition.routine,
+      label: definition.label,
+      sourceKey: definition.sourceKey,
+      enabled: job ? job.isEnable : false,
+      cronExpression: job?.cronExpression ?? null,
+      timezone: job?.timezone ?? "UTC",
+      nextExecutionAt: job?.nextExecutionAt ?? null,
+      lastExecutionAt: run ? new Date(run.finishedAt ?? run.startedAt).toISOString() : job?.lastExecutedAt ?? null,
+      lastAttemptStatus: run?.status ?? job?.status ?? null,
+      lastRunId: run?.id ?? null,
+      metadataSource: job ? "heartbeat" : heartbeatAvailable ? "heartbeat-derived" : "unavailable",
+    };
+  });
+}
+
 export async function listIngestionReport(size = 20) {
   const db = await getDb();
-  if (!db) return { runs: [], alerts: [], criticalAlerts: [], sourceMetrics: [], freshness: [], timeline: [], reconciliationBySource: [], weeklyTrend: [], weeklySummary: { runs: 0, retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, inconsistentRuns: 0, degradedRuns: 0, rejectedEvents: 0, rejectedPastEvents: 0, rejectedOtherReasons: 0 }, metaStatus: { status: "never" as const, lastSuccessfulSync: null, lastAttempt: null }, filterEvaluatedAt: new Date().toISOString(), pastEventRejectionThreshold: getPastEventRejectionThreshold(), totals: { succeeded: 0, failed: 0, partial: 0, imported: 0 } };
+  if (!db) return { runs: [], alerts: [], criticalAlerts: [], sourceMetrics: [], freshness: [], timeline: [], reconciliationBySource: [], weeklyTrend: [], weeklySummary: { runs: 0, retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, inconsistentRuns: 0, degradedRuns: 0, rejectedEvents: 0, rejectedPastEvents: 0, rejectedOtherReasons: 0 }, metaStatus: { status: "never" as const, lastSuccessfulSync: null, lastAttempt: null }, scheduleStatus: await listRoutineScheduleStatus(), filterEvaluatedAt: new Date().toISOString(), pastEventRejectionThreshold: getPastEventRejectionThreshold(), totals: { succeeded: 0, failed: 0, partial: 0, imported: 0 } };
   const safeSize = Math.min(Math.max(size, 1), 50);
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const runs = await db.select().from(ingestionRuns).orderBy(desc(ingestionRuns.startedAt)).limit(safeSize);
@@ -345,7 +394,7 @@ export async function listIngestionReport(size = 20) {
   const serializableRuns = runs.map(serializeIngestionRunForTest);
   const serializableAlerts = alerts.map(serializeOperationalAlertForTest);
   const criticalAlerts = serializableAlerts.filter(alert => alert.severity === "CRITICAL" || isCriticalIngestionFailure(`${alert.title} ${alert.message}`));
-  return normalizeReportForTransport({ runs: serializableRuns, alerts: serializableAlerts, criticalAlerts, sourceMetrics, freshness, timeline, reconciliationBySource: buildSourceReconciliationForTest(trendRuns), weeklyTrend: buildWeeklyTrend(trendRuns), weeklySummary: buildWeeklyOperationalSummary(trendRuns), metaStatus: buildMetaIntegrationStatusForTest(metaRuns), filterEvaluatedAt: new Date().toISOString(), pastEventRejectionThreshold: getPastEventRejectionThreshold(), totals: { succeeded: Number(totals?.succeeded ?? 0), failed: Number(totals?.failed ?? 0), partial: Number(totals?.partial ?? 0), imported: Number(totals?.imported ?? 0) } });
+  return normalizeReportForTransport({ runs: serializableRuns, alerts: serializableAlerts, criticalAlerts, sourceMetrics, freshness, timeline, reconciliationBySource: buildSourceReconciliationForTest(trendRuns), weeklyTrend: buildWeeklyTrend(trendRuns), weeklySummary: buildWeeklyOperationalSummary(trendRuns), metaStatus: buildMetaIntegrationStatusForTest(metaRuns), scheduleStatus: await listRoutineScheduleStatus(), filterEvaluatedAt: new Date().toISOString(), pastEventRejectionThreshold: getPastEventRejectionThreshold(), totals: { succeeded: Number(totals?.succeeded ?? 0), failed: Number(totals?.failed ?? 0), partial: Number(totals?.partial ?? 0), imported: Number(totals?.imported ?? 0) } });
 }
 
 export function sanitizeReprocessErrorForTest(error: unknown) {
