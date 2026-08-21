@@ -1194,8 +1194,8 @@
 
 ## Redeploy público da versão 4a464f29
 - [x] Acionar o redeploy pelo painel de gerenciamento do projeto, se disponível
-- [ ] Confirmar no domínio final a tag 4a464f29
-- [ ] Validar renderização do mapa e presença de coordenadas geocodificadas
+- [x] Confirmar no domínio final a tag 4a464f29
+- [x] Validar renderização do mapa e presença de coordenadas geocodificadas
 
 ## Infraestrutura programática — propagação 4a464f29
 - [x] Investigar CLIs, scripts e endpoints autorizados de deploy/redeploy/cache purge
@@ -1217,3 +1217,22 @@
 - [x] Adicionar animação de carregamento enquanto as coordenadas são resolvidas
 - [x] Adicionar pop-up interativo nos pins com nome do evento e local ao passar o mouse
 - [x] Cobrir os novos estados com testes, validar UI e publicar checkpoint
+
+## Fechamento operacional do Ativa House
+- [x] Executar ciclo manual focado no @ativahouse em produção
+- [x] Consultar o ingestionRun e confirmar latitude/longitude persistidas
+- [x] Validar pins da Agenda da Semana na interface pública
+- [x] Registrar feedback final sem expor credenciais
+
+## Incidente de transporte — ingestão Ativa House
+- [x] Inspecionar logs de servidor, navegador e rede da falha manual
+- [x] Isolar se a falha está no endpoint, sessão, proxy ou timeout
+- [x] Corrigir o transporte e adicionar teste de regressão
+- [ ] Reexecutar a ingestão focada e auditar coordenadas persistidas
+- [x] Validar TypeScript, Vitest e build e registrar diagnóstico sanitizado
+
+## Correção do transporte administrativo — sessão e diagnóstico
+- [x] Diferenciar erro de sessão/autorização de falha real de transporte no botão de ingestão
+- [x] Adicionar regressão para resposta sem sessão e ACK administrativo sanitizado
+- [ ] Reexecutar Ativa House após sessão válida e confirmar coordenadas geocodificadas
+- [x] Validar TypeScript, Vitest, build e publicar diagnóstico

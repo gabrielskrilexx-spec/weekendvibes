@@ -9,6 +9,11 @@ const reprocessSources = ["public", "instagram"] as const;
 const freshnessCopy = { healthy: { label: "Atualizada", tone: "text-emerald-300", dot: "bg-emerald-300" }, delayed: { label: "Atrasada", tone: "text-yellow-200", dot: "bg-yellow-200" }, critical: { label: "Crítica", tone: "text-red-300", dot: "bg-red-300" }, never: { label: "Nunca sincronizada", tone: "text-zinc-400", dot: "bg-zinc-500" } } as const;
 const severityCopy = { INFO: "border-cyan-300/20 bg-cyan-300/5 text-cyan-100", WARNING: "border-yellow-300/20 bg-yellow-300/5 text-yellow-100", CRITICAL: "border-red-300/30 bg-red-300/10 text-red-100" } as const;
 const adminBuildTag = import.meta.env.VITE_APP_VERSION || "db6cf437";
+const rpcErrorCode = (error: unknown) => {
+  if (!error || typeof error !== "object") return "";
+  const data = (error as { data?: unknown }).data;
+  return data && typeof data === "object" && typeof (data as { code?: unknown }).code === "string" ? (data as { code: string }).code : "";
+};
 const formatAge = (value: string | null | undefined) => value ? new Intl.RelativeTimeFormat("pt-BR", { numeric: "auto" }).format(-Math.round((Date.now() - new Date(value).getTime()) / 86400000), "day") : "sem registro";
 const parseRunCounts = (value: unknown) => { if (typeof value !== "string") return { read: 0, persisted: 0, rejectedPastEvents: 0, rejectedOtherReasons: 0 }; try { const parsed = JSON.parse(value) as Record<string, unknown>; return { read: Number(parsed.read ?? 0), persisted: Number(parsed.persisted ?? parsed.imported ?? 0), rejectedPastEvents: Number(parsed.rejectedPastEvents ?? 0), rejectedOtherReasons: Number(parsed.rejectedOtherReasons ?? 0) }; } catch { return { read: 0, persisted: 0, rejectedPastEvents: 0, rejectedOtherReasons: 0 }; } };
 const qualityForRun = (value: unknown, threshold: number) => { const counts = parseRunCounts(value); const percentage = counts.read > 0 ? counts.rejectedPastEvents / counts.read : 0; return { ...counts, percentage, exceedsThreshold: counts.read > 0 && percentage > threshold }; };
@@ -58,9 +63,16 @@ export default function AdminReportsPanel() {
         sonnerToast.warning("Relatório atualizado", { description: message });
         return;
       }
-      const safeMessage = error.message === "Unable to transform response from server" ? "A chamada administrativa falhou no transporte; nenhum resultado novo foi confirmado. Verifique o relatório e tente novamente." : error.message || "A chamada de ingestão falhou sem uma mensagem do servidor.";
+      const code = rpcErrorCode(error);
+      const safeMessage = code === "UNAUTHORIZED"
+        ? "Sua sessão administrativa expirou ou não foi enviada. Faça login novamente antes de tentar a ingestão."
+        : code === "FORBIDDEN"
+          ? "Sua conta está autenticada, mas não possui permissão administrativa para executar esta rotina."
+          : error.message === "Unable to transform response from server"
+            ? "A chamada administrativa recebeu uma resposta inválida do proxy; nenhum resultado novo foi confirmado. Verifique a sessão e tente novamente."
+            : error.message || "A chamada de ingestão falhou sem uma mensagem do servidor.";
       setReprocessFeedback({ tone: "error", message: `Falha em ${labelForSource(variables.sourceKey)}: ${safeMessage}` });
-      sonnerToast.error("Não foi possível executar a ingestão", { description: `${labelForSource(variables.sourceKey)}: ${safeMessage}` });
+      sonnerToast.error(code === "UNAUTHORIZED" ? "Sessão administrativa necessária" : code === "FORBIDDEN" ? "Permissão administrativa necessária" : "Não foi possível executar a ingestão", { description: `${labelForSource(variables.sourceKey)}: ${safeMessage}` });
     },
   });
   const geocodeNow = trpc.ingestionReports.geocodeNow.useMutation({ onSuccess: () => geocoding.refetch() });

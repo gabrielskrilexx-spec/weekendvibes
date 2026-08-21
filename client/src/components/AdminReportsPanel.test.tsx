@@ -152,6 +152,14 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     expect(mocks.toastError).toHaveBeenCalledWith("Não foi possível executar a ingestão", expect.objectContaining({ description: expect.stringContaining("falha controlada") }));
   });
 
+  it("diferencia sessão administrativa ausente de falha de transporte", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    const error = Object.assign(new Error("FORBIDDEN"), { data: { code: "UNAUTHORIZED" } });
+    await act(async () => { mutationOptions.onError?.(error, { sourceKey: "instagram" }); });
+    expect(mocks.toastError).toHaveBeenCalledWith("Sessão administrativa necessária", expect.objectContaining({ description: expect.stringContaining("sessão administrativa expirou") }));
+  });
+
   it("notifica explicitamente quando o transporte falha sem confirmar um novo run", async () => {
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminReportsPanel />); });
