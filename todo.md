@@ -1245,3 +1245,19 @@
 - [x] Investigar o timeout da implantação e revisar logs de build/deploy
 - [x] Corrigir eventual causa no código, dependências ou configuração que impeça a implantação
 - [x] Validar build, testes e checkpoint implantável após a correção
+
+- [ ] Auditar o worker public-agenda e documentar o contrato de INGESTION_SOURCE_URLS
+- [ ] Listar fontes existentes e identificar URLs públicas faltantes
+- [ ] Configurar INGESTION_SOURCE_URLS após validação das fontes
+- [ ] Executar e auditar uma rodada manual da public-agenda
+
+- [x] Configurar INGESTION_FOCUS_URLS com a página do Laroc Guarujá Réveillon 2027
+- [x] Executar manualmente a rotina public-agenda com a fonte focada
+- [x] Auditar o ingestionRun, evento persistido e geocodificação da fonte Ingresse — run concluído sem persistência porque a página entregou apenas shell/loading sem conteúdo do evento
+- [x] Isolar os testes de configuração para não depender da variável focada persistida no ambiente
+
+- [x] Investigar JSON de hidratação e endpoints públicos usados pela página do Ingresse
+- [x] Implementar extração dinâmica do evento Ingresse com fallback seguro
+- [x] Adicionar regressões para payload dinâmico e validar TypeScript/Vitest/build
+- [x] Reexecutar a fonte focada do Laroc Guarujá e confirmar persistência/geocodificação
+- [x] Publicar checkpoint da evolução do adaptador Ingresse

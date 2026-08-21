@@ -32,6 +32,8 @@ export const TARGET_VENUES = [
 
 const normalizeSlug = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 const normalizeText = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const stripHtml = (value: string) => value.replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
+const INGRESSE_SITE_API = "https://api-site.ingresse.com/events";
 
 export function getConfiguredSourceUrls() {
   const focused = process.env.INGESTION_FOCUS_URLS;
@@ -76,7 +78,71 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
   return Array.from(links).slice(0, 40);
 }
 
+function isIngresseEventUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    const path = parsed.pathname.replace(/\/+$/, "");
+    return parsed.hostname.endsWith("ingresse.com") && path.length > 1 && !["/login", "/register", "/search"].includes(path);
+  } catch {
+    return false;
+  }
+}
+
+function getIngresseSlug(url: string) {
+  const parsed = new URL(url);
+  const segments = parsed.pathname.split("/").filter(Boolean);
+  return decodeURIComponent(segments.at(-1) ?? "");
+}
+
+export async function fetchIngresseEventApi(url: string) {
+  const slug = getIngresseSlug(url);
+  if (!slug) throw new Error(`URL Ingresse sem slug de evento: ${url}`);
+  const response = await fetch(`${INGRESSE_SITE_API}/${encodeURIComponent(slug)}`, {
+    headers: { accept: "application/json", "user-agent": "WeekendVibesBot/1.0 (+public-event-ingestion)" },
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!response.ok) throw new Error(`API pública do Ingresse respondeu ${response.status}`);
+  const payload = await response.json() as Record<string, unknown>;
+  const place = payload.place && typeof payload.place === "object" ? payload.place as Record<string, unknown> : {};
+  const session = Array.isArray(payload.sessions) && payload.sessions[0] && typeof payload.sessions[0] === "object" ? payload.sessions[0] as Record<string, unknown> : {};
+  const location = place.location && typeof place.location === "object" ? place.location as Record<string, unknown> : {};
+  const title = typeof payload.title === "string" ? payload.title : "";
+  const description = typeof payload.description === "string" ? stripHtml(payload.description) : "";
+  const placeName = typeof place.name === "string" ? place.name : "";
+  const city = typeof place.city === "string" ? place.city : "";
+  const address = [place.street, city, place.state].filter((value): value is string => typeof value === "string" && value.trim().length > 0).join(", ");
+  const dateTime = typeof session.dateTime === "string" ? session.dateTime : "";
+  const poster = payload.poster && typeof payload.poster === "object" ? payload.poster as Record<string, unknown> : {};
+  const imageUrl = [poster.large, poster.medium, poster.small].find((value): value is string => typeof value === "string" && value.startsWith("http")) ?? "";
+  const latitude = typeof location.lat === "number" ? String(location.lat) : "";
+  const longitude = typeof location.lon === "number" ? String(location.lon) : "";
+  const text = [title, description, placeName, address, city, dateTime].filter(Boolean).join(" ");
+  if (!title || !dateTime || !placeName) throw new Error(`API pública do Ingresse sem dados essenciais para ${url}`);
+  return {
+    url,
+    html: "",
+    text: text.slice(0, 16_000),
+    imageUrl,
+    structured: {
+      title,
+      summary: description,
+      eventDate: dateTime,
+      locationName: placeName,
+      address,
+      city,
+      category: "balada",
+      genre: "house_eletronica",
+      priceCents: 0,
+      sourceUrl: url,
+      imageUrl,
+      latitude,
+      longitude,
+    },
+  };
+}
+
 async function fetchPublicPage(url: string) {
+  if (isIngresseEventUrl(url)) return fetchIngresseEventApi(url);
   const response = await fetch(url, {
     headers: {
       "user-agent": "WeekendVibesBot/1.0 (+public-event-ingestion)",
@@ -128,12 +194,14 @@ export async function runIngestionPipeline() {
     return { imported: 0, persisted: 0, read: candidateUrls.length, filtered: candidateUrls.length, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: false, discovered: candidateUrls.length, matchedSources: 0, filteredByReason, filteredSourceUrls, reason: "Nenhum evento dos locais-alvo encontrado nas fontes públicas" };
   }
 
+  const apiStructuredEvents = sourcePages
+    .flatMap(page => "structured" in page && page.structured ? [page.structured] : []);
   const rawText = sourcePages
     .map(page => `SOURCE_URL: ${page.url}\nIMAGE_URL: ${page.imageUrl}\nCONTENT: ${page.text}`)
     .join("\n\n")
     .slice(0, 48_000);
 
-  const structured = await invokeLLM({
+  const structured = apiStructuredEvents.length > 0 ? { choices: [{ message: { content: JSON.stringify({ events: apiStructuredEvents }) } }] } : await invokeLLM({
     model: "gpt-4o-mini",
     messages: [
       { role: "system", content: "Extraia somente eventos públicos de música, shows ou baladas dos locais Valluns/Vallum Garden, Lucky Scope, Verilonguinho, Moby House/Moby Dick, Curvão Surf House, Meu Lugar, Laroc Club Guarujá ou Guarujá Golf Club, localizados exclusivamente em Santos ou Guarujá. Ignore eventos passados, cidades diferentes, locais não-alvo e eventos de gastronomia, esporte, teatro ou exposição sem música. Retorne somente JSON no schema. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Se o gênero não puder ser inferido com segurança, descarte o evento. Use o SOURCE_URL correspondente como sourceUrl e IMAGE_URL quando houver." },

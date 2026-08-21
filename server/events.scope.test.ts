@@ -32,12 +32,18 @@ describe("event scope", () => {
 
   it("imports only Santos or Guarujá events with musical categories", async () => {
     const previous = process.env.INGESTION_SOURCE_URL;
+    const focused = process.env.INGESTION_FOCUS_URLS;
+    delete process.env.INGESTION_FOCUS_URLS;
     process.env.INGESTION_SOURCE_URL = "https://source.example/events";
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, text: async () => "Vallum Garden Santos" }));
-    await runIngestionPipeline();
-    expect(saveEvent).toHaveBeenCalledTimes(1);
-    expect(saveEvent).toHaveBeenCalledWith(expect.objectContaining({ city: "Santos", category: "show", genre: "funk" }));
-    if (previous === undefined) delete process.env.INGESTION_SOURCE_URL; else process.env.INGESTION_SOURCE_URL = previous;
-    vi.unstubAllGlobals();
+    try {
+      await runIngestionPipeline();
+      expect(saveEvent).toHaveBeenCalledTimes(1);
+      expect(saveEvent).toHaveBeenCalledWith(expect.objectContaining({ city: "Santos", category: "show", genre: "funk" }));
+    } finally {
+      if (previous === undefined) delete process.env.INGESTION_SOURCE_URL; else process.env.INGESTION_SOURCE_URL = previous;
+      if (focused === undefined) delete process.env.INGESTION_FOCUS_URLS; else process.env.INGESTION_FOCUS_URLS = focused;
+      vi.unstubAllGlobals();
+    }
   });
 });
