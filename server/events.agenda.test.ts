@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { INSTAGRAM_AGENDA_SOURCE_TYPE, isRecentInstagramAgendaEvent } from "./db";
+import { INSTAGRAM_AGENDA_SOURCE_TYPE, isRecentInstagramAgendaEvent, saoPauloDayStartUtc } from "./db";
+import { vi } from "vitest";
 
 function collectQueryText(value: unknown, seen = new WeakSet<object>()): string {
   if (typeof value === "string") return value;
@@ -73,6 +74,25 @@ describe("events.recentInstagramAgenda", () => {
     expect(queryText).toMatch(/event_date|eventDate/i);
     expect(queryText).toContain("Santos");
     expect(queryText).toContain("Guarujá");
+  });
+
+  it("corta eventos antigos exatamente na virada do dia civil de São Paulo", () => {
+    vi.useFakeTimers();
+    const beforeMidnight = new Date("2026-08-21T02:59:59.000Z");
+    const afterMidnight = new Date("2026-08-21T03:00:01.000Z");
+    const oldEvent = new Date("2026-08-21T02:59:59.999Z");
+    const currentEvent = new Date("2026-08-21T03:00:00.000Z");
+
+    vi.setSystemTime(beforeMidnight);
+    expect(oldEvent >= saoPauloDayStartUtc()).toBe(true);
+    expect(currentEvent >= saoPauloDayStartUtc()).toBe(true);
+
+    vi.setSystemTime(afterMidnight);
+    const newDayStart = saoPauloDayStartUtc();
+    expect(newDayStart.toISOString()).toBe("2026-08-21T03:00:00.000Z");
+    expect(oldEvent >= newDayStart).toBe(false);
+    expect(currentEvent >= newDayStart).toBe(true);
+    vi.useRealTimers();
   });
 
   it("filtra semanticamente sourceType diferente e mantém createdAt antigo quando updatedAt é recente", () => {

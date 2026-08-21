@@ -1157,3 +1157,9 @@
 - [x] Executar regressão focada e confirmar ingestão/auditoria após a correção de datas
 - [x] Corrigir e validar o gate dinâmico de datas sem datas fixas no prompt ou na persistência
 
+
+## Operação em tempo real — virada de dia e avaliação do filtro
+- [x] Criar teste de integração da Agenda na virada 23:59:59→00:00:01 em America/Sao_Paulo
+- [x] Exibir no cabeçalho admin o último horário de avaliação do filtro dinâmico
+- [x] Destacar em ingestionRuns a contagem de eventos rejeitados por data passada
+- [x] Executar Vitest completo, TypeScript, build e publicar checkpoint

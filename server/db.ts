@@ -244,20 +244,23 @@ export async function listRecentInstagramAgendaEvents(options: { lookbackDays?: 
   const lookbackDays = Math.min(Math.max(options.lookbackDays ?? 5, 1), 14);
   const size = Math.min(Math.max(options.size ?? 8, 1), 12);
   const cutoff = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
-  const todayKey = saoPauloDateKey();
-  const saoPauloDayStartUtc = new Date(`${todayKey}T00:00:00-03:00`);
+  const dayStartUtc = saoPauloDayStartUtc();
   return db.select().from(events).where(and(
     eq(events.isPublished, 1),
     eq(events.isArchived, 0),
     sql`${events.sourceType} IN (${sql.join(WEEKLY_AGENDA_SOURCE_TYPES.map(sourceType => sql`${sourceType}`), sql`, `)})`,
     sql`${events.updatedAt} >= ${cutoff}`,
-    gte(events.eventDate, saoPauloDayStartUtc),
+    gte(events.eventDate, dayStartUtc),
     sql`${events.city} IN (${sql.join(ALLOWED_CITIES.map(city => sql`${city}`), sql`, `)})`,
   )).orderBy(asc(events.eventDate), desc(events.createdAt)).limit(size);
 }
 
-function saoPauloDateKey(date = new Date()) {
+export function saoPauloDateKey(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+}
+
+export function saoPauloDayStartUtc(date = new Date()) {
+  return new Date(`${saoPauloDateKey(date)}T00:00:00-03:00`);
 }
 
 export async function listTodayEvents(options: { size?: number } = {}) {
@@ -267,9 +270,8 @@ export async function listTodayEvents(options: { size?: number } = {}) {
 export async function listEvents(filters: { day?: string; date?: string; startDate?: string; endDate?: string; timeFrom?: string; timeTo?: string; city?: string; category?: string; genre?: string; venue?: string; neighborhood?: string; minPriceCents?: number; maxPriceCents?: number; page?: number; size?: number } = {}) {
   const db = await getDb();
   if (!db) return [];
-  const todayKey = saoPauloDateKey();
-  const saoPauloDayStartUtc = new Date(`${todayKey}T00:00:00-03:00`);
-  const conditions = [eq(events.isPublished, 1), eq(events.isArchived, 0), gte(events.eventDate, saoPauloDayStartUtc), sql`${events.city} IN (${sql.join(ALLOWED_CITIES.map(city => sql`${city}`), sql`, `)})`];
+  const dayStartUtc = saoPauloDayStartUtc();
+  const conditions = [eq(events.isPublished, 1), eq(events.isArchived, 0), gte(events.eventDate, dayStartUtc), sql`${events.city} IN (${sql.join(ALLOWED_CITIES.map(city => sql`${city}`), sql`, `)})`];
   if (filters.city && filters.city !== "Todas" && ALLOWED_CITIES.includes(filters.city as typeof ALLOWED_CITIES[number])) conditions.push(eq(events.city, filters.city));
   if (filters.category && filters.category !== "Todas") conditions.push(eq(events.category, filters.category as Event["category"]));
   if (filters.genre) conditions.push(eq(events.genre, filters.genre));

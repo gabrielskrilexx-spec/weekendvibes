@@ -22,9 +22,10 @@ let latestReportData: typeof reportData;
 const reportData = {
   totals: { succeeded: 1, failed: 0, partial: 0, imported: 2 },
   metaStatus: { status: "active", lastSuccessfulSync: "2026-08-19T13:00:00.000Z" },
+  filterEvaluatedAt: "2026-08-21T03:00:01.000Z",
   weeklyTrend: [],
   freshness: [],
-  weeklySummary: { retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, degradedRuns: 0, inconsistentRuns: 0 },
+  weeklySummary: { retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, degradedRuns: 0, inconsistentRuns: 0, rejectedEvents: 3, rejectedPastEvents: 2, rejectedOtherReasons: 1 },
   reconciliationBySource: [],
   sourceMetrics: [],
   timeline: [],
@@ -65,6 +66,22 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     const versionTag = tree!.root.findByProps({ "data-testid": "admin-build-version" });
     expect(String(versionTag.props.children)).toContain("Versão do painel:");
     expect(JSON.stringify(tree!.toJSON())).toContain("db6cf437");
+  });
+
+  it("exibe o horário da última avaliação do filtro em São Paulo", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    const evaluatedAt = tree!.root.findByProps({ "data-testid": "filter-evaluated-at" });
+    expect(JSON.stringify(tree!.toJSON())).toContain("21/08/2026");
+    expect(JSON.stringify(tree!.toJSON())).toContain("00:00");
+  });
+
+  it("destaca rejeições por data passada separadas das demais", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    const rejectionCard = tree!.root.findByProps({ "data-testid": "past-event-rejections" });
+    expect(rejectionCard.findAllByType("p").some(node => node.children.includes("2"))).toBe(true);
+    expect(JSON.stringify(tree!.toJSON())).toContain("Outras rejeições");
   });
 
   it("exibe a ação de limpeza de cache do painel", async () => {

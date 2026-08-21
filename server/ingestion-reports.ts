@@ -179,7 +179,7 @@ export function serializeOperationalAlertForTest(alert: {
 }
 
 function buildWeeklyOperationalSummary(runs: Array<{ details: unknown }>) {
-  const summary = { runs: runs.length, retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, inconsistentRuns: 0, degradedRuns: 0 };
+  const summary = { runs: runs.length, retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, inconsistentRuns: 0, degradedRuns: 0, rejectedEvents: 0, rejectedPastEvents: 0, rejectedOtherReasons: 0 };
   for (const run of runs) {
     const details = parseDetails(run.details);
     summary.retries += findMetric(details, "retries");
@@ -189,6 +189,10 @@ function buildWeeklyOperationalSummary(runs: Array<{ details: unknown }>) {
     summary.outOfBoundsCoordinates += findMetric(details, "outOfBoundsCoordinates");
     summary.inconsistentRuns += findMetric(details, "consistent") === 0 && findMetric(details, "read") > 0 ? 1 : 0;
     summary.degradedRuns += findMetric(details, "degraded") > 0 ? 1 : 0;
+    const rejection = rejectionMetrics(details);
+    summary.rejectedEvents += rejection.rejectedEvents;
+    summary.rejectedPastEvents += rejection.rejectedPastEvents;
+    summary.rejectedOtherReasons += rejection.rejectedOtherReasons;
   }
   return summary;
 }
@@ -205,7 +209,14 @@ export async function startIngestionRun(input: { routine: string; sourceKey?: st
   }
 }
 
-export type IngestionCounts = { read: number; filtered: number; persisted: number; [key: string]: number };
+export type IngestionCounts = { read: number; filtered: number; persisted: number; rejectedEvents: number; rejectedPastEvents: number; rejectedOtherReasons: number; [key: string]: number };
+
+function rejectionMetrics(details: unknown) {
+  const reasons = findRecord(details, "rejectionReasons");
+  const rejectedPastEvents = Math.max(0, Number(reasons.past_event ?? 0));
+  const rejectedEvents = Math.max(rejectedPastEvents, Object.values(reasons).reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0));
+  return { rejectedEvents, rejectedPastEvents, rejectedOtherReasons: Math.max(0, rejectedEvents - rejectedPastEvents) };
+}
 
 export function normalizeIngestionCountsForTest(input: { counts?: Partial<IngestionCounts>; details?: unknown; importedCount?: number }): IngestionCounts {
   return normalizeCounts(input);
@@ -219,7 +230,8 @@ function normalizeCounts(input: { counts?: Partial<IngestionCounts>; details?: u
   const structured = Number(input.counts?.structured ?? nested.structuredEvents ?? nested.structured ?? 0);
   const persisted = Number(input.counts?.persisted ?? nested.imported ?? input.importedCount ?? 0);
   const filtered = Number(input.counts?.filtered ?? Math.max(0, read - approved));
-  return { ...input.counts, read, filtered, persisted, approved, structured };
+  const rejection = rejectionMetrics(input.details);
+  return { ...input.counts, read, filtered, persisted, approved, structured, rejectedEvents: Number(input.counts?.rejectedEvents ?? rejection.rejectedEvents), rejectedPastEvents: Number(input.counts?.rejectedPastEvents ?? rejection.rejectedPastEvents), rejectedOtherReasons: Number(input.counts?.rejectedOtherReasons ?? rejection.rejectedOtherReasons) };
 }
 
 export async function finishIngestionRun(id: number | undefined, input: { status: "succeeded" | "failed" | "partial"; importedCount?: number; failedCount?: number; details?: unknown; routine?: string; sourceKey?: string; durationMs?: number; httpStatus?: number; counts?: Partial<IngestionCounts> }) {
@@ -305,7 +317,7 @@ export function normalizeReportForTransport<T>(payload: T): T {
 
 export async function listIngestionReport(size = 20) {
   const db = await getDb();
-  if (!db) return { runs: [], alerts: [], criticalAlerts: [], sourceMetrics: [], freshness: [], timeline: [], reconciliationBySource: [], weeklyTrend: [], weeklySummary: { runs: 0, retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, inconsistentRuns: 0, degradedRuns: 0 }, metaStatus: { status: "never" as const, lastSuccessfulSync: null, lastAttempt: null }, totals: { succeeded: 0, failed: 0, partial: 0, imported: 0 } };
+  if (!db) return { runs: [], alerts: [], criticalAlerts: [], sourceMetrics: [], freshness: [], timeline: [], reconciliationBySource: [], weeklyTrend: [], weeklySummary: { runs: 0, retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, inconsistentRuns: 0, degradedRuns: 0, rejectedEvents: 0, rejectedPastEvents: 0, rejectedOtherReasons: 0 }, metaStatus: { status: "never" as const, lastSuccessfulSync: null, lastAttempt: null }, filterEvaluatedAt: new Date().toISOString(), totals: { succeeded: 0, failed: 0, partial: 0, imported: 0 } };
   const safeSize = Math.min(Math.max(size, 1), 50);
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const runs = await db.select().from(ingestionRuns).orderBy(desc(ingestionRuns.startedAt)).limit(safeSize);
@@ -326,7 +338,7 @@ export async function listIngestionReport(size = 20) {
   const serializableRuns = runs.map(serializeIngestionRunForTest);
   const serializableAlerts = alerts.map(serializeOperationalAlertForTest);
   const criticalAlerts = serializableAlerts.filter(alert => alert.severity === "CRITICAL" || isCriticalIngestionFailure(`${alert.title} ${alert.message}`));
-  return normalizeReportForTransport({ runs: serializableRuns, alerts: serializableAlerts, criticalAlerts, sourceMetrics, freshness, timeline, reconciliationBySource: buildSourceReconciliationForTest(trendRuns), weeklyTrend: buildWeeklyTrend(trendRuns), weeklySummary: buildWeeklyOperationalSummary(trendRuns), metaStatus: buildMetaIntegrationStatusForTest(metaRuns), totals: { succeeded: Number(totals?.succeeded ?? 0), failed: Number(totals?.failed ?? 0), partial: Number(totals?.partial ?? 0), imported: Number(totals?.imported ?? 0) } });
+  return normalizeReportForTransport({ runs: serializableRuns, alerts: serializableAlerts, criticalAlerts, sourceMetrics, freshness, timeline, reconciliationBySource: buildSourceReconciliationForTest(trendRuns), weeklyTrend: buildWeeklyTrend(trendRuns), weeklySummary: buildWeeklyOperationalSummary(trendRuns), metaStatus: buildMetaIntegrationStatusForTest(metaRuns), filterEvaluatedAt: new Date().toISOString(), totals: { succeeded: Number(totals?.succeeded ?? 0), failed: Number(totals?.failed ?? 0), partial: Number(totals?.partial ?? 0), imported: Number(totals?.imported ?? 0) } });
 }
 
 export function sanitizeReprocessErrorForTest(error: unknown) {
