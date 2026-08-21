@@ -94,11 +94,11 @@ function saoPauloDayKey(date: Date) {
 
 function buildWeeklyTrend(runs: Array<{ routine: string; sourceKey: string | null; status: string; importedCount: number; startedAt: Date; details: unknown }>) {
   const today = new Date();
-  const buckets = new Map<string, { date: string; label: string; runs: number; succeeded: number; failed: number; partial: number; receivedPosts: number; approvedPosts: number; structuredEvents: number; imported: number; zeroMediaRuns: number }>();
+  const buckets = new Map<string, { date: string; label: string; runs: number; succeeded: number; failed: number; partial: number; receivedPosts: number; approvedPosts: number; structuredEvents: number; imported: number; persisted: number; rejectedPastEvents: number; zeroMediaRuns: number }>();
   for (let offset = 6; offset >= 0; offset -= 1) {
     const date = new Date(today.getTime() - offset * 24 * 60 * 60 * 1000);
     const key = saoPauloDayKey(date);
-    buckets.set(key, { date: key, label: new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" }).format(date), runs: 0, succeeded: 0, failed: 0, partial: 0, receivedPosts: 0, approvedPosts: 0, structuredEvents: 0, imported: 0, zeroMediaRuns: 0 });
+    buckets.set(key, { date: key, label: new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" }).format(date), runs: 0, succeeded: 0, failed: 0, partial: 0, receivedPosts: 0, approvedPosts: 0, structuredEvents: 0, imported: 0, persisted: 0, rejectedPastEvents: 0, zeroMediaRuns: 0 });
   }
   for (const run of runs) {
     const bucket = buckets.get(saoPauloDayKey(new Date(run.startedAt)));
@@ -109,6 +109,8 @@ function buildWeeklyTrend(runs: Array<{ routine: string; sourceKey: string | nul
     bucket.failed += run.status === "failed" ? 1 : 0;
     bucket.partial += run.status === "partial" ? 1 : 0;
     bucket.imported += Number(run.importedCount ?? 0);
+    bucket.persisted += findMetric(details, "persisted") || Number(run.importedCount ?? 0);
+    bucket.rejectedPastEvents += rejectionMetrics(details).rejectedPastEvents;
     bucket.receivedPosts += findMetric(details, "receivedPosts");
     bucket.approvedPosts += findMetric(details, "approvedPosts");
     bucket.structuredEvents += findMetric(details, "structuredEvents");
@@ -417,6 +419,13 @@ export async function reprocessIngestionSource(sourceKey: "public" | "instagram"
 
 export function buildWeeklyTrendForTest(runs: Array<{ routine: string; sourceKey: string | null; status: string; importedCount: number; startedAt: Date; details: unknown }>) {
   return buildWeeklyTrend(runs);
+}
+
+export function getPastEventRejectionQualityForTest(input: { read: number; rejectedPastEvents: number }, threshold = 0.5) {
+  const read = Math.max(0, Number(input.read) || 0);
+  const rejectedPastEvents = Math.max(0, Number(input.rejectedPastEvents) || 0);
+  const percentage = read === 0 ? 0 : rejectedPastEvents / read;
+  return { read, rejectedPastEvents, percentage, exceedsThreshold: read > 0 && percentage > threshold };
 }
 
 export function isZeroMediaMetaRunForTest(run: { routine: string; sourceKey: string | null }, details: unknown) {

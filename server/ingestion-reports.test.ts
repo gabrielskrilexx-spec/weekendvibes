@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, buildWeeklyTrendForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, buildWeeklyTrendForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest } from "./ingestion-reports";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
 import { sanitizeAgendaStepErrorForTest } from "./agenda-routine";
 
@@ -113,7 +113,15 @@ describe("weekly ingestion trend and Meta zero-media signal", () => {
     expect(today.approvedPosts).toBe(2);
     expect(today.structuredEvents).toBe(2);
     expect(today.imported).toBe(2);
+    expect(today.persisted).toBe(2);
+    expect(today.rejectedPastEvents).toBe(0);
     expect(today.zeroMediaRuns).toBe(1);
+  });
+
+  it("separates the 50% quality threshold from ordinary cycles", () => {
+    expect(getPastEventRejectionQualityForTest({ read: 10, rejectedPastEvents: 5 })).toMatchObject({ percentage: 0.5, exceedsThreshold: false });
+    expect(getPastEventRejectionQualityForTest({ read: 10, rejectedPastEvents: 6 })).toMatchObject({ percentage: 0.6, exceedsThreshold: true });
+    expect(getPastEventRejectionQualityForTest({ read: 0, rejectedPastEvents: 4 })).toMatchObject({ percentage: 0, exceedsThreshold: false });
   });
 });
 

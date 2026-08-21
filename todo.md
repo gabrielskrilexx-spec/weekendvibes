@@ -1163,3 +1163,9 @@
 - [x] Exibir no cabeçalho admin o último horário de avaliação do filtro dinâmico
 - [x] Destacar em ingestionRuns a contagem de eventos rejeitados por data passada
 - [x] Executar Vitest completo, TypeScript, build e publicar checkpoint
+
+## Qualidade operacional e analytics — alerta de datas e série temporal
+- [x] Alertar visualmente quando rejeições por data passada excederem 50% das mídias lidas em um ciclo
+- [x] Expandir o gráfico semanal com mídias lidas, eventos persistidos e rejeitados por data passada
+- [x] Confirmar e documentar a estrutura de latitude/longitude dos eventos para o próximo mapa
+- [x] Validar UI, Vitest, TypeScript e build e publicar checkpoint

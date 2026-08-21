@@ -84,6 +84,24 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     expect(JSON.stringify(tree!.toJSON())).toContain("Outras rejeições");
   });
 
+  it("exibe alerta quando um ciclo supera 50% de rejeições por data passada", async () => {
+    latestReportData = { ...reportData, runs: [{ id: 77, sourceKey: "instagram", routine: "instagram-agenda", status: "succeeded", importedCount: 1, counts: JSON.stringify({ read: 10, persisted: 1, rejectedPastEvents: 6 }) }] } as typeof reportData;
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    const alert = tree!.root.findByProps({ "data-testid": "past-event-quality-alert" });
+    expect(JSON.stringify(tree!.toJSON())).toContain("ultrapassou 50%");
+    expect(JSON.stringify(tree!.toJSON())).toContain("#77 (60%)");
+  });
+
+  it("renderiza a série semanal de lidas, persistidos e rejeitados", async () => {
+    latestReportData = { ...reportData, weeklyTrend: [{ date: "2026-08-21", label: "21/08", runs: 1, receivedPosts: 10, persisted: 3, rejectedPastEvents: 6, approvedPosts: 4, structuredEvents: 3, imported: 3, zeroMediaRuns: 0 }] } as typeof reportData;
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    expect(tree!.root.findByProps({ "aria-label": "Gráfico semanal de ingestão" })).toBeDefined();
+    expect(JSON.stringify(tree!.toJSON())).toContain("Mídias lidas:");
+    expect(JSON.stringify(tree!.toJSON())).toContain("Rejeitados por data passada:");
+  });
+
   it("exibe a ação de limpeza de cache do painel", async () => {
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminReportsPanel />); });
