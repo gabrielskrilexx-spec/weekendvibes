@@ -1241,3 +1241,7 @@
 - [x] Corrigir o handler manual para responder com erro tratado, registrar trigger manual e nunca quebrar o transporte
 - [x] Adicionar regressões Vitest para sucesso, exceção e persistência do ingestionRun manual
 - [x] Validar TypeScript, Vitest, build e checkpoint da correção
+
+- [x] Investigar o timeout da implantação e revisar logs de build/deploy
+- [x] Corrigir eventual causa no código, dependências ou configuração que impeça a implantação
+- [x] Validar build, testes e checkpoint implantável após a correção
