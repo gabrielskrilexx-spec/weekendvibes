@@ -144,6 +144,14 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     expect(mocks.toastWarning).toHaveBeenCalledWith("Ingestão sem novos eventos", expect.objectContaining({ description: expect.stringContaining("modo degradado da Meta") }));
   });
 
+  it("informa quando a ingestão Instagram foi aceita em segundo plano", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    await act(async () => { await mutationOptions.onSuccess?.({ accepted: true }, { sourceKey: "instagram" }); });
+    expect(mocks.toastSuccess).toHaveBeenCalledWith("Ingestão iniciada", expect.objectContaining({ description: expect.stringContaining("iniciada em segundo plano") }));
+    expect(mocks.reportRefetch).toHaveBeenCalledTimes(1);
+  });
+
   it("mantém o erro sanitizado e atualiza os relatórios", async () => {
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminReportsPanel />); });

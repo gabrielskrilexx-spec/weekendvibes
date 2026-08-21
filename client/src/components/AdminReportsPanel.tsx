@@ -31,6 +31,14 @@ export default function AdminReportsPanel() {
   const geocoding = trpc.ingestionReports.geocoding.useQuery(undefined, { refetchInterval: 30_000 });
   const reprocess = trpc.ingestionReports.reprocess.useMutation({
     onSuccess: async (_ack, variables) => {
+      const ack = _ack as unknown as { accepted?: boolean } | undefined;
+      if (ack?.accepted === true && variables.sourceKey === "instagram") {
+        const message = "A ingestão do Instagram foi iniciada em segundo plano; o ingestionRun será atualizado quando o ciclo terminar.";
+        setReprocessFeedback({ tone: "success", message });
+        sonnerToast.success("Ingestão iniciada", { description: message });
+        void report.refetch({ throwOnError: false });
+        return;
+      }
       let refreshedData: unknown = report.data;
       try {
         const refreshed = await report.refetch({ throwOnError: false });

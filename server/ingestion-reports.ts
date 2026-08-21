@@ -377,6 +377,7 @@ export function normalizeManualReprocessResultForTest(input: unknown) {
       duplicates: Number.isFinite(Number(counts.duplicates)) ? Number(counts.duplicates) : 0,
     },
     degraded: value.degraded === true,
+    accepted: value.accepted === true,
   } as const;
 }
 
@@ -388,16 +389,20 @@ export async function reprocessIngestionSource(sourceKey: "public" | "instagram"
     if (running) throw new Error("Essa fonte já está em processamento");
     if (sourceKey === "instagram") {
       const { runInstagramAgendaStep } = await import("./agenda-routine");
-      const result = await runInstagramAgendaStep();
-      const pipeline = (result as { result?: Record<string, unknown> }).result ?? {};
-      const imported = Number(pipeline.imported ?? 0);
-      const counts = {
-        read: Number(pipeline.read ?? pipeline.receivedPosts ?? 0),
-        filtered: Number(pipeline.filtered ?? 0),
-        persisted: Number(pipeline.persisted ?? imported),
-        duplicates: Number(pipeline.duplicates ?? 0),
-      };
-      return normalizeManualReprocessResultForTest({ ok: true, sourceKey: "instagram", routine: "instagram-agenda", imported, counts, degraded: pipeline.degraded === true });
+      // A rotina Instagram pode envolver Meta, OpenAI e geocodificação e exceder
+      // o timeout da edge. O runInstagramAgendaStep já cria/finaliza seu próprio
+      // ingestionRun; retornamos ACK sanitizado imediatamente e deixamos a rotina
+      // rastreada continuar em segundo plano.
+      void runInstagramAgendaStep().catch(() => undefined);
+      return normalizeManualReprocessResultForTest({
+        ok: true,
+        sourceKey: "instagram",
+        routine: "instagram-agenda",
+        imported: 0,
+        counts: { read: 0, filtered: 0, persisted: 0, duplicates: 0 },
+        degraded: false,
+        accepted: true,
+      });
     }
     runId = await startIngestionRun({ routine: "manual-reprocess", sourceKey });
     const { runPublicAgendaStep } = await import("./agenda-routine");

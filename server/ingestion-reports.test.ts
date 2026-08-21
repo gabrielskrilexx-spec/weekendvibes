@@ -38,8 +38,12 @@ describe("manual reprocess error transport", () => {
 
   it("normalizes the manual Instagram result to JSON-safe primitives", () => {
     const normalized = normalizeManualReprocessResultForTest({ ok: true, sourceKey: "instagram", routine: "instagram-agenda", imported: BigInt(2), counts: { read: BigInt(4), filtered: 2, persisted: 2, duplicates: 1 }, degraded: true, unsafe: new Error("hidden") });
-    expect(normalized).toEqual({ ok: true, sourceKey: "instagram", routine: "instagram-agenda", imported: 2, counts: { read: 4, filtered: 2, persisted: 2, duplicates: 1 }, degraded: true });
+    expect(normalized).toEqual({ ok: true, sourceKey: "instagram", routine: "instagram-agenda", imported: 2, counts: { read: 4, filtered: 2, persisted: 2, duplicates: 1 }, degraded: true, accepted: false });
     expect(() => JSON.stringify(normalized)).not.toThrow();
+  });
+
+  it("marks an Instagram reprocess ACK as accepted without inventing final counters", () => {
+    expect(normalizeManualReprocessResultForTest({ ok: true, sourceKey: "instagram", routine: "instagram-agenda", accepted: true, counts: { read: 0, filtered: 0, persisted: 0, duplicates: 0 } })).toMatchObject({ ok: true, routine: "instagram-agenda", accepted: true, counts: { read: 0, filtered: 0, persisted: 0, duplicates: 0 } });
   });
 
   it("builds a transport-safe tRPC error without the upstream cause", () => {
