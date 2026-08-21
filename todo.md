@@ -1176,7 +1176,7 @@
 - [x] Persistir latitude/longitude geocodificadas com evento e manter fallback seguro
 - [x] Exibir mapa com pins dos eventos atuais/futuros que possuem coordenadas válidas
 - [x] Renovar sessão e validar visualmente o painel administrativo
-- [ ] Executar ciclo focado do Ativa House e conferir coordenadas no ingestionRuns/banco
+- [x] Executar ciclo focado do Ativa House e conferir coordenadas no ingestionRuns/banco
 - [x] Validar testes, TypeScript, build e publicar checkpoint
 
 ## Threshold configurável e mapa da Agenda — entrega atual
@@ -1228,13 +1228,13 @@
 - [x] Inspecionar logs de servidor, navegador e rede da falha manual
 - [x] Isolar se a falha está no endpoint, sessão, proxy ou timeout
 - [x] Corrigir o transporte e adicionar teste de regressão
-- [ ] Reexecutar a ingestão focada e auditar coordenadas persistidas
+- [x] Reexecutar a ingestão focada e auditar coordenadas persistidas
 - [x] Validar TypeScript, Vitest e build e registrar diagnóstico sanitizado
 
 ## Correção do transporte administrativo — sessão e diagnóstico
 - [x] Diferenciar erro de sessão/autorização de falha real de transporte no botão de ingestão
 - [x] Adicionar regressão para resposta sem sessão e ACK administrativo sanitizado
-- [ ] Reexecutar Ativa House após sessão válida e confirmar coordenadas geocodificadas
+- [x] Reexecutar Ativa House após sessão válida e confirmar coordenadas geocodificadas
 - [x] Validar TypeScript, Vitest, build e publicar diagnóstico
 
 - [x] Investigar falha de transporte do botão Forçar Ingestão (Instagram) nos logs e confirmar a rota efetiva
