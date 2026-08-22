@@ -34,5 +34,8 @@ describe("EventCard interaction", () => {
     expect(markup).toContain("focus-within:ring-2");
     expect(markup).toContain("motion-reduce:transition-none");
     expect(markup).toContain('href="/eventos/rolê-santos"');
+    expect(markup).not.toContain("Alta confiança");
+    expect(markup).not.toContain("Confiança moderada");
+    expect(markup).not.toContain("Fonte verificável");
   });
 });

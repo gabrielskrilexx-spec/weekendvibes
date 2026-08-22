@@ -18,9 +18,6 @@ export default function EventCard({ event }: { event: Event }) {
   const image = event.imageUrl || "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=900&q=80";
   const imageProps = responsiveImageProps(image, EVENT_CARD_IMAGE_SIZES);
   const isSoldOut = event.ticketStatus === "sold_out" || (event.ticketStatus === undefined && (event.priceNote?.toLowerCase().includes("vendas encerradas") ?? false));
-  const qualitySignals = [Boolean(event.sourceUrl), Boolean(event.imageUrl), Boolean(event.address), Boolean(event.genre), Boolean(event.eventDate)].filter(Boolean).length;
-  const confidenceLabel = qualitySignals >= 5 ? "Alta confiança" : qualitySignals >= 3 ? "Confiança moderada" : "Dados básicos";
-  const confidenceStyle = qualitySignals >= 5 ? "border-emerald-300/20 bg-emerald-400/10 text-emerald-100" : qualitySignals >= 3 ? "border-yellow-300/20 bg-yellow-300/10 text-yellow-100" : "border-white/10 bg-white/[0.05] text-zinc-300";
   return (
     <article className="content-fade-in group overflow-hidden rounded-[24px] border border-white/10 bg-zinc-900/90 shadow-[0_16px_40px_-28px_rgba(168,85,247,.48)] transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out hover:-translate-y-1 hover:scale-[1.012] hover:border-orange-300/45 hover:bg-zinc-900 hover:shadow-[0_24px_54px_-24px_rgba(249,115,22,.48)] focus-within:-translate-y-1 focus-within:scale-[1.006] focus-within:border-orange-300/55 focus-within:ring-2 focus-within:ring-orange-300/25 motion-reduce:transform-none motion-reduce:transition-none">
       <div className="relative h-48 overflow-hidden bg-zinc-800/80">
@@ -44,7 +41,6 @@ export default function EventCard({ event }: { event: Event }) {
           <p className="flex items-center gap-2"><MapPin size={15} className="text-fuchsia-300" /><span className="line-clamp-1">{event.locationName}</span></p>
           <p className={`flex items-center gap-2 ${isSoldOut ? "text-rose-200" : ""}`}><Ticket size={15} className={isSoldOut ? "text-rose-300" : "text-yellow-300"} />{event.priceNote ?? (event.priceCents > 0 ? `A partir de R$ ${(event.priceCents / 100).toFixed(2).replace(".", ",")}` : "A partir de R$ 0,00")}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2" aria-label="Qualidade dos dados do evento"><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${confidenceStyle}`} title="Indicador calculado a partir de fonte, imagem, endereço, gênero e data">{confidenceLabel}</span>{event.sourceUrl && <span className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-400">Fonte verificável</span>}</div>
         <FavoriteReminderControls eventId={event.id} />
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${categoryColors[event.category]}`}>{event.category === "evento_musical" ? "música" : event.category}</span>{event.genre && <span className="rounded-full border border-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-zinc-300">{genreLabels[event.genre] ?? event.genre}</span>}</div>

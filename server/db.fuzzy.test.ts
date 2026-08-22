@@ -18,6 +18,16 @@ describe("deduplicação fuzzy de eventos", () => {
     expect(fromBlacktag.imageUrl).toBeTruthy();
   });
 
+  it("ignora hora e minuto ao comparar eventos do mesmo dia civil", () => {
+    const meduzaAt13 = { eventDate: new Date("2026-09-05T13:00:00-03:00"), locationName: "Laroc Club Guarujá", city: "Guarujá" as const, title: "Laroc Guarujá apresenta: Meduza" };
+    const meduzaAt16 = { ...meduzaAt13, eventDate: new Date("2026-09-05T16:00:00-03:00"), title: "Laroc Guarujá apresenta Meduza" };
+    const reveillonAt19 = { eventDate: new Date("2026-12-31T19:00:00-03:00"), locationName: "Guarujá Golf Club", city: "Guarujá" as const, title: "Réveillon Guarujá 2027" };
+    const reveillonAt22 = { ...reveillonAt19, eventDate: new Date("2026-12-31T22:00:00-03:00") };
+
+    expect(isFuzzyDuplicateEventForTest(meduzaAt13, meduzaAt16)).toBe(true);
+    expect(isFuzzyDuplicateEventForTest(reveillonAt19, reveillonAt22)).toBe(true);
+  });
+
   it("não colide eventos de cidade, venue ou data diferentes", () => {
     const event = { ...base, title: "Mega Universitária Halloween" };
     expect(isFuzzyDuplicateEventForTest(event, { ...event, city: "Guarujá" })).toBe(false);

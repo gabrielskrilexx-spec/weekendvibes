@@ -261,6 +261,10 @@ export function saoPauloDayStartUtc(date = new Date()) {
   return new Date(`${saoPauloDateKey(date)}T00:00:00-03:00`);
 }
 
+export function saoPauloNextDayStartUtc(date = new Date()) {
+  return new Date(saoPauloDayStartUtc(date).getTime() + 24 * 60 * 60 * 1000);
+}
+
 export async function listTodayEvents(options: { size?: number } = {}) {
   return listEvents({ date: saoPauloDateKey(), size: options.size ?? 12 });
 }
@@ -406,7 +410,9 @@ export async function saveEvent(data: InsertEvent) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const existing = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl }).from(events).where(and(sql`${events.sourceUrl} = ${normalized.sourceUrl}`, eq(events.eventDate, normalized.eventDate))).limit(1);
-  const fuzzyCandidates = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl }).from(events).where(and(eq(events.city, normalized.city), sql`${events.eventDate} >= ${new Date(normalized.eventDate.getTime() - 36 * 60 * 60 * 1000)}`, sql`${events.eventDate} <= ${new Date(normalized.eventDate.getTime() + 36 * 60 * 60 * 1000)}`));
+  const dayStartUtc = saoPauloDayStartUtc(normalized.eventDate);
+  const nextDayStartUtc = saoPauloNextDayStartUtc(normalized.eventDate);
+  const fuzzyCandidates = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl }).from(events).where(and(eq(events.city, normalized.city), gte(events.eventDate, dayStartUtc), sql`${events.eventDate} < ${nextDayStartUtc}`));
   const duplicate = existing[0] ?? fuzzyCandidates.find(candidate => isFuzzyDuplicateEventForTest(normalized, candidate as InsertEvent));
   if (duplicate) {
     const keepIncoming = eventQuality(normalized) > eventQuality(duplicate);

@@ -1397,3 +1397,10 @@
 - [x] Adicionar transição suave e feedback visual de hover/foco aos cards da Home
 - [x] Validar interação dos cards em desktop/mobile e atualizar testes se necessário
 - [x] Executar TypeScript, Vitest, build e publicar checkpoint da melhoria de UX
+
+- [x] Auditar e remover duplicatas de Meduza e Réveillon mantendo registros completos
+- [x] Ajustar deduplicação fuzzy para comparar data civil e ignorar hora/minuto
+- [x] Remover badges públicos de confiança e fonte verificável dos cards
+- [x] Confirmar Home sem diagnóstico, mapas de listagem e filtros secundários
+- [x] Criar ou atualizar testes de duplicação por horários diferentes e cards enxutos
+- [x] Executar TypeScript, Vitest, build, verificação visual e publicar checkpoint
