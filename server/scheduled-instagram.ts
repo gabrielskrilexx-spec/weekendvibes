@@ -32,7 +32,7 @@ export async function ingestInstagramHandler(req: Request, res: Response) {
   try {
     const { archived, result } = await runInstagramAgendaStep();
     const finishedAt = new Date().toISOString();
-    return res.json({ ok: true, startedAt, finishedAt, durationMs: Date.now() - startedAtMs, archived, result, counts: { read: Number(result.receivedPosts ?? 0), filtered: Math.max(0, Number(result.receivedPosts ?? 0) - Number(result.approvedPosts ?? 0)), persisted: Number(result.imported ?? 0) } });
+    return res.json({ ok: true, startedAt, finishedAt, durationMs: Date.now() - startedAtMs, archived, degraded: Boolean(result.degraded), transportFailures: result.transportFailures ?? [], result, counts: { read: Number(result.receivedPosts ?? 0), filtered: Math.max(0, Number(result.receivedPosts ?? 0) - Number(result.approvedPosts ?? 0)), persisted: Number(result.imported ?? 0) } });
   } catch (error) {
     const integration: OperationalIntegration = error instanceof AgendaStepFailure
       ? error.integration

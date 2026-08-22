@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createStructuredEventRejection, fetchInstagramPosts, normalizeStructuredEventDate, fetchInstagramStories, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent } from "./instagram-pipeline";
+import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent } from "./instagram-pipeline";
 
 describe("Instagram weekend pipeline", () => {
   it("preserves the Sao Paulo civil day for date-only structured events", () => {
@@ -111,6 +111,39 @@ describe("Instagram weekend pipeline", () => {
 
   it("returns no Stories instead of using an undocumented or session-based collector", async () => {
     await expect(fetchInstagramStories()).resolves.toEqual([]);
+  });
+
+  it("classifies only supported transport/session failures for graceful degradation", () => {
+    expect(isInstagramTransportFailure(403, "Forbidden")).toBe(true);
+    expect(isInstagramTransportFailure(502, "invalid proxy response")).toBe(true);
+    expect(isInstagramTransportFailure(400, "permission denied")).toBe(false);
+  });
+
+  it("resets the request context and continues across profiles on 403/502", async () => {
+    const originalFetch = globalThis.fetch;
+    process.env.META_INSTAGRAM_TOKEN = "test-meta-token";
+    process.env.META_INSTAGRAM_ACCOUNT_ID = "17841438723866203";
+    process.env.INGESTION_FORCE_INSTAGRAM = "1";
+    const before = getInstagramSessionGeneration();
+    let calls = 0;
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      calls += 1;
+      const status = calls === 1 ? 403 : 502;
+      return new Response(JSON.stringify({ error: { message: "invalid proxy response" } }), { status });
+    });
+    try {
+      const result = await fetchInstagramPostsDetailed();
+      expect(result.posts).toEqual([]);
+      expect(result.transportFailures.slice(0, 2)).toEqual([
+        expect.objectContaining({ status: 403, kind: "proxy_or_session" }),
+        expect.objectContaining({ status: 502, kind: "proxy_or_session" }),
+      ]);
+      expect(calls).toBeGreaterThan(1);
+      expect(getInstagramSessionGeneration()).toBeGreaterThan(before);
+    } finally {
+      globalThis.fetch = originalFetch;
+      delete process.env.INGESTION_FORCE_INSTAGRAM;
+    }
   });
 
   it("propagates an official Graph API error instead of converting it to no data", async () => {

@@ -1413,3 +1413,10 @@
 - [x] Auditar persistência, contrato tRPC e plotagem de latitude/longitude
 - [x] Adicionar testes de isolamento, coordenadas nulas e fallback
 - [x] Executar TypeScript, Vitest, build, verificação visual e publicar checkpoint
+
+- [x] Auditar tratamento atual de erros 403/502, sessão e retries do Instagram
+- [x] Implementar reset de sessão e degradação isolada por perfil, preservando outras fontes
+- [x] Registrar falhas sanitizadas de proxy/autenticação no histórico de ingestionRuns
+- [x] Manter backoff respeitoso e limites da API sem rotação de IP para evasão
+- [x] Adicionar testes Vitest para 403/502, reset de sessão e continuidade da rotina
+- [x] Executar TypeScript, Vitest, build e publicar checkpoint

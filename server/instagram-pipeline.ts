@@ -61,6 +61,27 @@ export function isGracefullyDegradedMetaFailure(error: unknown) {
   return status !== null && [401, 403, 408, 429, 500, 502, 503, 504].includes(status);
 }
 
+let instagramSessionGeneration = 0;
+
+/**
+ * Business Discovery uses the official Graph API and does not maintain a
+ * browser/proxy session. This generation invalidates any request context used
+ * by a retry without attempting to bypass Meta controls or rotate IPs.
+ */
+export function resetInstagramSessionForRetry(reason: string) {
+  instagramSessionGeneration += 1;
+  console.warn("[Instagram] request context invalidated for next retry", { reason: normalizeDiagnosticText(reason, 80), sessionGeneration: instagramSessionGeneration });
+  return instagramSessionGeneration;
+}
+
+export function getInstagramSessionGeneration() {
+  return instagramSessionGeneration;
+}
+
+export function isInstagramTransportFailure(status: number, body = "") {
+  return [401, 403, 502].includes(status) || /invalid proxy response|proxy response|session|forbidden|authentication/i.test(body);
+}
+
 export const INSTAGRAM_TARGETS = [
   { name: "Moby House", username: "mobydicksantos", directUrl: "https://www.instagram.com/mobydicksantos/" },
   { name: "Projac Bar", username: "projac.bar", directUrl: "https://www.instagram.com/projac.bar/" },
@@ -318,8 +339,11 @@ function metaPostsFromPayload(payload: unknown, target: (typeof INSTAGRAM_TARGET
   }
 }
 
-async function fetchMetaBusinessDiscoveryPosts(token: string, accountId: string): Promise<InstagramPost[]> {
+type InstagramTransportFailure = { username: string; status: number; kind: "proxy_or_session"; message: string };
+
+async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId: string): Promise<{ posts: InstagramPost[]; transportFailures: InstagramTransportFailure[] }> {
   const posts: InstagramPost[] = [];
+  const transportFailures: InstagramTransportFailure[] = [];
   const configuredSources = (await listEnabledInstagramSources()) ?? [];
   const configuredHandles = new Set(configuredSources.map(source => source.handle?.replace(/^@/, "").toLowerCase()).filter(Boolean));
   const focusedHandle = process.env.INGESTION_FOCUS_INSTAGRAM?.trim().replace(/^@/, "").toLowerCase();
@@ -342,18 +366,28 @@ async function fetchMetaBusinessDiscoveryPosts(token: string, accountId: string)
     const responseBody = await response.text();
     if (!response.ok) {
       if (source) await markIngestionSourceResult(source.sourceKey, { status: "failed", message: `HTTP ${response.status}` });
+      if (isInstagramTransportFailure(response.status, responseBody)) {
+        resetInstagramSessionForRetry(`meta_${response.status}`);
+        transportFailures.push({ username: target.username, status: response.status, kind: "proxy_or_session", message: `Meta respondeu HTTP ${response.status}; perfil ignorado nesta tentativa.` });
+        continue;
+      }
       throw new InstagramIntegrationFailure("meta", `Meta Graph API request failed with ${response.status}: ${responseBody}`);
     }
     posts.push(...metaPostsFromPayload(JSON.parse(responseBody), target));
     if (source) await markIngestionSourceResult(source.sourceKey, { status: "succeeded", message: "Business Discovery respondeu com sucesso." });
   }
-  return posts;
+  return { posts, transportFailures };
+}
+
+export async function fetchInstagramPostsDetailed() {
+  const token = requiredEnv("META_INSTAGRAM_TOKEN");
+  const accountId = requiredEnv("META_INSTAGRAM_ACCOUNT_ID");
+  return fetchMetaBusinessDiscoveryPostsDetailed(token, accountId);
 }
 
 export async function fetchInstagramPosts() {
-  const token = requiredEnv("META_INSTAGRAM_TOKEN");
-  const accountId = requiredEnv("META_INSTAGRAM_ACCOUNT_ID");
-  return fetchMetaBusinessDiscoveryPosts(token, accountId);
+  const result = await fetchInstagramPostsDetailed();
+  return result.posts;
 }
 
 /**
@@ -404,7 +438,8 @@ export async function runInstagramPipeline() {
   const referenceDate = getInstagramReferenceDate();
   await recordReferenceDateClockAlert(referenceDate);
   const activeAliases = await listActiveLocationAliasValues();
-  const posts = deduplicateInstagramPosts(await fetchInstagramPosts());
+  const fetched = await fetchInstagramPostsDetailed();
+  const posts = deduplicateInstagramPosts(fetched.posts);
   const approvedPosts: Array<{ post: InstagramPost; rawText: string }> = [];
   const forceFocusedRun = process.env.INGESTION_FORCE_INSTAGRAM === "1";
   for (const post of posts) {
@@ -451,6 +486,9 @@ export async function runInstagramPipeline() {
   return {
     receivedPosts: posts.length,
     approvedPosts: approvedPosts.length,
+    degraded: fetched.transportFailures.length > 0,
+    transportFailures: fetched.transportFailures,
+
     structuredEvents: structuredEvents.length,
     imported,
     persisted: imported,
