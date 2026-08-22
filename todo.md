@@ -1340,3 +1340,12 @@
 - [x] Executar run manual isolado da public-agenda para as três fontes
 - [x] Verificar logs e métricas de leitura, filtragem, validação e persistência por fonte
 - [x] Entregar relatório sanitizado da execução
+
+- [x] Extrair e deduplicar os locais rejeitados no run 5100001
+- [x] Classificar os locais potencialmente pertencentes à Baixada Santista
+- [x] Entregar a lista sanitizada e recomendações para a allowlist
+
+- [x] Auditar páginas Articket de Santos e confirmar venue e data dos eventos rejeitados
+- [x] Relatar eventos aprovados por Blacktag e Articket no run 5100001
+- [x] Atualizar allowlist somente com venues da Baixada Santista comprovados
+- [x] Executar novo teste da public-agenda e validar métricas e persistência
