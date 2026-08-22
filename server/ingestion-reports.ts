@@ -1,4 +1,4 @@
-import { desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { isGracefullyDegradedMetaFailure } from "./instagram-pipeline";
 import { ingestionRuns, operationalAlerts, ingestionSources } from "../drizzle/schema";
@@ -371,12 +371,45 @@ export async function listRoutineScheduleStatus(): Promise<RoutineScheduleStatus
   });
 }
 
-export async function listIngestionReport(size = 20) {
+export type IngestionReportFilters = {
+  periodDays?: 7 | 30 | 90;
+  routine?: "instagram-agenda" | "public-agenda" | "manual-reprocess";
+  status?: "running" | "succeeded" | "partial" | "failed";
+  trigger?: "manual" | "scheduled";
+};
+
+function runTrigger(details: unknown): "manual" | "scheduled" {
+  const parsed = parseDetails(details);
+  return parsed && typeof parsed === "object" && (parsed as Record<string, unknown>).trigger === "manual" ? "manual" : "scheduled";
+}
+
+export function findConsecutiveFailureAlertsForTest(runs: Array<{ id: number; routine: string; sourceKey: string | null; status: string; startedAt: Date | string; details: unknown }>, minimum = 2) {
+  const ordered = [...runs].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+  const byRoutine = new Map<string, typeof ordered>();
+  for (const run of ordered) {
+    const key = run.routine || run.sourceKey || "unknown";
+    const list = byRoutine.get(key) ?? [];
+    list.push(run);
+    byRoutine.set(key, list);
+  }
+  return Array.from(byRoutine.entries()).flatMap(([routine, items]) => {
+    const failed = items.filter(item => item.status === "failed" && (() => { const details = parseDetails(item.details); return details && typeof details === "object" && ((details as Record<string, unknown>).retryExhausted === true || Number((details as Record<string, unknown>).retries ?? 0) >= 2); })());
+    if (failed.length < minimum) return [];
+    return [{ routine, count: failed.length, runIds: failed.slice(0, minimum).map(item => item.id), latestStartedAt: new Date(failed[0].startedAt).toISOString() }];
+  });
+}
+
+export async function listIngestionReport(size = 20, filters: IngestionReportFilters = {}) {
   const db = await getDb();
-  if (!db) return { runs: [], alerts: [], criticalAlerts: [], sourceMetrics: [], freshness: [], timeline: [], reconciliationBySource: [], weeklyTrend: [], weeklySummary: { runs: 0, retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, inconsistentRuns: 0, degradedRuns: 0, rejectedEvents: 0, rejectedPastEvents: 0, rejectedOtherReasons: 0 }, metaStatus: { status: "never" as const, lastSuccessfulSync: null, lastAttempt: null }, scheduleStatus: await listRoutineScheduleStatus(), filterEvaluatedAt: new Date().toISOString(), pastEventRejectionThreshold: getPastEventRejectionThreshold(), totals: { succeeded: 0, failed: 0, partial: 0, imported: 0 } };
+  if (!db) return { runs: [], alerts: [], criticalAlerts: [], consecutiveFailures: [], sourceMetrics: [], freshness: [], timeline: [], reconciliationBySource: [], weeklyTrend: [], weeklySummary: { runs: 0, retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, inconsistentRuns: 0, degradedRuns: 0, rejectedEvents: 0, rejectedPastEvents: 0, rejectedOtherReasons: 0 }, metaStatus: { status: "never" as const, lastSuccessfulSync: null, lastAttempt: null }, scheduleStatus: await listRoutineScheduleStatus(), filterEvaluatedAt: new Date().toISOString(), pastEventRejectionThreshold: getPastEventRejectionThreshold(), totals: { succeeded: 0, failed: 0, partial: 0, imported: 0 } };
   const safeSize = Math.min(Math.max(size, 1), 50);
-  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const runs = await db.select().from(ingestionRuns).orderBy(desc(ingestionRuns.startedAt)).limit(safeSize);
+  const periodDays = filters.periodDays ?? 7;
+  const cutoff = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000);
+  const sqlFilters = [gte(ingestionRuns.startedAt, cutoff)];
+  if (filters.routine) sqlFilters.push(eq(ingestionRuns.routine, filters.routine));
+  if (filters.status) sqlFilters.push(eq(ingestionRuns.status, filters.status));
+  const runsRaw = await db.select().from(ingestionRuns).where(and(...sqlFilters)).orderBy(desc(ingestionRuns.startedAt)).limit(Math.max(safeSize * 4, 100));
+  const runs = runsRaw.filter(run => !filters.trigger || runTrigger(run.details) === filters.trigger).slice(0, safeSize);
   const trendRuns = await db.select().from(ingestionRuns).where(gte(ingestionRuns.startedAt, cutoff)).orderBy(desc(ingestionRuns.startedAt)).limit(500);
   const metaRuns = await db.select({ status: ingestionRuns.status, startedAt: ingestionRuns.startedAt, finishedAt: ingestionRuns.finishedAt }).from(ingestionRuns).where(eq(ingestionRuns.sourceKey, "instagram")).orderBy(desc(ingestionRuns.startedAt)).limit(100);
   const alerts = await db.select({ id: operationalAlerts.id, integration: operationalAlerts.integration, severity: operationalAlerts.severity, alertType: operationalAlerts.alertType, slaMinutes: operationalAlerts.slaMinutes, runId: operationalAlerts.runId, title: operationalAlerts.title, message: operationalAlerts.message, isResolved: operationalAlerts.isResolved, createdAt: operationalAlerts.createdAt }).from(operationalAlerts).orderBy(desc(operationalAlerts.createdAt)).limit(safeSize);
@@ -393,8 +426,9 @@ export async function listIngestionReport(size = 20) {
   timeline.splice(80);
   const serializableRuns = runs.map(serializeIngestionRunForTest);
   const serializableAlerts = alerts.map(serializeOperationalAlertForTest);
+  const consecutiveFailures = findConsecutiveFailureAlertsForTest(runs.map(run => ({ id: Number(run.id), routine: String(run.routine ?? ""), sourceKey: run.sourceKey == null ? null : String(run.sourceKey), status: String(run.status), startedAt: new Date(run.startedAt), details: run.details })));
   const criticalAlerts = serializableAlerts.filter(alert => alert.severity === "CRITICAL" || isCriticalIngestionFailure(`${alert.title} ${alert.message}`));
-  return normalizeReportForTransport({ runs: serializableRuns, alerts: serializableAlerts, criticalAlerts, sourceMetrics, freshness, timeline, reconciliationBySource: buildSourceReconciliationForTest(trendRuns), weeklyTrend: buildWeeklyTrend(trendRuns), weeklySummary: buildWeeklyOperationalSummary(trendRuns), metaStatus: buildMetaIntegrationStatusForTest(metaRuns), scheduleStatus: await listRoutineScheduleStatus(), filterEvaluatedAt: new Date().toISOString(), pastEventRejectionThreshold: getPastEventRejectionThreshold(), totals: { succeeded: Number(totals?.succeeded ?? 0), failed: Number(totals?.failed ?? 0), partial: Number(totals?.partial ?? 0), imported: Number(totals?.imported ?? 0) } });
+  return normalizeReportForTransport({ runs: serializableRuns, alerts: serializableAlerts, criticalAlerts, consecutiveFailures, sourceMetrics, freshness, timeline, reconciliationBySource: buildSourceReconciliationForTest(trendRuns), weeklyTrend: buildWeeklyTrend(trendRuns), weeklySummary: buildWeeklyOperationalSummary(trendRuns), metaStatus: buildMetaIntegrationStatusForTest(metaRuns), scheduleStatus: await listRoutineScheduleStatus(), filterEvaluatedAt: new Date().toISOString(), pastEventRejectionThreshold: getPastEventRejectionThreshold(), totals: { succeeded: Number(totals?.succeeded ?? 0), failed: Number(totals?.failed ?? 0), partial: Number(totals?.partial ?? 0), imported: Number(totals?.imported ?? 0) } });
 }
 
 export function sanitizeReprocessErrorForTest(error: unknown) {

@@ -1304,3 +1304,9 @@
 - [x] Expor métricas detalhadas e distinguir runs manuais e agendados no painel administrativo
 - [x] Criar testes Vitest para o contrato tRPC de auditoria e histórico de retries
 - [x] Validar TypeScript, suíte Vitest, build e publicar checkpoint da observabilidade operacional
+
+- [x] Auditar tokens, chaves e segredos hardcoded, logs e retornos tRPC
+- [x] Implementar filtros dinâmicos de ingestionRuns por período, rotina, status e trigger
+- [x] Exibir alerta para duas ou mais falhas consecutivas após esgotamento de retries
+- [x] Criar testes Vitest para filtros, alerta consecutivo e sanitização de credenciais
+- [x] Validar TypeScript, suíte Vitest, build e publicar checkpoint final
