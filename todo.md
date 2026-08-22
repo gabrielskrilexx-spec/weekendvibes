@@ -1295,3 +1295,7 @@
 - [x] Executar suíte Vitest completa, TypeScript e build de produção após as correções finais
 - [x] Auditar eventos passados e anomalias temporais remanescentes no banco
 - [x] Confirmar publicação e estabilidade da versão final
+
+- [x] Melhorar exclusão de eventos com modal de confirmação e alerta de sucesso no painel admin
+- [x] Adicionar ou ajustar testes do modal, estados de loading e feedback após exclusão
+- [x] Validar TypeScript, Vitest, build e publicar checkpoint da melhoria
