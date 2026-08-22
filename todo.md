@@ -1427,3 +1427,7 @@
 - [x] Exibir fontes pausadas no painel administrativo com badge de Circuit Open
 - [x] Adicionar testes Vitest para 3 falhas, cooldown, Half-Open, recuperação e webhook
 - [x] Executar TypeScript, Vitest, build e publicar checkpoint
+
+- [x] Adicionar tooltips explicativos e acessíveis aos badges Open e Half-Open do Circuit Breaker
+- [x] Cobrir a explicação dos estados em teste de interface e validar mouse/teclado
+- [x] Executar TypeScript, Vitest, build e publicar checkpoint
