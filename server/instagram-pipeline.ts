@@ -3,6 +3,7 @@ import { INSTAGRAM_AGENDA_SOURCE_TYPE, listActiveLocationAliasValues, listEnable
 import { containsTargetVenue } from "./ingestion";
 import { parseMetaBusinessDiscovery } from "./contracts/external";
 import { resolveRegionalCoordinates } from "./geocoding";
+import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
 
 const META_GRAPH_BASE_URL = "https://graph.facebook.com/v26.0";
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
@@ -339,7 +340,7 @@ function metaPostsFromPayload(payload: unknown, target: (typeof INSTAGRAM_TARGET
   }
 }
 
-type InstagramTransportFailure = { username: string; status: number; kind: "proxy_or_session"; message: string };
+type InstagramTransportFailure = { username: string; status: number; kind: "proxy_or_session" | "circuit_open"; message: string };
 
 async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId: string): Promise<{ posts: InstagramPost[]; transportFailures: InstagramTransportFailure[] }> {
   const posts: InstagramPost[] = [];
@@ -356,6 +357,13 @@ async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId:
   const forceRefresh = process.env.INGESTION_FORCE_INSTAGRAM === "1";
   for (const target of targets) {
     const source = configuredSources.find(item => item.handle?.replace(/^@/, "").toLowerCase() === target.username.toLowerCase());
+    if (source) {
+      const circuit = await allowSourceAttempt(source.sourceKey);
+      if (!circuit.allowed) {
+        transportFailures.push({ username: target.username, status: 0, kind: "circuit_open", message: "Fonte pausada pelo Circuit Breaker durante o cooldown." });
+        continue;
+      }
+    }
     if (!forceRefresh && source?.lastSuccessAt && Date.now() - new Date(source.lastSuccessAt).getTime() < source.frequencyMinutes * 60_000) {
       await markIngestionSourceResult(source.sourceKey, { status: "skipped", message: "Aguardando a próxima janela configurada." });
       continue;
@@ -368,13 +376,17 @@ async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId:
       if (source) await markIngestionSourceResult(source.sourceKey, { status: "failed", message: `HTTP ${response.status}` });
       if (isInstagramTransportFailure(response.status, responseBody)) {
         resetInstagramSessionForRetry(`meta_${response.status}`);
+        if (source) await registerSourceFailure({ sourceKey: source.sourceKey, routine: "instagram-agenda", status: response.status, message: `Meta respondeu HTTP ${response.status}; perfil ignorado nesta tentativa.` });
         transportFailures.push({ username: target.username, status: response.status, kind: "proxy_or_session", message: `Meta respondeu HTTP ${response.status}; perfil ignorado nesta tentativa.` });
         continue;
       }
       throw new InstagramIntegrationFailure("meta", `Meta Graph API request failed with ${response.status}: ${responseBody}`);
     }
     posts.push(...metaPostsFromPayload(JSON.parse(responseBody), target));
-    if (source) await markIngestionSourceResult(source.sourceKey, { status: "succeeded", message: "Business Discovery respondeu com sucesso." });
+    if (source) {
+      await registerSourceSuccess(source.sourceKey);
+      await markIngestionSourceResult(source.sourceKey, { status: "succeeded", message: "Business Discovery respondeu com sucesso." });
+    }
   }
   return { posts, transportFailures };
 }

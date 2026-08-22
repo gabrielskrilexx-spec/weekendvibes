@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { invokeLLM } from "./_core/llm";
 import { assertEventDateIsCurrentOrFuture, getIngestionPayloadCache, listActiveLocationAliasValues, saveEvent, saveIngestionPayloadCache } from "./db";
+import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
 
 const DEFAULT_SOURCE_URLS = [
   "https://articket.com.br/e/6784/plants-happy-hour",
@@ -238,7 +239,36 @@ type PublicPage = {
   structured?: Record<string, string | number>;
   cacheFallback?: { used: true; status: number | null; message: string };
   fetchFailure?: FetchFailure;
+  circuitOpen?: boolean;
 };
+
+function publicSourceKey(url: string) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    if (host.includes("ingresse")) return "public:ingresse";
+    if (host.includes("blacktag")) return "public:blacktag";
+    if (host.includes("articket")) return "public:articket";
+    if (host.endsWith("zig.tickets")) return "public:zig";
+  } catch {
+    // Keep malformed URLs under the generic public source.
+  }
+  return "public:unknown";
+}
+
+async function guardedFetchPublicPage(url: string): Promise<PublicPage> {
+  const sourceKey = publicSourceKey(url);
+  const circuit = await allowSourceAttempt(sourceKey);
+  if (!circuit.allowed) return { url, html: "", text: "", imageUrl: "", circuitOpen: true };
+  try {
+    const page = await fetchPublicPage(url);
+    await registerSourceSuccess(sourceKey);
+    return page;
+  } catch (error) {
+    const failure = sanitizeFetchFailure(error);
+    await registerSourceFailure({ sourceKey, routine: "public-agenda", status: failure.status ?? undefined, message: failure.message });
+    throw error;
+  }
+}
 
 async function fetchPublicPage(url: string): Promise<PublicPage> {
   if (isIngresseEventUrl(url)) return fetchIngresseEventApi(url);
@@ -272,7 +302,7 @@ async function fetchPublicPage(url: string): Promise<PublicPage> {
 async function discoverCandidatePages() {
   const bases = getConfiguredSourceUrls();
   const discovered = new Set(bases);
-  const basePages = await Promise.allSettled(bases.map(fetchPublicPage));
+  const basePages = await Promise.allSettled(bases.map(guardedFetchPublicPage));
   for (const result of basePages) {
     if (result.status !== "fulfilled") continue;
     for (const link of extractPublicEventLinks(result.value.html, result.value.url)) discovered.add(link);
@@ -290,13 +320,15 @@ export async function runIngestionPipeline() {
   const matchesTargetVenue = (value: string) => containsTargetVenue(value, activeAliases);
   const candidateUrls = await discoverCandidatePages();
   if (candidateUrls.length === 0) return { imported: 0, skipped: true, reason: "Nenhuma fonte de ingestão configurada" };
-  const pages = await Promise.allSettled(candidateUrls.map(fetchPublicPage));
+  const pages = await Promise.allSettled(candidateUrls.map(guardedFetchPublicPage));
   const fulfilledPages = pages
     .filter((result): result is PromiseFulfilledResult<PublicPage> => result.status === "fulfilled")
     .map(result => result.value);
   const fallbackPages = fulfilledPages.filter(page => page.cacheFallback?.used);
+  const circuitOpenPages = fulfilledPages.filter(page => page.circuitOpen === true);
   const rejectedPages = pages.filter((result): result is PromiseRejectedResult => result.status === "rejected");
   const fetchFailures = [
+    ...circuitOpenPages.map(page => ({ sourceUrl: page.url, status: null, message: "Fonte pausada pelo Circuit Breaker durante o cooldown.", fallbackUsed: false })),
     ...fallbackPages.map(page => ({ sourceUrl: page.url, ...page.cacheFallback, status: page.cacheFallback?.status ?? null })),
     ...rejectedPages.map((result, index) => ({ sourceUrl: candidateUrls[index], ...sanitizeFetchFailure(result.reason) })),
   ].map(failure => ({ sourceUrl: String(failure.sourceUrl).slice(0, 1000), status: failure.status ?? null, message: String(failure.message).slice(0, 240), fallbackUsed: "used" in failure && failure.used === true }));

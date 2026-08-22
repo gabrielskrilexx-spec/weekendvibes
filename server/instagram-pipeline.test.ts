@@ -124,25 +124,23 @@ describe("Instagram weekend pipeline", () => {
     process.env.META_INSTAGRAM_TOKEN = "test-meta-token";
     process.env.META_INSTAGRAM_ACCOUNT_ID = "17841438723866203";
     process.env.INGESTION_FORCE_INSTAGRAM = "1";
+    process.env.INGESTION_FOCUS_INSTAGRAM = "curvaosurfhouse";
     const before = getInstagramSessionGeneration();
-    let calls = 0;
-    globalThis.fetch = vi.fn().mockImplementation(async () => {
-      calls += 1;
-      const status = calls === 1 ? 403 : 502;
-      return new Response(JSON.stringify({ error: { message: "invalid proxy response" } }), { status });
-    });
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { message: "invalid proxy response" } }), { status: 403 }));
     try {
-      const result = await fetchInstagramPostsDetailed();
-      expect(result.posts).toEqual([]);
-      expect(result.transportFailures.slice(0, 2)).toEqual([
-        expect.objectContaining({ status: 403, kind: "proxy_or_session" }),
-        expect.objectContaining({ status: 502, kind: "proxy_or_session" }),
-      ]);
-      expect(calls).toBeGreaterThan(1);
+      const forbidden = await fetchInstagramPostsDetailed();
+      expect(forbidden.posts).toEqual([]);
+      expect(forbidden.transportFailures).toEqual([expect.objectContaining({ status: 403, kind: "proxy_or_session" })]);
+      process.env.INGESTION_FOCUS_INSTAGRAM = "flamingomusicbar";
+      globalThis.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { message: "invalid proxy response" } }), { status: 502 }));
+      const badGateway = await fetchInstagramPostsDetailed();
+      expect(badGateway.posts).toEqual([]);
+      expect(badGateway.transportFailures).toEqual([expect.objectContaining({ status: 502, kind: "proxy_or_session" })]);
       expect(getInstagramSessionGeneration()).toBeGreaterThan(before);
     } finally {
       globalThis.fetch = originalFetch;
       delete process.env.INGESTION_FORCE_INSTAGRAM;
+      delete process.env.INGESTION_FOCUS_INSTAGRAM;
     }
   });
 
@@ -151,12 +149,14 @@ describe("Instagram weekend pipeline", () => {
     process.env.META_INSTAGRAM_TOKEN = "test-meta-token";
     process.env.META_INSTAGRAM_ACCOUNT_ID = "17841438723866203";
     process.env.INGESTION_FORCE_INSTAGRAM = "1";
+    process.env.INGESTION_FOCUS_INSTAGRAM = "projac.bar";
     globalThis.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 10, message: "Application does not have permission for this action" } }), { status: 400 }));
     try {
       await expect(fetchInstagramPosts()).rejects.toThrow("Meta Graph API request failed with 400");
     } finally {
       globalThis.fetch = originalFetch;
       delete process.env.INGESTION_FORCE_INSTAGRAM;
+      delete process.env.INGESTION_FOCUS_INSTAGRAM;
     }
   }, 15000);
 });

@@ -1420,3 +1420,10 @@
 - [x] Manter backoff respeitoso e limites da API sem rotação de IP para evasão
 - [x] Adicionar testes Vitest para 403/502, reset de sessão e continuidade da rotina
 - [x] Executar TypeScript, Vitest, build e publicar checkpoint
+
+- [x] Auditar ingestão, alertas, painel e persistência adequada para o Circuit Breaker
+- [x] Implementar estados Closed, Open e Half-Open por fonte/rotina com cooldown
+- [x] Integrar bloqueio de novas tentativas, recuperação isolada e alerta webhook opcional
+- [x] Exibir fontes pausadas no painel administrativo com badge de Circuit Open
+- [x] Adicionar testes Vitest para 3 falhas, cooldown, Half-Open, recuperação e webhook
+- [x] Executar TypeScript, Vitest, build e publicar checkpoint

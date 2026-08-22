@@ -196,6 +196,11 @@ export const ingestionSources = mysqlTable("ingestionSources", {
   lastSuccessAt: timestamp("lastSuccessAt"),
   lastStatus: mysqlEnum("lastStatus", ["never", "succeeded", "failed", "skipped"]).default("never").notNull(),
   lastMessage: text("lastMessage"),
+  circuitState: mysqlEnum("circuitState", ["closed", "open", "half_open"]).default("closed").notNull(),
+  circuitFailureCount: int("circuitFailureCount").default(0).notNull(),
+  circuitOpenedAt: timestamp("circuitOpenedAt"),
+  circuitNextAttemptAt: timestamp("circuitNextAttemptAt"),
+  circuitLastError: text("circuitLastError"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
