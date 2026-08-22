@@ -15,7 +15,7 @@ vi.mock("./instagram-pipeline", () => ({ runInstagramPipeline: mocks.runInstagra
 vi.mock("./ingestion-reports", () => ({ startIngestionRun: mocks.startIngestionRun, finishIngestionRun: mocks.finishIngestionRun }));
 vi.mock("./geocoding", () => ({ processPendingGeocoding: mocks.processPendingGeocoding }));
 
-import { AGENDA_ROUTINE_COMPOSITION, normalizeTrackedStepResultForTest, runFullAgendaRoutine, runInstagramAgendaStep, runPublicAgendaStep } from "./agenda-routine";
+import { AGENDA_ROUTINE_COMPOSITION, normalizeTrackedStepResultForTest, runFullAgendaRoutine, runInstagramAgendaStep, runPublicAgendaStep, runScheduledWithRetriesForTest, isRetryableAgendaErrorForTest } from "./agenda-routine";
 
 describe("agenda routine composition", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -46,5 +46,27 @@ describe("agenda routine composition", () => {
     await runInstagramAgendaStep({ runId: 987, trigger: "manual" });
     expect(mocks.startIngestionRun).not.toHaveBeenCalled();
     expect(mocks.finishIngestionRun).toHaveBeenCalledWith(expect.any(Number), expect.objectContaining({ routine: "instagram-agenda", sourceKey: "instagram", details: expect.objectContaining({ trigger: "manual" }) }));
+  });
+
+  it("repete falhas temporárias agendadas com backoff progressivo e registra o histórico sanitizado", async () => {
+    const state = { history: [] as Array<{ attempt: number; startedAt: string; failedAt: string; reason: string; httpStatus: number | null }> };
+    let calls = 0;
+    const result = await runScheduledWithRetriesForTest(async () => {
+      calls += 1;
+      if (calls < 3) throw Object.assign(new Error("upstream timeout"), { status: 503 });
+      return { ok: true };
+    }, true, state, 0);
+    expect(result).toEqual({ ok: true });
+    expect(calls).toBe(3);
+    expect(state.history).toHaveLength(2);
+    expect(state.history[0]).toEqual(expect.objectContaining({ attempt: 1, reason: "upstream timeout", httpStatus: 503 }));
+    expect(state.history[1]).toEqual(expect.objectContaining({ attempt: 2, httpStatus: 503 }));
+  });
+
+  it("não repete erro 4xx nem execução manual", async () => {
+    expect(isRetryableAgendaErrorForTest(Object.assign(new Error("permission denied"), { status: 403 }))).toBe(false);
+    const state = { history: [] as Array<{ attempt: number; startedAt: string; failedAt: string; reason: string; httpStatus: number | null }> };
+    await expect(runScheduledWithRetriesForTest(async () => { throw new Error("network timeout"); }, false, state, 0)).rejects.toThrow("network timeout");
+    expect(state.history).toHaveLength(0);
   });
 });

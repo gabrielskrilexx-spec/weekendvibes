@@ -45,7 +45,7 @@ describe("scheduled Instagram ingestion", () => {
 
   it("degrada falha upstream conhecida da Meta para HTTP 200 sem importar dados", async () => {
     vi.spyOn(sdk, "authenticateRequest").mockResolvedValue({ isCron: true } as never);
-    vi.spyOn(await import("./instagram-pipeline"), "runInstagramPipeline").mockRejectedValueOnce(new InstagramIntegrationFailure("meta", "Meta Graph API retornou HTTP 503"));
+    vi.spyOn(await import("./instagram-pipeline"), "runInstagramPipeline").mockRejectedValue(new InstagramIntegrationFailure("meta", "Meta Graph API retornou HTTP 503"));
     const res = { json: vi.fn().mockReturnThis(), status: vi.fn().mockReturnThis() } as never;
 
     await ingestInstagramHandler({} as never, res);

@@ -1299,3 +1299,8 @@
 - [x] Melhorar exclusão de eventos com modal de confirmação e alerta de sucesso no painel admin
 - [x] Adicionar ou ajustar testes do modal, estados de loading e feedback após exclusão
 - [x] Validar TypeScript, Vitest, build e publicar checkpoint da melhoria
+
+- [x] Enriquecer ingestionRuns com histórico de retries, timestamps, tentativa atual e razões de falha temporária
+- [x] Expor métricas detalhadas e distinguir runs manuais e agendados no painel administrativo
+- [x] Criar testes Vitest para o contrato tRPC de auditoria e histórico de retries
+- [x] Validar TypeScript, suíte Vitest, build e publicar checkpoint da observabilidade operacional

@@ -18,6 +18,38 @@ import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
 import { reconcileIngestionResult } from "./reconciliation";
 
 export type AgendaStepOptions = { archive?: boolean; track?: boolean; sourceKey?: string; runId?: number; trigger?: "manual" | "scheduled" };
+export type RetryAttempt = { attempt: number; startedAt: string; failedAt: string; reason: string; httpStatus: number | null };
+const MAX_SCHEDULED_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 1000;
+
+export function isRetryableAgendaErrorForTest(error: unknown) {
+  const status = error && typeof error === "object" && "upstreamStatus" in error ? Number((error as { upstreamStatus?: unknown }).upstreamStatus) : 0;
+  if (status >= 400 && status < 500) return false;
+  const message = error instanceof Error ? error.message : String(error);
+  return status >= 500 || /timeout|timed out|fetch failed|network|econn|temporarily unavailable|http\s*5\d{2}|status\s*5\d{2}/i.test(message);
+}
+
+function retryHttpStatus(error: unknown) {
+  if (!error || typeof error !== "object") return null;
+  const status = (error as { upstreamStatus?: unknown; status?: unknown }).upstreamStatus ?? (error as { status?: unknown }).status;
+  return Number.isInteger(Number(status)) && Number(status) > 0 ? Number(status) : null;
+}
+
+export async function runScheduledWithRetriesForTest<T>(work: () => Promise<T>, enabled: boolean, state: { history: RetryAttempt[] }, baseDelayMs = RETRY_BASE_DELAY_MS) {
+  let attempt = 1;
+  while (true) {
+    const startedAt = new Date().toISOString();
+    try {
+      return await work();
+    } catch (error) {
+      const failedAt = new Date().toISOString();
+      if (!enabled || !isRetryableAgendaErrorForTest(error) || attempt >= MAX_SCHEDULED_RETRIES) throw error;
+      state.history.push({ attempt, startedAt, failedAt, reason: sanitizeAgendaStepErrorForTest(error, "pipeline", retryHttpStatus(error)), httpStatus: retryHttpStatus(error) });
+      await new Promise(resolve => setTimeout(resolve, baseDelayMs * 2 ** (attempt - 1)));
+      attempt += 1;
+    }
+  }
+}
 
 export function sanitizeAgendaStepErrorForTest(error: unknown, sourceKey: string, upstreamStatus?: number | null, degraded = false) {
   if (sourceKey === "instagram") {
@@ -41,8 +73,9 @@ export function normalizeTrackedStepResultForTest(result: unknown): Record<strin
 async function trackedStep<T>(routine: string, sourceKey: string, work: () => Promise<T>, options: AgendaStepOptions = {}) {
   const runId = options.runId ?? await startIngestionRun({ routine, sourceKey });
   const trigger = options.trigger ?? "scheduled";
+  const retryState = { history: [] as RetryAttempt[] };
   try {
-    const result = await work();
+    const result = await runScheduledWithRetriesForTest(work, trigger === "scheduled", retryState);
     const raw = normalizeTrackedStepResultForTest(result);
     const imported = Number(raw.imported ?? 0);
     const read = Number(raw.read ?? raw.receivedPosts ?? raw.discovered ?? 0);
@@ -58,7 +91,10 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
       retries: Number(raw.retries ?? 0),
       fallbackList: Number(raw.fallbackList ?? 0),
     });
-    await finishIngestionRun(runId, { status: "succeeded", importedCount: imported, counts: reconciliation.counts, details: { ...raw, reconciliation, trigger }, routine, sourceKey });
+    const pipelineRetries = Number(raw.retries ?? 0);
+    const pipelineHistory = Array.isArray(raw.retryHistory) ? raw.retryHistory : [];
+    const retryHistory = [...pipelineHistory, ...retryState.history];
+    await finishIngestionRun(runId, { status: "succeeded", importedCount: imported, counts: reconciliation.counts, details: { ...raw, reconciliation, trigger, retries: pipelineRetries + retryState.history.length, retryHistory }, routine, sourceKey });
     return result;
   } catch (error) {
     const degraded = sourceKey === "instagram" && isGracefullyDegradedMetaFailure(error);
@@ -72,10 +108,10 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
         httpStatus: degraded ? 200 : blockedCredentials ? 400 : 500,
         counts: { read: 0, filtered: 0, persisted: 0 },
         details: degraded
-          ? { degraded: true, integration: "meta", upstreamStatus, imported: 0, counts: { read: 0, filtered: 0, persisted: 0 }, reconciliation: reconcileIngestionResult({ degraded: true }), trigger }
+          ? { degraded: true, integration: "meta", upstreamStatus, imported: 0, counts: { read: 0, filtered: 0, persisted: 0 }, reconciliation: reconcileIngestionResult({ degraded: true }), trigger, retries: retryState.history.length, retryHistory: retryState.history }
           : blockedCredentials
-            ? { integration: "meta", blocked_credentials: true, upstreamStatus: 400, error: "meta_credentials_or_permissions", counts: { read: 0, filtered: 0, persisted: 0 }, reconciliation: reconcileIngestionResult({}), trigger }
-            : { message: safeMessage, reconciliation: reconcileIngestionResult({}), trigger },
+            ? { integration: "meta", blocked_credentials: true, upstreamStatus: 400, error: "meta_credentials_or_permissions", counts: { read: 0, filtered: 0, persisted: 0 }, reconciliation: reconcileIngestionResult({}), trigger, retries: retryState.history.length, retryHistory: retryState.history }
+            : { message: safeMessage, reconciliation: reconcileIngestionResult({}), trigger, retries: retryState.history.length, retryHistory: retryState.history },
         routine,
         sourceKey,
       });
