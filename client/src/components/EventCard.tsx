@@ -1,3 +1,4 @@
+import React from "react";
 import { ArrowUpRight, CalendarDays, MapPin, Ticket, TicketX } from "lucide-react";
 import { Link } from "wouter";
 import type { Event } from "../../../drizzle/schema";
@@ -21,9 +22,9 @@ export default function EventCard({ event }: { event: Event }) {
   const confidenceLabel = qualitySignals >= 5 ? "Alta confiança" : qualitySignals >= 3 ? "Confiança moderada" : "Dados básicos";
   const confidenceStyle = qualitySignals >= 5 ? "border-emerald-300/20 bg-emerald-400/10 text-emerald-100" : qualitySignals >= 3 ? "border-yellow-300/20 bg-yellow-300/10 text-yellow-100" : "border-white/10 bg-white/[0.05] text-zinc-300";
   return (
-    <article className="content-fade-in group overflow-hidden rounded-[24px] border border-white/10 bg-zinc-900/90 shadow-[0_16px_40px_-28px_rgba(168,85,247,.48)] transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out hover:-translate-y-1 hover:border-orange-300/45 hover:shadow-[0_22px_48px_-24px_rgba(249,115,22,.42)] focus-within:-translate-y-1 focus-within:border-orange-300/55 motion-reduce:transform-none">
+    <article className="content-fade-in group overflow-hidden rounded-[24px] border border-white/10 bg-zinc-900/90 shadow-[0_16px_40px_-28px_rgba(168,85,247,.48)] transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out hover:-translate-y-1 hover:scale-[1.012] hover:border-orange-300/45 hover:bg-zinc-900 hover:shadow-[0_24px_54px_-24px_rgba(249,115,22,.48)] focus-within:-translate-y-1 focus-within:scale-[1.006] focus-within:border-orange-300/55 focus-within:ring-2 focus-within:ring-orange-300/25 motion-reduce:transform-none motion-reduce:transition-none">
       <div className="relative h-48 overflow-hidden bg-zinc-800/80">
-        <img {...imageProps} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+        <img {...imageProps} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover transition-[transform,filter] duration-500 ease-out group-hover:scale-105 group-hover:brightness-110 group-hover:saturate-125 motion-reduce:transition-none" />
         <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/15 to-transparent" />
         <span className="absolute left-4 top-4 rounded-full border border-white/15 bg-zinc-950/70 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-orange-100 backdrop-blur">{event.city}</span>
         {isSoldOut && (
@@ -35,7 +36,7 @@ export default function EventCard({ event }: { event: Event }) {
       </div>
       <div className="space-y-4 p-5">
         <div className="flex items-start justify-between gap-3">
-          <h3 className="line-clamp-2 text-xl font-black leading-tight tracking-tight text-white">{event.title}</h3>
+          <h3 className="line-clamp-2 text-xl font-black leading-tight tracking-tight text-white transition-colors duration-200 group-hover:text-orange-100 motion-reduce:transition-none">{event.title}</h3>
           <ArrowUpRight className="mt-1 shrink-0 text-orange-300 transition-transform duration-200 ease-out group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transform-none" size={20} />
         </div>
         <div className="space-y-2 text-sm text-zinc-300">

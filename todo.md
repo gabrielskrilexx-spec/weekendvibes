@@ -1393,3 +1393,7 @@
 - [x] Remover queries e componentes não utilizados após a simplificação
 - [x] Reorganizar cards com mais respiro e validar responsividade
 - [x] Atualizar testes de UI e validar TypeScript, Vitest, build e publicação
+
+- [x] Adicionar transição suave e feedback visual de hover/foco aos cards da Home
+- [x] Validar interação dos cards em desktop/mobile e atualizar testes se necessário
+- [x] Executar TypeScript, Vitest, build e publicar checkpoint da melhoria de UX
