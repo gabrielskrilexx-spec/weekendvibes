@@ -33,12 +33,53 @@ export type IngestionFailureAlertResult = {
   deduplicated: boolean;
 };
 
+const consecutiveWebhookNotifications = new Set<string>();
+
+export type ConsecutiveFailureWebhookInput = {
+  routine: string;
+  count: number;
+  runIds: number[];
+  latestStartedAt: string;
+  message?: string;
+};
+
+export async function notifyConsecutiveFailureWebhook(input: ConsecutiveFailureWebhookInput, fetcher: typeof fetch = fetch) {
+  const endpoint = process.env.CRITICAL_ALERT_WEBHOOK_URL?.trim();
+  if (!endpoint) return { sent: false, skipped: true } as const;
+  let parsed: URL;
+  try {
+    parsed = new URL(endpoint);
+    if (parsed.protocol !== "https:") return { sent: false, skipped: true } as const;
+  } catch {
+    return { sent: false, skipped: true } as const;
+  }
+  const fingerprint = `${clean(input.routine, 64)}|${input.runIds.slice(0, 3).map(id => Number(id)).join(",")}`;
+  if (consecutiveWebhookNotifications.has(fingerprint)) return { sent: false, skipped: true } as const;
+  const payload = {
+    alert: "consecutive_ingestion_failures",
+    routine: clean(input.routine, 64),
+    count: Math.max(2, Math.min(Number(input.count) || 0, 1000)),
+    runIds: input.runIds.slice(0, 10).map(id => Number(id)).filter(Number.isSafeInteger),
+    occurredAt: new Date().toISOString(),
+    latestStartedAt: clean(input.latestStartedAt, 40),
+    message: clean(input.message ?? `A rotina ${input.routine} registrou falhas consecutivas após esgotar os retries.`, 500),
+  };
+  try {
+    const response = await fetcher(parsed.toString(), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+    if (!response.ok) return { sent: false, skipped: false } as const;
+    consecutiveWebhookNotifications.add(fingerprint);
+    return { sent: true, skipped: false } as const;
+  } catch {
+    return { sent: false, skipped: false } as const;
+  }
+}
+
 type AlertDb = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 type AlertTransaction = Parameters<Parameters<AlertDb["transaction"]>[0]>[0];
 type AlertExecutor = Pick<AlertTransaction, "select" | "insert">;
 
 function clean(value: string | number | null | undefined, max = 240) {
-  return String(value ?? "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+  return String(value ?? "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").replace(/\b(access[_-]?token|api[_-]?key|token|secret|password)\s*[:=]\s*[^\s;,]+/gi, "$1=[redacted]").trim().slice(0, max);
 }
 
 function safeRunId(value: number | string | null | undefined) {

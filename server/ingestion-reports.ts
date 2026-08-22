@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { isGracefullyDegradedMetaFailure } from "./instagram-pipeline";
 import { ingestionRuns, operationalAlerts, ingestionSources } from "../drizzle/schema";
 import { classifyCriticalMetaReason, sendCriticalMetaAlert } from "./meta-alert-webhook";
+import { notifyConsecutiveFailureWebhook } from "./ingestion-failure-alerts";
 import { getDb, recordOperationalAlert } from "./db";
 import { buildFreshnessCriticalAlert, buildReconciliationDivergenceAlert, buildStructuredPersistenceMismatchAlert } from "./operational-alert-rules";
 import { InstagramIntegrationFailure, getMetaFailureStatus } from "./instagram-pipeline";
@@ -376,6 +377,8 @@ export type IngestionReportFilters = {
   routine?: "instagram-agenda" | "public-agenda" | "manual-reprocess";
   status?: "running" | "succeeded" | "partial" | "failed";
   trigger?: "manual" | "scheduled";
+  runId?: number;
+  sourceKey?: string;
 };
 
 function runTrigger(details: unknown): "manual" | "scheduled" {
@@ -408,6 +411,8 @@ export async function listIngestionReport(size = 20, filters: IngestionReportFil
   const sqlFilters = [gte(ingestionRuns.startedAt, cutoff)];
   if (filters.routine) sqlFilters.push(eq(ingestionRuns.routine, filters.routine));
   if (filters.status) sqlFilters.push(eq(ingestionRuns.status, filters.status));
+  if (filters.runId) sqlFilters.push(eq(ingestionRuns.id, filters.runId));
+  if (filters.sourceKey) sqlFilters.push(eq(ingestionRuns.sourceKey, filters.sourceKey));
   const runsRaw = await db.select().from(ingestionRuns).where(and(...sqlFilters)).orderBy(desc(ingestionRuns.startedAt)).limit(Math.max(safeSize * 4, 100));
   const runs = runsRaw.filter(run => !filters.trigger || runTrigger(run.details) === filters.trigger).slice(0, safeSize);
   const trendRuns = await db.select().from(ingestionRuns).where(gte(ingestionRuns.startedAt, cutoff)).orderBy(desc(ingestionRuns.startedAt)).limit(500);
@@ -427,6 +432,7 @@ export async function listIngestionReport(size = 20, filters: IngestionReportFil
   const serializableRuns = runs.map(serializeIngestionRunForTest);
   const serializableAlerts = alerts.map(serializeOperationalAlertForTest);
   const consecutiveFailures = findConsecutiveFailureAlertsForTest(runs.map(run => ({ id: Number(run.id), routine: String(run.routine ?? ""), sourceKey: run.sourceKey == null ? null : String(run.sourceKey), status: String(run.status), startedAt: new Date(run.startedAt), details: run.details })));
+  await Promise.all(consecutiveFailures.map(alert => notifyConsecutiveFailureWebhook(alert)));
   const criticalAlerts = serializableAlerts.filter(alert => alert.severity === "CRITICAL" || isCriticalIngestionFailure(`${alert.title} ${alert.message}`));
   return normalizeReportForTransport({ runs: serializableRuns, alerts: serializableAlerts, criticalAlerts, consecutiveFailures, sourceMetrics, freshness, timeline, reconciliationBySource: buildSourceReconciliationForTest(trendRuns), weeklyTrend: buildWeeklyTrend(trendRuns), weeklySummary: buildWeeklyOperationalSummary(trendRuns), metaStatus: buildMetaIntegrationStatusForTest(metaRuns), scheduleStatus: await listRoutineScheduleStatus(), filterEvaluatedAt: new Date().toISOString(), pastEventRejectionThreshold: getPastEventRejectionThreshold(), totals: { succeeded: Number(totals?.succeeded ?? 0), failed: Number(totals?.failed ?? 0), partial: Number(totals?.partial ?? 0), imported: Number(totals?.imported ?? 0) } });
 }

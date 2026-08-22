@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildIngestionFailureFingerprint,
   handleIngestionFailureAlert,
+  notifyConsecutiveFailureWebhook,
 } from "./ingestion-failure-alerts";
 
 function fakeDb(existing?: { id: number; isResolved: number }) {
@@ -64,5 +65,30 @@ describe("ingestion failure alerts", () => {
 
     expect(result).toMatchObject({ notified: true, reopened: true, deduplicated: false });
     expect(notify).toHaveBeenCalledOnce();
+  });
+});
+
+describe("critical alert webhook configuration", () => {
+  it("envia payload sanitizado e deduplica o mesmo conjunto de runs", async () => {
+    const previous = process.env.CRITICAL_ALERT_WEBHOOK_URL;
+    process.env.CRITICAL_ALERT_WEBHOOK_URL = "https://hooks.example.test/critical";
+    const fetcher = vi.fn().mockResolvedValue({ ok: true });
+    const input = { routine: "public-agenda", count: 2, runIds: [901, 900], latestStartedAt: "2026-08-22T03:00:00.000Z", message: "Falha temporária access_token=secret123" };
+    await expect(notifyConsecutiveFailureWebhook(input, fetcher)).resolves.toMatchObject({ sent: true });
+    await expect(notifyConsecutiveFailureWebhook(input, fetcher)).resolves.toMatchObject({ sent: false, skipped: true });
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({ alert: "consecutive_ingestion_failures", routine: "public-agenda", count: 2, runIds: [901, 900] });
+    expect(JSON.stringify(JSON.parse(fetcher.mock.calls[0][1].body))).not.toContain("secret123");
+    if (previous === undefined) delete process.env.CRITICAL_ALERT_WEBHOOK_URL;
+    else process.env.CRITICAL_ALERT_WEBHOOK_URL = previous;
+  });
+
+  it("aceita a URL opcional sem expor seu valor", () => {
+    const previous = process.env.CRITICAL_ALERT_WEBHOOK_URL;
+    process.env.CRITICAL_ALERT_WEBHOOK_URL = "https://hooks.example.test/critical";
+    expect(new URL(process.env.CRITICAL_ALERT_WEBHOOK_URL).protocol).toBe("https:");
+    expect(JSON.stringify({ configured: Boolean(process.env.CRITICAL_ALERT_WEBHOOK_URL) })).toBe('{"configured":true}');
+    if (previous === undefined) delete process.env.CRITICAL_ALERT_WEBHOOK_URL;
+    else process.env.CRITICAL_ALERT_WEBHOOK_URL = previous;
   });
 });

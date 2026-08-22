@@ -1310,3 +1310,9 @@
 - [x] Exibir alerta para duas ou mais falhas consecutivas após esgotamento de retries
 - [x] Criar testes Vitest para filtros, alerta consecutivo e sanitização de credenciais
 - [x] Validar TypeScript, suíte Vitest, build e publicar checkpoint final
+
+- [x] Adicionar webhook opcional para alertas críticos consecutivos via CRITICAL_ALERT_WEBHOOK_URL
+- [x] Implementar exportação CSV dos ingestionRuns respeitando os filtros ativos
+- [x] Adicionar busca por ID exato e filtro por fonte específica no painel e no tRPC
+- [x] Criar testes Vitest para webhook, filtros e geração do CSV
+- [x] Validar TypeScript, suíte Vitest, build e publicar checkpoint final

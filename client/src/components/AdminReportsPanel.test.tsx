@@ -1,7 +1,7 @@
 import React from "react";
 import { act, create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import AdminReportsPanel from "./AdminReportsPanel";
+import AdminReportsPanel, { exportRunsCsvForTest } from "./AdminReportsPanel";
 
 const mocks = vi.hoisted(() => ({
   mutate: vi.fn(),
@@ -58,6 +58,12 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     mocks.toastWarning.mockReset();
     mutationOptions = {};
     mutationState = { isPending: false };
+  });
+
+  it("exporta CSV com métricas da visualização filtrada e escapa campos", () => {
+    const csv = exportRunsCsvForTest([{ id: 42, routine: "public-agenda", status: "failed", details: JSON.stringify({ trigger: "scheduled", sourceKey: "ingresse:laroc,\"principal\"" }), counts: JSON.stringify({ read: 8, filtered: 4, structured: 2, persisted: 1 }), importedCount: 1, startedAt: "2026-08-22T03:00:00.000Z", finishedAt: "2026-08-22T03:01:00.000Z", durationMs: 60000 }]);
+    expect(csv).toContain('"ID","Rotina","Status","Trigger","Fonte","Read","Filtered","Structured","Persisted","Duração (ms)"');
+    expect(csv).toContain('"42","public-agenda","failed","scheduled","ingresse:laroc,""principal""","8","4","2","1","60000"');
   });
 
   it("exibe uma tag de versão para auditoria do bundle", async () => {
