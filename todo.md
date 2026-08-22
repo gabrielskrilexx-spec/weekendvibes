@@ -1322,3 +1322,9 @@
 - [x] Revalidar busca exata por ID e filtro por fonte específica
 - [x] Ampliar testes Vitest dos cenários de webhook, CSV e filtros
 - [x] Validar TypeScript, suíte Vitest, build e publicar checkpoint de conclusão
+
+- [x] Gerar nome de arquivo CSV com data, rotina e fuso horário
+- [x] Adicionar indicador de carregamento no botão de exportação
+- [x] Criar modal de detalhes por execução com timeline visual de retries
+- [x] Exibir no modal a lista de eventos persistidos da execução
+- [x] Criar testes Vitest e validar TypeScript, build e publicação

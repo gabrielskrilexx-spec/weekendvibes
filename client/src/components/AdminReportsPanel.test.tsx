@@ -1,7 +1,7 @@
 import React from "react";
 import { act, create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import AdminReportsPanel, { exportRunsCsvForTest } from "./AdminReportsPanel";
+import AdminReportsPanel, { buildRunsCsvFilename, exportRunsCsvForTest } from "./AdminReportsPanel";
 
 const mocks = vi.hoisted(() => ({
   mutate: vi.fn(),
@@ -60,10 +60,24 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     mutationState = { isPending: false };
   });
 
+  it("gera nome de CSV com data, rotina e fuso de São Paulo", () => {
+    expect(buildRunsCsvFilename(new Date("2026-08-22T02:00:00.000Z"), "public-agenda")).toBe("ingestion-runs-20260821-public-agenda-America_Sao_Paulo.csv");
+  });
+
   it("exporta CSV com métricas da visualização filtrada e escapa campos", () => {
     const csv = exportRunsCsvForTest([{ id: 42, routine: "public-agenda", status: "failed", details: JSON.stringify({ trigger: "scheduled", sourceKey: "ingresse:laroc,\"principal\"" }), counts: JSON.stringify({ read: 8, filtered: 4, structured: 2, persisted: 1 }), importedCount: 1, startedAt: "2026-08-22T03:00:00.000Z", finishedAt: "2026-08-22T03:01:00.000Z", durationMs: 60000 }]);
     expect(csv).toContain('"ID","Rotina","Status","Trigger","Fonte","Read","Filtered","Structured","Persisted","Duração (ms)"');
     expect(csv).toContain('"42","public-agenda","failed","scheduled","ingresse:laroc,""principal""","8","4","2","1","60000"');
+  });
+
+  it("abre o modal de detalhes com retry e eventos persistidos", async () => {
+    latestReportData = { ...reportData, runs: [{ id: 91, sourceKey: "instagram:ativahouse", routine: "instagram-agenda", status: "failed", importedCount: 1, startedAt: "2026-08-22T03:00:00.000Z", finishedAt: "2026-08-22T03:02:00.000Z", durationMs: 120000, counts: JSON.stringify({ read: 4, filtered: 2, structured: 1, persisted: 1 }), details: JSON.stringify({ trigger: "scheduled", retryHistory: [{ attempt: 1, failedAt: "2026-08-22T03:00:10.000Z", reason: "Timeout" }], persistedEventIds: [1234] }) }] } as typeof reportData;
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    await act(async () => { tree!.root.findByProps({ children: "Ver detalhes" }).props.onClick(); });
+    expect(JSON.stringify(tree!.toJSON())).toContain("Timeline de retries");
+    expect(JSON.stringify(tree!.toJSON())).toContain("Tentativa #\",\"1");
+    expect(JSON.stringify(tree!.toJSON())).toContain("Evento #\",\"1234");
   });
 
   it("exibe uma tag de versão para auditoria do bundle", async () => {
