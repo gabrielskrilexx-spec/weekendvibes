@@ -363,9 +363,11 @@ export async function getEventBySlug(slug: string, dbOverride?: Awaited<ReturnTy
 
 function normalizeEventLocation(data: InsertEvent) {
   const address = data.address ? normalizeLocationText(data.address) : null;
-  const neighborhood = data.neighborhood?.trim() || extractNeighborhood(address, data.locationName, data.city as "Santos" | "Guarujá");
+  const vallumGarden = /vallum|valluns/i.test(`${data.locationName} ${address ?? ""}`) && /garden/i.test(`${data.locationName} ${address ?? ""}`);
+  const city = vallumGarden ? "Santos" : data.city;
+  const neighborhood = data.neighborhood?.trim() || extractNeighborhood(address, data.locationName, city as "Santos" | "Guarujá");
   const formattedAddress = data.formattedAddress?.trim() || address;
-  return { ...data, address, neighborhood, formattedAddress };
+  return { ...data, city, address, neighborhood, formattedAddress };
 }
 
 async function queueGeocoding(eventId: number, data: InsertEvent, db: Awaited<ReturnType<typeof getDb>>) {
@@ -392,17 +394,44 @@ export function assertEventDateIsCurrentOrFuture(eventDate: Date, now = new Date
   if (/\bnatal\b/.test(normalizedTitle) && month !== 12) throw new Error("Evento rejeitado: data incompatível com o tema sazonal Natal");
 }
 
+function titleTokens(value: string) {
+  return new Set(normalizeLocationText(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z0-9]+/).filter(token => token.length > 2));
+}
+
+export function fuzzyTitleSimilarity(left: string, right: string) {
+  const a = titleTokens(left);
+  const b = titleTokens(right);
+  if (a.size === 0 || b.size === 0) return 0;
+  const intersection = Array.from(a).filter(token => b.has(token)).length;
+  const union = new Set([...Array.from(a), ...Array.from(b)]).size;
+  return union > 0 ? intersection / union : 0;
+}
+
+export function isFuzzyDuplicateEventForTest(left: Pick<InsertEvent, "title" | "eventDate" | "locationName" | "city">, right: Pick<InsertEvent, "title" | "eventDate" | "locationName" | "city">) {
+  return left.city === right.city && saoPauloDateKey(left.eventDate) === saoPauloDateKey(right.eventDate) && normalizeLocationText(left.locationName) === normalizeLocationText(right.locationName) && fuzzyTitleSimilarity(left.title, right.title) >= 0.6;
+}
+
+function eventQuality(event: Pick<InsertEvent, "priceCents" | "imageUrl" | "latitude" | "longitude" | "description">) {
+  return (Number(event.priceCents ?? 0) > 0 ? 2 : 0) + (event.imageUrl ? 1 : 0) + (event.latitude && event.longitude ? 1 : 0) + (event.description ? 1 : 0);
+}
+
 export async function saveEvent(data: InsertEvent) {
-  if (!ALLOWED_CITIES.includes(data.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos em Santos e Guarujá");
-  assertEventDateIsCurrentOrFuture(data.eventDate, new Date(), data.title);
+  const normalized = normalizeEventLocation(data);
+  if (!ALLOWED_CITIES.includes(normalized.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos em Santos e Guarujá");
+  assertEventDateIsCurrentOrFuture(normalized.eventDate, new Date(), normalized.title);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const normalized = normalizeEventLocation(data);
-  const existing = await db.select({ id: events.id }).from(events).where(and(sql`${events.sourceUrl} = ${normalized.sourceUrl}`, eq(events.eventDate, normalized.eventDate))).limit(1);
-  if (existing[0]) {
-    await db.update(events).set({ ...normalized, updatedAt: new Date() }).where(eq(events.id, existing[0].id));
-    await queueGeocoding(existing[0].id, normalized, db);
-    return { created: false, id: existing[0].id };
+  const existing = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl }).from(events).where(and(sql`${events.sourceUrl} = ${normalized.sourceUrl}`, eq(events.eventDate, normalized.eventDate))).limit(1);
+  const fuzzyCandidates = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl }).from(events).where(and(eq(events.city, normalized.city), sql`${events.eventDate} >= ${new Date(normalized.eventDate.getTime() - 36 * 60 * 60 * 1000)}`, sql`${events.eventDate} <= ${new Date(normalized.eventDate.getTime() + 36 * 60 * 60 * 1000)}`));
+  const duplicate = existing[0] ?? fuzzyCandidates.find(candidate => isFuzzyDuplicateEventForTest(normalized, candidate as InsertEvent));
+  if (duplicate) {
+    const keepIncoming = eventQuality(normalized) > eventQuality(duplicate);
+    if (keepIncoming) {
+      const merged = { ...normalized, latitude: normalized.latitude || duplicate.latitude, longitude: normalized.longitude || duplicate.longitude, imageUrl: normalized.imageUrl || duplicate.imageUrl, description: normalized.description || duplicate.description, updatedAt: new Date() };
+      await db.update(events).set(merged).where(eq(events.id, duplicate.id));
+      await queueGeocoding(duplicate.id, merged, db);
+    }
+    return { created: false, id: duplicate.id, duplicate: true };
   }
   const inserted = await db.insert(events).values(normalized).onDuplicateKeyUpdate({ set: { ...normalized, updatedAt: new Date() } });
   const eventId = Number(inserted[0]?.insertId ?? 0);

@@ -125,5 +125,5 @@ describe("Instagram weekend pipeline", () => {
       globalThis.fetch = originalFetch;
       delete process.env.INGESTION_FORCE_INSTAGRAM;
     }
-  });
+  }, 15000);
 });

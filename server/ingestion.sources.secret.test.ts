@@ -17,7 +17,16 @@ describe("INGESTION_SOURCE_URLS", () => {
     expect(sources.every(source => source.startsWith("https://"))).toBe(true);
   });
 
-  it("trata DISABLED como ausência de foco temporário", () => {
+  it("trata DISABLED como ausência de foco temporário no parser", async () => {
     expect((process.env.INGESTION_FOCUS_URLS ?? "").trim().toUpperCase()).toBe("DISABLED");
+    const { getConfiguredSourceUrls } = await import("./ingestion");
+    const sources = getConfiguredSourceUrls();
+    expect(sources).toEqual(expect.arrayContaining([
+      "https://articket.com.br/",
+      "https://blacktag.com.br/",
+      "https://zig.tickets/pt-BR",
+    ]));
+    expect(sources.some(source => source.includes("ingresse.com"))).toBe(true);
+    expect(sources).not.toContain("DISABLED");
   });
 });

@@ -1379,3 +1379,10 @@
 - [x] Construir painel responsivo com métricas, tabela/gráfico simples e estados de loading/vazio/erro
 - [x] Adicionar testes Vitest do contrato e da renderização do painel
 - [x] Validar TypeScript, Vitest, build, screenshots e publicar checkpoint
+
+- [x] Auditar registros duplicados do Vallum Garden e a deduplicação existente
+- [x] Forçar Vallum Garden para Santos no mapeamento geográfico
+- [x] Implementar fuzzy matching com merge/prioridade por qualidade
+- [x] Remover INGESTION_FOCUS_URLS pelo cofre seguro
+- [x] Limpar o evento duplicado incorreto e validar a base
+- [x] Criar teste de colisão entre fontes e validar TypeScript, Vitest e build
