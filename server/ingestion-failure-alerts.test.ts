@@ -83,6 +83,16 @@ describe("critical alert webhook configuration", () => {
     else process.env.CRITICAL_ALERT_WEBHOOK_URL = previous;
   });
 
+  it("não chama nenhum endpoint quando a URL não está configurada", async () => {
+    const previous = process.env.CRITICAL_ALERT_WEBHOOK_URL;
+    delete process.env.CRITICAL_ALERT_WEBHOOK_URL;
+    const fetcher = vi.fn();
+    await expect(notifyConsecutiveFailureWebhook({ routine: "instagram-agenda", count: 2, runIds: [902, 901], latestStartedAt: "2026-08-22T04:00:00.000Z", message: "Falha sanitizada" }, fetcher)).resolves.toEqual({ sent: false, skipped: true });
+    expect(fetcher).not.toHaveBeenCalled();
+    if (previous === undefined) delete process.env.CRITICAL_ALERT_WEBHOOK_URL;
+    else process.env.CRITICAL_ALERT_WEBHOOK_URL = previous;
+  });
+
   it("aceita a URL opcional sem expor seu valor", () => {
     const previous = process.env.CRITICAL_ALERT_WEBHOOK_URL;
     process.env.CRITICAL_ALERT_WEBHOOK_URL = "https://hooks.example.test/critical";

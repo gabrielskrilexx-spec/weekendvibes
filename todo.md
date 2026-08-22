@@ -1316,3 +1316,9 @@
 - [x] Adicionar busca por ID exato e filtro por fonte específica no painel e no tRPC
 - [x] Criar testes Vitest para webhook, filtros e geração do CSV
 - [x] Validar TypeScript, suíte Vitest, build e publicar checkpoint final
+
+- [x] Revalidar webhook opcional com variável configurada e ausente, sem chamadas externas indevidas
+- [x] Revalidar CSV respeitando filtros ativos e métricas de auditoria
+- [x] Revalidar busca exata por ID e filtro por fonte específica
+- [x] Ampliar testes Vitest dos cenários de webhook, CSV e filtros
+- [x] Validar TypeScript, suíte Vitest, build e publicar checkpoint de conclusão
