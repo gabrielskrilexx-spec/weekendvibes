@@ -399,6 +399,36 @@ export function isFuzzyDuplicateEventForTest(left: Pick<InsertEvent, "title" | "
   return left.city === right.city && saoPauloDateKey(left.eventDate) === saoPauloDateKey(right.eventDate) && normalizeLocationText(left.locationName) === normalizeLocationText(right.locationName) && fuzzyTitleSimilarity(left.title, right.title) >= 0.6;
 }
 
+export type PotentialEventCollision = {
+  key: string;
+  similarity: number;
+  civilDate: string;
+  venue: string;
+  recommendedKeepId: number;
+  left: Pick<Event, "id" | "title" | "eventDate" | "locationName" | "city" | "priceCents" | "imageUrl" | "latitude" | "longitude" | "sourceUrl">;
+  right: Pick<Event, "id" | "title" | "eventDate" | "locationName" | "city" | "priceCents" | "imageUrl" | "latitude" | "longitude" | "sourceUrl">;
+};
+
+export async function listPotentialEventCollisions(limit = 100): Promise<PotentialEventCollision[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, sourceUrl: events.sourceUrl }).from(events).where(and(eq(events.isPublished, 1), eq(events.isArchived, 0))).orderBy(asc(events.eventDate));
+  const collisions: PotentialEventCollision[] = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    for (let next = index + 1; next < rows.length; next += 1) {
+      const left = rows[index];
+      const right = rows[next];
+      if (!isFuzzyDuplicateEventForTest(left as InsertEvent, right as InsertEvent)) continue;
+      const similarity = fuzzyTitleSimilarity(left.title, right.title);
+      const leftQuality = eventQuality(left);
+      const rightQuality = eventQuality(right);
+      collisions.push({ key: `${left.id}:${right.id}`, similarity, civilDate: saoPauloDateKey(left.eventDate), venue: left.locationName, recommendedKeepId: rightQuality > leftQuality ? right.id : left.id, left, right });
+      if (collisions.length >= limit) return collisions;
+    }
+  }
+  return collisions;
+}
+
 function eventQuality(event: Pick<InsertEvent, "priceCents" | "imageUrl" | "latitude" | "longitude" | "description">) {
   return (Number(event.priceCents ?? 0) > 0 ? 2 : 0) + (event.imageUrl ? 1 : 0) + (event.latitude && event.longitude ? 1 : 0) + (event.description ? 1 : 0);
 }

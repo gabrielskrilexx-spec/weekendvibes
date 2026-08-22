@@ -1404,3 +1404,12 @@
 - [x] Confirmar Home sem diagnóstico, mapas de listagem e filtros secundários
 - [x] Criar ou atualizar testes de duplicação por horários diferentes e cards enxutos
 - [x] Executar TypeScript, Vitest, build, verificação visual e publicar checkpoint
+
+- [x] Criar tela administrativa para listar e revisar colisões potenciais antes da exclusão
+- [x] Adicionar contrato backend protegido para consultar colisões e ações de revisão segura
+- [x] Confirmar que a Home e listagens não importam nem renderizam mapas
+- [x] Implementar mapa lazy na página de detalhes com skeleton e Error Boundary
+- [x] Criar fallback de rota no Google Maps para coordenadas ausentes ou erro do provedor
+- [x] Auditar persistência, contrato tRPC e plotagem de latitude/longitude
+- [x] Adicionar testes de isolamento, coordenadas nulas e fallback
+- [x] Executar TypeScript, Vitest, build, verificação visual e publicar checkpoint

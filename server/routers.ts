@@ -8,7 +8,7 @@ import { deleteEvent, getEventBySlug, listEvents, listTodayEvents, resolveOperat
 import { invokeLLM } from "./_core/llm";
 import { getWednesdayRoutineStatus, runWednesdayRoutineNow } from "./manual-ingestion";
 import { listIngestionReport, reprocessIngestionSource, sanitizeReprocessErrorForTest } from "./ingestion-reports";
-import { createLocationAlias, deleteLocationAlias, listLocationAliases, updateLocationAlias } from "./db";
+import { createLocationAlias, deleteLocationAlias, listLocationAliases, updateLocationAlias, listPotentialEventCollisions } from "./db";
 import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
 
 const safeFilter = (max = 120) => z.string().trim().max(max).optional();
@@ -58,6 +58,9 @@ export const appRouter = router({
     create: adminOnly.input(z.object({ alias: z.string().trim().min(2).max(180), canonicalName: z.string().trim().min(2).max(180), city: z.enum(["Santos", "Guarujá"]) })).mutation(({ input }) => createLocationAlias(input)),
     update: adminOnly.input(z.object({ id: z.number().int().positive(), alias: z.string().trim().min(2).max(180), canonicalName: z.string().trim().min(2).max(180), city: z.enum(["Santos", "Guarujá"]), isActive: z.boolean() })).mutation(({ input }) => updateLocationAlias(input.id, input)),
     remove: adminOnly.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => deleteLocationAlias(input.id)),
+  }),
+  collisionReview: router({
+    list: adminOnly.input(z.object({ limit: z.number().int().min(1).max(100).optional() }).optional()).query(({ input }) => listPotentialEventCollisions(input?.limit ?? 100)),
   }),
   ingestionReports: router({
     summary: adminOnly.input(z.object({ size: z.number().int().min(1).max(50).optional(), periodDays: z.union([z.literal(7), z.literal(30), z.literal(90)]).optional(), routine: z.enum(["instagram-agenda", "public-agenda", "manual-reprocess"]).optional(), status: z.enum(["running", "succeeded", "partial", "failed"]).optional(), trigger: z.enum(["manual", "scheduled"]).optional(), runId: z.number().int().positive().optional(), sourceKey: z.string().trim().max(255).optional() }).optional()).query(({ input }) => listIngestionReport(input?.size ?? 20, { periodDays: input?.periodDays, routine: input?.routine, status: input?.status, trigger: input?.trigger, runId: input?.runId, sourceKey: input?.sourceKey })),
