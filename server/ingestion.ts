@@ -98,8 +98,9 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
       if (url.origin !== absoluteBase.origin) continue;
       const isArticket = url.pathname.startsWith("/e/") && url.hostname.includes("articket");
       const isBlacktag = url.pathname.startsWith("/eventos/") && url.hostname.includes("blacktag");
+      const isZig = url.pathname.startsWith("/eventos/") && (url.hostname === "zig.tickets" || url.hostname.endsWith(".zig.tickets"));
       const isIngresseEvent = url.hostname.includes("ingresse") && url.pathname !== "/" && !url.pathname.startsWith("/search");
-      if (isArticket || isBlacktag || isIngresseEvent) links.add(url.href);
+      if (isArticket || isBlacktag || isZig || isIngresseEvent) links.add(url.href);
     } catch {
       // Ignore malformed public links.
     }

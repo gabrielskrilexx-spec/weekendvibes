@@ -1349,3 +1349,9 @@
 - [x] Relatar eventos aprovados por Blacktag e Articket no run 5100001
 - [x] Atualizar allowlist somente com venues da Baixada Santista comprovados
 - [x] Executar novo teste da public-agenda e validar métricas e persistência
+
+- [x] Inspecionar a estrutura pública da Zig Tickets e o caminho atual do adaptador
+- [x] Identificar e implementar parsing da API ou HTML da Zig Tickets
+- [x] Criar testes de regressão para descoberta e extração de eventos Zig
+- [x] Executar ingestão isolada Zig e validar eventos, filtros e persistência
+- [x] Validar TypeScript, Vitest, build e publicar checkpoint
