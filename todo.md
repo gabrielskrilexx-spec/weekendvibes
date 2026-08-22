@@ -1355,3 +1355,9 @@
 - [x] Criar testes de regressão para descoberta e extração de eventos Zig
 - [x] Executar ingestão isolada Zig e validar eventos, filtros e persistência
 - [x] Validar TypeScript, Vitest, build e publicar checkpoint
+
+- [x] Filtrar o catálogo Zig por Santos e Guarujá antes da coleta de detalhes
+- [x] Criar parser Zig para preço, horário e metadados estruturados
+- [x] Auditar e listar os 59 locais rejeitados no último run Zig
+- [x] Criar testes dos novos filtros e parser e validar a ingestão
+- [x] Validar TypeScript, Vitest, build e publicar checkpoint

@@ -90,7 +90,7 @@ export function containsTargetVenue(value: string, aliases: string[] = []) {
 export function extractPublicEventLinks(html: string, baseUrl: string) {
   const links = new Set<string>();
   const absoluteBase = new URL(baseUrl);
-  const pattern = /<a\b[^>]*href=["']([^"']+)["'][^>]*>/gi;
+  const pattern = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(html))) {
     try {
@@ -100,12 +100,51 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
       const isBlacktag = url.pathname.startsWith("/eventos/") && url.hostname.includes("blacktag");
       const isZig = url.pathname.startsWith("/eventos/") && (url.hostname === "zig.tickets" || url.hostname.endsWith(".zig.tickets"));
       const isIngresseEvent = url.hostname.includes("ingresse") && url.pathname !== "/" && !url.pathname.startsWith("/search");
-      if (isArticket || isBlacktag || isZig || isIngresseEvent) links.add(url.href);
+      const anchorText = stripHtml(match[2]);
+      const isZigRegional = !isZig || /santos|guaruj[aá]/i.test(normalizeText(anchorText));
+      if ((isArticket || isBlacktag || isZig || isIngresseEvent) && isZigRegional) links.add(url.href);
     } catch {
       // Ignore malformed public links.
     }
   }
   return Array.from(links).slice(0, 40);
+}
+
+function readJsonLd(html: string) {
+  const matches = Array.from(html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi));
+  for (const match of matches) {
+    try {
+      const parsed = JSON.parse(match[1].trim()) as unknown;
+      const values = Array.isArray(parsed) ? parsed : [parsed];
+      const event = values.find(value => {
+        if (!value || typeof value !== "object") return false;
+        const record = value as Record<string, unknown>;
+        return String(record["@type"] ?? "").toLowerCase() === "event" || "startDate" in record;
+      });
+      if (event && typeof event === "object") return event as Record<string, unknown>;
+    } catch {
+      // Ignore malformed structured data and continue with metadata fallbacks.
+    }
+  }
+  return undefined;
+}
+
+export function parseZigEventMetadata(html: string, url: string) {
+  const jsonLd = readJsonLd(html);
+  const location = jsonLd?.location && typeof jsonLd.location === "object" ? jsonLd.location as Record<string, unknown> : {};
+  const address = location.address && typeof location.address === "object" ? location.address as Record<string, unknown> : {};
+  const offers = jsonLd?.offers && typeof jsonLd.offers === "object" ? jsonLd.offers as Record<string, unknown> : {};
+  const meta = (property: string) => html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)["']`, "i"))?.[1] ?? "";
+  const title = typeof jsonLd?.name === "string" ? jsonLd.name : meta("og:title");
+  const eventDate = typeof jsonLd?.startDate === "string" ? jsonLd.startDate : meta("event:start_time");
+  const locationName = typeof location.name === "string" ? location.name : "";
+  const city = typeof address.addressLocality === "string" ? address.addressLocality : (/guaruj[aá]/i.test(stripHtml(html)) ? "Guarujá" : /santos/i.test(stripHtml(html)) ? "Santos" : "");
+  const street = typeof address.streetAddress === "string" ? address.streetAddress : "";
+  const priceRaw = typeof offers.price === "number" || typeof offers.price === "string" ? String(offers.price) : "";
+  const priceCents = priceRaw ? Math.round(Number(priceRaw.replace(/[^0-9,.-]/g, "").replace(",", ".")) * 100) : 0;
+  const text = stripHtml(html).replace(/\s+/g, " ").trim();
+  if (!title && !eventDate && !locationName) return undefined;
+  return { title, eventDate, locationName, address: street, city, priceCents, sourceUrl: url, imageUrl: meta("og:image"), text: text.slice(0, 16_000) };
 }
 
 function isIngresseEventUrl(url: string) {
@@ -168,7 +207,17 @@ export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCac
   }
 }
 
-async function fetchPublicPage(url: string) {
+type PublicPage = {
+  url: string;
+  html: string;
+  text: string;
+  imageUrl: string;
+  structured?: Record<string, string | number>;
+  cacheFallback?: { used: true; status: number | null; message: string };
+  fetchFailure?: FetchFailure;
+};
+
+async function fetchPublicPage(url: string): Promise<PublicPage> {
   if (isIngresseEventUrl(url)) return fetchIngresseEventApi(url);
   try {
     const response = await fetch(url, {
@@ -190,7 +239,8 @@ async function fetchPublicPage(url: string) {
       .replace(/\s+/g, " ")
       .trim();
     if (!text) throw createFetchError("Fonte pública retornou conteúdo vazio");
-    return { url, html, text: text.slice(0, 8000), imageUrl: imageMatch?.[1] ?? "" };
+    const zigStructured = new URL(url).hostname.endsWith("zig.tickets") ? parseZigEventMetadata(html, url) : undefined;
+    return { url, html, text: zigStructured?.text.slice(0, 8000) ?? text.slice(0, 8000), imageUrl: zigStructured?.imageUrl ?? imageMatch?.[1] ?? "", structured: zigStructured };
   } catch (error) {
     throw Object.assign(error instanceof Error ? error : new Error(sanitizeFetchFailure(error).message), { fetchFailure: sanitizeFetchFailure(error) });
   }
@@ -204,7 +254,12 @@ async function discoverCandidatePages() {
     if (result.status !== "fulfilled") continue;
     for (const link of extractPublicEventLinks(result.value.html, result.value.url)) discovered.add(link);
   }
-  return Array.from(discovered).slice(0, 60);
+  return Array.from(discovered).filter(url => {
+    try {
+      const host = new URL(url).hostname;
+      return !host.endsWith("zig.tickets") || url !== "https://zig.tickets/pt-BR";
+    } catch { return false; }
+  }).slice(0, 60);
 }
 
 export async function runIngestionPipeline() {
@@ -214,7 +269,7 @@ export async function runIngestionPipeline() {
   if (candidateUrls.length === 0) return { imported: 0, skipped: true, reason: "Nenhuma fonte de ingestão configurada" };
   const pages = await Promise.allSettled(candidateUrls.map(fetchPublicPage));
   const fulfilledPages = pages
-    .filter((result): result is PromiseFulfilledResult<{ url: string; html: string; text: string; imageUrl: string; structured?: Record<string, string | number>; cacheFallback?: { used: true; status: number | null; message: string }; fetchFailure?: FetchFailure }> => result.status === "fulfilled")
+    .filter((result): result is PromiseFulfilledResult<PublicPage> => result.status === "fulfilled")
     .map(result => result.value);
   const fallbackPages = fulfilledPages.filter(page => page.cacheFallback?.used);
   const rejectedPages = pages.filter((result): result is PromiseRejectedResult => result.status === "rejected");
