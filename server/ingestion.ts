@@ -66,7 +66,10 @@ function ingresseCacheKey(url: string) {
 
 export function getConfiguredSourceUrls() {
   const focused = process.env.INGESTION_FOCUS_URLS;
-  if (focused !== undefined) return Array.from(new Set(focused.split(",").map(value => value.trim()).filter(Boolean)));
+  if (focused !== undefined) {
+    const focusUrls = focused.split(",").map(value => value.trim()).filter(value => value && value.toUpperCase() !== "DISABLED");
+    if (focusUrls.length > 0) return Array.from(new Set(focusUrls));
+  }
   const configured = process.env.INGESTION_SOURCE_URL ?? process.env.INGESTION_SOURCE_URLS;
   if (configured !== undefined) {
     let configuredUrls: string[];
@@ -85,6 +88,26 @@ export function getConfiguredSourceUrls() {
 export function containsTargetVenue(value: string, aliases: string[] = []) {
   const normalized = normalizeText(value);
   return [...TARGET_VENUES, ...aliases].some(venue => normalized.includes(normalizeText(venue)));
+}
+
+function tokenizeForSimilarity(value: string) {
+  return new Set(normalizeSlug(value).split("-").filter(token => token.length > 2));
+}
+
+export function areFuzzyDuplicateEvents(left: { title: string; eventDate: Date; city: string }, right: { title: string; eventDate: Date; city: string }) {
+  if (left.city !== right.city) return false;
+  if (Math.abs(left.eventDate.getTime() - right.eventDate.getTime()) > 36 * 60 * 60 * 1000) return false;
+  const a = tokenizeForSimilarity(left.title);
+  const b = tokenizeForSimilarity(right.title);
+  if (a.size === 0 || b.size === 0) return false;
+  const intersection = Array.from(a).filter(token => b.has(token)).length;
+  const union = new Set([...Array.from(a), ...Array.from(b)]).size;
+  return union > 0 && intersection / union >= 0.7;
+}
+
+export function normalizeVenueCity(locationName: string, address: string, city: string) {
+  const venue = normalizeText(`${locationName} ${address}`);
+  return /vallum|valluns/.test(venue) && /garden/.test(venue) ? "Santos" : city;
 }
 
 export function extractPublicEventLinks(html: string, baseUrl: string) {
@@ -308,16 +331,22 @@ export async function runIngestionPipeline() {
   let duplicates = 0;
   let missingCoordinates = 0;
   let outOfBoundsCoordinates = 0;
+  const acceptedEvents: Array<{ title: string; eventDate: Date; city: string }> = [];
   for (const event of payload.events) {
     const date = new Date(String(event.eventDate));
-    const city = String(event.city);
+    const locationName = String(event.locationName);
+    const address = String(event.address);
+    const city = normalizeVenueCity(locationName, address, String(event.city));
     const category = String(event.category);
     const genre = String(event.genre);
-    if (Number.isNaN(date.getTime()) || (city !== "Santos" && city !== "Guarujá") || !matchesTargetVenue(`${event.locationName} ${event.address}`) || !["show", "balada", "evento_musical"].includes(category) || !["funk", "house_eletronica", "samba_pagode", "rap_trap"].includes(genre)) {
+    if (Number.isNaN(date.getTime()) || (city !== "Santos" && city !== "Guarujá") || !matchesTargetVenue(`${locationName} ${address}`) || !["show", "balada", "evento_musical"].includes(category) || !["funk", "house_eletronica", "samba_pagode", "rap_trap"].includes(genre)) {
       filteredByReason.invalidStructuredEvent += 1;
       continue;
     }
     try { assertEventDateIsCurrentOrFuture(date, new Date(), String(event.title)); } catch { filteredByReason.invalidStructuredEvent += 1; continue; }
+    const fuzzyDuplicate = acceptedEvents.some(previous => areFuzzyDuplicateEvents(previous, { title: String(event.title), eventDate: date, city }));
+    if (fuzzyDuplicate) { duplicates += 1; continue; }
+    acceptedEvents.push({ title: String(event.title), eventDate: date, city });
     const sourceHash = crypto.createHash("md5").update(`${normalizeSlug(String(event.sourceUrl))}:${normalizeSlug(String(event.title))}:${date.toISOString().slice(0, 10)}`).digest("hex");
     const sourceUrl = String(event.sourceUrl);
     const sourceType = sourceUrl.includes("ingresse.com") ? "ingresse" : "public_source";

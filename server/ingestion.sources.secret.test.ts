@@ -17,14 +17,7 @@ describe("INGESTION_SOURCE_URLS", () => {
     expect(sources.every(source => source.startsWith("https://"))).toBe(true);
   });
 
-  it("valida o foco temporário das ticketeiras secundárias", () => {
-    const raw = process.env.INGESTION_FOCUS_URLS;
-    if (!raw) return;
-    const sources = raw.split(",").map(source => source.trim()).filter(Boolean);
-    expect(sources).toEqual(expect.arrayContaining([
-      "https://blacktag.com.br/",
-      "https://zig.tickets/pt-BR",
-      "https://articket.com.br/",
-    ]));
+  it("trata DISABLED como ausência de foco temporário", () => {
+    expect((process.env.INGESTION_FOCUS_URLS ?? "").trim().toUpperCase()).toBe("DISABLED");
   });
 });

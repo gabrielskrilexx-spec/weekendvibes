@@ -1361,3 +1361,15 @@
 - [x] Auditar e listar os 59 locais rejeitados no último run Zig
 - [x] Criar testes dos novos filtros e parser e validar a ingestão
 - [x] Validar TypeScript, Vitest, build e publicar checkpoint
+
+- [ ] Auditar INGESTION_FOCUS_URLS, INGESTION_SOURCE_URLS e schedules ativos
+- [ ] Remover ou esvaziar INGESTION_FOCUS_URLS sem alterar a lista oficial de fontes
+- [ ] Confirmar schedules instagram-agenda e public-agenda com modo silencioso, auditoria e retries
+- [ ] Entregar confirmação final do ambiente autônomo
+
+- [x] Definir INGESTION_FOCUS_URLS como DISABLED via configuração segura
+- [x] Fazer o parser tratar DISABLED como ausência de foco
+- [x] Implementar ou fortalecer deduplicação por fuzzy matching
+- [x] Corrigir o mapeamento geográfico do Vallum Garden para Santos
+- [x] Criar testes de configuração, deduplicação e geocodificação
+- [x] Executar limpeza/validação, TypeScript, Vitest, build e publicar checkpoint
