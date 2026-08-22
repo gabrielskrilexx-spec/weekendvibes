@@ -1373,3 +1373,9 @@
 - [x] Corrigir o mapeamento geográfico do Vallum Garden para Santos
 - [x] Criar testes de configuração, deduplicação e geocodificação
 - [x] Executar limpeza/validação, TypeScript, Vitest, build e publicar checkpoint
+
+- [x] Auditar relatório administrativo e layout existente para integrar o monitoramento diário
+- [x] Criar consulta tRPC de resultados diários e rejeições da allowlist
+- [x] Construir painel responsivo com métricas, tabela/gráfico simples e estados de loading/vazio/erro
+- [x] Adicionar testes Vitest do contrato e da renderização do painel
+- [x] Validar TypeScript, Vitest, build, screenshots e publicar checkpoint

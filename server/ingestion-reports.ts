@@ -46,6 +46,7 @@ function findRecord(details: unknown, key: string): Record<string, number> {
 
 export type FreshnessState = "healthy" | "delayed" | "critical" | "never";
 export type IngestionTimelineEntry = { id: string; runId: string; kind: "heartbeat" | "ingestion" | "retry" | "alert"; timestamp: string; label: string; status: string; sourceKey: string | null };
+export type DailyIngestionMetric = { date: string; label: string; runs: number; succeeded: number; failed: number; partial: number; receivedPosts: number; approvedPosts: number; structuredEvents: number; imported: number; persisted: number; filtered: number; rejectedPastEvents: number; rejectedAllowlist: number; zeroMediaRuns: number };
 
 export function getFreshnessState(lastSuccessAt: Date | string | null | undefined, expectedMinutes: number, now = new Date()): FreshnessState {
   if (!lastSuccessAt) return "never";
@@ -94,13 +95,42 @@ function saoPauloDayKey(date: Date) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
 
-function buildWeeklyTrend(runs: Array<{ routine: string; sourceKey: string | null; status: string; importedCount: number; startedAt: Date; details: unknown }>) {
-  const today = new Date();
-  const buckets = new Map<string, { date: string; label: string; runs: number; succeeded: number; failed: number; partial: number; receivedPosts: number; approvedPosts: number; structuredEvents: number; imported: number; persisted: number; rejectedPastEvents: number; zeroMediaRuns: number }>();
+export function buildDailyIngestionMetricsForTest(runs: Array<{ routine: string; sourceKey: string | null; status: string; importedCount: number; startedAt: Date; details: unknown }>, today = new Date()): DailyIngestionMetric[] {
+  const buckets = new Map<string, DailyIngestionMetric>();
   for (let offset = 6; offset >= 0; offset -= 1) {
     const date = new Date(today.getTime() - offset * 24 * 60 * 60 * 1000);
     const key = saoPauloDayKey(date);
-    buckets.set(key, { date: key, label: new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" }).format(date), runs: 0, succeeded: 0, failed: 0, partial: 0, receivedPosts: 0, approvedPosts: 0, structuredEvents: 0, imported: 0, persisted: 0, rejectedPastEvents: 0, zeroMediaRuns: 0 });
+    buckets.set(key, { date: key, label: new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" }).format(date), runs: 0, succeeded: 0, failed: 0, partial: 0, receivedPosts: 0, approvedPosts: 0, structuredEvents: 0, imported: 0, persisted: 0, filtered: 0, rejectedPastEvents: 0, rejectedAllowlist: 0, zeroMediaRuns: 0 });
+  }
+  for (const run of runs) {
+    const bucket = buckets.get(saoPauloDayKey(new Date(run.startedAt)));
+    if (!bucket) continue;
+    const details = parseDetails(run.details);
+    const rejection = rejectionMetrics(details);
+    bucket.runs += 1;
+    bucket.succeeded += run.status === "succeeded" ? 1 : 0;
+    bucket.failed += run.status === "failed" ? 1 : 0;
+    bucket.partial += run.status === "partial" ? 1 : 0;
+    bucket.receivedPosts += findMetric(details, "receivedPosts") || findMetric(details, "read");
+    bucket.approvedPosts += findMetric(details, "approvedPosts");
+    bucket.filtered += findMetric(details, "filtered") || Math.max(0, bucket.receivedPosts - bucket.approvedPosts);
+    bucket.structuredEvents += findMetric(details, "structuredEvents") || findMetric(details, "structured");
+    bucket.imported += Number(run.importedCount ?? 0);
+    bucket.persisted += findMetric(details, "persisted") || Number(run.importedCount ?? 0);
+    bucket.rejectedPastEvents += rejection.rejectedPastEvents;
+    bucket.rejectedAllowlist += rejection.rejectedAllowlist;
+    bucket.zeroMediaRuns += isZeroMediaMetaRun(run, details) ? 1 : 0;
+  }
+  return Array.from(buckets.values());
+}
+
+function buildWeeklyTrend(runs: Array<{ routine: string; sourceKey: string | null; status: string; importedCount: number; startedAt: Date; details: unknown }>) {
+  const today = new Date();
+  const buckets = new Map<string, DailyIngestionMetric>();
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const date = new Date(today.getTime() - offset * 24 * 60 * 60 * 1000);
+    const key = saoPauloDayKey(date);
+    buckets.set(key, { date: key, label: new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" }).format(date), runs: 0, succeeded: 0, failed: 0, partial: 0, receivedPosts: 0, approvedPosts: 0, structuredEvents: 0, imported: 0, persisted: 0, filtered: 0, rejectedPastEvents: 0, rejectedAllowlist: 0, zeroMediaRuns: 0 });
   }
   for (const run of runs) {
     const bucket = buckets.get(saoPauloDayKey(new Date(run.startedAt)));
@@ -112,7 +142,10 @@ function buildWeeklyTrend(runs: Array<{ routine: string; sourceKey: string | nul
     bucket.partial += run.status === "partial" ? 1 : 0;
     bucket.imported += Number(run.importedCount ?? 0);
     bucket.persisted += findMetric(details, "persisted") || Number(run.importedCount ?? 0);
-    bucket.rejectedPastEvents += rejectionMetrics(details).rejectedPastEvents;
+    bucket.filtered += findMetric(details, "filtered") || Math.max(0, findMetric(details, "receivedPosts") - findMetric(details, "approvedPosts"));
+    const rejection = rejectionMetrics(details);
+    bucket.rejectedPastEvents += rejection.rejectedPastEvents;
+    bucket.rejectedAllowlist += rejection.rejectedAllowlist;
     bucket.receivedPosts += findMetric(details, "receivedPosts");
     bucket.approvedPosts += findMetric(details, "approvedPosts");
     bucket.structuredEvents += findMetric(details, "structuredEvents");
@@ -224,7 +257,8 @@ function rejectionMetrics(details: unknown) {
   const reasons = findRecord(details, "rejectionReasons");
   const rejectedPastEvents = Math.max(0, Number(reasons.past_event ?? 0));
   const rejectedEvents = Math.max(rejectedPastEvents, Object.values(reasons).reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0));
-  return { rejectedEvents, rejectedPastEvents, rejectedOtherReasons: Math.max(0, rejectedEvents - rejectedPastEvents) };
+  const rejectedAllowlist = Math.max(0, findMetric(details, "outsideTargetVenue") || findMetric(details, "outside_target_venue"));
+  return { rejectedEvents, rejectedPastEvents, rejectedAllowlist, rejectedOtherReasons: Math.max(0, rejectedEvents - rejectedPastEvents) };
 }
 
 export function normalizeIngestionCountsForTest(input: { counts?: Partial<IngestionCounts>; details?: unknown; importedCount?: number }): IngestionCounts {

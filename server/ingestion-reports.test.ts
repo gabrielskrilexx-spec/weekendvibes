@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest } from "./ingestion-reports";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
 import { sanitizeAgendaStepErrorForTest } from "./agenda-routine";
 
@@ -120,6 +120,15 @@ describe("weekly ingestion trend and Meta zero-media signal", () => {
     expect(today.persisted).toBe(2);
     expect(today.rejectedPastEvents).toBe(0);
     expect(today.zeroMediaRuns).toBe(1);
+  });
+
+  it("aggregates allowlist rejections into the daily monitoring metric", () => {
+    const now = new Date();
+    const trend = buildDailyIngestionMetricsForTest([
+      { routine: "public-agenda", sourceKey: "public", status: "succeeded", importedCount: 1, startedAt: now, details: { read: 5, persisted: 1, filteredByReason: { outsideTargetVenue: 3 } } },
+    ], now);
+    expect(trend).toHaveLength(7);
+    expect(trend.at(-1)).toMatchObject({ runs: 1, receivedPosts: 5, persisted: 1, rejectedAllowlist: 3 });
   });
 
   it("separates the 50% quality threshold from ordinary cycles", () => {
