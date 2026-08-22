@@ -1386,3 +1386,10 @@
 - [x] Remover INGESTION_FOCUS_URLS pelo cofre seguro
 - [x] Limpar o evento duplicado incorreto e validar a base
 - [x] Criar teste de colisão entre fontes e validar TypeScript, Vitest e build
+
+- [x] Remover da Home a seção Agenda da Semana / Capturado Recentemente e seus badges de diagnóstico
+- [x] Simplificar os filtros públicos para cidade, data/fim de semana e categoria/vibe
+- [x] Remover mapas da Home/listagens e manter mapa somente na página de detalhe
+- [x] Remover queries e componentes não utilizados após a simplificação
+- [x] Reorganizar cards com mais respiro e validar responsividade
+- [x] Atualizar testes de UI e validar TypeScript, Vitest, build e publicação

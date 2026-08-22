@@ -252,22 +252,6 @@ export function filterEventsForPublicFeed<T extends Pick<Event, "city" | "catego
   return items.filter(event => ((event.isArchived === undefined && event.isPublished === undefined) || isPublicEventRecord(event as Pick<Event, "isArchived" | "isPublished">)) && ALLOWED_CITIES.includes(event.city as typeof ALLOWED_CITIES[number]) && MUSICAL_CATEGORIES.includes(event.category as typeof MUSICAL_CATEGORIES[number]) && (!filters.city || filters.city === "Todas" || event.city === filters.city) && (!filters.category || filters.category === "Todas" || event.category === filters.category) && (!filters.genre || event.genre === filters.genre) && (!filters.venue || event.locationName.toLowerCase().includes(filters.venue.toLowerCase()) || (event.address?.toLowerCase().includes(filters.venue.toLowerCase()) ?? false)) && (filters.maxPriceCents === undefined || event.priceCents <= filters.maxPriceCents));
 }
 
-export async function listRecentInstagramAgendaEvents(options: { lookbackDays?: number; size?: number; dbOverride?: Awaited<ReturnType<typeof getDb>> } = {}) {
-  const db = options.dbOverride ?? await getDb();
-  if (!db) return [];
-  const lookbackDays = Math.min(Math.max(options.lookbackDays ?? 5, 1), 14);
-  const size = Math.min(Math.max(options.size ?? 8, 1), 12);
-  const cutoff = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
-  const dayStartUtc = saoPauloDayStartUtc();
-  return db.select().from(events).where(and(
-    eq(events.isPublished, 1),
-    eq(events.isArchived, 0),
-    sql`${events.sourceType} IN (${sql.join(WEEKLY_AGENDA_SOURCE_TYPES.map(sourceType => sql`${sourceType}`), sql`, `)})`,
-    sql`${events.updatedAt} >= ${cutoff}`,
-    gte(events.eventDate, dayStartUtc),
-    sql`${events.city} IN (${sql.join(ALLOWED_CITIES.map(city => sql`${city}`), sql`, `)})`,
-  )).orderBy(asc(events.eventDate), desc(events.createdAt)).limit(size);
-}
 
 export function saoPauloDateKey(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
