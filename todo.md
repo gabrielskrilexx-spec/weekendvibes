@@ -1328,3 +1328,15 @@
 - [x] Criar modal de detalhes por execução com timeline visual de retries
 - [x] Exibir no modal a lista de eventos persistidos da execução
 - [x] Criar testes Vitest e validar TypeScript, build e publicação
+
+- [x] Auditar os adaptadores e a configuração atual de fontes públicas
+- [x] Adicionar Blacktag, Zig Tickets e Articket preservando as fontes existentes
+- [x] Executar run manual isolado da public-agenda para as novas fontes
+- [x] Verificar logs, filtros de allowlist/data e métricas por fonte
+- [x] Entregar relatório de leitura, filtragem e persistência
+
+- [x] Auditar configuração e adaptadores das fontes públicas secundárias
+- [x] Atualizar INGESTION_SOURCE_URLS preservando Ingresse e adicionando Blacktag, Zig Tickets e Articket
+- [x] Executar run manual isolado da public-agenda para as três fontes
+- [x] Verificar logs e métricas de leitura, filtragem, validação e persistência por fonte
+- [x] Entregar relatório sanitizado da execução
