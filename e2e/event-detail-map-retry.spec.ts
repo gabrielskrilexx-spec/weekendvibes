@@ -42,27 +42,21 @@ async function mockDetailApis(page: Page) {
   });
 }
 
-test("limita o retry do mapa a três tentativas em navegador real", async ({ page }) => {
+test("carrega mapa zero-config do OpenStreetMap e posiciona o pin do evento", async ({ page }) => {
   await mockDetailApis(page);
-  let relayAttempts = 0;
-  await page.route("**/api/maps/javascript**", async route => {
-    relayAttempts += 1;
-    await route.abort("failed");
+  const externalRequests: string[] = [];
+  page.on("request", request => {
+    if (request.url().includes("maps.googleapis.com") || request.url().includes("mapbox")) externalRequests.push(request.url());
+  });
+  await page.route("https://{a,b,c}.tile.openstreetmap.org/**", async route => {
+    await route.fulfill({ status: 200, contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64") });
   });
 
   await page.goto("/eventos/santos-sunset");
   await expect(page.getByRole("heading", { name: "Santos Sunset" })).toBeVisible();
-  const alert = page.getByRole("alert");
-  await expect(alert).toContainText("Mapa temporariamente indisponível");
-  const retry = page.getByRole("button", { name: /Tentar/ });
-  await expect(retry).toBeVisible();
-
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    await retry.click();
-    await expect.poll(() => relayAttempts).toBe(attempt + 1);
-  }
-
-  await expect(alert).toContainText("Não foi possível conectar ao mapa.");
-  await expect(alert).toContainText("Atingimos o limite de 3 tentativas.");
-  await expect(page.getByRole("button", { name: "Tentativas esgotadas" })).toBeDisabled();
+  await expect(page.getByTestId("osm-map")).toBeVisible();
+  await expect(page.locator(".weekendvibes-map-pin")).toHaveCount(1);
+  await expect(page.getByRole("link", { name: /Traçar rota/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Pontos próximos/ })).toBeVisible();
+  expect(externalRequests).toEqual([]);
 });

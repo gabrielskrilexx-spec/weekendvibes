@@ -1566,3 +1566,11 @@
 - [x] Registrar evento de analytics no clique e no resultado do retry
 - [x] Adicionar teste Playwright em navegador real e regressões Vitest
 - [x] Executar TypeScript, suíte, build, checkpoint e push para main
+
+## Mapa zero-config com OpenStreetMap
+- [x] Substituir o carregador/provedor Google Maps por mapa baseado em OpenStreetMap/Leaflet sem variáveis de ambiente
+- [x] Renderizar mapa na página de detalhes com pin nas coordenadas válidas do evento
+- [x] Manter fallback acessível para coordenadas inválidas e falhas de tiles/rede
+- [x] Atualizar testes unitários e E2E para Leaflet, pin e ausência de chaves
+- [x] Executar TypeScript, suíte Vitest, build e validação Playwright
+- [x] Salvar checkpoint e sincronizar a branch main no GitHub

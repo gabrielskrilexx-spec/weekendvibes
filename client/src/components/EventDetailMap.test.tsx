@@ -7,6 +7,7 @@ vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
 let mapMounts = 0;
 let boundaryAttempts = 0;
+let lastMapProps: { latitude?: number; longitude?: number } = {};
 
 vi.mock("@/components/ErrorBoundary", () => ({
   default: ({ children, fallback }: { children: React.ReactNode; fallback: React.ReactNode }) => {
@@ -18,9 +19,10 @@ vi.mock("@/components/ErrorBoundary", () => ({
   },
 }));
 
-vi.mock("@/components/Map", () => ({
-  MapView: () => {
+vi.mock("@/components/OpenStreetMapView", () => ({
+  default: (props: { latitude?: number; longitude?: number }) => {
     mapMounts += 1;
+    lastMapProps = props;
     return <div data-testid="map-loaded">Mapa carregado</div>;
   },
 }));
@@ -35,7 +37,7 @@ describe("EventDetailMap", () => {
     expect(hasValidCoordinates(null, null)).toBe(false);
     expect(markup).toContain("Mapa temporariamente indisponível");
     expect(markup).toContain("Ver rota no Google Maps");
-    expect(markup).toContain("Tentar novamente");
+    expect(markup).toContain("Mapa indisponível");
     expect(markup).toContain('type="button"');
     expect(markup).not.toContain("Carregando mapa");
   });
@@ -52,6 +54,7 @@ describe("EventDetailMap", () => {
   it("remonta o mapa após uma falha de rede ao clicar em Tentar novamente", async () => {
     mapMounts = 0;
     boundaryAttempts = 0;
+    lastMapProps = {};
     const withCoordinates = { ...event, latitude: "-23.961", longitude: "-46.332" };
     let renderer: ReturnType<typeof create>;
 
@@ -71,6 +74,7 @@ describe("EventDetailMap", () => {
     });
 
     expect(mapMounts).toBe(1);
+    expect(lastMapProps).toMatchObject({ latitude: -23.961, longitude: -46.332 });
     expect(renderer!.root.findByProps({ "data-testid": "map-loaded" }).props.children).toBe("Mapa carregado");
     renderer!.unmount();
   });
