@@ -6,6 +6,15 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 const formatDate = (value: Date | string) => new Date(value).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
 const formatPrice = (value: number) => value > 0 ? `R$ ${(value / 100).toFixed(2).replace(".", ",")}` : "Sem preço";
 
+export function getDeleteCollisionErrorMessage(error: unknown) {
+  const raw = error && typeof error === "object" && "message" in error ? String((error as { message?: unknown }).message ?? "") : "";
+  if (/unable to transform|transform response|serializ/i.test(raw)) return "O servidor atualizou o evento, mas não conseguiu serializar a confirmação. Atualize a lista e tente novamente se a colisão continuar visível.";
+  if (/foreign|constraint|referenc|depend/i.test(raw)) return "O evento possui dependências que não puderam ser removidas com segurança. Nenhum registro foi excluído.";
+  if (/unauthorized|forbidden|permission/i.test(raw)) return "Sua sessão não tem permissão administrativa para excluir este registro.";
+  if (/unavailable|timeout|network|fetch/i.test(raw)) return "O serviço está temporariamente indisponível. Verifique a conexão e tente novamente.";
+  return raw && raw.length <= 220 ? raw : "Não foi possível excluir a duplicata. Tente novamente.";
+}
+
 export default function CollisionReviewPanel() {
   const collisions = trpc.collisionReview.list.useQuery({ limit: 100 });
   const utils = trpc.useUtils();
@@ -18,7 +27,7 @@ export default function CollisionReviewPanel() {
       void collisions.refetch();
       void utils.events.list.invalidate();
     },
-    onError: error => { setPending(null); setNotice(`Não foi possível remover: ${error.message}`); },
+    onError: error => { setPending(null); setNotice(`Não foi possível remover: ${getDeleteCollisionErrorMessage(error)}`); },
   });
 
   return <section className="mt-8 rounded-3xl border border-orange-300/20 bg-orange-300/[0.04] p-5 sm:p-7" aria-labelledby="collision-review-title">

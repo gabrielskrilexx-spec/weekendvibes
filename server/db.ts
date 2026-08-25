@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gte, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Event, InsertEvent, InsertUser, events, users, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs, ingestionPayloadCache, IngestionPayloadCache } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 
@@ -537,8 +537,24 @@ export async function deleteEvent(id: number) {
   if (!Number.isInteger(id) || id <= 0) throw new Error("ID de evento inválido");
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const result = await db.delete(events).where(eq(events.id, id));
-  return { deleted: Number((result as { affectedRows?: number }).affectedRows ?? 0) > 0, id };
+  return db.transaction(async tx => {
+    const favorites = await tx.delete(eventFavorites).where(eq(eventFavorites.eventId, id));
+    const reminders = await tx.delete(eventReminders).where(eq(eventReminders.eventId, id));
+    const geocoding = await tx.delete(geocodingJobs).where(eq(geocodingJobs.eventId, id));
+    const geocodingAudit = await tx.delete(geocodingAuditLogs).where(eq(geocodingAuditLogs.eventId, id));
+    const result = await tx.delete(events).where(eq(events.id, id));
+    const affectedRows = Number((result as { affectedRows?: number }).affectedRows ?? 0);
+    return {
+      deleted: affectedRows > 0,
+      id,
+      deletedDependencies: {
+        favorites: Number((favorites as { affectedRows?: number }).affectedRows ?? 0),
+        reminders: Number((reminders as { affectedRows?: number }).affectedRows ?? 0),
+        geocodingJobs: Number((geocoding as { affectedRows?: number }).affectedRows ?? 0),
+        geocodingAuditLogs: Number((geocodingAudit as { affectedRows?: number }).affectedRows ?? 0),
+      },
+    } as const;
+  });
 }
 
 /**

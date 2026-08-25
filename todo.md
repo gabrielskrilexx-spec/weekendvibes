@@ -1452,3 +1452,23 @@
 - [x] Homologar Black Pass e Mr Ingressos contra suas páginas públicas e caminhos de evento
 - [x] Ajustar parsers/adapters se a auditoria identificar estrutura incompatível
 - [x] Executar testes, remover ou desativar logging temporário e entregar relatório sanitizado
+
+- [x] Executar novo ciclo manual completo de public-agenda focado em Black Pass e Mr Ingressos
+- [x] Consultar o ingestionRun criado e separar candidatos, rejeições, duplicidades e persistências
+- [x] Validar venues, URLs de compra, cidades e coordenadas dos eventos persistidos
+- [x] Entregar relatório sanitizado do teste de fogo atualizado
+
+- [ ] Auditar mutation de exclusão de duplicatas, componente e relações dependentes
+- [ ] Corrigir retorno tRPC para objeto serializável com deletedId e preservadoId
+- [ ] Tratar dependências relacionais e erros de banco sem vazar exceções brutas
+- [ ] Exibir mensagem descritiva de erro na UI e atualizar a lista após sucesso
+- [ ] Adicionar teste Vitest do fluxo completo de exclusão de duplicata
+- [ ] Executar TypeScript, Vitest, build e publicar checkpoint
+
+## Correção final — exclusão de duplicatas sugeridas
+- [x] Tornar `events.remove` estritamente serializável, retornando deleted, id e contagens de dependências removidas
+- [x] Tratar falhas de banco, constraints e IDs inválidos sem vazar exceções brutas pelo transporte tRPC
+- [x] Melhorar mensagens do painel CollisionReviewPanel para falhas de transformação, dependências, permissão e indisponibilidade
+- [x] Atualizar regressões Vitest do CRUD e do painel para o contrato transacional e mensagens descritivas
+- [x] Executar Vitest completo, TypeScript e build de produção
+- [x] Salvar checkpoint da correção final de exclusão de duplicatas

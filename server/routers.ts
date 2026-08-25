@@ -114,9 +114,27 @@ export const appRouter = router({
     }),
     remove: adminOnly.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
       try {
-        return await deleteEvent(input.id);
-      } catch {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível excluir o evento" });
+        const result = await deleteEvent(input.id);
+        return {
+          deleted: Boolean(result.deleted),
+          id: Number(result.id),
+          deletedDependencies: {
+            favorites: Number(result.deletedDependencies?.favorites ?? 0),
+            reminders: Number(result.deletedDependencies?.reminders ?? 0),
+            geocodingJobs: Number(result.deletedDependencies?.geocodingJobs ?? 0),
+            geocodingAuditLogs: Number(result.deletedDependencies?.geocodingAuditLogs ?? 0),
+          },
+        } as const;
+      } catch (error) {
+        const raw = error instanceof Error ? error.message : "";
+        const message = /Database unavailable/i.test(raw)
+          ? "O banco de dados está temporariamente indisponível. Tente novamente."
+          : /foreign|constraint|referenc/i.test(raw)
+            ? "Não foi possível remover as dependências do evento antes da exclusão."
+            : /ID de evento inválido/i.test(raw)
+              ? "O identificador do evento é inválido."
+              : "Não foi possível excluir o evento. Tente novamente.";
+        throw new TRPCError({ code: /Database unavailable/i.test(raw) ? "SERVICE_UNAVAILABLE" : "INTERNAL_SERVER_ERROR", message });
       }
     }),
     enrich: adminOnly.input(z.object({ rawText: z.string().trim().min(20).max(12000) })).mutation(async ({ input }) => {
