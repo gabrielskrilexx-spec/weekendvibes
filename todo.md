@@ -1480,3 +1480,11 @@
 - [x] Exibir relatório segregado por fonte com lidos, filtrados, persistíveis e erros sanitizados
 - [x] Adicionar testes Vitest de não persistência, contrato tRPC e renderização do relatório
 - [x] Executar Vitest, TypeScript e build de produção e publicar checkpoint
+
+## Correção dos adaptadores Black Pass e Mr Ingressos
+- [x] Auditar seletores, rotas de catálogo e contratos atuais dos adaptadores
+- [x] Atualizar descoberta e parsing do Black Pass para cards e links `/event/...`
+- [x] Atualizar Mr Ingressos para catálogo/rotas dinâmicas e parsing resiliente
+- [x] Registrar falhas de descoberta, fetch e parsing isoladamente por adaptador no Dry-run
+- [x] Adicionar testes de regressão e validar com Dry-run, TypeScript e build
+- [x] Publicar checkpoint da correção dos adaptadores

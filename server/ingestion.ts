@@ -183,7 +183,15 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
       // Ignore malformed public links.
     }
   }
-  return Array.from(links).slice(0, 40);
+  const rawPathPattern = /(?:href|url|link)=["'\\]*(\/event\/[A-Za-z0-9_-]+|\/comprar\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)?)/gi;
+  let rawMatch: RegExpExecArray | null;
+  while ((rawMatch = rawPathPattern.exec(html))) {
+    try {
+      const url = new URL(rawMatch[1], absoluteBase);
+      if (url.origin === absoluteBase.origin && (url.pathname.startsWith("/event/") || url.pathname.startsWith("/comprar/"))) links.add(url.href);
+    } catch { /* ignore malformed embedded paths */ }
+  }
+  return Array.from(links).slice(0, 60);
 }
 
 function readJsonLd(html: string) {
@@ -228,7 +236,7 @@ function isBlackPassEventUrl(url: string) {
 }
 
 function isBlackPassRootUrl(url: string) {
-  try { const parsed = new URL(url); return parsed.hostname === "blackpass.com.br" && ["", "/"].includes(parsed.pathname); } catch { return false; }
+  try { const parsed = new URL(url); return parsed.hostname.endsWith("blackpass.com.br") && ["", "/", "/events"].includes(parsed.pathname.replace(/\/$/, "")); } catch { return false; }
 }
 
 const BLACKPASS_EVENTS_API = "https://api.blackpass.com.br/events/list";
@@ -255,11 +263,16 @@ export function parseBlackPassCatalogEvent(event: BlackPassCatalogEvent) {
   return { title, summary: title, eventDate: dateTime, locationName, address, city, category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl, imageUrl, latitude: latitude ?? "", longitude: longitude ?? "", text: [title, locationName, address, city, dateTime].filter(Boolean).join(" ") };
 }
 
+function parseBlackPassCatalogPayload(payload: unknown): BlackPassCatalogEvent[] {
+  const candidates = Array.isArray(payload) ? payload : payload && typeof payload === "object" ? ((payload as { data?: unknown; events?: unknown; results?: unknown }).data ?? (payload as { events?: unknown }).events ?? (payload as { results?: unknown }).results) : [];
+  if (!Array.isArray(candidates)) throw createFetchError("Adaptador Black Pass recebeu contrato de catálogo inesperado");
+  return candidates.filter((item): item is BlackPassCatalogEvent => Boolean(item && typeof item === "object"));
+}
+
 async function fetchBlackPassCatalog(): Promise<BlackPassCatalogEvent[]> {
   const response = await fetch(BLACKPASS_EVENTS_API, { headers: { accept: "application/json", "user-agent": "WeekendVibesBot/1.0 (+public-event-ingestion)" }, signal: AbortSignal.timeout(12_000) });
   if (!response.ok) throw createFetchError(`API pública do Black Pass respondeu ${response.status}`, response.status);
-  const payload = await response.json() as unknown;
-  return Array.isArray(payload) ? payload.filter((item): item is BlackPassCatalogEvent => Boolean(item && typeof item === "object")) : [];
+  return parseBlackPassCatalogPayload(await response.json() as unknown);
 }
 
 async function fetchBlackPassEventPage(url: string): Promise<PublicPage> {
@@ -267,11 +280,30 @@ async function fetchBlackPassEventPage(url: string): Promise<PublicPage> {
   const event = (await fetchBlackPassCatalog()).find(item => String(item.id) === id);
   const structured = event ? parseBlackPassCatalogEvent(event) : undefined;
   if (!structured) throw createFetchError(`API pública do Black Pass sem dados essenciais para ${url}`);
-  return { url, html: "", text: structured.text, imageUrl: structured.imageUrl, structured };
+  return { url, html: "", text: structured.text, imageUrl: structured.imageUrl, structured, adapter: "blackpass" };
 }
 
 function isMrIngressosEventUrl(url: string) {
   try { const parsed = new URL(url); return parsed.hostname.endsWith("mringressos.com.br") && /^\/comprar\//.test(parsed.pathname); } catch { return false; }
+}
+
+function isMrIngressosCatalogUrl(url: string) {
+  try { const parsed = new URL(url); return parsed.hostname.endsWith("mringressos.com.br") && ["", "/", "/eventos"].includes(parsed.pathname.replace(/\/$/, "")); } catch { return false; }
+}
+
+export function extractMrIngressosListingEvents(html: string, baseUrl = "https://mringressos.com.br/") {
+  const events: Array<{ url: string; title: string; text: string }> = [];
+  const pattern = /<a\b[^>]*href=["']([^"']*\/comprar\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)?)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(html))) {
+    try {
+      const url = new URL(match[1], baseUrl).href;
+      const text = stripHtml(match[2]);
+      const title = text.split(/\n|\r|(?=Guarujá|Guaruja|Santos)/i).map(value => value.trim()).find(value => value.length > 2 && !/^(sex|sab|dom|seg|ter|qua|qui|\d)/i.test(value)) ?? text.slice(0, 160);
+      if (title && !events.some(event => event.url === url)) events.push({ url, title: title.slice(0, 160), text: text.slice(0, 1000) });
+    } catch { /* ignore malformed listing links */ }
+  }
+  return events;
 }
 
 export function parseBlackPassEventMetadata(html: string, url: string) {
@@ -288,10 +320,12 @@ export function parseTicketingEventMetadata(html: string, url: string) {
   const address = location.address && typeof location.address === "object" ? location.address as Record<string, unknown> : {};
   const offers = jsonLd?.offers && typeof jsonLd.offers === "object" ? jsonLd.offers as Record<string, unknown> : {};
   const meta = (property: string) => html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)`, "i"))?.[1] ?? "";
-  const visibleText = stripHtml(html).replace(/\\s+/g, " ");
-  const title = typeof jsonLd?.name === "string" ? jsonLd.name : meta("og:title");
-  const eventDate = typeof jsonLd?.startDate === "string" ? jsonLd.startDate : meta("event:start_time");
-  const locationName = typeof location.name === "string" ? location.name : "";
+  const visibleText = stripHtml(html).replace(/\s+/g, " ");
+  const h1Text = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? "";
+  const pageTitle = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "";
+  const title = typeof jsonLd?.name === "string" ? jsonLd.name : meta("og:title") || stripHtml(h1Text) || stripHtml(pageTitle);
+  const eventDate = typeof jsonLd?.startDate === "string" ? jsonLd.startDate : (meta("event:start_time") || visibleText.match(/(?:sex|sab|dom|seg|ter|qua|qui)[^0-9]{0,20}(\d{1,2})[\/ .-]+([a-záéêç]+|\d{1,2})[^0-9]{0,12}(\d{1,2})h?(\d{2})?/i)?.[0] || "");
+  const locationName = typeof location.name === "string" ? location.name : (visibleText.match(/(?:Guarujá|Guaruja|Santos)[^,|]{0,80}/i)?.[0] ?? "").trim();
   const city = typeof address.addressLocality === "string" ? address.addressLocality : (/guaruj[aá]/i.test(visibleText) ? "Guarujá" : /santos/i.test(visibleText) ? "Santos" : "");
   const street = typeof address.streetAddress === "string" ? address.streetAddress : "";
   const priceRaw = typeof offers.price === "number" || typeof offers.price === "string" ? String(offers.price) : "";
@@ -365,6 +399,8 @@ type PublicPage = {
   html: string;
   text: string;
   imageUrl: string;
+  adapter?: "blackpass" | "mringressos" | "ingresse" | "generic";
+  adapterError?: string;
   structured?: Record<string, string | number>;
   cacheFallback?: { used: true; status: number | null; message: string };
   fetchFailure?: FetchFailure;
@@ -431,7 +467,9 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
     const structured = hostname.endsWith("zig.tickets") ? parseZigEventMetadata(html, url) : (isBlackPassEventUrl(url) ? parseBlackPassEventMetadata(html, url) : isMrIngressosEventUrl(url) ? parseMrIngressosEventMetadata(html, url) : undefined);
     const normalizedText = structured?.text.slice(0, 8000) ?? text.slice(0, 8000);
     logPublicResponseDiagnostics({ url, status: response.status, contentType: response.headers.get("content-type"), html, text: normalizedText, structured: Boolean(structured), links: extractPublicEventLinks(html, url).length });
-    return { url, html, text: normalizedText, imageUrl: structured?.imageUrl ?? imageMatch?.[1] ?? "", structured };
+    const adapter = hostname.endsWith("blackpass.com.br") ? "blackpass" : hostname.endsWith("mringressos.com.br") ? "mringressos" : hostname.includes("ingresse") ? "ingresse" : "generic";
+    const adapterError = (isBlackPassEventUrl(url) || isMrIngressosEventUrl(url)) && !structured ? `Adaptador ${adapter} não encontrou JSON-LD/metadados completos; conteúdo textual encaminhado para a classificação.` : undefined;
+    return { url, html, text: normalizedText, imageUrl: structured?.imageUrl ?? imageMatch?.[1] ?? "", structured, adapter, adapterError };
   } catch (error) {
     throw Object.assign(error instanceof Error ? error : new Error(sanitizeFetchFailure(error).message), { fetchFailure: sanitizeFetchFailure(error) });
   }
@@ -446,8 +484,12 @@ async function discoverCandidatePages(options: { dryRun?: boolean } = {}) {
     if (result.status !== "fulfilled") continue;
     const baseUrl = bases[index];
     for (const link of extractPublicEventLinks(result.value.html, result.value.url)) discovered.add(link);
+    if (isMrIngressosCatalogUrl(baseUrl)) {
+      for (const event of extractMrIngressosListingEvents(result.value.html, result.value.url)) discovered.add(event.url);
+    }
     if (isBlackPassRootUrl(baseUrl)) {
       const catalog = await fetchBlackPassCatalog().catch(error => { logPublicFailureDiagnostics(baseUrl, error); return []; });
+      if (catalog.length === 0) logPublicFailureDiagnostics(baseUrl, createFetchError("Adaptador Black Pass não encontrou eventos no catálogo público"));
       for (const event of catalog) if (event.id) discovered.add(blackPassEventUrl(event.id));
     }
   }
@@ -519,6 +561,9 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
       report.rejectionReasons.outsideTargetVenue += 1;
     } else if (page.value.cacheFallback?.used) {
       report.errors.push({ sourceUrl: url, status: page.value.cacheFallback.status, message: `Fallback utilizado: ${page.value.cacheFallback.message}` });
+    }
+    if (page.value.adapterError) {
+      report.errors.push({ sourceUrl: url, status: null, message: page.value.adapterError });
     }
   });
   for (const event of input.acceptedEvents ?? []) getReport(event.sourceKey).persistable += 1;

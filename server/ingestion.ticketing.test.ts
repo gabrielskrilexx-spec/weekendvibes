@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { containsTargetVenue, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseMrIngressosEventMetadata } from "./ingestion";
+import { containsTargetVenue, extractMrIngressosListingEvents, extractPublicEventLinks, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseMrIngressosEventMetadata } from "./ingestion";
 
 describe("adapters de ticketeiras oficiais", () => {
   it("normaliza metadados públicos do Black Pass", () => {
@@ -37,6 +37,17 @@ describe("adapters de ticketeiras oficiais", () => {
     })}</script>`;
     const parsed = parseMrIngressosEventMetadata(html, "https://mringressos.com.br/comprar/439/isso-e-boteco");
     expect(parsed).toMatchObject({ title: "Isso é Boteco", city: "Guarujá", priceCents: 4550 });
+  });
+
+  it("descobre cards reais do catálogo Mr Ingressos e deduplica destaque/agenda", () => {
+    const html = `<a href="/comprar/442/se-beber-nao-case">SEX, 28 AGO · 19h00 Se beber Não Case Dolores Bar e Restaurante - Guarujá, SP</a><a href="https://mringressos.com.br/comprar/442/se-beber-nao-case">duplicado</a><a href="/comprar/439/isso-e-boteco">SAB, 29 AGO · 22h00 Isso é Boteco Boteco Almare - Guarujá, SP</a>`;
+    expect(extractMrIngressosListingEvents(html)).toHaveLength(2);
+    expect(extractMrIngressosListingEvents(html)[0]).toMatchObject({ url: "https://mringressos.com.br/comprar/442/se-beber-nao-case" });
+  });
+
+  it("descobre rotas Black Pass no HTML e em atributos incorporados", () => {
+    const html = `<a href="/event/700">Jungle Room</a><div data-url="/event/692"></div>`;
+    expect(extractPublicEventLinks(html, "https://blackpass.com.br/events")).toEqual(["https://blackpass.com.br/event/700", "https://blackpass.com.br/event/692"]);
   });
 
   it("aceita apenas venues da allowlist oficial", () => {
