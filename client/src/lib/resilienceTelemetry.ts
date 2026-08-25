@@ -6,6 +6,8 @@ type ResilienceEvent =
   | "map_retry_scheduled"
   | "map_retry_success"
   | "map_retry_failure"
+  | "map_retry_click"
+  | "map_retry_exhausted"
   | "ingestion_retry";
 
 type ResilienceCounters = Partial<Record<ResilienceEvent, number>>;

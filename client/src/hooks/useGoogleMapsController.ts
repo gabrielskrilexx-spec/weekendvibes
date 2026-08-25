@@ -19,12 +19,6 @@ export function getMapReconnectDelay(attempt: number): number {
   return Math.min(30_000, 1_000 * (2 ** Math.min(normalizedAttempt, 5)));
 }
 
-export const MAP_SCRIPT_POLL_LIMIT = 50;
-
-export function shouldFailMapScriptPoll(attempts: number): boolean {
-  return Math.max(0, Math.floor(attempts)) >= MAP_SCRIPT_POLL_LIMIT;
-}
-
 const MAPS_READY_CALLBACK = "__weekendVibesMapsReady";
 const MAPS_SCRIPT_BASE_URL = `/api/maps/javascript?callback=${encodeURIComponent(MAPS_READY_CALLBACK)}&libraries=marker,places,geocoding,geometry,routes&loader=2`;
 let mapScriptPromise: Promise<void> | null = null;
@@ -36,12 +30,10 @@ function loadMapScript(): Promise<void> {
     const script = document.createElement("script");
     let settled = false;
     let scriptUrl: string | null = null;
-    let pollTimer: number | null = null;
     let timeoutTimer: number | null = null;
     const previousAuthFailure = window.gm_authFailure;
     const cleanup = () => {
       window.removeEventListener("error", onWindowError, true);
-      if (pollTimer !== null) window.clearInterval(pollTimer);
       if (timeoutTimer !== null) window.clearTimeout(timeoutTimer);
       script.remove();
       if (scriptUrl) URL.revokeObjectURL(scriptUrl);
@@ -69,16 +61,8 @@ function loadMapScript(): Promise<void> {
     window.addEventListener("error", onWindowError, true);
     script.async = true;
     script.onload = () => {
-      let attempts = 0;
-      pollTimer = window.setInterval(() => {
-        if (settled) return;
-        if (window.google?.maps?.Map) { succeed(); return; }
-        attempts += 1;
-        if (shouldFailMapScriptPoll(attempts)) {
-          if (pollTimer !== null) window.clearInterval(pollTimer);
-          fail(new Error("Google Maps API did not become ready"));
-        }
-      }, 100);
+      if (window.google?.maps?.Map) succeed();
+      else fail(new Error("Google Maps API did not become ready"));
     };
     timeoutTimer = window.setTimeout(() => fail(new Error("Google Maps initialization timeout")), 15_000);
     script.onerror = () => fail(new Error("Google Maps script execution error"));
@@ -112,17 +96,22 @@ export function useGoogleMapsController({ initialCenter, initialZoom, lazy, mapO
   const attempt = useRef(0);
   const reconnecting = useRef(false);
   const [retryNonce, setRetryNonce] = useState(0);
+  const [retryLimitReached, setRetryLimitReached] = useState(false);
+  const maxRetryAttempts = 3;
 
   const clearRetryTimer = usePersistFn(() => {
     if (retryTimer.current !== null) { window.clearTimeout(retryTimer.current); retryTimer.current = null; }
   });
   const scheduleRetry = usePersistFn((immediate = false) => {
-    if (!window.navigator.onLine || retryTimer.current !== null || reconnecting.current) return;
+    if (!window.navigator.onLine || retryTimer.current !== null || reconnecting.current || attempt.current >= maxRetryAttempts) {
+      if (attempt.current >= maxRetryAttempts) setRetryLimitReached(true);
+      return;
+    }
     const delay = immediate ? 0 : getMapReconnectDelay(attempt.current);
     const retryAttempt = attempt.current;
     attempt.current += 1;
     reconnecting.current = true;
-    setState("loading"); setIsReconnecting(true); setIsVisible(true);
+    setState("loading"); setIsReconnecting(true); setIsVisible(true); setRetryLimitReached(false);
     trackResilienceEvent("map_retry_scheduled", { attempt: retryAttempt, delayMs: delay });
     retryTimer.current = window.setTimeout(() => { retryTimer.current = null; setRetryNonce(value => value + 1); }, delay);
   });
@@ -139,7 +128,6 @@ export function useGoogleMapsController({ initialCenter, initialZoom, lazy, mapO
       const online = window.navigator.onLine;
       setIsOffline(!online);
       if (!online) { clearRetryTimer(); reconnecting.current = false; setIsReconnecting(false); return; }
-      if (state === "error") scheduleRetry();
     };
     updateConnectivity(); window.addEventListener("online", updateConnectivity); window.addEventListener("offline", updateConnectivity);
     return () => { window.removeEventListener("online", updateConnectivity); window.removeEventListener("offline", updateConnectivity); };
@@ -155,12 +143,16 @@ export function useGoogleMapsController({ initialCenter, initialZoom, lazy, mapO
       const offline = !window.navigator.onLine || /relay|network|fetch|resource|timeout/i.test(message);
       setIsOffline(offline);
       trackResilienceEvent("map_retry_failure", { attempt: attempt.current, offline: offline ? 1 : 0 });
+      if (attempt.current >= maxRetryAttempts) {
+        setRetryLimitReached(true);
+        trackResilienceEvent("map_retry_exhausted", { attempts: maxRetryAttempts });
+      }
       console.error("[Maps] MapView fallback activated:", message);
       return;
     }
     if (!mapHost.current || !window.google?.maps) { reconnecting.current = false; setIsReconnecting(false); setState("error"); return; }
     map.current = new window.google.maps.Map(mapHost.current, { zoom: initialZoom, center: initialCenter, mapTypeControl: false, fullscreenControl: false, zoomControl: true, streetViewControl: false, clickableIcons: false, gestureHandling: "greedy", backgroundColor: "#24242a", ...mapOptions });
-    setState("success"); reconnecting.current = false; setIsReconnecting(false);
+    setState("success"); reconnecting.current = false; setIsReconnecting(false); setRetryLimitReached(false);
     if (wasRetry) { attempt.current = 0; setShowReconnected(true); trackResilienceEvent("map_retry_success"); if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current); noticeTimer.current = window.setTimeout(() => setShowReconnected(false), 4_000); }
     onMapReady?.(map.current);
   });
@@ -168,5 +160,5 @@ export function useGoogleMapsController({ initialCenter, initialZoom, lazy, mapO
   useEffect(() => { if (isVisible) void init(); }, [init, isVisible, retryNonce]);
   useEffect(() => () => { clearRetryTimer(); if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current); }, [clearRetryTimer]);
 
-  return { mapContainer, mapHost, map, state, isVisible, isOffline, isReconnecting, showReconnected, clearRetryTimer, scheduleRetry, setIsOffline, setIsReconnecting, setIsVisible };
+  return { mapContainer, mapHost, map, state, isVisible, isOffline, isReconnecting, showReconnected, retryLimitReached, maxRetryAttempts, clearRetryTimer, scheduleRetry, setIsOffline, setIsReconnecting, setIsVisible };
 }

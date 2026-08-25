@@ -1558,3 +1558,11 @@
 - [x] Auditar o harness de testes e o fallback do mapa
 - [x] Simular falha de rede e clicar em “Tentar novamente”
 - [x] Confirmar que o mapa é remontado e validar TypeScript, testes, build e checkpoint
+
+## Fail-fast e limite de retry do mapa
+- [x] Remover polling e reconexão automática do carregador de mapas
+- [x] Renderizar fallback estático imediato quando a API/chave estiver ausente ou falhar
+- [x] Limitar o botão “Tentar novamente” a 3 tentativas e exibir erro definitivo
+- [x] Registrar evento de analytics no clique e no resultado do retry
+- [x] Adicionar teste Playwright em navegador real e regressões Vitest
+- [x] Executar TypeScript, suíte, build, checkpoint e push para main
