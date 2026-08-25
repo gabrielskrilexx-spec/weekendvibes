@@ -19,6 +19,27 @@ function parseDetails(details: unknown): unknown {
   try { return JSON.parse(details); } catch { return details; }
 }
 
+function safeReportError(value: unknown) {
+  return String(value ?? "Falha não especificada").replace(/https?:\/\/[^\s]+/gi, "fonte pública").replace(/Bearer\s+[^\s]+/gi, "Bearer [redacted]").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 240);
+}
+
+function buildAutomationStatusSnapshot(runs: Array<{ id: number; routine: string; sourceKey: string | null; status: string; startedAt: Date; finishedAt: Date | null; details: unknown }>) {
+  const latest = [...runs].sort((a, b) => new Date(b.finishedAt ?? b.startedAt).getTime() - new Date(a.finishedAt ?? a.startedAt).getTime())[0];
+  if (!latest) return { lastExecutionAt: null, routine: null, runId: null, status: "never", sources: [], errors: [] };
+  const details = parseDetails(latest.details);
+  const root = details && typeof details === "object" ? details as Record<string, unknown> : {};
+  const summary = root.automationSummary && typeof root.automationSummary === "object" ? root.automationSummary as Record<string, unknown> : root;
+  const rawSources = Array.isArray(summary.sources) ? summary.sources : [{ sourceKey: latest.sourceKey ?? latest.routine, read: root.read, added: root.added ?? root.persisted ?? root.imported, updated: root.updated, ignored: root.ignored ?? root.filtered, errors: root.errors }];
+  const sources = rawSources.filter(item => item && typeof item === "object").slice(0, 20).map(item => {
+    const source = item as Record<string, unknown>;
+    const errors = Array.isArray(source.errors) ? source.errors.slice(0, 10).map(error => ({ status: error && typeof error === "object" ? Number((error as Record<string, unknown>).status ?? 0) || null : null, message: safeReportError(error && typeof error === "object" ? (error as Record<string, unknown>).message : error) })) : [];
+    return { sourceKey: String(source.sourceKey ?? latest.sourceKey ?? latest.routine), read: Number(source.read ?? 0) || 0, added: Number(source.added ?? 0) || 0, updated: Number(source.updated ?? 0) || 0, ignored: Number(source.ignored ?? 0) || 0, errors };
+  });
+  const errors = Array.isArray(summary.errors) ? summary.errors.slice(0, 20).map(error => { const item = error && typeof error === "object" ? error as Record<string, unknown> : {}; return { sourceKey: String(item.sourceKey ?? latest.sourceKey ?? latest.routine), status: Number(item.status ?? 0) || null, message: safeReportError(item.message) }; }) : sources.flatMap(source => source.errors.map(error => ({ sourceKey: source.sourceKey, ...error })));
+  const status = ["succeeded", "partial", "failed", "running"].includes(latest.status) ? latest.status : "failed";
+  return { lastExecutionAt: new Date(latest.finishedAt ?? latest.startedAt).toISOString(), routine: latest.routine, runId: Number(latest.id), status, sources, errors: errors.slice(0, 20) };
+}
+
 function findMetric(details: unknown, key: string): number {
   if (!details || typeof details !== "object") return 0;
   const record = details as Record<string, unknown>;
@@ -438,7 +459,7 @@ export function findConsecutiveFailureAlertsForTest(runs: Array<{ id: number; ro
 
 export async function listIngestionReport(size = 20, filters: IngestionReportFilters = {}) {
   const db = await getDb();
-  if (!db) return { runs: [], alerts: [], criticalAlerts: [], consecutiveFailures: [], sourceMetrics: [], freshness: [], timeline: [], reconciliationBySource: [], weeklyTrend: [], weeklySummary: { runs: 0, retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, inconsistentRuns: 0, degradedRuns: 0, rejectedEvents: 0, rejectedPastEvents: 0, rejectedOtherReasons: 0 }, metaStatus: { status: "never" as const, lastSuccessfulSync: null, lastAttempt: null }, scheduleStatus: await listRoutineScheduleStatus(), filterEvaluatedAt: new Date().toISOString(), pastEventRejectionThreshold: getPastEventRejectionThreshold(), totals: { succeeded: 0, failed: 0, partial: 0, imported: 0 } };
+  if (!db) return { runs: [], alerts: [], criticalAlerts: [], consecutiveFailures: [], sourceMetrics: [], freshness: [], timeline: [], reconciliationBySource: [], weeklyTrend: [], weeklySummary: { runs: 0, retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, inconsistentRuns: 0, degradedRuns: 0, rejectedEvents: 0, rejectedPastEvents: 0, rejectedOtherReasons: 0 }, metaStatus: { status: "never" as const, lastSuccessfulSync: null, lastAttempt: null }, scheduleStatus: await listRoutineScheduleStatus(), automationStatus: buildAutomationStatusSnapshot([]), filterEvaluatedAt: new Date().toISOString(), pastEventRejectionThreshold: getPastEventRejectionThreshold(), totals: { succeeded: 0, failed: 0, partial: 0, imported: 0 } };
   const safeSize = Math.min(Math.max(size, 1), 50);
   const periodDays = filters.periodDays ?? 7;
   const cutoff = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000);
@@ -468,7 +489,8 @@ export async function listIngestionReport(size = 20, filters: IngestionReportFil
   const consecutiveFailures = findConsecutiveFailureAlertsForTest(runs.map(run => ({ id: Number(run.id), routine: String(run.routine ?? ""), sourceKey: run.sourceKey == null ? null : String(run.sourceKey), status: String(run.status), startedAt: new Date(run.startedAt), details: run.details })));
   await Promise.all(consecutiveFailures.map(alert => notifyConsecutiveFailureWebhook(alert)));
   const criticalAlerts = serializableAlerts.filter(alert => alert.severity === "CRITICAL" || isCriticalIngestionFailure(`${alert.title} ${alert.message}`));
-  return normalizeReportForTransport({ runs: serializableRuns, alerts: serializableAlerts, criticalAlerts, consecutiveFailures, sourceMetrics, freshness, timeline, reconciliationBySource: buildSourceReconciliationForTest(trendRuns), weeklyTrend: buildWeeklyTrend(trendRuns), weeklySummary: buildWeeklyOperationalSummary(trendRuns), metaStatus: buildMetaIntegrationStatusForTest(metaRuns), scheduleStatus: await listRoutineScheduleStatus(), filterEvaluatedAt: new Date().toISOString(), pastEventRejectionThreshold: getPastEventRejectionThreshold(), totals: { succeeded: Number(totals?.succeeded ?? 0), failed: Number(totals?.failed ?? 0), partial: Number(totals?.partial ?? 0), imported: Number(totals?.imported ?? 0) } });
+  const automationStatus = buildAutomationStatusSnapshot(runs.map(run => ({ id: Number(run.id), routine: String(run.routine ?? ""), sourceKey: run.sourceKey == null ? null : String(run.sourceKey), status: String(run.status), startedAt: new Date(run.startedAt), finishedAt: run.finishedAt ? new Date(run.finishedAt) : null, details: run.details })));
+  return normalizeReportForTransport({ runs: serializableRuns, alerts: serializableAlerts, criticalAlerts, consecutiveFailures, sourceMetrics, freshness, timeline, reconciliationBySource: buildSourceReconciliationForTest(trendRuns), weeklyTrend: buildWeeklyTrend(trendRuns), weeklySummary: buildWeeklyOperationalSummary(trendRuns), metaStatus: buildMetaIntegrationStatusForTest(metaRuns), scheduleStatus: await listRoutineScheduleStatus(), automationStatus, filterEvaluatedAt: new Date().toISOString(), pastEventRejectionThreshold: getPastEventRejectionThreshold(), totals: { succeeded: Number(totals?.succeeded ?? 0), failed: Number(totals?.failed ?? 0), partial: Number(totals?.partial ?? 0), imported: Number(totals?.imported ?? 0) } });
 }
 
 export function sanitizeReprocessErrorForTest(error: unknown) {

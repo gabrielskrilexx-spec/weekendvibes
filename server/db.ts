@@ -505,12 +505,12 @@ export async function saveEvent(data: InsertEvent) {
       await db.update(events).set(merged).where(eq(events.id, duplicate.id));
       await queueGeocoding(duplicate.id, merged, db);
     }
-    return { created: false, id: duplicate.id, duplicate: true };
+    return { created: false, id: duplicate.id, duplicate: true, updated: keepIncoming };
   }
   const inserted = await db.insert(events).values(normalized).onDuplicateKeyUpdate({ set: { ...normalized, updatedAt: new Date() } });
   const eventId = Number(inserted[0]?.insertId ?? 0);
   if (eventId > 0) await queueGeocoding(eventId, normalized, db);
-  return { created: eventId > 0, id: eventId > 0 ? eventId : undefined };
+  return { created: eventId > 0, id: eventId > 0 ? eventId : undefined, updated: false };
 }
 
 export async function updateEvent(id: number, input: Partial<InsertEvent>) {

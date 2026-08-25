@@ -26,8 +26,8 @@ describe("agenda routine composition", () => {
   });
 
   it("compõe o fluxo completo manual com arquivamento único e as duas fontes", async () => {
-    const result = await runFullAgendaRoutine();
-    expect(result).toEqual({ archived: 4, publicSources: { imported: 2 }, instagram: { imported: 1 } });
+    const result = await runFullAgendaRoutine({ trigger: "manual" });
+    expect(result).toEqual(expect.objectContaining({ archived: 4, publicSources: { imported: 2 }, instagram: { imported: 1 }, status: "succeeded", errors: [], automationSummary: expect.objectContaining({ routine: "full-agenda", status: "succeeded", added: 3 }) }));
     expect(mocks.archiveExpiredSoldOutEvents).toHaveBeenCalledTimes(1);
     expect(mocks.runIngestionPipeline).toHaveBeenCalledTimes(1);
     expect(mocks.runInstagramPipeline).toHaveBeenCalledTimes(1);

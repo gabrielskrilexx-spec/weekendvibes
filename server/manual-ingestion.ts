@@ -13,6 +13,9 @@ export type ManualRoutineResult = {
   archived: number;
   publicSources: unknown;
   instagram: unknown;
+  status?: "succeeded" | "partial" | "failed";
+  automationSummary?: unknown;
+  errors?: unknown;
   startedAt: string;
   finishedAt: string;
 };
@@ -24,15 +27,15 @@ async function executeRoutine(): Promise<ManualRoutineResult> {
   const startedAtMs = Date.now();
   const manualRunId = await startIngestionRun({ routine: "manual-agenda", sourceKey: "manual" });
   try {
-    const result = await runFullAgendaRoutine();
+    const result = await runFullAgendaRoutine({ trigger: "manual", runId: manualRunId });
     const finishedAt = new Date().toISOString();
     await finishIngestionRun(manualRunId, {
       routine: "manual-agenda",
       sourceKey: "manual",
-      status: "succeeded",
-      importedCount: typeof result.instagram === "object" && result.instagram !== null && "persisted" in result.instagram && typeof result.instagram.persisted === "number" ? result.instagram.persisted : 0,
+      status: result.status ?? "succeeded",
+      importedCount: typeof result.automationSummary === "object" && result.automationSummary !== null && "added" in result.automationSummary && "updated" in result.automationSummary ? Number((result.automationSummary as { added?: unknown; updated?: unknown }).added ?? 0) + Number((result.automationSummary as { added?: unknown; updated?: unknown }).updated ?? 0) : 0,
       durationMs: Date.now() - startedAtMs,
-      details: { trigger: "manual", archived: result.archived, publicSources: result.publicSources, instagram: result.instagram },
+      details: { trigger: "manual", archived: result.archived, publicSources: result.publicSources, instagram: result.instagram, status: result.status, automationSummary: result.automationSummary, errors: result.errors },
     });
     return { ...result, startedAt, finishedAt };
   } catch (error) {

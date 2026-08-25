@@ -63,7 +63,7 @@ describe("manual Wednesday routine", () => {
       routine: "manual-agenda",
       sourceKey: "manual",
       status: "succeeded",
-      importedCount: 3,
+      importedCount: 5,
       details: expect.objectContaining({ trigger: "manual", instagram: expect.objectContaining({ persistedEventIds: [11, 12, 13] }) }),
     }));
   });

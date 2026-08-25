@@ -1613,3 +1613,36 @@
 - [x] Redesenhar o empty state com atalho para o fim de semana ou próxima data disponível
 - [x] Atualizar testes Vitest e validar responsividade da Home
 - [x] Executar TypeScript, build, commit e push para main
+
+## Resiliência e monitoramento da ingestão semanal
+- [ ] Isolar falhas por fonte e manter resultados bem-sucedidos das demais fontes
+- [ ] Persistir status agregado sucesso/parcial/falha crítica e métricas por fonte
+- [ ] Adicionar resumo pós-ingestão sanitizado via webhook opcional ou log prioritário
+- [ ] Expandir painel Admin com última execução, status, métricas por fonte e erros recentes
+- [ ] Criar regressões Vitest para falha parcial, agregação e notificação pós-execução
+- [ ] Executar TypeScript, suíte Vitest, build, commit e push para main
+
+## Resiliência e observabilidade da ingestão — 2026-08-25
+- [x] Isolar falhas por fonte no orquestrador Instagram e public-agenda sem interromper fontes independentes
+- [x] Agregar status succeeded/partial/failed e métricas added/updated/ignored por fonte
+- [x] Persistir detalhes sanitizados, erros por fonte e contagens no ingestionRun
+- [x] Notificar resumo executivo pós-ingestão via CRITICAL_ALERT_WEBHOOK_URL de forma opcional
+- [x] Alinhar execução manual ao mesmo orquestrador e registrar trigger manual em run único
+- [x] Exibir Automation Status no painel com última execução, métricas por fonte e erros recentes
+- [x] Validar suíte Vitest completa, TypeScript e build de produção
+- [x] Corrigir compatibilidade dos callbacks agendados e regressões do ingestionRun manual
+- [ ] Validar visualmente o novo bloco Automation Status em sessão administrativa autenticada
+- [ ] Criar checkpoint final desta etapa
+
+## Resiliência e observabilidade da ingestão — continuação
+- [ ] Validar visualmente o novo bloco Automation Status em sessão administrativa autenticada
+- [x] Criar checkpoint final desta etapa
+- [ ] Confirmar publicação automática após checkpoint
+- [ ] Enviar atualização para o repositório remoto main
+- [ ] Executar smoke test público do painel e callback agendado
+- [ ] Registrar relatório executivo final da entrega
+
+## Pendências históricas não bloqueantes
+- [ ] Confirmar sessão administrativa persistente para validação visual manual no navegador
+- [ ] Confirmar smoke test de produção após propagação da próxima versão
+- [ ] Confirmar push remoto caso a infraestrutura GitHub exija credencial adicional

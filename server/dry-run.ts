@@ -35,6 +35,9 @@ function normalizePublicSourceReports(result: unknown): DryRunSourceReport[] {
       read: Math.max(0, Number(report.read ?? 0)),
       filtered: Math.max(0, Number(report.filtered ?? 0)),
       persistable: Math.max(0, Number(report.persistable ?? 0)),
+      added: Math.max(0, Number(report.added ?? report.persistable ?? 0)),
+      updated: Math.max(0, Number(report.updated ?? 0)),
+      ignored: Math.max(0, Number(report.ignored ?? 0)),
       duplicates: Math.max(0, Number(report.duplicates ?? 0)),
       errors: Array.isArray(report.errors) ? report.errors.slice(0, 20).map(error => ({
         sourceUrl: typeof error?.sourceUrl === "string" ? error.sourceUrl.slice(0, 300) : undefined,
@@ -48,7 +51,7 @@ function normalizePublicSourceReports(result: unknown): DryRunSourceReport[] {
 
 function normalizeInstagramSourceReports(result: unknown): DryRunSourceReport[] {
   if (!result || typeof result !== "object") return [];
-  const value = result as { sourceReports?: unknown[]; durationMs?: unknown; receivedPosts?: unknown; filtered?: unknown; imported?: unknown; duplicates?: unknown; transportFailures?: unknown[]; rejectionReasons?: Record<string, unknown> };
+  const value = result as { sourceReports?: unknown[]; durationMs?: unknown; receivedPosts?: unknown; filtered?: unknown; imported?: unknown; added?: unknown; updated?: unknown; ignored?: unknown; duplicates?: unknown; transportFailures?: unknown[]; rejectionReasons?: Record<string, unknown> };
   const provided = Array.isArray(value.sourceReports) ? value.sourceReports[0] as Partial<IngestionSourceReport> | undefined : undefined;
   const errors = Array.isArray(value.transportFailures) ? value.transportFailures.slice(0, 20).map(rawFailure => {
     const failure = rawFailure && typeof rawFailure === "object" ? rawFailure as { username?: unknown; status?: unknown; message?: unknown } : {};
@@ -67,6 +70,9 @@ function normalizeInstagramSourceReports(result: unknown): DryRunSourceReport[] 
     read: Math.max(0, Number(provided?.read ?? value.receivedPosts ?? 0)),
     filtered: Math.max(0, Number(provided?.filtered ?? value.filtered ?? 0)),
     persistable: Math.max(0, Number(provided?.persistable ?? value.imported ?? 0)),
+    added: Math.max(0, Number(provided?.added ?? value.added ?? value.imported ?? 0)),
+    updated: Math.max(0, Number(provided?.updated ?? value.updated ?? 0)),
+    ignored: Math.max(0, Number(provided?.ignored ?? value.ignored ?? 0)),
     duplicates: Math.max(0, Number(provided?.duplicates ?? value.duplicates ?? 0)),
     errors: provided?.errors?.length ? provided.errors : errors,
     rejectionReasons: {
@@ -90,6 +96,9 @@ function normalizeFailureSource(routine: DryRunSourceReport["routine"], error: u
     read: 0,
     filtered: 0,
     persistable: 0,
+    added: 0,
+    updated: 0,
+    ignored: 0,
     duplicates: 0,
     errors: [{ status: failure.status, message: failure.message }],
     rejectionReasons: { ...emptyRejectionReasons(), fetchFailed: 1 },

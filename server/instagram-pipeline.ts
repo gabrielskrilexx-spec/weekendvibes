@@ -495,6 +495,9 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
 
   const structuredEvents = await extractStructuredEvents(referenceDate, approvedPosts);
   let imported = 0;
+  let added = 0;
+  let updated = 0;
+  let ignored = 0;
   let duplicates = 0;
   let missingCoordinates = 0;
   const rejectedEvents: StructuredEventRejection[] = [];
@@ -510,7 +513,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     const coordinates = await resolveRegionalCoordinates({ locationName: event.locationName, address: event.address, city: event.city });
     const sourceUrl = event.sourceUrl;
     const sourceHash = crypto.createHash("md5").update(`${sourceUrl}|${eventDate.toISOString().slice(0, 10)}|${event.title}`).digest("hex");
-    const saved = dryRun ? { created: true, id: undefined } : await saveEvent({
+    const saved = dryRun ? { created: true, id: undefined, updated: false } : await saveEvent({
       title: event.title, slug: `${event.title.toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}-${eventDate.getTime()}`,
       description: event.summary, eventDate, locationName: event.locationName, address: event.address, city: event.city,
       category: event.category, genre: event.genre, priceCents: event.priceCents || 0, priceNote: event.priceCents ? undefined : "Preço não informado na agenda do Instagram",
@@ -518,7 +521,9 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
       neighborhood: coordinates?.neighborhood ?? undefined, formattedAddress: coordinates?.formattedAddress ?? undefined, locationPrecision: coordinates ? (coordinates.confidence === "low" ? "approximate" : "exact") : undefined,
       sourceHash, sourceType: INSTAGRAM_AGENDA_SOURCE_TYPE, isPublished: 1, isArchived: 0,
     });
-    if (saved?.created === false) duplicates += 1;
+    if (!saved || typeof saved !== "object" || saved.created) added += 1;
+    else if (saved.updated) updated += 1;
+    else { duplicates += 1; ignored += 1; }
     if (saved?.id) persistedEventIds.push(saved.id);
     if (!coordinates) missingCoordinates += 1;
     imported += 1;
@@ -529,7 +534,10 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     durationMs: Math.max(0, Date.now() - pipelineStartedAt),
     read: posts.length,
     filtered: Math.max(0, posts.length - approvedPosts.length) + rejectedEvents.length,
-    persistable: imported,
+    persistable: dryRun ? imported : added + updated,
+    added: dryRun ? 0 : added,
+    updated: dryRun ? 0 : updated,
+    ignored: dryRun ? 0 : ignored,
     duplicates,
     errors: fetched.transportFailures.map(failure => ({ sourceUrl: `@${failure.username}`, status: failure.status || null, message: failure.message })),
     rejectionReasons: {
@@ -551,7 +559,10 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
 
     structuredEvents: structuredEvents.length,
     imported,
-    persisted: imported,
+    persisted: dryRun ? 0 : added + updated,
+    added: dryRun ? 0 : added,
+    updated: dryRun ? 0 : updated,
+    ignored: dryRun ? 0 : ignored,
     filtered: Math.max(0, posts.length - approvedPosts.length),
     duplicates,
     missingCoordinates,

@@ -150,3 +150,56 @@ export async function handleIngestionFailureAlert(
   }
   return { fingerprint: alert.fingerprint, notified: shouldNotify && Boolean(notify), reopened: state.reopened, deduplicated: state.deduplicated };
 }
+
+export type IngestionSummaryWebhookInput = {
+  routine: string;
+  status: "succeeded" | "partial" | "failed";
+  startedAt: string;
+  finishedAt: string;
+  added: number;
+  updated: number;
+  ignored: number;
+  errors: Array<{ sourceKey: string; status: number | null; message: string }>;
+  sources: Array<{ sourceKey: string; read: number; added: number; updated: number; ignored: number; errors: number }>;
+};
+
+export async function notifyIngestionSummary(input: IngestionSummaryWebhookInput, fetcher: typeof fetch = fetch) {
+  const endpoint = process.env.CRITICAL_ALERT_WEBHOOK_URL?.trim();
+  if (!endpoint) return { sent: false, skipped: true } as const;
+  let parsed: URL;
+  try {
+    parsed = new URL(endpoint);
+    if (parsed.protocol !== "https:") return { sent: false, skipped: true } as const;
+  } catch {
+    return { sent: false, skipped: true } as const;
+  }
+  const payload = {
+    alert: "ingestion_summary",
+    routine: clean(input.routine, 64),
+    status: input.status,
+    startedAt: clean(input.startedAt, 40),
+    finishedAt: clean(input.finishedAt, 40),
+    added: Math.max(0, Math.min(Number(input.added) || 0, 100000)),
+    updated: Math.max(0, Math.min(Number(input.updated) || 0, 100000)),
+    ignored: Math.max(0, Math.min(Number(input.ignored) || 0, 100000)),
+    errors: input.errors.slice(0, 20).map(error => ({
+      sourceKey: clean(error.sourceKey, 120),
+      status: error.status == null ? null : Number(error.status),
+      message: clean(error.message, 240),
+    })),
+    sources: input.sources.slice(0, 50).map(source => ({
+      sourceKey: clean(source.sourceKey, 120),
+      read: Math.max(0, Number(source.read) || 0),
+      added: Math.max(0, Number(source.added) || 0),
+      updated: Math.max(0, Number(source.updated) || 0),
+      ignored: Math.max(0, Number(source.ignored) || 0),
+      errors: Math.max(0, Number(source.errors) || 0),
+    })),
+  };
+  try {
+    const response = await fetcher(parsed.toString(), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+    return response.ok ? { sent: true, skipped: false } as const : { sent: false, skipped: false } as const;
+  } catch {
+    return { sent: false, skipped: false } as const;
+  }
+}

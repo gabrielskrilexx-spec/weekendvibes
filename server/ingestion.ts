@@ -551,6 +551,9 @@ export type IngestionSourceReport = {
   read: number;
   filtered: number;
   persistable: number;
+  added: number;
+  updated: number;
+  ignored: number;
   duplicates: number;
   errors: Array<{ sourceUrl?: string; status: number | null; message: string }>;
   durationMs: number;
@@ -567,6 +570,7 @@ type PublicSourceReportInput = {
   acceptedEvents?: Array<{ sourceKey: string }>;
   rejectedEvents?: Array<{ sourceKey: string; reason: "invalidStructuredEvent" | "pastEvent" }>;
   duplicateSourceKeys?: string[];
+  sourceOutcomes?: Array<{ sourceKey: string; created: boolean; updated: boolean }>;
   matchesTargetVenue?: (value: string) => boolean;
 };
 
@@ -587,6 +591,9 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
       read: 0,
       filtered: 0,
       persistable: 0,
+      added: 0,
+      updated: 0,
+      ignored: 0,
       duplicates: 0,
       errors: [],
       durationMs: 0,
@@ -641,11 +648,19 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
   for (const sourceKey of input.duplicateSourceKeys ?? []) {
     const report = getReport(sourceKey);
     report.duplicates += 1;
+    report.ignored += 1;
     report.filtered += 1;
     report.rejectionReasons.duplicate += 1;
   }
+  for (const outcome of input.sourceOutcomes ?? []) {
+    const report = getReport(outcome.sourceKey);
+    if (outcome.created) report.added += 1;
+    else if (outcome.updated) report.updated += 1;
+    else report.ignored += 1;
+  }
   return Array.from(reports.values()).map(report => ({
     ...report,
+    ignored: report.filtered,
     medianDurationMs: percentile(report.latencySamples, 50),
     p95DurationMs: percentile(report.latencySamples, 95),
     latencySamples: undefined,
@@ -698,6 +713,8 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
 
   const payload = JSON.parse(String(structured.choices?.[0]?.message?.content ?? "{\"events\":[]}")) as { events: Array<Record<string, string | number>> };
   let imported = 0;
+  let added = 0;
+  let updated = 0;
   let duplicates = 0;
   const simulation = dryRun || verboseDryRunEnabled();
   let dryRunAcceptedEvents = 0;
@@ -706,6 +723,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
   const acceptedEvents: Array<{ title: string; eventDate: Date; city: string; sourceKey: string }> = [];
   const rejectedEvents: Array<{ sourceKey: string; reason: "invalidStructuredEvent" | "pastEvent" }> = [];
   const duplicateSourceKeys: string[] = [];
+  const sourceOutcomes: Array<{ sourceKey: string; created: boolean; updated: boolean }> = [];
   for (const event of payload.events) {
     const date = new Date(String(event.eventDate));
     const locationName = String(event.locationName);
@@ -739,8 +757,23 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
       continue;
     }
     const saved = await saveEvent({ title: String(event.title), slug: `${normalizeSlug(String(event.title))}-${date.getTime()}`, description: String(event.summary), eventDate: date, locationName: String(event.locationName), address: String(event.address), city, category: category as "show" | "balada" | "evento_musical", genre, priceCents: Number(event.priceCents) || 0, sourceUrl, sourceType, imageUrl: String(event.imageUrl || ""), latitude, longitude, sourceHash, isPublished: 1 });
-    if (saved?.created === false) duplicates += 1;
+    if (!saved || typeof saved !== "object") {
+      added += 1;
+      sourceOutcomes.push({ sourceKey, created: true, updated: false });
+    } else if (saved.created) {
+      added += 1;
+      sourceOutcomes.push({ sourceKey, created: true, updated: false });
+    } else if (saved.updated) {
+      updated += 1;
+      sourceOutcomes.push({ sourceKey, created: false, updated: true });
+    } else {
+      duplicates += 1;
+      duplicateSourceKeys.push(sourceKey);
+      sourceOutcomes.push({ sourceKey, created: false, updated: false });
+    }
     imported += 1;
   }
-  return { imported, persisted: imported, dryRun: simulation, dryRunAcceptedEvents, read: candidateUrls.length, filtered: Math.max(0, candidateUrls.length - sourcePages.length), duplicates, missingCoordinates, outOfBoundsCoordinates, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, sourceReports: buildPublicSourceReports({ candidateUrls, pages, payloadEvents: payload.events, acceptedEvents, rejectedEvents, duplicateSourceKeys, matchesTargetVenue }) };
+  const sourceReports = buildPublicSourceReports({ candidateUrls, pages, payloadEvents: payload.events, acceptedEvents, rejectedEvents, duplicateSourceKeys, sourceOutcomes, matchesTargetVenue });
+  const ignored = sourceReports.reduce((sum, report) => sum + report.ignored, 0);
+  return { imported, persisted: simulation ? 0 : added + updated, added: simulation ? 0 : added, updated: simulation ? 0 : updated, ignored, dryRun: simulation, dryRunAcceptedEvents, read: candidateUrls.length, filtered: Math.max(0, candidateUrls.length - sourcePages.length), duplicates, missingCoordinates, outOfBoundsCoordinates, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, sourceReports };
 }
