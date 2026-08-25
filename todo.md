@@ -1488,3 +1488,11 @@
 - [x] Registrar falhas de descoberta, fetch e parsing isoladamente por adaptador no Dry-run
 - [x] Adicionar testes de regressão e validar com Dry-run, TypeScript e build
 - [x] Publicar checkpoint da correção dos adaptadores
+
+## Métricas de duração no Dry-run
+- [x] Adicionar duração em milissegundos por adaptador no contrato do relatório
+- [x] Instrumentar execuções públicas e Instagram sem alterar a garantia de não persistência
+- [x] Exibir duração por fonte no painel administrativo
+- [x] Executar Dry-run geral e registrar candidatos, rejeições, persistíveis e erros por fonte
+- [x] Adicionar regressões Vitest para duração e relatório geral
+- [x] Executar suíte completa, TypeScript, build e publicar checkpoint

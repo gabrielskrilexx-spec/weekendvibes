@@ -299,7 +299,8 @@ export function extractMrIngressosListingEvents(html: string, baseUrl = "https:/
     try {
       const url = new URL(match[1], baseUrl).href;
       const text = stripHtml(match[2]);
-      const title = text.split(/\n|\r|(?=Guarujá|Guaruja|Santos)/i).map(value => value.trim()).find(value => value.length > 2 && !/^(sex|sab|dom|seg|ter|qua|qui|\d)/i.test(value)) ?? text.slice(0, 160);
+      const heading = match[2].match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/i)?.[1];
+      const title = stripHtml(heading ?? "") || text.match(/(?:\d{1,2}h\d{2})\s+(.+?)(?=\s+(?:Dolores|Boteco|Projac|Tardezinha|Amsterdã|Asipavic|Campo|Quintalzinho|Sede Vicente|G\.R\.C\.E\.S\.)\b|\s+-\s+(?:Guarujá|Guaruja|Santos))/i)?.[1]?.trim() || text.slice(0, 160);
       if (title && !events.some(event => event.url === url)) events.push({ url, title: title.slice(0, 160), text: text.slice(0, 1000) });
     } catch { /* ignore malformed listing links */ }
   }
@@ -401,6 +402,7 @@ type PublicPage = {
   imageUrl: string;
   adapter?: "blackpass" | "mringressos" | "ingresse" | "generic";
   adapterError?: string;
+  durationMs?: number;
   structured?: Record<string, string | number>;
   cacheFallback?: { used: true; status: number | null; message: string };
   fetchFailure?: FetchFailure;
@@ -423,6 +425,7 @@ function publicSourceKey(url: string) {
 }
 
 async function guardedFetchPublicPage(url: string, options: { dryRun?: boolean } = {}): Promise<PublicPage> {
+  const startedAt = Date.now();
   const sourceKey = publicSourceKey(url);
   if (!options.dryRun) {
     const circuit = await allowSourceAttempt(sourceKey);
@@ -431,12 +434,12 @@ async function guardedFetchPublicPage(url: string, options: { dryRun?: boolean }
   try {
     const page = await fetchPublicPage(url, options);
     if (!options.dryRun) await registerSourceSuccess(sourceKey);
-    return page;
+    return { ...page, durationMs: Math.max(0, Date.now() - startedAt) };
   } catch (error) {
     const failure = sanitizeFetchFailure(error);
     logPublicFailureDiagnostics(url, error);
     if (!options.dryRun) await registerSourceFailure({ sourceKey, routine: "public-agenda", status: failure.status ?? undefined, message: failure.message });
-    throw error;
+    throw Object.assign(error instanceof Error ? error : new Error(failure.message), { fetchFailure: failure, fetchDurationMs: Math.max(0, Date.now() - startedAt) });
   }
 }
 
@@ -498,7 +501,7 @@ async function discoverCandidatePages(options: { dryRun?: boolean } = {}) {
       const host = new URL(url).hostname;
       return !host.endsWith("zig.tickets") || url !== "https://zig.tickets/pt-BR";
     } catch { return false; }
-  }).slice(0, 60);
+  }).slice(0, 120);
 }
 
 export type IngestionSourceReport = {
@@ -508,6 +511,7 @@ export type IngestionSourceReport = {
   persistable: number;
   duplicates: number;
   errors: Array<{ sourceUrl?: string; status: number | null; message: string }>;
+  durationMs: number;
   rejectionReasons: { fetchFailed: number; outsideTargetVenue: number; invalidStructuredEvent: number; duplicate: number; pastEvent: number };
 };
 
@@ -534,6 +538,7 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
       persistable: 0,
       duplicates: 0,
       errors: [],
+      durationMs: 0,
       rejectionReasons: { fetchFailed: 0, outsideTargetVenue: 0, invalidStructuredEvent: 0, duplicate: 0, pastEvent: 0 },
     };
     reports.set(sourceKey, created);
@@ -548,10 +553,13 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
       report.rejectionReasons.fetchFailed += 1;
       if (page?.status === "rejected") {
         const failure = sanitizeFetchFailure(page.reason);
+        const durationMs = page.reason && typeof page.reason === "object" && "fetchDurationMs" in page.reason ? Number((page.reason as { fetchDurationMs?: unknown }).fetchDurationMs ?? 0) : 0;
+        report.durationMs += Number.isFinite(durationMs) ? Math.max(0, durationMs) : 0;
         report.errors.push({ sourceUrl: url, status: failure.status, message: failure.message });
       }
       return;
     }
+    report.durationMs += Math.max(0, Number(page.value.durationMs ?? 0));
     if (page.value.circuitOpen) {
       report.filtered += 1;
       report.rejectionReasons.fetchFailed += 1;

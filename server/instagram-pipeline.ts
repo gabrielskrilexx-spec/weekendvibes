@@ -474,6 +474,7 @@ async function extractStructuredEvents(referenceDate: string, approvedPosts: Arr
 export type InstagramPipelineOptions = { dryRun?: boolean };
 
 export async function runInstagramPipeline(options: InstagramPipelineOptions = {}) {
+  const pipelineStartedAt = Date.now();
   const dryRun = options.dryRun === true;
   const referenceDate = getInstagramReferenceDate();
   if (!dryRun) await recordReferenceDateClockAlert(referenceDate);
@@ -525,6 +526,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   const rejectionReasons = summarizeStructuredRejections(rejectedEvents);
   const sourceReports = [{
     sourceKey: "instagram",
+    durationMs: Math.max(0, Date.now() - pipelineStartedAt),
     read: posts.length,
     filtered: Math.max(0, posts.length - approvedPosts.length) + rejectedEvents.length,
     persistable: imported,
@@ -540,6 +542,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   }];
   return {
     dryRun,
+    durationMs: Math.max(0, Date.now() - pipelineStartedAt),
     sourceReports,
     receivedPosts: posts.length,
     approvedPosts: approvedPosts.length,

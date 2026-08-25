@@ -42,7 +42,7 @@ describe("adapters de ticketeiras oficiais", () => {
   it("descobre cards reais do catálogo Mr Ingressos e deduplica destaque/agenda", () => {
     const html = `<a href="/comprar/442/se-beber-nao-case">SEX, 28 AGO · 19h00 Se beber Não Case Dolores Bar e Restaurante - Guarujá, SP</a><a href="https://mringressos.com.br/comprar/442/se-beber-nao-case">duplicado</a><a href="/comprar/439/isso-e-boteco">SAB, 29 AGO · 22h00 Isso é Boteco Boteco Almare - Guarujá, SP</a>`;
     expect(extractMrIngressosListingEvents(html)).toHaveLength(2);
-    expect(extractMrIngressosListingEvents(html)[0]).toMatchObject({ url: "https://mringressos.com.br/comprar/442/se-beber-nao-case" });
+    expect(extractMrIngressosListingEvents(html)[0]).toMatchObject({ url: "https://mringressos.com.br/comprar/442/se-beber-nao-case", title: "Se beber Não Case" });
   });
 
   it("descobre rotas Black Pass no HTML e em atributos incorporados", () => {

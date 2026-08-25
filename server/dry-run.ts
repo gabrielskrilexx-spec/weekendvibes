@@ -29,6 +29,7 @@ function normalizePublicSourceReports(result: unknown): DryRunSourceReport[] {
     return {
       routine: "public-agenda" as const,
       sourceKey: String(report.sourceKey ?? "public:unknown").slice(0, 160),
+      durationMs: Math.max(0, Number(report.durationMs ?? (result && typeof result === "object" && "durationMs" in result ? (result as { durationMs?: unknown }).durationMs : 0) ?? 0)),
       read: Math.max(0, Number(report.read ?? 0)),
       filtered: Math.max(0, Number(report.filtered ?? 0)),
       persistable: Math.max(0, Number(report.persistable ?? 0)),
@@ -45,7 +46,7 @@ function normalizePublicSourceReports(result: unknown): DryRunSourceReport[] {
 
 function normalizeInstagramSourceReports(result: unknown): DryRunSourceReport[] {
   if (!result || typeof result !== "object") return [];
-  const value = result as { sourceReports?: unknown[]; receivedPosts?: unknown; filtered?: unknown; imported?: unknown; duplicates?: unknown; transportFailures?: unknown[]; rejectionReasons?: Record<string, unknown> };
+  const value = result as { sourceReports?: unknown[]; durationMs?: unknown; receivedPosts?: unknown; filtered?: unknown; imported?: unknown; duplicates?: unknown; transportFailures?: unknown[]; rejectionReasons?: Record<string, unknown> };
   const provided = Array.isArray(value.sourceReports) ? value.sourceReports[0] as Partial<IngestionSourceReport> | undefined : undefined;
   const errors = Array.isArray(value.transportFailures) ? value.transportFailures.slice(0, 20).map(rawFailure => {
     const failure = rawFailure && typeof rawFailure === "object" ? rawFailure as { username?: unknown; status?: unknown; message?: unknown } : {};
@@ -58,6 +59,7 @@ function normalizeInstagramSourceReports(result: unknown): DryRunSourceReport[] 
   return [{
     routine: "instagram-agenda",
     sourceKey: "instagram",
+    durationMs: Math.max(0, Number(provided?.durationMs ?? value.durationMs ?? 0)),
     read: Math.max(0, Number(provided?.read ?? value.receivedPosts ?? 0)),
     filtered: Math.max(0, Number(provided?.filtered ?? value.filtered ?? 0)),
     persistable: Math.max(0, Number(provided?.persistable ?? value.imported ?? 0)),
@@ -78,6 +80,7 @@ function normalizeFailureSource(routine: DryRunSourceReport["routine"], error: u
   return {
     routine,
     sourceKey: routine === "instagram-agenda" ? "instagram" : "public:unknown",
+    durationMs: 0,
     read: 0,
     filtered: 0,
     persistable: 0,
