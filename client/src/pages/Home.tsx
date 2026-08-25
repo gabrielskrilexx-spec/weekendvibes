@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { MapPin, Sparkles, WifiOff, Moon, Sun, Contrast } from "lucide-react";
+import { CalendarSearch, MapPin, Sparkles, WifiOff, Moon, Sun, Contrast } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import MobileBottomNav from "@/components/MobileBottomNav";
@@ -69,7 +69,7 @@ export default function Home() {
         <div className="mt-12 mb-6 flex items-end justify-between gap-3 border-b border-white/10 pb-4"><div><p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">Agenda em destaque</p><h2 className="mt-1 text-3xl font-black tracking-tight text-white">Rolês para você</h2></div><span className="text-sm text-zinc-500">{events.length} eventos</span></div>
         {eventsQuery.isLoading && <EventGridSkeleton count={4} />}
         {eventsQuery.isError && <div className="flex items-start gap-3 rounded-3xl border border-orange-300/20 bg-orange-300/10 p-6 text-orange-100"><WifiOff className="mt-1 shrink-0" /><div><p className="font-black">A agenda está temporariamente offline.</p><p className="mt-1 text-sm text-orange-100/70">Tente novamente em instantes ou ajuste os filtros.</p></div></div>}
-        {!eventsQuery.isLoading && !eventsQuery.isError && events.length === 0 && <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-10 text-center text-zinc-400">Nenhum evento encontrado com esses filtros.</div>}
+        {!eventsQuery.isLoading && !eventsQuery.isError && events.length === 0 && <div className="rounded-3xl border border-orange-300/20 bg-gradient-to-br from-orange-300/[0.09] to-fuchsia-400/[0.06] p-7 text-center sm:p-10"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-orange-200/20 bg-orange-300/10 text-orange-200"><CalendarSearch size={22} /></div><h3 className="mt-4 text-lg font-black text-white">Nenhum evento encontrado com esses filtros.</h3><p className="mx-auto mt-2 max-w-lg text-sm leading-relaxed text-zinc-400">Tente explorar todos os dias ou abrir a agenda do fim de semana para descobrir novas opções.</p><Link href="/?day=&city=Todas&category=Todas&genre=#filtros" className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-orange-300 px-5 py-3 text-sm font-black text-zinc-950 transition hover:bg-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-200"><CalendarSearch size={16} /> Ver os rolês do fim de semana</Link></div>}
         {!eventsQuery.isLoading && !eventsQuery.isError && events.length > 0 && <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{events.map(event => <EventCard key={event.id} event={event} />)}</div>}
       </section>
       <SiteFooter />

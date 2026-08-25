@@ -6,7 +6,7 @@ import type { Event } from "../../../drizzle/schema";
 vi.mock("wouter", () => ({ Link: ({ href, children, ...props }: { href: string; children: React.ReactNode }) => <a href={href} {...props}>{children}</a> }));
 vi.mock("./FavoriteReminderControls", () => ({ default: () => <div data-testid="favorite-controls" /> }));
 
-import EventCard from "./EventCard";
+import EventCard, { getEventPriceLabel } from "./EventCard";
 
 const event = {
   id: 1,
@@ -26,6 +26,11 @@ const event = {
 } as Event;
 
 describe("EventCard interaction", () => {
+  it("classifica preço zero como gratuito e preço não catalogado como consulta", () => {
+    expect(getEventPriceLabel({ priceCents: 0, priceNote: "R$ 0,00", ticketStatus: "available" })).toBe("Gratuito");
+    expect(getEventPriceLabel({ priceCents: 0, priceNote: null, ticketStatus: "unknown" })).toBe("Consultar valores");
+  });
+
   it("aplica feedback visual de hover e foco sem remover a acessibilidade", () => {
     const markup = renderToStaticMarkup(<EventCard event={event} />);
     expect(markup).toContain("hover:-translate-y-1");
@@ -34,6 +39,9 @@ describe("EventCard interaction", () => {
     expect(markup).toContain("focus-within:ring-2");
     expect(markup).toContain("motion-reduce:transition-none");
     expect(markup).toContain('href="/eventos/rolê-santos"');
+    expect(markup).toContain("line-clamp-2");
+    expect(markup).toContain("min-h-[3.25rem]");
+    expect(markup).toContain("A partir de R$ 50,00");
     expect(markup).not.toContain("Alta confiança");
     expect(markup).not.toContain("Confiança moderada");
     expect(markup).not.toContain("Fonte verificável");

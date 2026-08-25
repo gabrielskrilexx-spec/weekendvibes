@@ -1601,3 +1601,15 @@
 - [x] Adicionar/atualizar contratos tRPC para operações em massa com respostas JSON estritas
 - [x] Criar testes Vitest e Playwright desktop/mobile para seleção, ações e layout
 - [x] Executar TypeScript, suíte, build, salvar checkpoint e sincronizar main
+
+## Habilidade reutilizável de auditoria de painel
+- [x] Criar habilidade com workflow de auditoria funcional, mobile e ações em massa
+- [x] Validar a habilidade com quick_validate.py
+- [x] Entregar o SKILL.md e pacote da habilidade ao usuário
+
+## Refinamentos visuais da Home e cards
+- [x] Uniformizar altura dos cards e limitar descrições a duas linhas
+- [x] Exibir Gratuito para preço zero e Consultar valores quando o preço não estiver catalogado
+- [x] Redesenhar o empty state com atalho para o fim de semana ou próxima data disponível
+- [x] Atualizar testes Vitest e validar responsividade da Home
+- [x] Executar TypeScript, build, commit e push para main
