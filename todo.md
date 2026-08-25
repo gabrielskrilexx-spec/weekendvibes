@@ -1522,3 +1522,15 @@
 - [x] Confirmar que o commit local 6b89f76 é a fonte definitiva
 - [x] Substituir a branch main remota obsoleta com force-with-lease
 - [x] Verificar o novo HEAD remoto e confirmar o push aceito
+
+## Apresentação executiva do status
+- [x] Consolidar status do painel, adaptadores e último Dry-run
+- [x] Redigir conteúdo em estrutura de slides, com métricas e riscos atuais
+- [x] Gerar e revisar a apresentação
+- [x] Entregar a apresentação final ao usuário
+
+## Correção de renderização na Vercel
+- [x] Auditar framework, scripts de build, dist e arquivos de configuração da Vercel
+- [x] Corrigir output directory e roteamento da UI na raiz
+- [x] Validar build local e confirmar que a raiz não expõe arquivos internos
+- [x] Commitar e fazer push da correção para a branch main
