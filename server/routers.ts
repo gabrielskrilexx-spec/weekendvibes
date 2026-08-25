@@ -39,6 +39,10 @@ const eventInput = z.object({
 });
 
 const adminOnly = adminProcedure;
+const adminRoutineOutput = z.object({ ok: z.literal(true), archived: z.number().int().nonnegative(), publicSources: z.object({ imported: z.number().int().nonnegative() }).strict(), instagram: z.object({ imported: z.number().int().nonnegative() }).strict(), startedAt: z.string(), finishedAt: z.string() }).strict();
+const mutationAckOutput = z.object({ ok: z.literal(true), id: z.number().int().positive().optional() }).strict();
+const dryRunOutput = z.object({ dryRun: z.literal(true), startedAt: z.string(), finishedAt: z.string(), durationMs: z.number().nonnegative(), sources: z.array(z.object({ routine: z.enum(["public-agenda", "instagram-agenda"]), sourceKey: z.string(), durationMs: z.number().nonnegative().default(0), medianDurationMs: z.number().nonnegative().default(0), p95DurationMs: z.number().nonnegative().default(0), read: z.number().nonnegative(), filtered: z.number().nonnegative(), persistable: z.number().nonnegative(), duplicates: z.number().nonnegative(), errors: z.array(z.object({ sourceUrl: z.string().optional(), status: z.number().nullable(), message: z.string() }).strict()), rejectionReasons: z.record(z.string(), z.number().nonnegative()) }).strict()), totals: z.object({ read: z.number().nonnegative(), filtered: z.number().nonnegative(), persistable: z.number().nonnegative(), duplicates: z.number().nonnegative(), errors: z.number().nonnegative() }).strict() }).strict();
+const reprocessOutput = z.object({ ok: z.boolean(), sourceKey: z.enum(["public", "instagram"]), routine: z.enum(["instagram-agenda", "manual-reprocess"]), imported: z.number().int().nonnegative(), counts: z.object({ read: z.number().int().nonnegative(), filtered: z.number().int().nonnegative(), persisted: z.number().int().nonnegative(), duplicates: z.number().int().nonnegative() }).strict(), degraded: z.boolean(), error: z.string().optional() }).strict();
 
 export const appRouter = router({
   system: systemRouter,
@@ -52,13 +56,17 @@ export const appRouter = router({
   }),
   adminRoutine: router({
     status: adminOnly.query(() => getWednesdayRoutineStatus()),
-    runNow: adminOnly.mutation(async () => runWednesdayRoutineNow()),
+    runNow: adminOnly.output(adminRoutineOutput).mutation(async () => {
+      const result = await runWednesdayRoutineNow();
+      const importedFrom = (value: unknown) => value && typeof value === "object" && "imported" in value && typeof (value as { imported?: unknown }).imported === "number" ? Math.max(0, Math.trunc((value as { imported: number }).imported)) : 0;
+      return { ok: true as const, archived: Math.max(0, Math.trunc(result.archived)), publicSources: { imported: importedFrom(result.publicSources) }, instagram: { imported: importedFrom(result.instagram) }, startedAt: String(result.startedAt), finishedAt: String(result.finishedAt) };
+    }),
   }),
   locationAliases: router({
     list: adminOnly.query(() => listLocationAliases()),
-    create: adminOnly.input(z.object({ alias: z.string().trim().min(2).max(180), canonicalName: z.string().trim().min(2).max(180), city: z.enum(["Santos", "Guarujá"]) })).mutation(({ input }) => createLocationAlias(input)),
-    update: adminOnly.input(z.object({ id: z.number().int().positive(), alias: z.string().trim().min(2).max(180), canonicalName: z.string().trim().min(2).max(180), city: z.enum(["Santos", "Guarujá"]), isActive: z.boolean() })).mutation(({ input }) => updateLocationAlias(input.id, input)),
-    remove: adminOnly.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => deleteLocationAlias(input.id)),
+    create: adminOnly.input(z.object({ alias: z.string().trim().min(2).max(180), canonicalName: z.string().trim().min(2).max(180), city: z.enum(["Santos", "Guarujá"]) })).output(mutationAckOutput).mutation(async ({ input }) => { await createLocationAlias(input); return { ok: true as const }; }),
+    update: adminOnly.input(z.object({ id: z.number().int().positive(), alias: z.string().trim().min(2).max(180), canonicalName: z.string().trim().min(2).max(180), city: z.enum(["Santos", "Guarujá"]), isActive: z.boolean() })).output(mutationAckOutput).mutation(async ({ input }) => { await updateLocationAlias(input.id, input); return { ok: true as const, id: input.id }; }),
+    remove: adminOnly.input(z.object({ id: z.number().int().positive() })).output(mutationAckOutput).mutation(async ({ input }) => { await deleteLocationAlias(input.id); return { ok: true as const, id: input.id }; }),
   }),
   circuitBreaker: router({
     statuses: adminOnly.query(() => listCircuitBreakerStatuses()),
@@ -69,8 +77,8 @@ export const appRouter = router({
   ingestionReports: router({
     summary: adminOnly.input(z.object({ size: z.number().int().min(1).max(50).optional(), periodDays: z.union([z.literal(7), z.literal(30), z.literal(90)]).optional(), routine: z.enum(["instagram-agenda", "public-agenda", "manual-reprocess"]).optional(), status: z.enum(["running", "succeeded", "partial", "failed"]).optional(), trigger: z.enum(["manual", "scheduled"]).optional(), runId: z.number().int().positive().optional(), sourceKey: z.string().trim().max(255).optional() }).optional()).query(({ input }) => listIngestionReport(input?.size ?? 20, { periodDays: input?.periodDays, routine: input?.routine, status: input?.status, trigger: input?.trigger, runId: input?.runId, sourceKey: input?.sourceKey })),
     geocoding: adminOnly.query(() => listGeocodingSummary()),
-    dryRun: adminOnly.mutation(() => runDryRun()),
-    reprocess: adminOnly.input(z.object({ sourceKey: z.enum(["public", "instagram"]) })).mutation(async ({ input }) => {
+    dryRun: adminOnly.output(dryRunOutput).mutation(() => runDryRun()),
+    reprocess: adminOnly.input(z.object({ sourceKey: z.enum(["public", "instagram"]) })).output(reprocessOutput).mutation(async ({ input }) => {
       try {
         return await reprocessIngestionSource(input.sourceKey);
       } catch {
@@ -87,14 +95,14 @@ export const appRouter = router({
         };
       }
     }),
-    geocodeNow: adminOnly.mutation(() => processPendingGeocoding(10)),
+    geocodeNow: adminOnly.output(z.object({ processed: z.number().int().nonnegative(), succeeded: z.number().int().nonnegative(), failed: z.number().int().nonnegative(), pending: z.number().int().nonnegative() }).strict()).mutation(() => processPendingGeocoding(10)),
   }),
   operationalAlerts: router({
-    resolve: adminOnly.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => resolveOperationalAlert(input.id)),
+    resolve: adminOnly.input(z.object({ id: z.number().int().positive() })).output(z.object({ ok: z.literal(true), id: z.number().int().positive() }).strict()).mutation(async ({ input }) => { await resolveOperationalAlert(input.id); return { ok: true as const, id: input.id }; }),
   }),
   ingestionSources: router({
     list: adminOnly.query(() => listIngestionSources()),
-    update: adminOnly.input(z.object({ id: z.number().int().positive(), isEnabled: z.boolean(), priority: z.number().int().min(1).max(1000), frequencyMinutes: z.number().int().min(60).max(525600) })).mutation(({ input }) => updateIngestionSource(input.id, input)),
+    update: adminOnly.input(z.object({ id: z.number().int().positive(), isEnabled: z.boolean(), priority: z.number().int().min(1).max(1000), frequencyMinutes: z.number().int().min(60).max(525600) })).output(z.object({ ok: z.literal(true), id: z.number().int().positive(), isEnabled: z.boolean(), priority: z.number().int().min(1).max(1000), frequencyMinutes: z.number().int().min(60).max(525600) }).strict()).mutation(async ({ input }) => { await updateIngestionSource(input.id, input); return { ok: true as const, id: input.id, isEnabled: input.isEnabled, priority: input.priority, frequencyMinutes: input.frequencyMinutes }; }),
   }),
   events: router({
     list: publicProcedure.input(z.object({ day: safeFilter(20), date: safeFilter(20), startDate: safeFilter(30), endDate: safeFilter(30), timeFrom: safeFilter(10), timeTo: safeFilter(10), city: z.enum(["Santos", "Guarujá"]).optional(), category: z.enum(["show", "balada", "evento_musical"]).optional(), genre: z.enum(["funk", "house_eletronica", "samba_pagode", "rap_trap"]).optional(), venue: safeFilter(180), neighborhood: safeFilter(120), minPriceCents: z.number().int().min(0).max(10_000_000).optional(), maxPriceCents: z.number().int().min(0).max(10_000_000).optional(), page: z.number().int().min(1).max(10000).optional(), size: z.number().int().min(1).max(100).optional() }).optional()).query(({ input }) => listEvents(input ?? {})),
@@ -104,7 +112,7 @@ export const appRouter = router({
     toggleFavorite: protectedProcedure.input(z.object({ eventId: z.number().int().positive() })).mutation(({ ctx, input }) => toggleFavoriteEvent(ctx.user.id, input.eventId)),
     reminders: protectedProcedure.query(({ ctx }) => listUserReminders(ctx.user.id)),
     setReminder: protectedProcedure.input(z.object({ eventId: z.number().int().positive(), active: z.boolean(), hoursBefore: z.union([z.literal(3), z.literal(24), z.literal(72)]).optional() })).mutation(({ ctx, input }) => setEventReminder(ctx.user.id, input.eventId, input.active, input.hoursBefore ?? 24)),
-    create: adminOnly.input(eventInput).mutation(({ input }) => saveEvent(input)),
+    create: adminOnly.input(eventInput).output(z.object({ created: z.boolean(), id: z.number().int().positive().optional(), duplicate: z.boolean().optional() }).strict()).mutation(async ({ input }) => { const result = await saveEvent(input); return { created: Boolean(result?.created), ...(result?.id ? { id: Number(result.id) } : {}), ...(result?.duplicate ? { duplicate: true } : {}) }; }),
     update: adminOnly.input(z.object({ id: z.number().int().positive(), data: eventInput.partial() })).mutation(async ({ input }) => {
       try {
         const result = await updateEvent(input.id, input.data);
@@ -151,7 +159,7 @@ export const appRouter = router({
         throw new TRPCError({ code: /Database unavailable/i.test(raw) ? "SERVICE_UNAVAILABLE" : "INTERNAL_SERVER_ERROR", message });
       }
     }),
-    enrich: adminOnly.input(z.object({ rawText: z.string().trim().min(20).max(12000) })).mutation(async ({ input }) => {
+    enrich: adminOnly.input(z.object({ rawText: z.string().trim().min(20).max(12000) })).output(z.object({ title: z.string(), summary: z.string(), eventDate: z.string(), locationName: z.string(), address: z.string(), city: z.string(), category: z.enum(["show", "balada", "evento_musical"]), genre: z.enum(["funk", "house_eletronica", "samba_pagode", "rap_trap"]).optional(), priceCents: z.number().int() }).strict()).mutation(async ({ input }) => {
       const response = await invokeLLM({
         model: "gpt-4o-mini",
         messages: [

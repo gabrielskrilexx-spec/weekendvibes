@@ -21,7 +21,7 @@ const ctx = (role: "admin" | "user" = "admin") => ({ user: { id: 1, openId: "tes
 describe("events admin procedures", () => {
   it("allows admin CRUD operations with serializable contracts", async () => {
     const caller = appRouter.createCaller(ctx());
-    await expect(caller.events.create(base)).resolves.toBeUndefined();
+    await expect(caller.events.create(base)).resolves.toEqual({ created: false });
     await expect(caller.events.update({ id: 1, data: { title: "Festival Atualizado" } })).resolves.toEqual({ ok: true, updated: true, id: 1 });
     await expect(caller.events.remove({ id: 1 })).resolves.toEqual({ deleted: true, id: 1, deletedDependencies: { favorites: 0, reminders: 0, geocodingJobs: 0, geocodingAuditLogs: 0 } });
   });

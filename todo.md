@@ -1582,3 +1582,12 @@
 - [x] Atualizar testes unitários e E2E para os novos controles e estados visuais
 - [x] Executar TypeScript, suíte Vitest, build e validação Playwright
 - [x] Salvar checkpoint e sincronizar a branch main no GitHub
+
+## Auditoria funcional completa do painel administrativo
+- [x] Auditar Dashboard, lista de eventos, qualidade/colisões, ingestão e Dry-run
+- [x] Garantir loading e disabled em todos os botões e mutações administrativas
+- [x] Garantir feedback visual amigável em sucesso e erro para todas as ações
+- [x] Revisar contratos tRPC de mutação para respostas JSON primitivas e estritas
+- [x] Criar ou atualizar E2E dos fluxos de Dry-run, filtros e resolução de duplicatas
+- [x] Executar Vitest, TypeScript, build e suíte Playwright do painel
+- [x] Salvar checkpoint, fazer commit e push para main no GitHub
