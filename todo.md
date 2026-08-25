@@ -1514,6 +1514,11 @@
 - [x] Executar suíte completa, TypeScript, build e publicar checkpoint
 
 ## Consolidação Git solicitada
-- [ ] Auditar alterações locais de hoje e o remoto gabrielskrilexx-spec/weekendvibes
-- [ ] Criar commit com Circuit Breaker, limpeza de UI e deduplicação
-- [ ] Fazer push do commit para a branch main e confirmar o resultado
+- [x] Auditar alterações locais de hoje e o remoto gabrielskrilexx-spec/weekendvibes
+- [x] Criar commit com Circuit Breaker, limpeza de UI e deduplicação
+- [x] Fazer push do commit para a branch main e confirmar o resultado
+
+## Push forçado autorizado
+- [x] Confirmar que o commit local 6b89f76 é a fonte definitiva
+- [x] Substituir a branch main remota obsoleta com force-with-lease
+- [x] Verificar o novo HEAD remoto e confirmar o push aceito
