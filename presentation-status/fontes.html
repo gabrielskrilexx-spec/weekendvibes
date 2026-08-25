@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        .slide-container { 
+            width: 1280px; 
+            min-height: 720px; 
+            background: #FFFFFF; 
+            color: #1A1C20; 
+            font-family: "Courier New", monospace;
+            padding: 60px 80px 0;
+        }
+        .eyebrow { 
+            color: #0047FF; 
+            font-weight: 700; 
+            font-size: 14px; 
+            letter-spacing: 3px; 
+            margin-bottom: 10px;
+        }
+        .title { 
+            font-size: 48px; 
+            font-weight: 700; 
+            letter-spacing: -2px; 
+            border-bottom: 2px solid #1A1C20;
+            padding-bottom: 20px;
+            margin-bottom: 40px;
+        }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-top: 20px;
+        }
+        th { 
+            text-align: left; 
+            padding: 15px 10px; 
+            border-bottom: 2px solid #1A1C20;
+            font-size: 18px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        td { 
+            padding: 20px 10px; 
+            border-bottom: 1px solid #1A1C20;
+            font-size: 16px;
+            vertical-align: top;
+        }
+        .source-name { font-weight: 700; color: #0047FF; }
+        .tag { 
+            display: inline-block; 
+            background: #1A1C20; 
+            color: #FFFFFF; 
+            padding: 4px 8px; 
+            font-size: 12px; 
+            font-weight: 700;
+        }
+        .status-ok { color: #0047FF; font-weight: 700; }
+        .status-warn { color: #FF3B30; font-weight: 700; }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <div class="eyebrow">03 / ESTRUTURA DE DADOS</div>
+        <h1 class="title">A arquitetura de fontes está diversificada</h1>
+        <table>
+            <thead>
+                <tr>
+                    <th>Fonte</th>
+                    <th>Método de Extração</th>
+                    <th>Características Principais</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="source-name">Instagram</td>
+                    <td>API Graph / Discovery</td>
+                    <td>Classificação via LLM; Degradação suave para falhas de transporte.</td>
+                    <td class="status-ok">ATIVO</td>
+                </tr>
+                <tr>
+                    <td class="source-name">Black Pass</td>
+                    <td>Catálogo JSON Público</td>
+                    <td>Extração direta de rotas /event/{id}; Alta fidelidade de dados.</td>
+                    <td class="status-ok">ATIVO</td>
+                </tr>
+                <tr>
+                    <td class="source-name">Mr Ingressos</td>
+                    <td>HTML / CSR Scraper</td>
+                    <td>Concorrência limitada (6 workers); Retry seletivo de timeout.</td>
+                    <td class="status-ok">ATIVO</td>
+                </tr>
+                <tr>
+                    <td class="source-name">Ingresse</td>
+                    <td>Adaptador Público</td>
+                    <td>Parsing estruturado; Validação temporal rigorosa.</td>
+                    <td class="status-warn">403 DETECTADO</td>
+                </tr>
+                <tr>
+                    <td class="source-name">Articket / Zig</td>
+                    <td>Web Scraping</td>
+                    <td>Filtro por Allowlist geográfica; Geocodificação automática.</td>
+                    <td class="status-ok">ATIVO</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

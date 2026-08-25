@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        .slide-container { 
+            width: 1280px; 
+            min-height: 720px; 
+            background: #FFFFFF; 
+            color: #1A1C20;
+            font-family: "Courier New", monospace;
+            padding: 60px 80px 0;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            border-bottom: 2px solid #1A1C20;
+            padding-bottom: 20px;
+            margin-bottom: 60px;
+        }
+        .eyebrow {
+            color: #0047FF;
+            font-weight: 700;
+            font-size: 16px;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+        }
+        .title {
+            font-size: 48px;
+            font-weight: 700;
+            letter-spacing: -2px;
+        }
+        .content-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 40px;
+            flex-grow: 1;
+        }
+        .feature-block {
+            border-left: 2px solid #1A1C20;
+            padding-top: 20px;
+            padding-left: 20px;
+        }
+        .feature-tag {
+            background: #0047FF;
+            color: #FFFFFF;
+            display: inline-block;
+            padding: 4px 12px;
+            font-weight: 700;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        .feature-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            line-height: 1.2;
+        }
+        .feature-desc {
+            font-size: 18px;
+            line-height: 1.5;
+            color: #444;
+        }
+        .warning-box {
+            margin-top: 60px;
+            background: #F5F5F5;
+            border: 2px solid #1A1C20;
+            padding-top: 20px;
+            padding-left: 20px;
+            padding-right: 20px;
+            min-height: 120px;
+        }
+        .warning-title {
+            color: #FF3B30;
+            font-weight: 700;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <div class="header">
+            <div class="eyebrow">04 / INTEGRIDADE DE DADOS</div>
+            <h1 class="title">O Dry-run preserva segurança operacional</h1>
+        </div>
+        
+        <div class="content-grid">
+            <div class="feature-block">
+                <div class="feature-tag">REUTILIZAÇÃO</div>
+                <h2 class="feature-title">Mesmas regras de produção</h2>
+                <p class="feature-desc">Executa coleta, parsing, allowlist, validação temporal e geocodificação exatamente como no pipeline real.</p>
+            </div>
+            
+            <div class="feature-block">
+                <div class="feature-tag">ISOLAMENTO</div>
+                <h2 class="feature-title">Sem efeitos colaterais</h2>
+                <p class="feature-desc">Bloqueio total de gravação: não altera eventos, cache, alertas, circuit breaker ou histórico de execuções.</p>
+            </div>
+            
+            <div class="feature-block">
+                <div class="feature-tag">DIAGNÓSTICO</div>
+                <h2 class="feature-title">Visibilidade sem risco</h2>
+                <p class="feature-desc">Exibe o que seria persistido e sanitiza erros por fonte, evitando falsos positivos de sucesso técnico.</p>
+            </div>
+        </div>
+
+        <div class="warning-box">
+            <div class="warning-title">GARANTIA DE PERSISTÊNCIA ZERO</div>
+            <p class="feature-desc">O sistema orquestrador garante que a persistência real permaneça em zero durante toda a simulação.</p>
+        </div>
+    </div>
+</body>
+</html>

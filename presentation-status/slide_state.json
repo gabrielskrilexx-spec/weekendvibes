@@ -1,0 +1,111 @@
+{
+  "project_info": {
+    "title": "WeekendVibes",
+    "created": 1787680073.53,
+    "last_updated": 1787680224.009,
+    "total_slides": 9
+  },
+  "slides": [
+    {
+      "id": "cover",
+      "state": "edited",
+      "pageNum": 1
+    },
+    {
+      "id": "panorama",
+      "state": "edited",
+      "pageNum": 2
+    },
+    {
+      "id": "painel",
+      "state": "edited",
+      "pageNum": 3
+    },
+    {
+      "id": "fontes",
+      "state": "edited",
+      "pageNum": 4
+    },
+    {
+      "id": "seguranca",
+      "state": "edited",
+      "pageNum": 5
+    },
+    {
+      "id": "resultado",
+      "state": "edited",
+      "pageNum": 6
+    },
+    {
+      "id": "criticas",
+      "state": "edited",
+      "pageNum": 7
+    },
+    {
+      "id": "prioridades",
+      "state": "edited",
+      "pageNum": 8
+    },
+    {
+      "id": "conclusao",
+      "state": "edited",
+      "pageNum": 9
+    }
+  ],
+  "outline": [
+    {
+      "id": "cover",
+      "title": "WeekendVibes",
+      "summary": "Status operacional do painel administrativo e da esteira de ingestão. 25 de agosto de 2026 · Baixada Santista.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "panorama",
+      "title": "Panorama executivo",
+      "summary": "Resumo do painel, da sincronização GitHub e do principal achado do último Dry-run.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "painel",
+      "title": "O painel já cobre o ciclo operacional",
+      "summary": "Dry-run, auditoria, revisão de colisões e Circuit Breaker em uma visão operacional integrada.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "fontes",
+      "title": "A arquitetura de fontes está diversificada",
+      "summary": "Instagram, Black Pass, Mr Ingressos, Ingresse, Articket, Blacktag e Zig Tickets com adaptadores específicos.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "seguranca",
+      "title": "O Dry-run preserva segurança operacional",
+      "summary": "A simulação reaproveita as regras de produção sem gravar eventos ou estado operacional.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "resultado",
+      "title": "Último Dry-run: volume e resultado",
+      "summary": "308 candidatos lidos, 259 filtrados, 6 elegíveis e zero persistência real, com duração total de 48,6 segundos.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "criticas",
+      "title": "Último Dry-run: fontes críticas",
+      "summary": "Black Pass e Mr Ingressos responderam; Ingresse apresentou HTTP 403 na home.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "prioridades",
+      "title": "Prioridades imediatas",
+      "summary": "Ações práticas para tratar 403, acompanhar retries e usar o Dry-run na evolução da allowlist.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "conclusao",
+      "title": "Conclusão",
+      "summary": "Operação preparada para diagnóstico seguro e evolução contínua.",
+      "image_plan": "Use a suitable image if needed"
+    }
+  ]
+}

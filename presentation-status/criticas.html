@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        .slide-container { 
+            width: 1280px; 
+            min-height: 720px; 
+            background: #FFFFFF; 
+            color: #1A1C20; 
+            font-family: "Courier New", monospace;
+            padding-top: 60px;
+            padding-left: 80px;
+            padding-right: 80px;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            border-bottom: 2px solid #1A1C20;
+            padding-top: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+        .eyebrow {
+            font-size: 14px;
+            font-weight: 700;
+            color: #0047FF;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+        .title {
+            font-size: 42px;
+            font-weight: 700;
+            margin-top: 10px;
+            padding-top: 0;
+            letter-spacing: -2px;
+        }
+        .content-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 40px;
+            padding-top: 60px;
+            flex-grow: 1;
+        }
+        .source-col {
+            border-left: 2px solid #1A1C20;
+            padding-top: 0;
+            padding-left: 20px;
+        }
+        .status-badge {
+            display: inline-block;
+            padding-top: 4px;
+            padding-left: 8px;
+            padding-right: 8px;
+            font-weight: 700;
+            font-size: 12px;
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+        .status-ok { background: #0047FF; color: #FFFFFF; }
+        .status-warn { background: #FF3B30; color: #FFFFFF; }
+        
+        .source-name {
+            font-size: 24px;
+            font-weight: 700;
+            margin-top: 0;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+        }
+        .metric-row {
+            padding-top: 15px;
+            border-top: 1px solid #E0E0E0;
+        }
+        .metric-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #1A1C20;
+        }
+        .metric-label {
+            font-size: 12px;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .diagnostic-box {
+            margin-top: 30px;
+            padding-top: 15px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .diagnostic-box b {
+            display: block;
+            margin-top: 0;
+            margin-bottom: 5px;
+            color: #0047FF;
+        }
+        .diagnostic-box.alert b {
+            color: #FF3B30;
+        }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <div class="header">
+            <div>
+                <div class="eyebrow">06 / Análise de Fontes Críticas</div>
+                <h1 class="title">Desempenho e Diagnóstico</h1>
+            </div>
+            <div class="eyebrow">WeekendVibes Ops</div>
+        </div>
+
+        <div class="content-grid">
+            <!-- Black Pass -->
+            <div class="source-col">
+                <div class="status-badge status-ok">OPERACIONAL</div>
+                <h2 class="source-name">Black Pass</h2>
+                <div class="metric-row">
+                    <div class="metric-value">12.7s</div>
+                    <div class="metric-label">Duração Total</div>
+                </div>
+                <div class="diagnostic-box">
+                    <b>RESULTADO</b>
+                    4 lidos, 3 filtrados, 1 elegível. Adaptador JSON público validado com sucesso.
+                </div>
+            </div>
+
+            <!-- Mr Ingressos -->
+            <div class="source-col">
+                <div class="status-badge status-ok">ESTABILIZADO</div>
+                <h2 class="source-name">Mr Ingressos</h2>
+                <div class="metric-row">
+                    <div class="metric-value">34.1s</div>
+                    <div class="metric-label">Duração Total</div>
+                </div>
+                <div class="diagnostic-box">
+                    <b>RESILIÊNCIA</b>
+                    16 lidos, 15 filtrados. Concorrência limitada e retry seletivo impediram falhas de timeout.
+                </div>
+            </div>
+
+            <!-- Ingresse -->
+            <div class="source-col">
+                <div class="status-badge status-warn">ALERTA 403</div>
+                <h2 class="source-name">Ingresse</h2>
+                <div class="metric-row">
+                    <div class="metric-value">14.4s</div>
+                    <div class="metric-label">Duração Total</div>
+                </div>
+                <div class="diagnostic-box alert">
+                    <b>BLOQUEIO DETECTADO</b>
+                    Home respondeu HTTP 403. 4 eventos estruturados via rotas internas, mas origem requer monitoramento.
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

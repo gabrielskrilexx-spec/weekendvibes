@@ -1538,5 +1538,5 @@
 ## Verificação de produção e monitoramento
 - [x] Verificar status do deploy e domínio de produção
 - [x] Executar smoke test da raiz, assets, API e rotas críticas
-- [ ] Configurar monitoramento automatizado de falhas de build e de rota
-- [ ] Validar a configuração, atualizar checklist e reportar resultado
+- [x] Configurar monitoramento automatizado de falhas de build e de rota
+- [x] Validar a configuração, atualizar checklist e reportar resultado
