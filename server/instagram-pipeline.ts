@@ -355,7 +355,7 @@ function logInstagramResponseDiagnostics(input: { username: string; status: numb
   });
 }
 
-async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId: string): Promise<{ posts: InstagramPost[]; transportFailures: InstagramTransportFailure[] }> {
+async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId: string, options: { dryRun?: boolean } = {}): Promise<{ posts: InstagramPost[]; transportFailures: InstagramTransportFailure[] }> {
   const posts: InstagramPost[] = [];
   const transportFailures: InstagramTransportFailure[] = [];
   const configuredSources = (await listEnabledInstagramSources()) ?? [];
@@ -370,14 +370,14 @@ async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId:
   const forceRefresh = process.env.INGESTION_FORCE_INSTAGRAM === "1";
   for (const target of targets) {
     const source = configuredSources.find(item => item.handle?.replace(/^@/, "").toLowerCase() === target.username.toLowerCase());
-    if (source) {
+    if (source && !options.dryRun) {
       const circuit = await allowSourceAttempt(source.sourceKey);
       if (!circuit.allowed) {
         transportFailures.push({ username: target.username, status: 0, kind: "circuit_open", message: "Fonte pausada pelo Circuit Breaker durante o cooldown." });
         continue;
       }
     }
-    if (!forceRefresh && source?.lastSuccessAt && Date.now() - new Date(source.lastSuccessAt).getTime() < source.frequencyMinutes * 60_000) {
+    if (!options.dryRun && !forceRefresh && source?.lastSuccessAt && Date.now() - new Date(source.lastSuccessAt).getTime() < source.frequencyMinutes * 60_000) {
       await markIngestionSourceResult(source.sourceKey, { status: "skipped", message: "Aguardando a próxima janela configurada." });
       continue;
     }
@@ -393,22 +393,22 @@ async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId:
     logInstagramResponseDiagnostics({ username: target.username, status: response.status, contentType: response.headers.get("content-type"), body: responseBody, parsed, mediaCount, maskedHtml });
     if (response.ok && maskedHtml) {
       resetInstagramSessionForRetry("meta_200_masked_session");
-      if (source) await registerSourceFailure({ sourceKey: source.sourceKey, routine: "instagram-agenda", status: response.status, message: "Resposta HTML mascarada recebida onde era esperado JSON; perfil ignorado nesta tentativa." });
+      if (source && !options.dryRun) await registerSourceFailure({ sourceKey: source.sourceKey, routine: "instagram-agenda", status: response.status, message: "Resposta HTML mascarada recebida onde era esperado JSON; perfil ignorado nesta tentativa." });
       transportFailures.push({ username: target.username, status: response.status, kind: "proxy_or_session", message: "Resposta mascarada de sessão/proxy; perfil ignorado nesta tentativa." });
       continue;
     }
     if (!response.ok) {
-      if (source) await markIngestionSourceResult(source.sourceKey, { status: "failed", message: `HTTP ${response.status}` });
+      if (source && !options.dryRun) await markIngestionSourceResult(source.sourceKey, { status: "failed", message: `HTTP ${response.status}` });
       if (isInstagramTransportFailure(response.status, responseBody)) {
         resetInstagramSessionForRetry(`meta_${response.status}`);
-        if (source) await registerSourceFailure({ sourceKey: source.sourceKey, routine: "instagram-agenda", status: response.status, message: `Meta respondeu HTTP ${response.status}; perfil ignorado nesta tentativa.` });
+        if (source && !options.dryRun) await registerSourceFailure({ sourceKey: source.sourceKey, routine: "instagram-agenda", status: response.status, message: `Meta respondeu HTTP ${response.status}; perfil ignorado nesta tentativa.` });
         transportFailures.push({ username: target.username, status: response.status, kind: "proxy_or_session", message: `Meta respondeu HTTP ${response.status}; perfil ignorado nesta tentativa.` });
         continue;
       }
       throw new InstagramIntegrationFailure("meta", `Meta Graph API request failed with ${response.status}: ${responseBody}`);
     }
     posts.push(...metaPostsFromPayload(parsedBody ?? JSON.parse(responseBody), target));
-    if (source) {
+    if (source && !options.dryRun) {
       await registerSourceSuccess(source.sourceKey);
       await markIngestionSourceResult(source.sourceKey, { status: "succeeded", message: "Business Discovery respondeu com sucesso." });
     }
@@ -416,10 +416,10 @@ async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId:
   return { posts, transportFailures };
 }
 
-export async function fetchInstagramPostsDetailed() {
+export async function fetchInstagramPostsDetailed(options: { dryRun?: boolean } = {}) {
   const token = requiredEnv("META_INSTAGRAM_TOKEN");
   const accountId = requiredEnv("META_INSTAGRAM_ACCOUNT_ID");
-  return fetchMetaBusinessDiscoveryPostsDetailed(token, accountId);
+  return fetchMetaBusinessDiscoveryPostsDetailed(token, accountId, options);
 }
 
 export async function fetchInstagramPosts() {
@@ -471,11 +471,14 @@ async function extractStructuredEvents(referenceDate: string, approvedPosts: Arr
   }
 }
 
-export async function runInstagramPipeline() {
+export type InstagramPipelineOptions = { dryRun?: boolean };
+
+export async function runInstagramPipeline(options: InstagramPipelineOptions = {}) {
+  const dryRun = options.dryRun === true;
   const referenceDate = getInstagramReferenceDate();
-  await recordReferenceDateClockAlert(referenceDate);
+  if (!dryRun) await recordReferenceDateClockAlert(referenceDate);
   const activeAliases = await listActiveLocationAliasValues();
-  const fetched = await fetchInstagramPostsDetailed();
+  const fetched = await fetchInstagramPostsDetailed({ dryRun });
   const posts = deduplicateInstagramPosts(fetched.posts);
   const approvedPosts: Array<{ post: InstagramPost; rawText: string }> = [];
   const forceFocusedRun = process.env.INGESTION_FORCE_INSTAGRAM === "1";
@@ -506,7 +509,7 @@ export async function runInstagramPipeline() {
     const coordinates = await resolveRegionalCoordinates({ locationName: event.locationName, address: event.address, city: event.city });
     const sourceUrl = event.sourceUrl;
     const sourceHash = crypto.createHash("md5").update(`${sourceUrl}|${eventDate.toISOString().slice(0, 10)}|${event.title}`).digest("hex");
-    const saved = await saveEvent({
+    const saved = dryRun ? { created: true, id: undefined } : await saveEvent({
       title: event.title, slug: `${event.title.toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}-${eventDate.getTime()}`,
       description: event.summary, eventDate, locationName: event.locationName, address: event.address, city: event.city,
       category: event.category, genre: event.genre, priceCents: event.priceCents || 0, priceNote: event.priceCents ? undefined : "Preço não informado na agenda do Instagram",
@@ -520,7 +523,24 @@ export async function runInstagramPipeline() {
     imported += 1;
   }
   const rejectionReasons = summarizeStructuredRejections(rejectedEvents);
+  const sourceReports = [{
+    sourceKey: "instagram",
+    read: posts.length,
+    filtered: Math.max(0, posts.length - approvedPosts.length) + rejectedEvents.length,
+    persistable: imported,
+    duplicates,
+    errors: fetched.transportFailures.map(failure => ({ sourceUrl: `@${failure.username}`, status: failure.status || null, message: failure.message })),
+    rejectionReasons: {
+      fetchFailed: fetched.transportFailures.length,
+      outsideTargetVenue: Number(rejectionReasons.outside_target_venue ?? 0),
+      invalidStructuredEvent: Number(rejectionReasons.invalid_date ?? 0) + Number(rejectionReasons.invalid_source_url ?? 0) + Number(rejectionReasons.missing_required_field ?? 0) + Number(rejectionReasons.invalid_category ?? 0) + Number(rejectionReasons.invalid_genre ?? 0),
+      duplicate: duplicates,
+      pastEvent: Number(rejectionReasons.past_event ?? 0),
+    },
+  }];
   return {
+    dryRun,
+    sourceReports,
     receivedPosts: posts.length,
     approvedPosts: approvedPosts.length,
     degraded: fetched.transportFailures.length > 0,

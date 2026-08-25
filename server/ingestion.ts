@@ -316,7 +316,7 @@ function getIngresseSlug(url: string) {
   return decodeURIComponent(segments.at(-1) ?? "");
 }
 
-export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCacheStore = { read: getIngestionPayloadCache, write: saveIngestionPayloadCache }) {
+export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCacheStore = { read: getIngestionPayloadCache, write: saveIngestionPayloadCache }, options: { dryRun?: boolean } = {}) {
   const slug = getIngresseSlug(url);
   if (!slug) throw createFetchError(`URL Ingresse sem slug de evento: ${url}`);
   try {
@@ -342,7 +342,7 @@ export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCac
     const text = [title, description, placeName, address, city, dateTime].filter(Boolean).join(" ");
     if (!title || !dateTime || !placeName) throw createFetchError(`API pública do Ingresse sem dados essenciais para ${url}`);
     const structured = { title, summary: description, eventDate: dateTime, locationName: placeName, address, city, category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: url, imageUrl, latitude, longitude };
-    await cacheStore.write({ cacheKey: ingresseCacheKey(url), sourceKey: "public:ingresse", sourceUrl: url, payload: structured, latitude, longitude }).catch(error => console.warn("[Ingestion cache] Could not save Ingresse payload:", sanitizeFetchFailure(error).message));
+    if (!options.dryRun) await cacheStore.write({ cacheKey: ingresseCacheKey(url), sourceKey: "public:ingresse", sourceUrl: url, payload: structured, latitude, longitude }).catch(error => console.warn("[Ingestion cache] Could not save Ingresse payload:", sanitizeFetchFailure(error).message));
     return { url, html: "", text: text.slice(0, 16_000), imageUrl, structured };
   } catch (error) {
     const failure = sanitizeFetchFailure(error);
@@ -386,24 +386,26 @@ function publicSourceKey(url: string) {
   return "public:unknown";
 }
 
-async function guardedFetchPublicPage(url: string): Promise<PublicPage> {
+async function guardedFetchPublicPage(url: string, options: { dryRun?: boolean } = {}): Promise<PublicPage> {
   const sourceKey = publicSourceKey(url);
-  const circuit = await allowSourceAttempt(sourceKey);
-  if (!circuit.allowed) return { url, html: "", text: "", imageUrl: "", circuitOpen: true };
+  if (!options.dryRun) {
+    const circuit = await allowSourceAttempt(sourceKey);
+    if (!circuit.allowed) return { url, html: "", text: "", imageUrl: "", circuitOpen: true };
+  }
   try {
-    const page = await fetchPublicPage(url);
-    await registerSourceSuccess(sourceKey);
+    const page = await fetchPublicPage(url, options);
+    if (!options.dryRun) await registerSourceSuccess(sourceKey);
     return page;
   } catch (error) {
     const failure = sanitizeFetchFailure(error);
     logPublicFailureDiagnostics(url, error);
-    await registerSourceFailure({ sourceKey, routine: "public-agenda", status: failure.status ?? undefined, message: failure.message });
+    if (!options.dryRun) await registerSourceFailure({ sourceKey, routine: "public-agenda", status: failure.status ?? undefined, message: failure.message });
     throw error;
   }
 }
 
-async function fetchPublicPage(url: string): Promise<PublicPage> {
-  if (isIngresseEventUrl(url)) return fetchIngresseEventApi(url);
+async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}): Promise<PublicPage> {
+  if (isIngresseEventUrl(url)) return fetchIngresseEventApi(url, { read: getIngestionPayloadCache, write: saveIngestionPayloadCache }, options);
   if (isBlackPassEventUrl(url)) return fetchBlackPassEventPage(url);
   try {
     const response = await fetch(url, {
@@ -435,10 +437,10 @@ async function fetchPublicPage(url: string): Promise<PublicPage> {
   }
 }
 
-async function discoverCandidatePages() {
+async function discoverCandidatePages(options: { dryRun?: boolean } = {}) {
   const bases = getConfiguredSourceUrls();
   const discovered = new Set(bases);
-  const basePages = await Promise.allSettled(bases.map(guardedFetchPublicPage));
+  const basePages = await Promise.allSettled(bases.map(url => guardedFetchPublicPage(url, options)));
   for (let index = 0; index < basePages.length; index += 1) {
     const result = basePages[index];
     if (result.status !== "fulfilled") continue;
@@ -457,12 +459,90 @@ async function discoverCandidatePages() {
   }).slice(0, 60);
 }
 
-export async function runIngestionPipeline() {
+export type IngestionSourceReport = {
+  sourceKey: string;
+  read: number;
+  filtered: number;
+  persistable: number;
+  duplicates: number;
+  errors: Array<{ sourceUrl?: string; status: number | null; message: string }>;
+  rejectionReasons: { fetchFailed: number; outsideTargetVenue: number; invalidStructuredEvent: number; duplicate: number; pastEvent: number };
+};
+
+type IngestionPipelineOptions = { dryRun?: boolean };
+type PublicSourceReportInput = {
+  candidateUrls: string[];
+  pages: PromiseSettledResult<PublicPage>[];
+  payloadEvents?: Array<Record<string, string | number>>;
+  acceptedEvents?: Array<{ sourceKey: string }>;
+  rejectedEvents?: Array<{ sourceKey: string; reason: "invalidStructuredEvent" | "pastEvent" }>;
+  duplicateSourceKeys?: string[];
+  matchesTargetVenue?: (value: string) => boolean;
+};
+
+function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSourceReport[] {
+  const reports = new Map<string, IngestionSourceReport>();
+  const getReport = (sourceKey: string) => {
+    const current = reports.get(sourceKey);
+    if (current) return current;
+    const created: IngestionSourceReport = {
+      sourceKey,
+      read: 0,
+      filtered: 0,
+      persistable: 0,
+      duplicates: 0,
+      errors: [],
+      rejectionReasons: { fetchFailed: 0, outsideTargetVenue: 0, invalidStructuredEvent: 0, duplicate: 0, pastEvent: 0 },
+    };
+    reports.set(sourceKey, created);
+    return created;
+  };
+  input.candidateUrls.forEach((url, index) => {
+    const report = getReport(publicSourceKey(url));
+    report.read += 1;
+    const page = input.pages[index];
+    if (!page || page.status === "rejected") {
+      report.filtered += 1;
+      report.rejectionReasons.fetchFailed += 1;
+      if (page?.status === "rejected") {
+        const failure = sanitizeFetchFailure(page.reason);
+        report.errors.push({ sourceUrl: url, status: failure.status, message: failure.message });
+      }
+      return;
+    }
+    if (page.value.circuitOpen) {
+      report.filtered += 1;
+      report.rejectionReasons.fetchFailed += 1;
+      report.errors.push({ sourceUrl: url, status: null, message: "Fonte pausada pelo Circuit Breaker durante o cooldown." });
+    } else if (input.matchesTargetVenue && !input.matchesTargetVenue(page.value.text)) {
+      report.filtered += 1;
+      report.rejectionReasons.outsideTargetVenue += 1;
+    } else if (page.value.cacheFallback?.used) {
+      report.errors.push({ sourceUrl: url, status: page.value.cacheFallback.status, message: `Fallback utilizado: ${page.value.cacheFallback.message}` });
+    }
+  });
+  for (const event of input.acceptedEvents ?? []) getReport(event.sourceKey).persistable += 1;
+  for (const rejected of input.rejectedEvents ?? []) {
+    const report = getReport(rejected.sourceKey);
+    report.filtered += 1;
+    report.rejectionReasons[rejected.reason] += 1;
+  }
+  for (const sourceKey of input.duplicateSourceKeys ?? []) {
+    const report = getReport(sourceKey);
+    report.duplicates += 1;
+    report.filtered += 1;
+    report.rejectionReasons.duplicate += 1;
+  }
+  return Array.from(reports.values()).sort((left, right) => left.sourceKey.localeCompare(right.sourceKey));
+}
+
+export async function runIngestionPipeline(options: IngestionPipelineOptions = {}) {
+  const dryRun = options.dryRun === true;
   const activeAliases = await listActiveLocationAliasValues();
   const matchesTargetVenue = (value: string) => containsTargetVenue(value, activeAliases);
-  const candidateUrls = await discoverCandidatePages();
-  if (candidateUrls.length === 0) return { imported: 0, skipped: true, reason: "Nenhuma fonte de ingestão configurada" };
-  const pages = await Promise.allSettled(candidateUrls.map(guardedFetchPublicPage));
+  const candidateUrls = await discoverCandidatePages(options);
+  if (candidateUrls.length === 0) return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: true, reason: "Nenhuma fonte de ingestão configurada", sourceReports: [] as IngestionSourceReport[] };
+  const pages = await Promise.allSettled(candidateUrls.map(url => guardedFetchPublicPage(url, options)));
   const fulfilledPages = pages
     .filter((result): result is PromiseFulfilledResult<PublicPage> => result.status === "fulfilled")
     .map(result => result.value);
@@ -477,11 +557,11 @@ export async function runIngestionPipeline() {
   const fetchFailed = fetchFailures.length;
   const outsideTargetVenue = fulfilledPages.filter(page => !matchesTargetVenue(page.text)).length;
   const sourcePages = fulfilledPages.filter(page => matchesTargetVenue(page.text));
-  const filteredByReason = { fetchFailed, outsideTargetVenue, invalidStructuredEvent: 0 };
+  const filteredByReason = { fetchFailed, outsideTargetVenue, invalidStructuredEvent: 0, pastEvent: 0, duplicate: 0 };
   const filteredSourceUrls = pages.flatMap((result, index) => result.status === "rejected" || !matchesTargetVenue(result.status === "fulfilled" ? result.value.text : "") ? [candidateUrls[index]] : []);
 
   if (sourcePages.length === 0) {
-    return { imported: 0, persisted: 0, read: candidateUrls.length, filtered: candidateUrls.length, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: false, discovered: candidateUrls.length, matchedSources: 0, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, reason: "Nenhum evento dos locais-alvo encontrado nas fontes públicas" };
+    return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: candidateUrls.length, filtered: candidateUrls.length, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: false, discovered: candidateUrls.length, matchedSources: 0, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, reason: "Nenhum evento dos locais-alvo encontrado nas fontes públicas", sourceReports: buildPublicSourceReports({ candidateUrls, pages, matchesTargetVenue }) };
   }
 
   const apiStructuredEvents = sourcePages
@@ -503,11 +583,13 @@ export async function runIngestionPipeline() {
   const payload = JSON.parse(String(structured.choices?.[0]?.message?.content ?? "{\"events\":[]}")) as { events: Array<Record<string, string | number>> };
   let imported = 0;
   let duplicates = 0;
-  const dryRun = verboseDryRunEnabled();
+  const simulation = dryRun || verboseDryRunEnabled();
   let dryRunAcceptedEvents = 0;
   let missingCoordinates = 0;
   let outOfBoundsCoordinates = 0;
-  const acceptedEvents: Array<{ title: string; eventDate: Date; city: string }> = [];
+  const acceptedEvents: Array<{ title: string; eventDate: Date; city: string; sourceKey: string }> = [];
+  const rejectedEvents: Array<{ sourceKey: string; reason: "invalidStructuredEvent" | "pastEvent" }> = [];
+  const duplicateSourceKeys: string[] = [];
   for (const event of payload.events) {
     const date = new Date(String(event.eventDate));
     const locationName = String(event.locationName);
@@ -515,16 +597,18 @@ export async function runIngestionPipeline() {
     const city = normalizeVenueCity(locationName, address, String(event.city));
     const category = String(event.category);
     const genre = String(event.genre);
+    const sourceKey = publicSourceKey(String(event.sourceUrl ?? ""));
     if (Number.isNaN(date.getTime()) || (city !== "Santos" && city !== "Guarujá") || !matchesTargetVenue(`${locationName} ${address}`) || !["show", "balada", "evento_musical"].includes(category) || !["funk", "house_eletronica", "samba_pagode", "rap_trap"].includes(genre)) {
       filteredByReason.invalidStructuredEvent += 1;
+      rejectedEvents.push({ sourceKey, reason: "invalidStructuredEvent" });
       continue;
     }
-    try { assertEventDateIsCurrentOrFuture(date, new Date(), String(event.title)); } catch { filteredByReason.invalidStructuredEvent += 1; continue; }
-    const fuzzyDuplicate = acceptedEvents.some(previous => areFuzzyDuplicateEvents(previous, { title: String(event.title), eventDate: date, city }));
-    if (fuzzyDuplicate) { duplicates += 1; continue; }
-    acceptedEvents.push({ title: String(event.title), eventDate: date, city });
-    const sourceHash = crypto.createHash("md5").update(`${normalizeSlug(String(event.sourceUrl))}:${normalizeSlug(String(event.title))}:${date.toISOString().slice(0, 10)}`).digest("hex");
+    try { assertEventDateIsCurrentOrFuture(date, new Date(), String(event.title)); } catch { filteredByReason.pastEvent += 1; rejectedEvents.push({ sourceKey, reason: "pastEvent" }); continue; }
     const sourceUrl = String(event.sourceUrl);
+    const fuzzyDuplicate = acceptedEvents.some(previous => areFuzzyDuplicateEvents(previous, { title: String(event.title), eventDate: date, city }));
+    if (fuzzyDuplicate) { duplicates += 1; duplicateSourceKeys.push(sourceKey); continue; }
+    acceptedEvents.push({ title: String(event.title), eventDate: date, city, sourceKey });
+    const sourceHash = crypto.createHash("md5").update(`${normalizeSlug(String(event.sourceUrl))}:${normalizeSlug(String(event.title))}:${date.toISOString().slice(0, 10)}`).digest("hex");
     const sourceType = sourceUrl.includes("ingresse.com") ? "ingresse" : sourceUrl.includes("blackpass.com.br") ? "blackpass" : sourceUrl.includes("mringressos.com.br") ? "mringressos" : "public_source";
     const latitude = String(event.latitude || "");
     const longitude = String(event.longitude || "");
@@ -534,7 +618,7 @@ export async function runIngestionPipeline() {
       const lng = Number(longitude);
       if (!(lat >= -24.15 && lat <= -23.85 && lng >= -46.45 && lng <= -46.05)) outOfBoundsCoordinates += 1;
     }
-    if (dryRun) {
+    if (simulation) {
       dryRunAcceptedEvents += 1;
       continue;
     }
@@ -542,5 +626,5 @@ export async function runIngestionPipeline() {
     if (saved?.created === false) duplicates += 1;
     imported += 1;
   }
-  return { imported, persisted: imported, dryRun, dryRunAcceptedEvents, read: candidateUrls.length, filtered: Math.max(0, candidateUrls.length - sourcePages.length), duplicates, missingCoordinates, outOfBoundsCoordinates, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls };
+  return { imported, persisted: imported, dryRun: simulation, dryRunAcceptedEvents, read: candidateUrls.length, filtered: Math.max(0, candidateUrls.length - sourcePages.length), duplicates, missingCoordinates, outOfBoundsCoordinates, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, sourceReports: buildPublicSourceReports({ candidateUrls, pages, payloadEvents: payload.events, acceptedEvents, rejectedEvents, duplicateSourceKeys, matchesTargetVenue }) };
 }

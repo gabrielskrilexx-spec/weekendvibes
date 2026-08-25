@@ -1472,3 +1472,11 @@
 - [x] Atualizar regressões Vitest do CRUD e do painel para o contrato transacional e mensagens descritivas
 - [x] Executar Vitest completo, TypeScript e build de produção
 - [x] Salvar checkpoint da correção final de exclusão de duplicatas
+
+## Dry-run administrativo da ingestão
+- [x] Mapear o pipeline ativo e definir contrato por fonte para simulação sem efeitos colaterais
+- [x] Implementar execução Dry-run reutilizando parsers e filtros sem chamar persistência, alertas ou mutações
+- [x] Adicionar mutation tRPC admin-only e botão explícito no painel de diagnóstico
+- [x] Exibir relatório segregado por fonte com lidos, filtrados, persistíveis e erros sanitizados
+- [x] Adicionar testes Vitest de não persistência, contrato tRPC e renderização do relatório
+- [x] Executar Vitest, TypeScript e build de produção e publicar checkpoint
