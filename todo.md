@@ -1512,3 +1512,8 @@
 - [x] Garantir que retry seletivo não bloqueie outras fontes nem altere regras de persistência
 - [x] Criar regressões Vitest para alertas 403, backoff e exaustão de tentativas
 - [x] Executar suíte completa, TypeScript, build e publicar checkpoint
+
+## Consolidação Git solicitada
+- [ ] Auditar alterações locais de hoje e o remoto gabrielskrilexx-spec/weekendvibes
+- [ ] Criar commit com Circuit Breaker, limpeza de UI e deduplicação
+- [ ] Fazer push do commit para a branch main e confirmar o resultado
