@@ -16,8 +16,8 @@ describe("agent ingestion persistence identity", () => {
     saveEventMock.mockReset();
     invokeLLMMock.mockReset();
     invokeLLMMock
-      .mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "Festa do Branco", summary: "Noite musical", eventDate: "2026-08-22T20:00:00-03:00", locationName: "Curvão Surf House", address: "Guarujá", city: "Guarujá", category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: "https://zig.tickets/eventos/festa-do-branco-22-08", imageUrl: "", latitude: "", longitude: "" }] }) } }] })
-      .mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "FESTA DO BRANCO 22-08", summary: "Noite musical atualizada", eventDate: "2026-08-22T20:00:00-03:00", locationName: "CURVAO SURF HOUSE", address: "Guarujá", city: "Guarujá", category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: "https://zig.tickets/eventos/festa-do-branco-22-08", imageUrl: "", latitude: "", longitude: "" }] }) } }] });
+      .mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "Festa do Branco", summary: "Noite musical", eventDate: "2026-09-22T20:00:00-03:00", locationName: "Curvão Surf House", address: "Guarujá", city: "Guarujá", category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: "https://zig.tickets/eventos/festa-do-branco-22-09", imageUrl: "", latitude: "", longitude: "" }] }) } }] })
+      .mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "FESTA DO BRANCO 22-08", summary: "Noite musical atualizada", eventDate: "2026-09-22T20:00:00-03:00", locationName: "CURVAO SURF HOUSE", address: "Guarujá", city: "Guarujá", category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: "https://zig.tickets/eventos/festa-do-branco-22-09", imageUrl: "", latitude: "", longitude: "" }] }) } }] });
   });
 
   it("accepts the new Ingresse sources and includes their venues in the enrichment policy", async () => {
@@ -60,14 +60,14 @@ describe("agent ingestion persistence identity", () => {
   });
 
   it("produces one persistence identity when the same source/date is ingested twice", async () => {
-    const documents = [{ sourceUrl: "https://zig.tickets/eventos/festa-do-branco-22-08", text: "Festa do Branco Curvão Surf House Guarujá" }];
+    const documents = [{ sourceUrl: "https://zig.tickets/eventos/festa-do-branco-22-09", text: "Festa do Branco Curvão Surf House Guarujá" }];
     await ingestAgentDocuments(documents);
     await ingestAgentDocuments(documents);
 
     expect(saveEventMock).toHaveBeenCalledTimes(2);
     const identities = saveEventMock.mock.calls.map(([event]) => eventIdentityKey(event.sourceUrl, event.eventDate));
     expect(new Set(identities).size).toBe(1);
-    expect(identities[0]).toBe("https://zig.tickets/eventos/festa-do-branco-22-08|2026-08-22");
+    expect(identities[0]).toBe("https://zig.tickets/eventos/festa-do-branco-22-09|2026-09-22");
   });
 });
 

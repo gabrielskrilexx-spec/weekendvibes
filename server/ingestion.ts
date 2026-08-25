@@ -12,23 +12,39 @@ const DEFAULT_SOURCE_URLS = [
   "https://www.ingresse.com/nosso-after-mc-luuky/",
   "https://www.ingresse.com/nosso-after-14-08/",
   "https://www.ingresse.com/",
+  "https://blackpass.com.br/",
+  "https://mringressos.com.br/",
 ];
 
 export const TARGET_VENUES = [
-  "valluns garden",
   "vallum garden",
-  "lucky scope",
-  "verilonguinho",
-  "moby house",
+  "valluns garden",
   "moby dick",
+  "moby house",
+  "ativa house",
+  "casa 412",
+  "casa412",
+  "verilonguinho",
+  "meu lugar",
+  "goat club",
+  "goat dining club",
+  "laroc club guaruja",
+  "laroc guaruja",
+  "lucky scope",
   "curvão surf house",
   "curvao surf house",
   "curvão",
   "curvao",
-  "meu lugar",
-  "laroc club guaruja",
-  "laroc guaruja",
-  "guaruja golf club",
+  "guarujá golf club",
+  "praiô",
+  "praio",
+  "flamingos",
+  "flamingo",
+  "projac bar",
+  "boteco almare",
+  "dolores restaurante e bar",
+  "dolores bar e restaurante",
+  "arena jequitimar",
 ] as const;
 
 const normalizeSlug = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -124,9 +140,11 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
       const isBlacktag = url.pathname.startsWith("/eventos/") && url.hostname.includes("blacktag");
       const isZig = url.pathname.startsWith("/eventos/") && (url.hostname === "zig.tickets" || url.hostname.endsWith(".zig.tickets"));
       const isIngresseEvent = url.hostname.includes("ingresse") && url.pathname !== "/" && !url.pathname.startsWith("/search");
+      const isBlackPass = url.hostname.endsWith("blackpass.com.br") && /^\/event\/[A-Za-z0-9_-]+/.test(url.pathname);
+      const isMrIngressos = url.hostname.endsWith("mringressos.com.br") && /^\/comprar\/[A-Za-z0-9_-]+/.test(url.pathname);
       const anchorText = stripHtml(match[2]);
       const isZigRegional = !isZig || /santos|guaruj[aá]/i.test(normalizeText(anchorText));
-      if ((isArticket || isBlacktag || isZig || isIngresseEvent) && isZigRegional) links.add(url.href);
+      if ((isArticket || isBlacktag || isZig || isIngresseEvent || isBlackPass || isMrIngressos) && isZigRegional) links.add(url.href);
     } catch {
       // Ignore malformed public links.
     }
@@ -169,6 +187,40 @@ export function parseZigEventMetadata(html: string, url: string) {
   const text = stripHtml(html).replace(/\s+/g, " ").trim();
   if (!title && !eventDate && !locationName) return undefined;
   return { title, eventDate, locationName, address: street, city, priceCents, sourceUrl: url, imageUrl: meta("og:image"), text: text.slice(0, 16_000) };
+}
+
+function isBlackPassEventUrl(url: string) {
+  try { const parsed = new URL(url); return parsed.hostname.endsWith("blackpass.com.br") && /^\/event\//.test(parsed.pathname); } catch { return false; }
+}
+
+function isMrIngressosEventUrl(url: string) {
+  try { const parsed = new URL(url); return parsed.hostname.endsWith("mringressos.com.br") && /^\/comprar\//.test(parsed.pathname); } catch { return false; }
+}
+
+export function parseBlackPassEventMetadata(html: string, url: string) {
+  return parseTicketingEventMetadata(html, url);
+}
+
+export function parseMrIngressosEventMetadata(html: string, url: string) {
+  return parseTicketingEventMetadata(html, url);
+}
+
+export function parseTicketingEventMetadata(html: string, url: string) {
+  const jsonLd = readJsonLd(html);
+  const location = jsonLd?.location && typeof jsonLd.location === "object" ? jsonLd.location as Record<string, unknown> : {};
+  const address = location.address && typeof location.address === "object" ? location.address as Record<string, unknown> : {};
+  const offers = jsonLd?.offers && typeof jsonLd.offers === "object" ? jsonLd.offers as Record<string, unknown> : {};
+  const meta = (property: string) => html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)`, "i"))?.[1] ?? "";
+  const visibleText = stripHtml(html).replace(/\\s+/g, " ");
+  const title = typeof jsonLd?.name === "string" ? jsonLd.name : meta("og:title");
+  const eventDate = typeof jsonLd?.startDate === "string" ? jsonLd.startDate : meta("event:start_time");
+  const locationName = typeof location.name === "string" ? location.name : "";
+  const city = typeof address.addressLocality === "string" ? address.addressLocality : (/guaruj[aá]/i.test(visibleText) ? "Guarujá" : /santos/i.test(visibleText) ? "Santos" : "");
+  const street = typeof address.streetAddress === "string" ? address.streetAddress : "";
+  const priceRaw = typeof offers.price === "number" || typeof offers.price === "string" ? String(offers.price) : "";
+  const priceCents = priceRaw ? Math.round(Number(priceRaw.replace(/[^0-9,.-]/g, "").replace(",", ".")) * 100) : 0;
+  if (!title && !eventDate && !locationName) return undefined;
+  return { title, eventDate, locationName, address: street, city, priceCents, sourceUrl: url, imageUrl: meta("og:image"), text: visibleText.slice(0, 16_000) };
 }
 
 function isIngresseEventUrl(url: string) {
@@ -247,6 +299,8 @@ function publicSourceKey(url: string) {
     const host = new URL(url).hostname.toLowerCase();
     if (host.includes("ingresse")) return "public:ingresse";
     if (host.includes("blacktag")) return "public:blacktag";
+    if (host.includes("blackpass")) return "public:blackpass";
+    if (host.includes("mringressos")) return "public:mringressos";
     if (host.includes("articket")) return "public:articket";
     if (host.endsWith("zig.tickets")) return "public:zig";
   } catch {
@@ -292,8 +346,9 @@ async function fetchPublicPage(url: string): Promise<PublicPage> {
       .replace(/\s+/g, " ")
       .trim();
     if (!text) throw createFetchError("Fonte pública retornou conteúdo vazio");
-    const zigStructured = new URL(url).hostname.endsWith("zig.tickets") ? parseZigEventMetadata(html, url) : undefined;
-    return { url, html, text: zigStructured?.text.slice(0, 8000) ?? text.slice(0, 8000), imageUrl: zigStructured?.imageUrl ?? imageMatch?.[1] ?? "", structured: zigStructured };
+    const hostname = new URL(url).hostname;
+    const structured = hostname.endsWith("zig.tickets") ? parseZigEventMetadata(html, url) : (isBlackPassEventUrl(url) ? parseBlackPassEventMetadata(html, url) : isMrIngressosEventUrl(url) ? parseMrIngressosEventMetadata(html, url) : undefined);
+    return { url, html, text: structured?.text.slice(0, 8000) ?? text.slice(0, 8000), imageUrl: structured?.imageUrl ?? imageMatch?.[1] ?? "", structured };
   } catch (error) {
     throw Object.assign(error instanceof Error ? error : new Error(sanitizeFetchFailure(error).message), { fetchFailure: sanitizeFetchFailure(error) });
   }
@@ -352,7 +407,7 @@ export async function runIngestionPipeline() {
   const structured = apiStructuredEvents.length > 0 ? { choices: [{ message: { content: JSON.stringify({ events: apiStructuredEvents }) } }] } : await invokeLLM({
     model: "gpt-4o-mini",
     messages: [
-      { role: "system", content: "Extraia somente eventos públicos de música, shows ou baladas dos locais Valluns/Vallum Garden, Lucky Scope, Verilonguinho, Moby House/Moby Dick, Curvão Surf House, Meu Lugar, Laroc Club Guarujá ou Guarujá Golf Club, localizados exclusivamente em Santos ou Guarujá. Ignore eventos passados, cidades diferentes, locais não-alvo e eventos de gastronomia, esporte, teatro ou exposição sem música. Retorne somente JSON no schema. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Se o gênero não puder ser inferido com segurança, descarte o evento. Use o SOURCE_URL correspondente como sourceUrl e IMAGE_URL quando houver." },
+      { role: "system", content: "Extraia somente eventos públicos de música, shows ou baladas nos locais oficiais Vallum Garden, Moby Dick, Ativa House, Casa 412, Verilonguinho, Meu Lugar, Goat Club, Laroc Club Guarujá, Lucky Scope, Curvão Surf House, Guarujá Golf Club, Praiô, Flamingos, Projac Bar, Boteco Almare, Dolores Restaurante e Bar ou Arena Jequitimar, localizados exclusivamente em Santos ou Guarujá. Ignore eventos passados, cidades diferentes, locais fora dessa allowlist e eventos de gastronomia, esporte, teatro ou exposição sem música. Retorne somente JSON no schema. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Se o gênero não puder ser inferido com segurança, descarte o evento. Use o SOURCE_URL correspondente como sourceUrl e IMAGE_URL quando houver." },
       { role: "user", content: rawText },
     ],
     response_format: { type: "json_schema", json_schema: { name: "event_batch", strict: true, schema: { type: "object", properties: { events: { type: "array", items: { type: "object", properties: { title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string" }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "samba_pagode", "rap_trap"] }, priceCents: { type: "integer" }, sourceUrl: { type: "string" }, imageUrl: { type: "string" }, latitude: { type: "string" }, longitude: { type: "string" } }, required: ["title", "summary", "eventDate", "locationName", "address", "city", "category", "genre", "priceCents", "sourceUrl", "imageUrl", "latitude", "longitude"], additionalProperties: false } } }, required: ["events"], additionalProperties: false } } },
@@ -381,7 +436,7 @@ export async function runIngestionPipeline() {
     acceptedEvents.push({ title: String(event.title), eventDate: date, city });
     const sourceHash = crypto.createHash("md5").update(`${normalizeSlug(String(event.sourceUrl))}:${normalizeSlug(String(event.title))}:${date.toISOString().slice(0, 10)}`).digest("hex");
     const sourceUrl = String(event.sourceUrl);
-    const sourceType = sourceUrl.includes("ingresse.com") ? "ingresse" : "public_source";
+    const sourceType = sourceUrl.includes("ingresse.com") ? "ingresse" : sourceUrl.includes("blackpass.com.br") ? "blackpass" : sourceUrl.includes("mringressos.com.br") ? "mringressos" : "public_source";
     const latitude = String(event.latitude || "");
     const longitude = String(event.longitude || "");
     if (!latitude || !longitude) missingCoordinates += 1;

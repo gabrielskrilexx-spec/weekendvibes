@@ -1431,3 +1431,12 @@
 - [x] Adicionar tooltips explicativos e acessíveis aos badges Open e Half-Open do Circuit Breaker
 - [x] Cobrir a explicação dos estados em teste de interface e validar mouse/teclado
 - [x] Executar TypeScript, Vitest, build e publicar checkpoint
+
+- [x] Auditar schema, allowlist, fontes e adapters públicos existentes
+- [x] Catalogar os 17 locais oficiais com cidade e URLs de Instagram/ingressos
+- [x] Implementar blackpass-adapter com extração padronizada e validação pública
+- [x] Implementar mringressos-adapter com extração padronizada e validação pública
+- [x] Persistir aliases, cidades e fontes oficiais com configuração idempotente
+- [x] Aplicar filtro estrito para rejeitar venues fora da allowlist
+- [x] Adicionar testes dos novos adapters, fontes e restrição geográfica
+- [x] Executar TypeScript, Vitest, build e publicar checkpoint

@@ -1,7 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
+import { eq, or } from "drizzle-orm";
+import { ingestionSources } from "../drizzle/schema";
+import { getDb } from "./db";
 import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent } from "./instagram-pipeline";
 
 describe("Instagram weekend pipeline", () => {
+  beforeEach(async () => {
+    const db = await getDb();
+    if (!db) return;
+    await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null }).where(or(eq(ingestionSources.sourceKey, "instagram:curvaosurfhouse"), eq(ingestionSources.sourceKey, "instagram:flamingomusicbar")));
+  });
   it("preserves the Sao Paulo civil day for date-only structured events", () => {
     expect(normalizeStructuredEventDate("2026-08-20").toISOString()).toBe("2026-08-20T15:00:00.000Z");
   });
