@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { containsTargetVenue, parseBlackPassEventMetadata, parseMrIngressosEventMetadata } from "./ingestion";
+import { containsTargetVenue, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseMrIngressosEventMetadata } from "./ingestion";
 
 describe("adapters de ticketeiras oficiais", () => {
   it("normaliza metadados públicos do Black Pass", () => {
@@ -12,6 +12,19 @@ describe("adapters de ticketeiras oficiais", () => {
     })}</script><meta property="og:image" content="https://api.blackpass.com.br/web/events/goat.jpg">`;
     const parsed = parseBlackPassEventMetadata(html, "https://blackpass.com.br/event/700");
     expect(parsed).toMatchObject({ title: "Jungle Room • Pink Edition", eventDate: "2026-09-04T23:00:00-03:00", locationName: "GOAT CLUB", city: "Santos", priceCents: 8000, sourceUrl: "https://blackpass.com.br/event/700" });
+  });
+
+  it("normaliza item do catálogo JSON público do Black Pass", () => {
+    const parsed = parseBlackPassCatalogEvent({
+      id: 700,
+      title: "Jungle Room - Pink Edition",
+      address: "Rua do Comércio, 63",
+      address_comp: "GOAT CLUB",
+      latlng: "-23.9325438,-46.3318910",
+      dates: [{ dstart: "2026-09-05T02:00:00.000Z", dstop: "2026-09-05T02:00:00.000Z", status: 1 }],
+      poster: { poster_vertical: "/web/events/jungle.jpg" },
+    });
+    expect(parsed).toMatchObject({ title: "Jungle Room - Pink Edition", locationName: "GOAT CLUB", city: "Santos", latitude: "-23.9325438", longitude: "-46.3318910", sourceUrl: "https://blackpass.com.br/event/700" });
   });
 
   it("normaliza metadados públicos do Mr Ingressos", () => {

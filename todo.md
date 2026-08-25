@@ -1440,3 +1440,15 @@
 - [x] Aplicar filtro estrito para rejeitar venues fora da allowlist
 - [x] Adicionar testes dos novos adapters, fontes e restrição geográfica
 - [x] Executar TypeScript, Vitest, build e publicar checkpoint
+
+- [x] Executar ciclo manual de public-agenda focado em Black Pass, Mr Ingressos e fontes oficiais
+- [x] Consultar ingestionRun, logs e métricas de candidatos, rejeições, duplicidades e persistências
+- [x] Validar URLs de compra, venues oficiais, cidades e latitude/longitude dos eventos persistidos
+- [x] Entregar relatório sanitizado do teste de fogo em produção
+
+- [x] Revisar pontos de ingestão e definir logging verbose seguro e temporário
+- [x] Implementar modo dry-run com status, tamanho, tipo, JSON-LD e motivo do vazio sem dados sensíveis
+- [x] Verificar a sessão do Instagram por resposta autenticada sem imprimir cookie ou token
+- [x] Homologar Black Pass e Mr Ingressos contra suas páginas públicas e caminhos de evento
+- [x] Ajustar parsers/adapters se a auditoria identificar estrutura incompatível
+- [x] Executar testes, remover ou desativar logging temporário e entregar relatório sanitizado

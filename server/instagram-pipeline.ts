@@ -342,6 +342,19 @@ function metaPostsFromPayload(payload: unknown, target: (typeof INSTAGRAM_TARGET
 
 type InstagramTransportFailure = { username: string; status: number; kind: "proxy_or_session" | "circuit_open"; message: string };
 
+function logInstagramResponseDiagnostics(input: { username: string; status: number; contentType: string | null; body: string; parsed: boolean; mediaCount: number; maskedHtml: boolean }) {
+  if (process.env.INGESTION_VERBOSE_DRY_RUN !== "1") return;
+  console.info("[Ingestion dry-run] instagram response", {
+    username: input.username,
+    status: input.status,
+    contentType: input.contentType?.split(";")[0] ?? null,
+    bytes: Buffer.byteLength(input.body, "utf8"),
+    parsedJson: input.parsed,
+    mediaCount: input.mediaCount,
+    maskedHtml: input.maskedHtml,
+  });
+}
+
 async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId: string): Promise<{ posts: InstagramPost[]; transportFailures: InstagramTransportFailure[] }> {
   const posts: InstagramPost[] = [];
   const transportFailures: InstagramTransportFailure[] = [];
@@ -372,6 +385,18 @@ async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId:
     const url = `${META_GRAPH_BASE_URL}/${accountId}?${new URLSearchParams({ fields, access_token: token }).toString()}`;
     const response = await fetch(url, { headers: { Accept: "application/json" } });
     const responseBody = await response.text();
+    let parsedBody: unknown = null;
+    let parsed = false;
+    try { parsedBody = JSON.parse(responseBody); parsed = true; } catch { /* resposta não JSON */ }
+    const mediaCount = parsedBody && typeof parsedBody === "object" ? (((parsedBody as { business_discovery?: { media?: { data?: unknown[] } } }).business_discovery?.media?.data) ?? []).length : 0;
+    const maskedHtml = /<html|<body|login|checkpoint|challenge/i.test(responseBody.slice(0, 1200));
+    logInstagramResponseDiagnostics({ username: target.username, status: response.status, contentType: response.headers.get("content-type"), body: responseBody, parsed, mediaCount, maskedHtml });
+    if (response.ok && maskedHtml) {
+      resetInstagramSessionForRetry("meta_200_masked_session");
+      if (source) await registerSourceFailure({ sourceKey: source.sourceKey, routine: "instagram-agenda", status: response.status, message: "Resposta HTML mascarada recebida onde era esperado JSON; perfil ignorado nesta tentativa." });
+      transportFailures.push({ username: target.username, status: response.status, kind: "proxy_or_session", message: "Resposta mascarada de sessão/proxy; perfil ignorado nesta tentativa." });
+      continue;
+    }
     if (!response.ok) {
       if (source) await markIngestionSourceResult(source.sourceKey, { status: "failed", message: `HTTP ${response.status}` });
       if (isInstagramTransportFailure(response.status, responseBody)) {
@@ -382,7 +407,7 @@ async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId:
       }
       throw new InstagramIntegrationFailure("meta", `Meta Graph API request failed with ${response.status}: ${responseBody}`);
     }
-    posts.push(...metaPostsFromPayload(JSON.parse(responseBody), target));
+    posts.push(...metaPostsFromPayload(parsedBody ?? JSON.parse(responseBody), target));
     if (source) {
       await registerSourceSuccess(source.sourceKey);
       await markIngestionSourceResult(source.sourceKey, { status: "succeeded", message: "Business Discovery respondeu com sucesso." });

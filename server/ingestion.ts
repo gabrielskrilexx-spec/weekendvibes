@@ -52,6 +52,40 @@ const normalizeText = (value: string) => value.toLowerCase().normalize("NFD").re
 const stripHtml = (value: string) => value.replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
 const INGRESSE_SITE_API = "https://api-site.ingresse.com/events";
 
+function verboseDryRunEnabled() {
+  return process.env.INGESTION_VERBOSE_DRY_RUN === "1";
+}
+
+function logPublicResponseDiagnostics(input: { url: string; status: number; contentType: string | null; html: string; text: string; structured: boolean; links: number }) {
+  if (!verboseDryRunEnabled()) return;
+  const parsedUrl = new URL(input.url);
+  const jsonLdCount = (input.html.match(/application\/ld\+json/gi) ?? []).length;
+  console.info("[Ingestion dry-run] public response", {
+    host: parsedUrl.hostname,
+    path: parsedUrl.pathname.slice(0, 180),
+    status: input.status,
+    contentType: input.contentType?.split(";")[0] ?? null,
+    bytes: Buffer.byteLength(input.html, "utf8"),
+    textLength: input.text.length,
+    jsonLdCount,
+    discoveredEventLinks: input.links,
+    structuredMetadata: input.structured,
+  });
+}
+
+function logPublicFailureDiagnostics(url: string, error: unknown) {
+  if (!verboseDryRunEnabled()) return;
+  const parsedUrl = new URL(url);
+  const failure = sanitizeFetchFailure(error);
+  console.info("[Ingestion dry-run] public failure", {
+    host: parsedUrl.hostname,
+    path: parsedUrl.pathname.slice(0, 180),
+    status: failure.status,
+    reason: failure.message,
+  });
+}
+
+
 type FetchFailure = { status: number | null; message: string };
 type IngresseCacheStore = {
   read: typeof getIngestionPayloadCache;
@@ -193,6 +227,49 @@ function isBlackPassEventUrl(url: string) {
   try { const parsed = new URL(url); return parsed.hostname.endsWith("blackpass.com.br") && /^\/event\//.test(parsed.pathname); } catch { return false; }
 }
 
+function isBlackPassRootUrl(url: string) {
+  try { const parsed = new URL(url); return parsed.hostname === "blackpass.com.br" && ["", "/"].includes(parsed.pathname); } catch { return false; }
+}
+
+const BLACKPASS_EVENTS_API = "https://api.blackpass.com.br/events/list";
+
+type BlackPassCatalogEvent = { id?: string | number; title?: string; name?: string; address?: string; address_comp?: string; city?: string; uf?: string; latlng?: string; dates?: Array<{ dstart?: string; dstop?: string; status?: number }>; poster?: { poster_vertical?: string; poster_horizontal?: string } };
+
+function blackPassEventUrl(id: string | number) {
+  return `https://blackpass.com.br/event/${encodeURIComponent(String(id))}`;
+}
+
+export function parseBlackPassCatalogEvent(event: BlackPassCatalogEvent) {
+  const title = String(event.title ?? event.name ?? "").trim();
+  const locationName = String(event.address_comp ?? "").trim();
+  const address = String(event.address ?? "").trim();
+  const rawCity = String(event.city ?? "").trim();
+  const venueText = normalizeText(`${locationName} ${address}`);
+  const city = /goat/.test(venueText) || /santos/i.test(rawCity) ? "Santos" : /guaruja|guarujá/i.test(rawCity) ? "Guarujá" : rawCity;
+  const dateTime = event.dates?.find(item => item.status !== 0)?.dstart ?? event.dates?.[0]?.dstart ?? "";
+  const [latitude, longitude] = String(event.latlng ?? "").split(",").map(value => value.trim());
+  const imagePath = event.poster?.poster_vertical || event.poster?.poster_horizontal || "";
+  const imageUrl = imagePath.startsWith("http") ? imagePath : imagePath ? `https://api.blackpass.com.br${imagePath}` : "";
+  if (!event.id || !title || !dateTime || !locationName) return undefined;
+  const sourceUrl = blackPassEventUrl(event.id);
+  return { title, summary: title, eventDate: dateTime, locationName, address, city, category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl, imageUrl, latitude: latitude ?? "", longitude: longitude ?? "", text: [title, locationName, address, city, dateTime].filter(Boolean).join(" ") };
+}
+
+async function fetchBlackPassCatalog(): Promise<BlackPassCatalogEvent[]> {
+  const response = await fetch(BLACKPASS_EVENTS_API, { headers: { accept: "application/json", "user-agent": "WeekendVibesBot/1.0 (+public-event-ingestion)" }, signal: AbortSignal.timeout(12_000) });
+  if (!response.ok) throw createFetchError(`API pública do Black Pass respondeu ${response.status}`, response.status);
+  const payload = await response.json() as unknown;
+  return Array.isArray(payload) ? payload.filter((item): item is BlackPassCatalogEvent => Boolean(item && typeof item === "object")) : [];
+}
+
+async function fetchBlackPassEventPage(url: string): Promise<PublicPage> {
+  const id = new URL(url).pathname.split("/").filter(Boolean).at(-1) ?? "";
+  const event = (await fetchBlackPassCatalog()).find(item => String(item.id) === id);
+  const structured = event ? parseBlackPassCatalogEvent(event) : undefined;
+  if (!structured) throw createFetchError(`API pública do Black Pass sem dados essenciais para ${url}`);
+  return { url, html: "", text: structured.text, imageUrl: structured.imageUrl, structured };
+}
+
 function isMrIngressosEventUrl(url: string) {
   try { const parsed = new URL(url); return parsed.hostname.endsWith("mringressos.com.br") && /^\/comprar\//.test(parsed.pathname); } catch { return false; }
 }
@@ -319,6 +396,7 @@ async function guardedFetchPublicPage(url: string): Promise<PublicPage> {
     return page;
   } catch (error) {
     const failure = sanitizeFetchFailure(error);
+    logPublicFailureDiagnostics(url, error);
     await registerSourceFailure({ sourceKey, routine: "public-agenda", status: failure.status ?? undefined, message: failure.message });
     throw error;
   }
@@ -326,6 +404,7 @@ async function guardedFetchPublicPage(url: string): Promise<PublicPage> {
 
 async function fetchPublicPage(url: string): Promise<PublicPage> {
   if (isIngresseEventUrl(url)) return fetchIngresseEventApi(url);
+  if (isBlackPassEventUrl(url)) return fetchBlackPassEventPage(url);
   try {
     const response = await fetch(url, {
       headers: {
@@ -348,7 +427,9 @@ async function fetchPublicPage(url: string): Promise<PublicPage> {
     if (!text) throw createFetchError("Fonte pública retornou conteúdo vazio");
     const hostname = new URL(url).hostname;
     const structured = hostname.endsWith("zig.tickets") ? parseZigEventMetadata(html, url) : (isBlackPassEventUrl(url) ? parseBlackPassEventMetadata(html, url) : isMrIngressosEventUrl(url) ? parseMrIngressosEventMetadata(html, url) : undefined);
-    return { url, html, text: structured?.text.slice(0, 8000) ?? text.slice(0, 8000), imageUrl: structured?.imageUrl ?? imageMatch?.[1] ?? "", structured };
+    const normalizedText = structured?.text.slice(0, 8000) ?? text.slice(0, 8000);
+    logPublicResponseDiagnostics({ url, status: response.status, contentType: response.headers.get("content-type"), html, text: normalizedText, structured: Boolean(structured), links: extractPublicEventLinks(html, url).length });
+    return { url, html, text: normalizedText, imageUrl: structured?.imageUrl ?? imageMatch?.[1] ?? "", structured };
   } catch (error) {
     throw Object.assign(error instanceof Error ? error : new Error(sanitizeFetchFailure(error).message), { fetchFailure: sanitizeFetchFailure(error) });
   }
@@ -358,9 +439,15 @@ async function discoverCandidatePages() {
   const bases = getConfiguredSourceUrls();
   const discovered = new Set(bases);
   const basePages = await Promise.allSettled(bases.map(guardedFetchPublicPage));
-  for (const result of basePages) {
+  for (let index = 0; index < basePages.length; index += 1) {
+    const result = basePages[index];
     if (result.status !== "fulfilled") continue;
+    const baseUrl = bases[index];
     for (const link of extractPublicEventLinks(result.value.html, result.value.url)) discovered.add(link);
+    if (isBlackPassRootUrl(baseUrl)) {
+      const catalog = await fetchBlackPassCatalog().catch(error => { logPublicFailureDiagnostics(baseUrl, error); return []; });
+      for (const event of catalog) if (event.id) discovered.add(blackPassEventUrl(event.id));
+    }
   }
   return Array.from(discovered).filter(url => {
     try {
@@ -416,6 +503,8 @@ export async function runIngestionPipeline() {
   const payload = JSON.parse(String(structured.choices?.[0]?.message?.content ?? "{\"events\":[]}")) as { events: Array<Record<string, string | number>> };
   let imported = 0;
   let duplicates = 0;
+  const dryRun = verboseDryRunEnabled();
+  let dryRunAcceptedEvents = 0;
   let missingCoordinates = 0;
   let outOfBoundsCoordinates = 0;
   const acceptedEvents: Array<{ title: string; eventDate: Date; city: string }> = [];
@@ -445,9 +534,13 @@ export async function runIngestionPipeline() {
       const lng = Number(longitude);
       if (!(lat >= -24.15 && lat <= -23.85 && lng >= -46.45 && lng <= -46.05)) outOfBoundsCoordinates += 1;
     }
+    if (dryRun) {
+      dryRunAcceptedEvents += 1;
+      continue;
+    }
     const saved = await saveEvent({ title: String(event.title), slug: `${normalizeSlug(String(event.title))}-${date.getTime()}`, description: String(event.summary), eventDate: date, locationName: String(event.locationName), address: String(event.address), city, category: category as "show" | "balada" | "evento_musical", genre, priceCents: Number(event.priceCents) || 0, sourceUrl, sourceType, imageUrl: String(event.imageUrl || ""), latitude, longitude, sourceHash, isPublished: 1 });
     if (saved?.created === false) duplicates += 1;
     imported += 1;
   }
-  return { imported, persisted: imported, read: candidateUrls.length, filtered: Math.max(0, candidateUrls.length - sourcePages.length), duplicates, missingCoordinates, outOfBoundsCoordinates, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls };
+  return { imported, persisted: imported, dryRun, dryRunAcceptedEvents, read: candidateUrls.length, filtered: Math.max(0, candidateUrls.length - sourcePages.length), duplicates, missingCoordinates, outOfBoundsCoordinates, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls };
 }
