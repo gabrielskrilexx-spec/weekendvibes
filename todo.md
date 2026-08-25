@@ -1504,3 +1504,11 @@
 - [x] Calcular e exibir mediana e p95 por adaptador
 - [x] Adicionar expansão interativa dos detalhes completos de erros sanitizados
 - [x] Criar regressões Vitest, executar simulação, TypeScript, build e publicar checkpoint
+
+## Resiliência final de Ingresse e Mr Ingressos
+- [x] Auditar o fluxo atual de circuit breaker, webhook e fetch do Mr Ingressos
+- [x] Disparar webhook sanitizado para falhas recorrentes HTTP 403 por fonte
+- [x] Adicionar retry isolado com backoff exponencial somente para timeout do Mr Ingressos
+- [x] Garantir que retry seletivo não bloqueie outras fontes nem altere regras de persistência
+- [x] Criar regressões Vitest para alertas 403, backoff e exaustão de tentativas
+- [x] Executar suíte completa, TypeScript, build e publicar checkpoint

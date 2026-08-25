@@ -444,6 +444,28 @@ async function guardedFetchPublicPage(url: string, options: { dryRun?: boolean }
 }
 
 const PUBLIC_FETCH_TIMEOUT_MS = 12_000;
+export const MR_INGRESSOS_RETRY_ATTEMPTS = 3;
+export const MR_INGRESSOS_RETRY_BASE_DELAY_MS = 250;
+
+export function isTimeoutFailure(error: unknown) {
+  const name = error && typeof error === "object" && "name" in error ? String((error as { name?: unknown }).name ?? "") : "";
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return name === "TimeoutError" || name === "AbortError" || /timeout|timed out|aborted/i.test(message);
+}
+
+export async function fetchMrIngressosWithRetry(url: string, init: RequestInit, fetchImpl: typeof fetch = fetch) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < MR_INGRESSOS_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await fetchImpl(url, init);
+    } catch (error) {
+      lastError = error;
+      if (!isTimeoutFailure(error) || attempt === MR_INGRESSOS_RETRY_ATTEMPTS - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, MR_INGRESSOS_RETRY_BASE_DELAY_MS * (2 ** attempt)));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Falha de timeout no Mr Ingressos");
+}
 const MR_INGRESSOS_FETCH_TIMEOUT_MS = 20_000;
 const PUBLIC_FETCH_CONCURRENCY = 6;
 
@@ -466,13 +488,14 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
   if (isIngresseEventUrl(url)) return fetchIngresseEventApi(url, { read: getIngestionPayloadCache, write: saveIngestionPayloadCache }, options);
   if (isBlackPassEventUrl(url)) return fetchBlackPassEventPage(url);
   try {
-    const response = await fetch(url, {
+    const requestInit: RequestInit = {
       headers: {
         "user-agent": "WeekendVibesBot/1.0 (+public-event-ingestion)",
         accept: "text/html,application/xhtml+xml",
       },
       signal: AbortSignal.timeout(isMrIngressosEventUrl(url) ? MR_INGRESSOS_FETCH_TIMEOUT_MS : PUBLIC_FETCH_TIMEOUT_MS),
-    });
+    };
+    const response = isMrIngressosEventUrl(url) ? await fetchMrIngressosWithRetry(url, requestInit) : await fetch(url, requestInit);
     if (!response.ok) throw createFetchError(`Fonte pública respondeu ${response.status}`, response.status);
     const html = await response.text();
     const imageMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
