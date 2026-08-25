@@ -19,6 +19,12 @@ export function getMapReconnectDelay(attempt: number): number {
   return Math.min(30_000, 1_000 * (2 ** Math.min(normalizedAttempt, 5)));
 }
 
+export const MAP_SCRIPT_POLL_LIMIT = 50;
+
+export function shouldFailMapScriptPoll(attempts: number): boolean {
+  return Math.max(0, Math.floor(attempts)) >= MAP_SCRIPT_POLL_LIMIT;
+}
+
 const MAPS_READY_CALLBACK = "__weekendVibesMapsReady";
 const MAPS_SCRIPT_BASE_URL = `/api/maps/javascript?callback=${encodeURIComponent(MAPS_READY_CALLBACK)}&libraries=marker,places,geocoding,geometry,routes&loader=2`;
 let mapScriptPromise: Promise<void> | null = null;
@@ -68,7 +74,10 @@ function loadMapScript(): Promise<void> {
         if (settled) return;
         if (window.google?.maps?.Map) { succeed(); return; }
         attempts += 1;
-        if (attempts >= 50 && pollTimer !== null) window.clearInterval(pollTimer);
+        if (shouldFailMapScriptPoll(attempts)) {
+          if (pollTimer !== null) window.clearInterval(pollTimer);
+          fail(new Error("Google Maps API did not become ready"));
+        }
       }, 100);
     };
     timeoutTimer = window.setTimeout(() => fail(new Error("Google Maps initialization timeout")), 15_000);

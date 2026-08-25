@@ -114,7 +114,19 @@ export const appRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message });
       }
     }),
-    remove: adminOnly.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
+    remove: adminOnly
+      .input(z.object({ id: z.number().int().positive() }))
+      .output(z.object({
+        deleted: z.boolean(),
+        id: z.number().int().positive(),
+        deletedDependencies: z.object({
+          favorites: z.number().int().nonnegative(),
+          reminders: z.number().int().nonnegative(),
+          geocodingJobs: z.number().int().nonnegative(),
+          geocodingAuditLogs: z.number().int().nonnegative(),
+        }),
+      }))
+      .mutation(async ({ input }) => {
       try {
         const result = await deleteEvent(input.id);
         return {

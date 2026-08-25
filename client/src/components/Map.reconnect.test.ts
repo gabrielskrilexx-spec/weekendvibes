@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getMapReconnectDelay } from "./Map";
-import { transitionMapState } from "@/hooks/useGoogleMapsController";
+import { MAP_SCRIPT_POLL_LIMIT, shouldFailMapScriptPoll, transitionMapState } from "@/hooks/useGoogleMapsController";
 
 describe("getMapReconnectDelay", () => {
   it("usa backoff exponencial progressivo nas primeiras tentativas", () => {
@@ -15,6 +15,14 @@ describe("getMapReconnectDelay", () => {
   it("normaliza tentativas inválidas sem produzir atraso negativo", () => {
     expect(getMapReconnectDelay(-4)).toBe(1000);
     expect(getMapReconnectDelay(1.9)).toBe(2000);
+  });
+});
+
+describe("map script readiness guard", () => {
+  it("abandona o polling quando o Maps não fica pronto", () => {
+    expect(shouldFailMapScriptPoll(MAP_SCRIPT_POLL_LIMIT - 1)).toBe(false);
+    expect(shouldFailMapScriptPoll(MAP_SCRIPT_POLL_LIMIT)).toBe(true);
+    expect(shouldFailMapScriptPoll(MAP_SCRIPT_POLL_LIMIT + 10)).toBe(true);
   });
 });
 

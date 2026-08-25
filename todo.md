@@ -1540,3 +1540,11 @@
 - [x] Executar smoke test da raiz, assets, API e rotas críticas
 - [x] Configurar monitoramento automatizado de falhas de build e de rota
 - [x] Validar a configuração, atualizar checklist e reportar resultado
+
+## Correção de mapa e serialização tRPC
+- [x] Auditar o carregamento do mapa, chave/configuração e estados de erro
+- [x] Implementar guarda de configuração, timeout e fallback amigável sem loading infinito
+- [x] Auditar a mutação de remoção de colisões e seu output schema
+- [x] Garantir retorno JSON estrito e atualização correta da UI após exclusão
+- [x] Adicionar/ajustar regressões Vitest para mapa e serialização
+- [x] Executar TypeScript, Vitest, build, commit e push para main
