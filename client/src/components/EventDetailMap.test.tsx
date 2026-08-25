@@ -1,6 +1,30 @@
 import React from "react";
-import { describe, expect, it } from "vitest";
+import { act, create } from "react-test-renderer";
+import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+
+vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+
+let mapMounts = 0;
+let boundaryAttempts = 0;
+
+vi.mock("@/components/ErrorBoundary", () => ({
+  default: ({ children, fallback }: { children: React.ReactNode; fallback: React.ReactNode }) => {
+    if (boundaryAttempts === 0) {
+      boundaryAttempts += 1;
+      return <>{fallback}</>;
+    }
+    return <>{children}</>;
+  },
+}));
+
+vi.mock("@/components/Map", () => ({
+  MapView: () => {
+    mapMounts += 1;
+    return <div data-testid="map-loaded">Mapa carregado</div>;
+  },
+}));
+
 import EventDetailMap, { buildGoogleMapsRouteUrl, hasValidCoordinates } from "./EventDetailMap";
 
 describe("EventDetailMap", () => {
@@ -23,5 +47,31 @@ describe("EventDetailMap", () => {
     const markup = renderToStaticMarkup(<EventDetailMap event={withCoordinates} />);
     expect(markup).toContain("Traçar rota");
     expect(markup).toContain("Pontos próximos");
+  });
+
+  it("remonta o mapa após uma falha de rede ao clicar em Tentar novamente", async () => {
+    mapMounts = 0;
+    boundaryAttempts = 0;
+    const withCoordinates = { ...event, latitude: "-23.961", longitude: "-46.332" };
+    let renderer: ReturnType<typeof create>;
+
+    await act(async () => {
+      renderer = create(<EventDetailMap event={withCoordinates} />, { unstable_isConcurrent: false } as never);
+      await Promise.resolve();
+    });
+
+    const retryButton = renderer!.root.findAll(node => node.type === "button")[0];
+    const retryText = Array.isArray(retryButton.props.children) ? retryButton.props.children.filter((child: unknown): child is string => typeof child === "string").join(" ") : String(retryButton.props.children);
+    expect(retryText).toContain("Tentar novamente");
+    expect(mapMounts).toBe(0);
+
+    await act(async () => {
+      retryButton.props.onClick();
+      await Promise.resolve();
+    });
+
+    expect(mapMounts).toBe(1);
+    expect(renderer!.root.findByProps({ "data-testid": "map-loaded" }).props.children).toBe("Mapa carregado");
+    renderer!.unmount();
   });
 });

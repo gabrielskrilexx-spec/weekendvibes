@@ -1553,3 +1553,8 @@
 - [x] Auditar o fallback e o retry existentes
 - [x] Adicionar botão acessível “Tentar Novamente” conectado ao retry
 - [x] Criar regressão e validar TypeScript, Vitest, build e checkpoint
+
+## Teste de retry do mapa
+- [x] Auditar o harness de testes e o fallback do mapa
+- [x] Simular falha de rede e clicar em “Tentar novamente”
+- [x] Confirmar que o mapa é remontado e validar TypeScript, testes, build e checkpoint
