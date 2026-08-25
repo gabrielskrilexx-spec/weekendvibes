@@ -443,6 +443,25 @@ async function guardedFetchPublicPage(url: string, options: { dryRun?: boolean }
   }
 }
 
+const PUBLIC_FETCH_TIMEOUT_MS = 12_000;
+const MR_INGRESSOS_FETCH_TIMEOUT_MS = 20_000;
+const PUBLIC_FETCH_CONCURRENCY = 6;
+
+async function fetchWithConcurrency<T>(items: string[], worker: (item: string) => Promise<T>, concurrency: number): Promise<PromiseSettledResult<T>[]> {
+  const results: PromiseSettledResult<T>[] = new Array(items.length);
+  let nextIndex = 0;
+  const runWorker = async () => {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= items.length) return;
+      try { results[index] = { status: "fulfilled", value: await worker(items[index]) }; }
+      catch (reason) { results[index] = { status: "rejected", reason }; }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, concurrency), Math.max(1, items.length)) }, runWorker));
+  return results;
+}
+
 async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}): Promise<PublicPage> {
   if (isIngresseEventUrl(url)) return fetchIngresseEventApi(url, { read: getIngestionPayloadCache, write: saveIngestionPayloadCache }, options);
   if (isBlackPassEventUrl(url)) return fetchBlackPassEventPage(url);
@@ -452,7 +471,7 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
         "user-agent": "WeekendVibesBot/1.0 (+public-event-ingestion)",
         accept: "text/html,application/xhtml+xml",
       },
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(isMrIngressosEventUrl(url) ? MR_INGRESSOS_FETCH_TIMEOUT_MS : PUBLIC_FETCH_TIMEOUT_MS),
     });
     if (!response.ok) throw createFetchError(`Fonte pública respondeu ${response.status}`, response.status);
     const html = await response.text();
@@ -481,7 +500,7 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
 async function discoverCandidatePages(options: { dryRun?: boolean } = {}) {
   const bases = getConfiguredSourceUrls();
   const discovered = new Set(bases);
-  const basePages = await Promise.allSettled(bases.map(url => guardedFetchPublicPage(url, options)));
+  const basePages = await fetchWithConcurrency(bases, url => guardedFetchPublicPage(url, options), PUBLIC_FETCH_CONCURRENCY);
   for (let index = 0; index < basePages.length; index += 1) {
     const result = basePages[index];
     if (result.status !== "fulfilled") continue;
@@ -512,6 +531,8 @@ export type IngestionSourceReport = {
   duplicates: number;
   errors: Array<{ sourceUrl?: string; status: number | null; message: string }>;
   durationMs: number;
+  medianDurationMs: number;
+  p95DurationMs: number;
   rejectionReasons: { fetchFailed: number; outsideTargetVenue: number; invalidStructuredEvent: number; duplicate: number; pastEvent: number };
 };
 
@@ -526,12 +547,19 @@ type PublicSourceReportInput = {
   matchesTargetVenue?: (value: string) => boolean;
 };
 
+function percentile(values: number[], percentileValue: number) {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((percentileValue / 100) * sorted.length) - 1));
+  return sorted[index];
+}
+
 function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSourceReport[] {
-  const reports = new Map<string, IngestionSourceReport>();
+  const reports = new Map<string, IngestionSourceReport & { latencySamples: number[] }>();
   const getReport = (sourceKey: string) => {
     const current = reports.get(sourceKey);
     if (current) return current;
-    const created: IngestionSourceReport = {
+    const created: IngestionSourceReport & { latencySamples: number[] } = {
       sourceKey,
       read: 0,
       filtered: 0,
@@ -539,6 +567,9 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
       duplicates: 0,
       errors: [],
       durationMs: 0,
+      medianDurationMs: 0,
+      p95DurationMs: 0,
+      latencySamples: [],
       rejectionReasons: { fetchFailed: 0, outsideTargetVenue: 0, invalidStructuredEvent: 0, duplicate: 0, pastEvent: 0 },
     };
     reports.set(sourceKey, created);
@@ -554,12 +585,16 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
       if (page?.status === "rejected") {
         const failure = sanitizeFetchFailure(page.reason);
         const durationMs = page.reason && typeof page.reason === "object" && "fetchDurationMs" in page.reason ? Number((page.reason as { fetchDurationMs?: unknown }).fetchDurationMs ?? 0) : 0;
-        report.durationMs += Number.isFinite(durationMs) ? Math.max(0, durationMs) : 0;
+        const safeDurationMs = Number.isFinite(durationMs) ? Math.max(0, durationMs) : 0;
+        report.durationMs += safeDurationMs;
+        report.latencySamples.push(safeDurationMs);
         report.errors.push({ sourceUrl: url, status: failure.status, message: failure.message });
       }
       return;
     }
-    report.durationMs += Math.max(0, Number(page.value.durationMs ?? 0));
+    const durationMs = Math.max(0, Number(page.value.durationMs ?? 0));
+    report.durationMs += durationMs;
+    report.latencySamples.push(durationMs);
     if (page.value.circuitOpen) {
       report.filtered += 1;
       report.rejectionReasons.fetchFailed += 1;
@@ -586,7 +621,12 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
     report.filtered += 1;
     report.rejectionReasons.duplicate += 1;
   }
-  return Array.from(reports.values()).sort((left, right) => left.sourceKey.localeCompare(right.sourceKey));
+  return Array.from(reports.values()).map(report => ({
+    ...report,
+    medianDurationMs: percentile(report.latencySamples, 50),
+    p95DurationMs: percentile(report.latencySamples, 95),
+    latencySamples: undefined,
+  })).map(({ latencySamples: _latencySamples, ...report }) => report).sort((left, right) => left.sourceKey.localeCompare(right.sourceKey));
 }
 
 export async function runIngestionPipeline(options: IngestionPipelineOptions = {}) {
@@ -595,7 +635,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
   const matchesTargetVenue = (value: string) => containsTargetVenue(value, activeAliases);
   const candidateUrls = await discoverCandidatePages(options);
   if (candidateUrls.length === 0) return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: true, reason: "Nenhuma fonte de ingestão configurada", sourceReports: [] as IngestionSourceReport[] };
-  const pages = await Promise.allSettled(candidateUrls.map(url => guardedFetchPublicPage(url, options)));
+  const pages = await fetchWithConcurrency(candidateUrls, url => guardedFetchPublicPage(url, options), PUBLIC_FETCH_CONCURRENCY);
   const fulfilledPages = pages
     .filter((result): result is PromiseFulfilledResult<PublicPage> => result.status === "fulfilled")
     .map(result => result.value);

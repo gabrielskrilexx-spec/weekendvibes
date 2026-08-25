@@ -1496,3 +1496,11 @@
 - [x] Executar Dry-run geral e registrar candidatos, rejeições, persistíveis e erros por fonte
 - [x] Adicionar regressões Vitest para duração e relatório geral
 - [x] Executar suíte completa, TypeScript, build e publicar checkpoint
+
+## Resiliência e observabilidade avançada do Dry-run
+- [x] Auditar concorrência, timeout e coleta de latências do Mr Ingressos
+- [x] Ajustar concorrência e timeouts do adaptador Mr Ingressos com limites seguros
+- [x] Destacar erros HTTP 403 do Ingresse com tratamento visual específico
+- [x] Calcular e exibir mediana e p95 por adaptador
+- [x] Adicionar expansão interativa dos detalhes completos de erros sanitizados
+- [x] Criar regressões Vitest, executar simulação, TypeScript, build e publicar checkpoint
