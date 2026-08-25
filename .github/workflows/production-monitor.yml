@@ -1,0 +1,92 @@
+name: WeekendVibes production monitor
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekendvibes-production-monitor
+  cancel-in-progress: true
+
+env:
+  PRODUCTION_URL: https://weekendvib-jscaalye.manus.space
+
+jobs:
+  smoke:
+    name: Production smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      MONITORING_WEBHOOK_URL: ${{ secrets.MONITORING_WEBHOOK_URL }}
+    steps:
+      - name: Check production root
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(curl --fail --silent --show-error --location --max-time 30 "$PRODUCTION_URL/")"
+          grep -q '<div id="root"></div>' <<< "$body"
+          if grep -Eqi 'drizzle|schema\.ts|node_modules/.+pg-core' <<< "$body"; then
+            echo "Production root exposed backend source markers" >&2
+            exit 1
+          fi
+
+      - name: Check referenced assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(curl --fail --silent --show-error --location --max-time 30 "$PRODUCTION_URL/")"
+          mapfile -t assets < <(grep -oE '(src|href)="/[^"]+\.(js|css)"' <<< "$body" | cut -d'"' -f2 | sort -u)
+          test "${#assets[@]}" -gt 0
+          for asset in "${assets[@]}"; do
+            status="$(curl --silent --show-error --location --max-time 30 --output /dev/null --write-out '%{http_code}' "$PRODUCTION_URL$asset")"
+            test "$status" = "200" || { echo "Asset $asset returned $status" >&2; exit 1; }
+          done
+
+      - name: Check public API contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl --fail --silent --show-error --location --max-time 30 "$PRODUCTION_URL/api/trpc/auth.me")"
+          grep -q '"result"' <<< "$response"
+
+      - name: Notify optional webhook on smoke failure
+        if: failure() && env.MONITORING_WEBHOOK_URL != ''
+        shell: bash
+        run: |
+          payload="{\"type\":\"production_smoke_failure\",\"project\":\"weekendvibes\",\"url\":\"$PRODUCTION_URL\",\"workflow\":\"$GITHUB_WORKFLOW\",\"run\":\"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\"}"
+          curl --fail --silent --show-error --max-time 15 -X POST "$MONITORING_WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            --data "$payload"
+
+  build:
+    name: Build guard
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.4.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: TypeScript
+        run: pnpm run check
+      - name: Production build
+        run: pnpm run build
+      - name: Verify Vite output
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist/public/index.html
+          ! find dist/public -type f -path '*drizzle*' | grep -q .

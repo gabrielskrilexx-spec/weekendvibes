@@ -1534,3 +1534,9 @@
 - [x] Corrigir output directory e roteamento da UI na raiz
 - [x] Validar build local e confirmar que a raiz não expõe arquivos internos
 - [x] Commitar e fazer push da correção para a branch main
+
+## Verificação de produção e monitoramento
+- [x] Verificar status do deploy e domínio de produção
+- [x] Executar smoke test da raiz, assets, API e rotas críticas
+- [ ] Configurar monitoramento automatizado de falhas de build e de rota
+- [ ] Validar a configuração, atualizar checklist e reportar resultado
