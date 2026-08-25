@@ -1591,3 +1591,13 @@
 - [x] Criar ou atualizar E2E dos fluxos de Dry-run, filtros e resolução de duplicatas
 - [x] Executar Vitest, TypeScript, build e suíte Playwright do painel
 - [x] Salvar checkpoint, fazer commit e push para main no GitHub
+
+## Responsividade mobile e ações em massa do painel
+- [x] Otimizar tabelas de eventos, runs e colisões para leitura em telas menores
+- [x] Garantir botões de ação com áreas de toque, wrapping e estados loading responsivos
+- [x] Implementar seleção múltipla na lista administrativa de eventos
+- [x] Implementar seleção múltipla na revisão de colisões
+- [x] Adicionar ações em massa para aprovar e excluir itens com confirmação e feedback
+- [x] Adicionar/atualizar contratos tRPC para operações em massa com respostas JSON estritas
+- [x] Criar testes Vitest e Playwright desktop/mobile para seleção, ações e layout
+- [x] Executar TypeScript, suíte, build, salvar checkpoint e sincronizar main

@@ -7,6 +7,8 @@ vi.mock("./db", () => ({
   saveEvent: vi.fn().mockResolvedValue(undefined),
   updateEvent: vi.fn().mockResolvedValue({ updated: true, id: 1 }),
   deleteEvent: vi.fn().mockResolvedValue({ deleted: true, id: 1 }),
+  deleteEvents: vi.fn().mockResolvedValue({ deleted: 2, deletedIds: [1, 2] }),
+  updateEventsPublication: vi.fn().mockResolvedValue({ updated: 2, ids: [1, 2] }),
   getDb: vi.fn(),
   upsertUser: vi.fn(),
   getUserByOpenId: vi.fn(),
@@ -24,6 +26,12 @@ describe("events admin procedures", () => {
     await expect(caller.events.create(base)).resolves.toEqual({ created: false });
     await expect(caller.events.update({ id: 1, data: { title: "Festival Atualizado" } })).resolves.toEqual({ ok: true, updated: true, id: 1 });
     await expect(caller.events.remove({ id: 1 })).resolves.toEqual({ deleted: true, id: 1, deletedDependencies: { favorites: 0, reminders: 0, geocodingJobs: 0, geocodingAuditLogs: 0 } });
+  });
+  it("returns serializable contracts for bulk approval and deletion", async () => {
+    const caller = appRouter.createCaller(ctx());
+    await expect(caller.events.publishMany({ ids: [1, 2] })).resolves.toEqual({ ok: true, updated: 2, ids: [1, 2] });
+    await expect(caller.events.removeMany({ ids: [1, 2] })).resolves.toEqual({ ok: true, deleted: 2, deletedIds: [1, 2] });
+    await expect(caller.collisionReview.resolveMany({ ids: [2] })).resolves.toEqual({ ok: true, deleted: 2, deletedIds: [1, 2] });
   });
   it("rejects invalid update IDs before reaching the database", async () => {
     const caller = appRouter.createCaller(ctx());

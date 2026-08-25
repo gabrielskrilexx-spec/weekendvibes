@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, gte, like, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { Event, InsertEvent, InsertUser, events, users, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
@@ -531,6 +531,35 @@ export async function updateEvent(id: number, input: Partial<InsertEvent>) {
     if (current[0]) await queueGeocoding(id, { ...current[0], address: current[0].address ?? undefined, locationName: current[0].locationName, city: current[0].city, latitude: current[0].latitude ?? undefined, longitude: current[0].longitude ?? undefined } as InsertEvent, db);
   }
   return { updated: true, id } as const;
+}
+
+export async function updateEventsPublication(ids: number[]) {
+  const normalizedIds = Array.from(new Set(ids.filter(id => Number.isInteger(id) && id > 0)));
+  if (normalizedIds.length === 0) return { updated: 0, ids: [] as number[] } as const;
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const result = await db.update(events).set({ isPublished: 1, isArchived: 0, updatedAt: new Date() }).where(inArray(events.id, normalizedIds));
+  const updated = Number((result as { affectedRows?: number }).affectedRows ?? 0);
+  return { updated, ids: normalizedIds.slice(0, updated || normalizedIds.length) } as const;
+}
+
+export async function deleteEvents(ids: number[]) {
+  const normalizedIds = Array.from(new Set(ids.filter(id => Number.isInteger(id) && id > 0)));
+  if (normalizedIds.length === 0) return { deleted: 0, deletedIds: [] as number[] } as const;
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  return db.transaction(async tx => {
+    const deletedIds: number[] = [];
+    for (const id of normalizedIds) {
+      await tx.delete(eventFavorites).where(eq(eventFavorites.eventId, id));
+      await tx.delete(eventReminders).where(eq(eventReminders.eventId, id));
+      await tx.delete(geocodingJobs).where(eq(geocodingJobs.eventId, id));
+      await tx.delete(geocodingAuditLogs).where(eq(geocodingAuditLogs.eventId, id));
+      const result = await tx.delete(events).where(eq(events.id, id));
+      if (Number((result as { affectedRows?: number }).affectedRows ?? 0) > 0) deletedIds.push(id);
+    }
+    return { deleted: deletedIds.length, deletedIds } as const;
+  });
 }
 
 export async function deleteEvent(id: number) {

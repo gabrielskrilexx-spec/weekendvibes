@@ -4,7 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, publicProcedure, protectedProcedure, router } from "./_core/trpc";
-import { deleteEvent, getEventBySlug, listEvents, listTodayEvents, resolveOperationalAlert, saveEvent, updateEvent, listFavoriteEventIds, toggleFavoriteEvent, setEventReminder, listUserReminders, listIngestionSources, updateIngestionSource } from "./db";
+import { deleteEvent, deleteEvents, getEventBySlug, listEvents, listTodayEvents, resolveOperationalAlert, saveEvent, updateEvent, updateEventsPublication, listFavoriteEventIds, toggleFavoriteEvent, setEventReminder, listUserReminders, listIngestionSources, updateIngestionSource } from "./db";
 import { invokeLLM } from "./_core/llm";
 import { getWednesdayRoutineStatus, runWednesdayRoutineNow } from "./manual-ingestion";
 import { listIngestionReport, reprocessIngestionSource, sanitizeReprocessErrorForTest } from "./ingestion-reports";
@@ -15,6 +15,12 @@ import { runDryRun } from "./dry-run";
 const safeFilter = (max = 120) => z.string().trim().max(max).optional();
 const latitudeInput = z.string().regex(/^-?(?:90(?:\.0+)?|[1-8]?\d(?:\.\d+)?)$/).optional();
 const longitudeInput = z.string().regex(/^-?(?:180(?:\.0+)?|1[0-7]\d(?:\.\d+)?|\d{1,2}(?:\.\d+)?)$/).optional();
+
+function throwSanitizedAdminMutationError(error: unknown, fallback: string): never {
+  const raw = error instanceof Error ? error.message : "";
+  const message = /Database unavailable|timeout|network|fetch/i.test(raw) ? "O serviço está temporariamente indisponível. Tente novamente." : /foreign|constraint|referenc|depend/i.test(raw) ? "Não foi possível concluir a ação porque existem dependências relacionadas." : fallback;
+  throw new TRPCError({ code: /Database unavailable/i.test(raw) ? "SERVICE_UNAVAILABLE" : "INTERNAL_SERVER_ERROR", message });
+}
 
 const eventInput = z.object({
   title: z.string().trim().min(3).max(160),
@@ -73,6 +79,7 @@ export const appRouter = router({
   }),
   collisionReview: router({
     list: adminOnly.input(z.object({ limit: z.number().int().min(1).max(100).optional() }).optional()).query(({ input }) => listPotentialEventCollisions(input?.limit ?? 100)),
+    resolveMany: adminOnly.input(z.object({ ids: z.array(z.number().int().positive()).min(1).max(100) })).output(z.object({ ok: z.literal(true), deleted: z.number().int().nonnegative(), deletedIds: z.array(z.number().int().positive()) }).strict()).mutation(async ({ input }) => { try { const result = await deleteEvents(input.ids); return { ok: true as const, deleted: result.deleted, deletedIds: result.deletedIds }; } catch (error) { return throwSanitizedAdminMutationError(error, "Não foi possível resolver as colisões."); } }),
   }),
   ingestionReports: router({
     summary: adminOnly.input(z.object({ size: z.number().int().min(1).max(50).optional(), periodDays: z.union([z.literal(7), z.literal(30), z.literal(90)]).optional(), routine: z.enum(["instagram-agenda", "public-agenda", "manual-reprocess"]).optional(), status: z.enum(["running", "succeeded", "partial", "failed"]).optional(), trigger: z.enum(["manual", "scheduled"]).optional(), runId: z.number().int().positive().optional(), sourceKey: z.string().trim().max(255).optional() }).optional()).query(({ input }) => listIngestionReport(input?.size ?? 20, { periodDays: input?.periodDays, routine: input?.routine, status: input?.status, trigger: input?.trigger, runId: input?.runId, sourceKey: input?.sourceKey })),
@@ -122,6 +129,8 @@ export const appRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message });
       }
     }),
+    publishMany: adminOnly.input(z.object({ ids: z.array(z.number().int().positive()).min(1).max(100) })).output(z.object({ ok: z.literal(true), updated: z.number().int().nonnegative(), ids: z.array(z.number().int().positive()) }).strict()).mutation(async ({ input }) => { try { const result = await updateEventsPublication(input.ids); return { ok: true as const, updated: result.updated, ids: result.ids }; } catch (error) { return throwSanitizedAdminMutationError(error, "Não foi possível aprovar os eventos."); } }),
+    removeMany: adminOnly.input(z.object({ ids: z.array(z.number().int().positive()).min(1).max(100) })).output(z.object({ ok: z.literal(true), deleted: z.number().int().nonnegative(), deletedIds: z.array(z.number().int().positive()) }).strict()).mutation(async ({ input }) => { try { const result = await deleteEvents(input.ids); return { ok: true as const, deleted: result.deleted, deletedIds: result.deletedIds }; } catch (error) { return throwSanitizedAdminMutationError(error, "Não foi possível excluir os eventos."); } }),
     remove: adminOnly
       .input(z.object({ id: z.number().int().positive() }))
       .output(z.object({

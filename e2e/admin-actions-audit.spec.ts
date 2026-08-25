@@ -19,7 +19,7 @@ const source = { id: 1, sourceKey: "instagram:ativahouse", name: "Ativa House", 
 
 function valueForProcedure(procedure: string) {
   if (procedure === "auth.me") return adminUser;
-  if (procedure === "events.list") return [];
+  if (procedure === "events.list") return [{ id: 100, title: "Réveillon Guarujá 2027", eventDate: "2026-12-31T22:00:00.000Z", locationName: "Laroc Club Guarujá", city: "Guarujá", category: "balada", genre: "house_eletronica", priceCents: 12000, description: "Evento", address: "Guarujá", sourceUrl: "https://example.com/100", imageUrl: "https://example.com/100.jpg", latitude: "-23.98", longitude: "-46.25", isPublished: 1 }, { id: 101, title: "Réveillon Guarujá 2027 - Laroc", eventDate: "2026-12-31T19:00:00.000Z", locationName: "Laroc Club Guarujá", city: "Guarujá", category: "balada", genre: "house_eletronica", priceCents: 0, description: "Evento", address: "Guarujá", sourceUrl: "https://example.com/101", imageUrl: "", latitude: null, longitude: null, isPublished: 1 }];
   if (procedure === "adminRoutine.status") return { enabled: true, runMode: "full_auto", timezone: "America/Sao_Paulo", cron: "0 0 10 * * 3", nextExecutionAt: "2026-08-26T13:00:00.000Z", lastExecutedAt: null, isRunning: false, recentRuns: [], source: "heartbeat" };
   if (procedure === "ingestionReports.summary") return report;
   if (procedure === "ingestionReports.geocoding") return { pending: 0, processing: 0, succeeded: 4, failed: 0 };
@@ -34,6 +34,9 @@ function mutationValue(procedure: string) {
   if (procedure === "ingestionReports.dryRun") return { dryRun: true, startedAt: "2026-08-25T15:00:00.000Z", finishedAt: "2026-08-25T15:00:01.000Z", durationMs: 1000, sources: [{ routine: "instagram-agenda", sourceKey: "instagram", durationMs: 100, medianDurationMs: 100, p95DurationMs: 100, read: 3, filtered: 1, persistable: 2, duplicates: 0, errors: [], rejectionReasons: { fetchFailed: 0, outsideTargetVenue: 1, invalidStructuredEvent: 0, duplicate: 0, pastEvent: 0 } }], totals: { read: 3, filtered: 1, persistable: 2, duplicates: 0, errors: 0 } };
   if (procedure === "adminRoutine.runNow") return { ok: true, archived: 0, publicSources: { imported: 2 }, instagram: { imported: 1 }, startedAt: "2026-08-25T15:00:00.000Z", finishedAt: "2026-08-25T15:00:01.000Z" };
   if (procedure === "events.remove") return { deleted: true, id: 101, deletedDependencies: { favorites: 0, reminders: 0, geocodingJobs: 0, geocodingAuditLogs: 0 } };
+  if (procedure === "events.publishMany") return { ok: true, updated: 2, ids: [100, 101] };
+  if (procedure === "events.removeMany") return { ok: true, deleted: 2, deletedIds: [100, 101] };
+  if (procedure === "collisionReview.resolveMany") return { ok: true, deleted: 1, deletedIds: [101] };
   if (procedure === "ingestionReports.reprocess") return { ok: true, sourceKey: "instagram", routine: "instagram-agenda", imported: 1, counts: { read: 2, filtered: 0, persisted: 1, duplicates: 0 }, degraded: false };
   if (procedure === "operationalAlerts.resolve") return { ok: true, id: 1 };
   if (procedure === "ingestionSources.update") return { ok: true, id: 1, isEnabled: true, priority: 1, frequencyMinutes: 1440 };
@@ -59,17 +62,31 @@ test("audita fluxos administrativos principais sem ações mortas", async ({ pag
   await expect(page.getByText("Simulação concluída sem persistência")).toBeVisible();
   await expect(page.getByRole("button", { name: "Simular ingestão (Dry-run)" })).toBeEnabled();
 
+  await page.setViewportSize({ width: 390, height: 844 });
+  const selectAllEvents = page.getByRole("checkbox", { name: "Selecionar todos os eventos" });
+  await expect(selectAllEvents).toBeVisible();
+  await selectAllEvents.check();
+  await page.getByRole("button", { name: "Aprovar selecionados" }).first().click();
+  await expect(page.getByText(/aprovados com sucesso/)).toBeVisible();
+  await selectAllEvents.check();
+  await page.getByRole("button", { name: "Excluir selecionados" }).click();
+  await expect(page.getByText(/removido\(s\) com sucesso/)).toBeVisible();
+
   const routineButton = page.getByRole("button", { name: "Executar rotina de quarta-feira agora" });
   await routineButton.click();
-  await expect(page.getByRole("status")).toContainText("Rotina concluída");
+  await expect(page.getByText(/Rotina concluída/)).toBeVisible();
 
   const filters = page.getByTestId("ingestion-filters");
   await filters.getByLabel("Rotina").selectOption("instagram-agenda");
   await expect(filters.getByText(/Filtro avaliado no servidor/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Revisar possíveis colisões" })).toBeVisible();
+  const selectAllCollisions = page.getByRole("checkbox", { name: "Selecionar todas as colisões" });
+  await selectAllCollisions.check();
+  await page.getByRole("button", { name: "Aprovar selecionadas" }).last().click();
+  await expect(page.getByText(/duplicata\(s\) resolvida\(s\) com sucesso/)).toBeVisible();
   await page.getByRole("button", { name: "Excluir duplicata sugerida" }).click();
   await page.getByRole("button", { name: "Confirmar exclusão" }).click();
   await expect(page.getByText("Registro 101 removido.", { exact: false })).toBeVisible();
 
-  expect(requests).toEqual(expect.arrayContaining(["ingestionReports.dryRun", "adminRoutine.runNow", "events.remove"]));
+  expect(requests).toEqual(expect.arrayContaining(["ingestionReports.dryRun", "adminRoutine.runNow", "events.remove", "events.publishMany", "events.removeMany", "collisionReview.resolveMany"]));
 });
