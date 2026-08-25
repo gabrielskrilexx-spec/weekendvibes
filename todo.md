@@ -1574,3 +1574,11 @@
 - [x] Atualizar testes unitários e E2E para Leaflet, pin e ausência de chaves
 - [x] Executar TypeScript, suíte Vitest, build e validação Playwright
 - [x] Salvar checkpoint e sincronizar a branch main no GitHub
+
+## Refinamentos de UX do mapa de detalhes
+- [x] Adicionar botão Como chegar abaixo do mapa com links por coordenadas para Google Maps e Apple Maps
+- [x] Exibir skeleton enquanto o componente e os tiles do OpenStreetMap carregam
+- [x] Enriquecer o popup do pin com endereço completo, horário e ação rápida
+- [x] Atualizar testes unitários e E2E para os novos controles e estados visuais
+- [x] Executar TypeScript, suíte Vitest, build e validação Playwright
+- [x] Salvar checkpoint e sincronizar a branch main no GitHub

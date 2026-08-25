@@ -56,6 +56,10 @@ test("carrega mapa zero-config do OpenStreetMap e posiciona o pin do evento", as
   await expect(page.getByRole("heading", { name: "Santos Sunset" })).toBeVisible();
   await expect(page.getByTestId("osm-map")).toBeVisible();
   await expect(page.locator(".weekendvibes-map-pin")).toHaveCount(1);
+  await page.locator(".weekendvibes-map-pin").click();
+  await expect(page.getByTestId("osm-map").getByText("Avenida Atlântica, 101")).toBeVisible();
+  await expect(page.getByTestId("osm-map").getByText(/12\/09\/2026/)).toBeVisible();
+  await expect(page.getByTestId("osm-map").getByRole("link", { name: "Como chegar" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Traçar rota/ })).toBeVisible();
   await expect(page.getByRole("link", { name: /Pontos próximos/ })).toBeVisible();
   expect(externalRequests).toEqual([]);

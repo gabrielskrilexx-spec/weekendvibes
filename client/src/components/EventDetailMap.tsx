@@ -11,6 +11,7 @@ type EventMapData = {
   city: string;
   latitude?: string | number | null;
   longitude?: string | number | null;
+  eventDate?: string | number | Date | null;
 };
 
 export function hasValidCoordinates(latitude: EventMapData["latitude"], longitude: EventMapData["longitude"]) {
@@ -23,6 +24,13 @@ export function hasValidCoordinates(latitude: EventMapData["latitude"], longitud
 export function buildGoogleMapsRouteUrl(event: EventMapData) {
   const destination = hasValidCoordinates(event.latitude, event.longitude) ? `${event.latitude},${event.longitude}` : [event.locationName, event.address, event.city].filter(Boolean).join(", ");
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
+}
+
+export function buildAppleMapsRouteUrl(event: EventMapData) {
+  const destination = hasValidCoordinates(event.latitude, event.longitude) ? `${event.latitude},${event.longitude}` : [event.locationName, event.address, event.city].filter(Boolean).join(", ");
+  return hasValidCoordinates(event.latitude, event.longitude)
+    ? `https://maps.apple.com/?ll=${encodeURIComponent(destination)}&q=${encodeURIComponent(event.locationName)}`
+    : `https://maps.apple.com/?address=${encodeURIComponent(destination)}`;
 }
 
 export function buildGoogleMapsNearbyUrl(event: EventMapData) {
@@ -51,6 +59,10 @@ export default function EventDetailMap({ event }: { event: EventMapData }) {
   const retry = () => { setMapError(false); setRetryKey(value => value + 1); };
   return <section aria-labelledby="event-map-title" className="mt-8 overflow-hidden rounded-2xl border border-white/10">
     <div className="flex flex-col gap-3 border-b border-white/10 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-orange-200">Como chegar</p><h2 id="event-map-title" className="mt-1 font-black text-white">{event.locationName}</h2></div><div className="flex flex-wrap gap-2"><a href={buildGoogleMapsRouteUrl(event)} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-orange-300/30 bg-orange-300/10 px-3 text-xs font-black text-orange-100 transition hover:bg-orange-300/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-200"><Navigation size={14} /> Traçar rota</a><a href={buildGoogleMapsNearbyUrl(event)} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-fuchsia-300/30 bg-fuchsia-300/10 px-3 text-xs font-black text-fuchsia-100 transition hover:bg-fuchsia-300/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-200"><MapPinned size={14} /> Pontos próximos</a></div></div>
-    {!valid || mapError ? <MapFallback event={event} compact={!mapError} onRetry={valid ? retry : undefined} /> : <ErrorBoundary key={retryKey} fallback={<MapFallback event={event} onRetry={retry} />}><Suspense fallback={<MapSkeleton />}><LazyOpenStreetMapView key={retryKey} className="h-72 min-h-72" title={event.title} locationName={event.locationName} latitude={lat} longitude={lng} onError={() => setMapError(true)} /></Suspense></ErrorBoundary>}
+    {!valid || mapError ? <MapFallback event={event} compact={!mapError} onRetry={valid ? retry : undefined} /> : <ErrorBoundary key={retryKey} fallback={<MapFallback event={event} onRetry={retry} />}><Suspense fallback={<MapSkeleton />}><LazyOpenStreetMapView key={retryKey} className="h-72 min-h-72" title={event.title} locationName={event.locationName} address={event.address} eventDate={event.eventDate} latitude={lat} longitude={lng} googleMapsUrl={buildGoogleMapsRouteUrl(event)} appleMapsUrl={buildAppleMapsRouteUrl(event)} onError={() => setMapError(true)} /></Suspense></ErrorBoundary>}
+    <div className="flex flex-col gap-2 border-t border-white/10 bg-white/[0.03] p-4 sm:flex-row sm:flex-wrap">
+      <a href={buildGoogleMapsRouteUrl(event)} target="_blank" rel="noreferrer" className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-orange-300 px-4 text-xs font-black text-zinc-950 transition hover:bg-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-200"><Navigation size={15} /> Como chegar no Google Maps</a>
+      <a href={buildAppleMapsRouteUrl(event)} target="_blank" rel="noreferrer" className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-white/15 px-4 text-xs font-black text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-200"><MapPinned size={15} /> Abrir no Apple Maps</a>
+    </div>
   </section>;
 }

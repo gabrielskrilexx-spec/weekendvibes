@@ -7,7 +7,7 @@ vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
 let mapMounts = 0;
 let boundaryAttempts = 0;
-let lastMapProps: { latitude?: number; longitude?: number } = {};
+let lastMapProps: { latitude?: number; longitude?: number; address?: string | null; eventDate?: string | number | Date | null; googleMapsUrl?: string; appleMapsUrl?: string } = {};
 
 vi.mock("@/components/ErrorBoundary", () => ({
   default: ({ children, fallback }: { children: React.ReactNode; fallback: React.ReactNode }) => {
@@ -27,7 +27,7 @@ vi.mock("@/components/OpenStreetMapView", () => ({
   },
 }));
 
-import EventDetailMap, { buildGoogleMapsRouteUrl, hasValidCoordinates } from "./EventDetailMap";
+import EventDetailMap, { buildAppleMapsRouteUrl, buildGoogleMapsRouteUrl, hasValidCoordinates } from "./EventDetailMap";
 
 describe("EventDetailMap", () => {
   const event = { title: "Festa", locationName: "Ativa House", address: "Rua Exemplo, 10", city: "Santos" };
@@ -46,16 +46,19 @@ describe("EventDetailMap", () => {
     const withCoordinates = { ...event, latitude: "-23.961", longitude: "-46.332" };
     expect(hasValidCoordinates(withCoordinates.latitude, withCoordinates.longitude)).toBe(true);
     expect(buildGoogleMapsRouteUrl(withCoordinates)).toContain(encodeURIComponent("-23.961,-46.332"));
+    expect(buildAppleMapsRouteUrl(withCoordinates)).toContain(encodeURIComponent("-23.961,-46.332"));
     const markup = renderToStaticMarkup(<EventDetailMap event={withCoordinates} />);
     expect(markup).toContain("Traçar rota");
     expect(markup).toContain("Pontos próximos");
+    expect(markup).toContain("Como chegar no Google Maps");
+    expect(markup).toContain("Abrir no Apple Maps");
   });
 
   it("remonta o mapa após uma falha de rede ao clicar em Tentar novamente", async () => {
     mapMounts = 0;
     boundaryAttempts = 0;
     lastMapProps = {};
-    const withCoordinates = { ...event, latitude: "-23.961", longitude: "-46.332" };
+    const withCoordinates = { ...event, address: "Rua Exemplo, 10", eventDate: "2026-09-12T22:00:00.000Z", latitude: "-23.961", longitude: "-46.332" };
     let renderer: ReturnType<typeof create>;
 
     await act(async () => {
@@ -74,7 +77,9 @@ describe("EventDetailMap", () => {
     });
 
     expect(mapMounts).toBe(1);
-    expect(lastMapProps).toMatchObject({ latitude: -23.961, longitude: -46.332 });
+    expect(lastMapProps).toMatchObject({ latitude: -23.961, longitude: -46.332, address: "Rua Exemplo, 10", eventDate: "2026-09-12T22:00:00.000Z" });
+    expect(lastMapProps.googleMapsUrl).toContain(encodeURIComponent("-23.961,-46.332"));
+    expect(lastMapProps.appleMapsUrl).toContain(encodeURIComponent("-23.961,-46.332"));
     expect(renderer!.root.findByProps({ "data-testid": "map-loaded" }).props.children).toBe("Mapa carregado");
     renderer!.unmount();
   });
