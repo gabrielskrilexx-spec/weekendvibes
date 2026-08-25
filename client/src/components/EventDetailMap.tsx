@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from "react";
-import { ExternalLink, MapPinned, Navigation } from "lucide-react";
+import { ExternalLink, MapPinned, Navigation, RefreshCw } from "lucide-react";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 const LazyMapView = lazy(() => import("@/components/Map").then(({ MapView }) => ({ default: MapView })));
@@ -30,9 +30,9 @@ export function buildGoogleMapsNearbyUrl(event: EventMapData) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
-function MapFallback({ event, compact = false }: { event: EventMapData; compact?: boolean }) {
+function MapFallback({ event, compact = false, onRetry }: { event: EventMapData; compact?: boolean; onRetry?: () => void }) {
   return <div className={`grid min-h-72 place-items-center bg-zinc-950 px-6 py-8 text-center ${compact ? "min-h-56" : ""}`} role="alert">
-    <div className="max-w-sm"><MapPinned className="mx-auto text-orange-300" size={28} /><h3 className="mt-3 font-black text-white">Mapa temporariamente indisponível</h3><p className="mt-2 text-sm leading-relaxed text-zinc-400">Você ainda pode abrir a rota diretamente no Google Maps.</p><a href={buildGoogleMapsRouteUrl(event)} target="_blank" rel="noreferrer" className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-orange-300 px-4 text-xs font-black text-zinc-950 transition hover:bg-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-200"><Navigation size={15} /> Ver rota no Google Maps <ExternalLink size={14} /></a></div>
+    <div className="max-w-sm"><MapPinned className="mx-auto text-orange-300" size={28} /><h3 className="mt-3 font-black text-white">Mapa temporariamente indisponível</h3><p className="mt-2 text-sm leading-relaxed text-zinc-400">Você ainda pode abrir a rota diretamente no Google Maps ou tentar carregar o mapa novamente.</p><div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-center"><button type="button" onClick={onRetry} disabled={!onRetry} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-orange-300 px-4 text-xs font-black text-zinc-950 transition hover:bg-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-200 disabled:cursor-not-allowed disabled:opacity-60"><RefreshCw size={15} /> Tentar novamente</button><a href={buildGoogleMapsRouteUrl(event)} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-orange-300/40 px-4 text-xs font-black text-orange-100 transition hover:bg-orange-300/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-200"><Navigation size={15} /> Ver rota no Google Maps <ExternalLink size={14} /></a></div></div>
   </div>;
 }
 
@@ -41,11 +41,12 @@ function MapSkeleton() {
 }
 
 export default function EventDetailMap({ event }: { event: EventMapData }) {
+  const [retryKey, setRetryKey] = React.useState(0);
   const valid = hasValidCoordinates(event.latitude, event.longitude);
   const lat = Number(event.latitude);
   const lng = Number(event.longitude);
   return <section aria-labelledby="event-map-title" className="mt-8 overflow-hidden rounded-2xl border border-white/10">
     <div className="flex flex-col gap-3 border-b border-white/10 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-orange-200">Como chegar</p><h2 id="event-map-title" className="mt-1 font-black text-white">{event.locationName}</h2></div><div className="flex flex-wrap gap-2"><a href={buildGoogleMapsRouteUrl(event)} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-orange-300/30 bg-orange-300/10 px-3 text-xs font-black text-orange-100 transition hover:bg-orange-300/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-200"><Navigation size={14} /> Traçar rota</a><a href={buildGoogleMapsNearbyUrl(event)} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-fuchsia-300/30 bg-fuchsia-300/10 px-3 text-xs font-black text-fuchsia-100 transition hover:bg-fuchsia-300/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-200"><MapPinned size={14} /> Pontos próximos</a></div></div>
-    {!valid ? <MapFallback event={event} compact /> : <ErrorBoundary fallback={<MapFallback event={event} />}><Suspense fallback={<MapSkeleton />}><LazyMapView className="h-72 min-h-72" initialCenter={{ lat, lng }} initialZoom={15} onMapReady={map => { if (window.google?.maps?.marker) new window.google.maps.marker.AdvancedMarkerElement({ map, position: { lat, lng }, title: event.title }); }} /></Suspense></ErrorBoundary>}
+    {!valid ? <MapFallback event={event} compact /> : <ErrorBoundary key={retryKey} fallback={<MapFallback event={event} onRetry={() => setRetryKey(value => value + 1)} />}><Suspense fallback={<MapSkeleton />}><LazyMapView key={retryKey} className="h-72 min-h-72" initialCenter={{ lat, lng }} initialZoom={15} onMapReady={map => { if (window.google?.maps?.marker) new window.google.maps.marker.AdvancedMarkerElement({ map, position: { lat, lng }, title: event.title }); }} /></Suspense></ErrorBoundary>}
   </section>;
 }

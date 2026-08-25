@@ -11,6 +11,8 @@ describe("EventDetailMap", () => {
     expect(hasValidCoordinates(null, null)).toBe(false);
     expect(markup).toContain("Mapa temporariamente indisponível");
     expect(markup).toContain("Ver rota no Google Maps");
+    expect(markup).toContain("Tentar novamente");
+    expect(markup).toContain('type="button"');
     expect(markup).not.toContain("Carregando mapa");
   });
 

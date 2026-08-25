@@ -1548,3 +1548,8 @@
 - [x] Garantir retorno JSON estrito e atualização correta da UI após exclusão
 - [x] Adicionar/ajustar regressões Vitest para mapa e serialização
 - [x] Executar TypeScript, Vitest, build, commit e push para main
+
+## Retry manual do mapa
+- [x] Auditar o fallback e o retry existentes
+- [x] Adicionar botão acessível “Tentar Novamente” conectado ao retry
+- [x] Criar regressão e validar TypeScript, Vitest, build e checkpoint
