@@ -1458,12 +1458,12 @@
 - [x] Validar venues, URLs de compra, cidades e coordenadas dos eventos persistidos
 - [x] Entregar relatório sanitizado do teste de fogo atualizado
 
-- [ ] Auditar mutation de exclusão de duplicatas, componente e relações dependentes
-- [ ] Corrigir retorno tRPC para objeto serializável com deletedId e preservadoId
-- [ ] Tratar dependências relacionais e erros de banco sem vazar exceções brutas
-- [ ] Exibir mensagem descritiva de erro na UI e atualizar a lista após sucesso
-- [ ] Adicionar teste Vitest do fluxo completo de exclusão de duplicata
-- [ ] Executar TypeScript, Vitest, build e publicar checkpoint
+- [x] Auditar mutation de exclusão de duplicatas, componente e relações dependentes
+- [x] Corrigir retorno tRPC para objeto serializável com deletedId e preservadoId
+- [x] Tratar dependências relacionais e erros de banco sem vazar exceções brutas
+- [x] Exibir mensagem descritiva de erro na UI e atualizar a lista após sucesso
+- [x] Adicionar teste Vitest do fluxo completo de exclusão de duplicata
+- [x] Executar TypeScript, Vitest, build e publicar checkpoint
 
 ## Correção final — exclusão de duplicatas sugeridas
 - [x] Tornar `events.remove` estritamente serializável, retornando deleted, id e contagens de dependências removidas
