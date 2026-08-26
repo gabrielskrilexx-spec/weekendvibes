@@ -1,5 +1,6 @@
 import React from "react";
 import { act, create } from "react-test-renderer";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AdminReportsPanel, { buildRunsCsvFilename, exportRunsCsvForTest } from "./AdminReportsPanel";
 
@@ -28,6 +29,7 @@ const reportData = {
   weeklySummary: { retries: 0, fallbackList: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, degradedRuns: 0, inconsistentRuns: 0, rejectedEvents: 3, rejectedPastEvents: 2, rejectedOtherReasons: 1 },
   reconciliationBySource: [],
   sourceMetrics: [],
+  sourceTelemetryHistory: [],
   timeline: [],
   runs: [],
   criticalAlerts: [],
@@ -36,6 +38,7 @@ const reportData = {
 latestReportData = reportData;
 
 vi.mock("sonner", () => ({ toast: { success: mocks.toastSuccess, warning: mocks.toastWarning, error: mocks.toastError } }));
+vi.mock("recharts", () => { const passthrough = ({ children }: { children?: ReactNode }) => children; return { CartesianGrid: passthrough, Legend: passthrough, Line: passthrough, LineChart: passthrough, ResponsiveContainer: passthrough, Tooltip: passthrough, XAxis: passthrough, YAxis: passthrough }; });
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     ingestionReports: {
@@ -49,6 +52,7 @@ vi.mock("@/lib/trpc", () => ({
 
 describe("AdminReportsPanel — ingestão manual Instagram", () => {
   beforeEach(() => {
+    vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
     mocks.mutate.mockReset();
     mocks.reportRefetch.mockReset();
     latestReportData = reportData;
@@ -58,6 +62,10 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     mocks.toastWarning.mockReset();
     mutationOptions = {};
     mutationState = { isPending: false };
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("gera nome de CSV com data, rotina e fuso de São Paulo", () => {
@@ -78,6 +86,14 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     expect(JSON.stringify(tree!.toJSON())).toContain("Timeline de retries");
     expect(JSON.stringify(tree!.toJSON())).toContain("Tentativa #\",\"1");
     expect(JSON.stringify(tree!.toJSON())).toContain("Evento #\",\"1234");
+  });
+
+  it("renderiza o histórico de latência e sucesso quando há telemetria por fonte", async () => {
+    latestReportData = { ...reportData, sourceTelemetryHistory: [{ date: "2026-08-26", label: "26/08", sourceKey: "public:blackpass", runs: 2, successes: 1, successRate: 0.5, averageLatencyMs: 1200 }] } as typeof reportData;
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    expect(tree!.root.findByProps({ "data-testid": "source-telemetry-history" })).toBeTruthy();
+    expect(JSON.stringify(tree!.toJSON())).toContain("Histórico de latência e sucesso");
   });
 
   it("exibe uma tag de versão para auditoria do bundle", async () => {

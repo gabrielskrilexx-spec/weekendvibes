@@ -1,10 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { sdk } from "./_core/sdk";
 import { heartbeatMonitorHandler } from "./scheduled-heartbeat-monitor";
-import { deleteExpiredEvents, getDb } from "./db";
+import { deleteExpiredEvents, getDb, purgeResolvedOperationalAlerts } from "./db";
 import { evaluateCriticalFreshnessAlerts, finishIngestionRun, startIngestionRun } from "./ingestion-reports";
 
-vi.mock("./db", () => ({ getDb: vi.fn(), deleteExpiredEvents: vi.fn() }));
+vi.mock("./db", () => ({ getDb: vi.fn(), deleteExpiredEvents: vi.fn(), purgeResolvedOperationalAlerts: vi.fn() }));
 vi.mock("./ingestion-reports", () => ({
   startIngestionRun: vi.fn().mockResolvedValue(77),
   finishIngestionRun: vi.fn().mockResolvedValue(undefined),
@@ -32,6 +32,7 @@ describe("heartbeat direct monitor", () => {
     vi.mocked(finishIngestionRun).mockResolvedValue(undefined);
     vi.mocked(evaluateCriticalFreshnessAlerts).mockResolvedValue({ evaluated: 0, triggered: 0 });
     vi.mocked(deleteExpiredEvents).mockResolvedValue(0);
+    vi.mocked(purgeResolvedOperationalAlerts).mockResolvedValue({ purgedCount: 0, cutoff: new Date().toISOString() });
   });
 
   it("rejects non-cron callers without touching the database", async () => {

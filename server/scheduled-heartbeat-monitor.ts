@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { ingestionRuns, events } from "../drizzle/schema";
-import { deleteExpiredEvents, getDb } from "./db";
+import { deleteExpiredEvents, getDb, purgeResolvedOperationalAlerts } from "./db";
 import { sdk } from "./_core/sdk";
 import { HttpError } from "@shared/_core/errors";
 import { evaluateCriticalFreshnessAlerts, finishIngestionRun, startIngestionRun } from "./ingestion-reports";
@@ -39,8 +39,9 @@ export async function heartbeatMonitorHandler(req: Request, res: Response) {
 
     monitorRunId = await startIngestionRun({ routine: "heartbeat-monitor", sourceKey: "heartbeat-direct" });
     const expiredRemoved = await deleteExpiredEvents(db);
+    const purgedResolvedAlerts = await purgeResolvedOperationalAlerts(30, new Date(), db);
     const freshnessAlerts = await evaluateCriticalFreshnessAlerts(db);
-    console.info(`[HeartbeatMonitor] expired_events_removed=${expiredRemoved} freshness_alerts=${freshnessAlerts.triggered}`);
+    console.info(`[HeartbeatMonitor] expired_events_removed=${expiredRemoved} resolved_alerts_purged=${purgedResolvedAlerts.purgedCount} freshness_alerts=${freshnessAlerts.triggered}`);
     const latestRuns = await db.select().from(ingestionRuns)
       .where(sql`${ingestionRuns.routine} IN (${sql.join(MONITORED_ROUTINES.map(routine => sql`${routine}`), sql`, `)})`)
       .orderBy(desc(ingestionRuns.startedAt)).limit(10);
@@ -58,6 +59,7 @@ export async function heartbeatMonitorHandler(req: Request, res: Response) {
       latestRunAgeMs: latestFinishedAt ? Math.max(0, now - latestFinishedAt) : null,
       persistedPublishedEvents: persistedEventCount,
       expiredRemoved,
+      purgedResolvedAlerts,
       freshnessAlerts,
       timezone: "America/Sao_Paulo",
       checkedAt: new Date().toISOString(),

@@ -438,6 +438,34 @@ export type SourceTelemetry = {
   averageLatencyMs: number;
   errors: { category: "anti_bot" | "proxy" | "timeout_dns" | "sandbox" | "other"; count: number }[];
 };
+
+export type SourceTelemetryHistoryPoint = {
+  date: string;
+  label: string;
+  sourceKey: string;
+  runs: number;
+  successes: number;
+  successRate: number;
+  averageLatencyMs: number;
+};
+
+export function buildSourceTelemetryHistoryForTest(runs: Array<{ sourceKey: string | null; status: string; startedAt: string | Date; finishedAt?: string | Date | null; durationMs?: number | null }>): SourceTelemetryHistoryPoint[] {
+  const grouped = new Map<string, { date: string; sourceKey: string; runs: number; successes: number; latencyTotal: number; latencyCount: number }>();
+  for (const run of runs) {
+    const sourceKey = run.sourceKey ?? "unknown";
+    const startedAt = new Date(run.startedAt);
+    if (Number.isNaN(startedAt.getTime())) continue;
+    const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(startedAt);
+    const key = `${date}:${sourceKey}`;
+    const current = grouped.get(key) ?? { date, sourceKey, runs: 0, successes: 0, latencyTotal: 0, latencyCount: 0 };
+    current.runs += 1;
+    if (run.status === "succeeded") current.successes += 1;
+    const measured = Number(run.durationMs ?? (run.finishedAt ? new Date(run.finishedAt).getTime() - startedAt.getTime() : 0));
+    if (Number.isFinite(measured) && measured > 0) { current.latencyTotal += measured; current.latencyCount += 1; }
+    grouped.set(key, current);
+  }
+  return Array.from(grouped.values()).sort((a, b) => a.date.localeCompare(b.date) || a.sourceKey.localeCompare(b.sourceKey)).map(item => ({ date: item.date, label: new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" }).format(new Date(`${item.date}T12:00:00-03:00`)), sourceKey: item.sourceKey, runs: item.runs, successes: item.successes, successRate: item.runs ? Number((item.successes / item.runs).toFixed(4)) : 0, averageLatencyMs: item.latencyCount ? Math.round(item.latencyTotal / item.latencyCount) : 0 }));
+}
 type SourceErrorCategory = SourceTelemetry["errors"][number]["category"];
 
 
@@ -1187,6 +1215,7 @@ export async function listIngestionReport(
       failed: Number(row.failed ?? 0),
     }));
   const sourceTelemetry = buildSourceTelemetryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), durationMs: run.durationMs, httpStatus: run.httpStatus, details: run.details })));
+  const sourceTelemetryHistory = buildSourceTelemetryHistoryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, finishedAt: run.finishedAt, durationMs: run.durationMs })));
   const freshness = sourceConfigs.map(source => ({
     sourceKey: source.sourceKey,
     name: source.name,
@@ -1315,6 +1344,7 @@ export async function listIngestionReport(
     consecutiveFailures,
     sourceMetrics,
     sourceTelemetry,
+    sourceTelemetryHistory,
     freshness,
     timeline,
     reconciliationBySource: buildSourceReconciliationForTest(trendRuns),

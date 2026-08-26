@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, gte, inArray, like, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, like, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { Event, InsertEvent, InsertUser, events, users, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
@@ -148,6 +148,18 @@ export async function resolveAllOperationalAlerts(dbOverride?: Awaited<ReturnTyp
     await db.update(operationalAlerts).set({ isResolved: 1, updatedAt: new Date() }).where(eq(operationalAlerts.isResolved, 0));
   }
   return { resolvedCount: openAlerts.length };
+}
+
+export async function purgeResolvedOperationalAlerts(retentionDays = 30, now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const safeDays = Number.isFinite(retentionDays) ? Math.max(30, Math.round(retentionDays)) : 30;
+  const cutoff = new Date(now.getTime() - safeDays * 24 * 60 * 60 * 1000);
+  const expiredAlerts = await db.select({ id: operationalAlerts.id }).from(operationalAlerts).where(and(eq(operationalAlerts.isResolved, 1), lt(operationalAlerts.updatedAt, cutoff)));
+  if (expiredAlerts.length > 0) {
+    await db.delete(operationalAlerts).where(and(eq(operationalAlerts.isResolved, 1), lt(operationalAlerts.updatedAt, cutoff)));
+  }
+  return { purgedCount: expiredAlerts.length, cutoff: cutoff.toISOString() };
 }
 
 const normalizeAlias = (value: string) => value.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSourceTelemetryForTest } from "./ingestion-reports";
+import { buildSourceTelemetryForTest, buildSourceTelemetryHistoryForTest } from "./ingestion-reports";
 
 describe("telemetria por fonte", () => {
   it("agrega sucesso, latência e categorias de bloqueio", () => {
@@ -13,5 +13,13 @@ describe("telemetria por fonte", () => {
       expect.objectContaining({ sourceKey: "blacktag", runs: 3, successes: 1, successRate: 0.3333, averageLatencyMs: 220, errors: expect.arrayContaining([{ category: "anti_bot", count: 1 }, { category: "proxy", count: 1 }]) }),
       expect.objectContaining({ sourceKey: "instagram", errors: [{ category: "sandbox", count: 1 }] }),
     ]));
+  });
+
+  it("agrupa o histórico por dia e fonte com latência média e taxa de sucesso", () => {
+    const result = buildSourceTelemetryHistoryForTest([
+      { sourceKey: "blackpass", status: "succeeded", startedAt: "2026-08-25T12:00:00.000Z", durationMs: 100 },
+      { sourceKey: "blackpass", status: "failed", startedAt: "2026-08-25T13:00:00.000Z", durationMs: 300 },
+    ]);
+    expect(result).toEqual([expect.objectContaining({ sourceKey: "blackpass", runs: 2, successes: 1, successRate: 0.5, averageLatencyMs: 200 })]);
   });
 });

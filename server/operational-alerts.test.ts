@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { operationalAlertFingerprint, recordOperationalAlert, resolveOperationalAlert, resolveAllOperationalAlerts } from "./db";
+import { operationalAlertFingerprint, recordOperationalAlert, resolveOperationalAlert, resolveAllOperationalAlerts, purgeResolvedOperationalAlerts } from "./db";
 
 describe("operational alerts", () => {
   it("gera fingerprint estável por integração e mensagem normalizada", () => {
@@ -37,5 +37,17 @@ describe("operational alerts", () => {
 
     await expect(resolveAllOperationalAlerts(fakeDb)).resolves.toEqual({ resolvedCount: 2 });
     expect(updateWhere).toHaveBeenCalledOnce();
+  });
+
+  it("purga apenas alertas resolvidos além da retenção mínima de 30 dias", async () => {
+    const deleteWhere = vi.fn().mockResolvedValue(undefined);
+    const fakeDb = {
+      select: vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ id: 9 }]) }) }),
+      delete: vi.fn().mockReturnValue({ where: deleteWhere }),
+    } as never;
+    const now = new Date("2026-08-26T12:00:00.000Z");
+
+    await expect(purgeResolvedOperationalAlerts(7, now, fakeDb)).resolves.toEqual({ purgedCount: 1, cutoff: "2026-07-27T12:00:00.000Z" });
+    expect(deleteWhere).toHaveBeenCalledOnce();
   });
 });

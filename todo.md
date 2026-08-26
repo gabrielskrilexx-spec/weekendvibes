@@ -1875,3 +1875,12 @@
 - [x] Validar estado vazio e métricas da tabela de desempenho
 - [x] Adicionar testes Vitest de limpeza e deduplicação
 - [x] Executar TypeScript, build e publicar checkpoint
+
+## Telemetria histórica e retenção automática — 26/08/2026
+- [x] Auditar contratos de telemetria, runs e alertas resolvidos
+- [x] Executar ingestão oficial de validação com mocks autorizados no preview — 2 runs oficiais, 7 importados em cada resposta, sem persistência de mocks
+- [x] Adicionar gráfico histórico de latência média e taxa de sucesso por fonte
+- [x] Implementar retenção de alertas resolvidos com mais de 30 dias
+- [x] Integrar retenção ao mecanismo de atualização periódica apropriado — Heartbeat monitor
+- [x] Adicionar testes Vitest de gráfico, telemetria e retenção
+- [x] Validar UI, TypeScript, build e publicar checkpoint
