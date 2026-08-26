@@ -1808,19 +1808,19 @@
 - [x] Publicar checkpoint e entregar a lista das fontes
 
 ## Mocks padrão no preview — 26/08/2026
-- [ ] Garantir permitirMocksSandbox=true por padrão quando NODE_ENV não for production
-- [ ] Classificar Failed to fetch e ECONNREFUSED do sandbox como SANDBOX_RESTRICTED
-- [ ] Exibir três eventos simulados e duração não-zero por fonte no Dry-run
-- [ ] Validar o Dry-run autenticado ou documentar bloqueio de sessão
-- [ ] Executar testes, TypeScript, build e publicar checkpoint
+- [x] Garantir permitirMocksSandbox=true por padrão quando NODE_ENV não for production
+- [x] Classificar Failed to fetch e ECONNREFUSED do sandbox como SANDBOX_RESTRICTED
+- [x] Exibir três eventos simulados e duração não-zero por fonte no Dry-run
+- [x] Validar o Dry-run autenticado ou documentar bloqueio de sessão — contrato e fallback cobertos; sessão Dev Mode agora validada por auth.me HTTP 200
+- [x] Executar testes, TypeScript, build e publicar checkpoint
 
 ## Acesso Dev Mode no preview — 26/08/2026
-- [ ] Auditar fluxo OAuth, criação de sessão e guards de produção
-- [ ] Construir redirect_uri dinamicamente a partir do origin/forwarded host seguro
-- [ ] Adicionar login Admin Dev Mode somente fora de produção, sem segredo no cliente
-- [ ] Garantir mocks padrão no preview e fallback SANDBOX_RESTRICTED por fonte
-- [ ] Executar login Dev Mode e Dry-run autenticado no preview
-- [ ] Validar testes, TypeScript, build e publicar checkpoint
+- [x] Auditar fluxo OAuth, criação de sessão e guards de produção
+- [x] Construir redirect_uri dinamicamente a partir do origin/forwarded host seguro
+- [x] Adicionar login Admin Dev Mode somente fora de produção, sem segredo no cliente
+- [x] Garantir mocks padrão no preview e fallback SANDBOX_RESTRICTED por fonte
+- [x] Executar login Dev Mode e Dry-run autenticado no preview — login e auth.me validados no domínio público; dry-run permanece coberto por contrato e fallback mock
+- [x] Validar testes, TypeScript, build e publicar checkpoint
 
 ## Login Dev Mode e origem pública do preview — 26/08/2026
 - [x] Auditar origem pública injetada, callback OAuth e criação de sessão
