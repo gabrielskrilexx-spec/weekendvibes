@@ -1656,3 +1656,14 @@
 - [x] Adicionar/atualizar teste Playwright para acionamento manual e progresso
 - [x] Validar mobile, TypeScript, suíte Vitest e build de produção (TypeScript, 80 arquivos/302 testes Vitest, build e E2E aprovados; captura mobile chegou ao gate de login)
 - [x] Salvar checkpoint e publicar a alteração
+
+## Auditoria global de serialização tRPC do Painel Admin
+- [x] Inventariar queries e mutations administrativas de ingestão, eventos, colisões, relatórios, fontes, aliases, alertas e circuit breaker
+- [x] Identificar retornos com Dates, entidades Drizzle, Error ou protótipos não contratados
+- [x] Criar normalizador JSON seguro e aplicar outputs Zod estritos às mutations administrativas
+- [x] Normalizar queries administrativas e manter campos de data como ISO strings
+- [x] Corrigir explicitamente Execução Manual e Dry-run sem quebrar progresso, auditoria ou idempotência
+- [x] Adicionar testes de contrato/serialização e erros sanitizados por domínio
+- [ ] Executar TypeScript, suíte Vitest, build e E2E/smoke do painel
+- [ ] Fazer commit/push comprovado na branch main ou registrar eventual bloqueio do remote
+- [ ] Salvar checkpoint e publicar a auditoria global
