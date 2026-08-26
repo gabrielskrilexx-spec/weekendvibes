@@ -1845,3 +1845,10 @@
 - [x] Garantir mocks sempre falsos em produção, independentemente do banco/request
 - [x] Adicionar teste Vitest de regressão em NODE_ENV=production
 - [x] Executar suíte, TypeScript, build e publicar relatório de validação
+
+## Revalidação final dos guards de produção — 26/08/2026
+- [x] Auditar endpoint Dev Mode, botão e configuração de mocks
+- [x] Confirmar regressão em NODE_ENV=production para rota e mocks
+- [x] Validar eliminação do botão Dev Mode no bundle produtivo
+- [x] Executar suíte Vitest, TypeScript e build
+- [x] Publicar checkpoint e relatório de segurança
