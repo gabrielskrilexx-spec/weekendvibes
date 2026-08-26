@@ -5,6 +5,7 @@ import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
 import { redactError } from "./security";
+import { ENV } from "./env";
 
 function getQueryParam(req: Request, key: string): string | undefined {
   const value = req.query[key];
@@ -25,6 +26,27 @@ function oauthFailureDetails(error: unknown, stage: "exchange" | "user_info" | "
 }
 
 export function registerOAuthRoutes(app: Express) {
+  app.get("/api/auth/dev-login", async (req: Request, res: Response) => {
+    if (process.env.NODE_ENV === "production") {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    const openId = ENV.ownerOpenId;
+    if (!openId) {
+      res.status(503).json({ error: "dev_login_unavailable" });
+      return;
+    }
+    try {
+      await db.upsertUser({ openId, name: process.env.OWNER_NAME || "WeekendVibes Admin", loginMethod: "dev-mode", lastSignedIn: new Date(), role: "admin" });
+      const sessionToken = await sdk.createSessionToken(openId, { name: process.env.OWNER_NAME || "WeekendVibes Admin", expiresInMs: ONE_YEAR_MS });
+      res.cookie(COOKIE_NAME, sessionToken, { ...getSessionCookieOptions(req), maxAge: ONE_YEAR_MS });
+      res.redirect(302, getSafeReturnPath(getQueryParam(req, "redirect_to"), "/admin"));
+    } catch (error) {
+      console.error("[OAuth] Dev login failed", { stage: "dev_login", ...redactError(error) });
+      res.status(500).json({ error: "dev_login_failed" });
+    }
+  });
+
   app.get("/api/oauth/callback", async (req: Request, res: Response) => {
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");

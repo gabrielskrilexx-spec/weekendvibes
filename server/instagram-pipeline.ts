@@ -482,7 +482,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   if (!dryRun) await recordReferenceDateClockAlert(referenceDate);
   const activeAliases = await listActiveLocationAliasValues();
   const fetched = await fetchInstagramPostsDetailed({ dryRun });
-  const sandboxRestricted = process.env.NODE_ENV === "development" && fetched.posts.length === 0 && fetched.transportFailures.length > 0 && fetched.transportFailures.every(failure => failure.status === 0 || failure.status === 403 || failure.status === 502 || failure.status === 503 || failure.status === 504 || isSandboxRestrictedError(new Error(failure.message)));
+  const sandboxRestricted = process.env.NODE_ENV !== "production" && fetched.posts.length === 0 && fetched.transportFailures.length > 0 && fetched.transportFailures.every(failure => failure.status === 0 || failure.status === 403 || failure.status === 502 || failure.status === 503 || failure.status === 504 || isSandboxRestrictedError(new Error(failure.message)));
   if (sandboxRestricted && shouldUseSandboxMocks()) {
     const durationMs = Math.max(1, Date.now() - pipelineStartedAt);
     const previewMockEvents = [

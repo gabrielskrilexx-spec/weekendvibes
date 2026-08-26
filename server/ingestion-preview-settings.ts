@@ -1,5 +1,5 @@
 const isProduction = process.env.NODE_ENV === "production";
-let allowSandboxMocks = !isProduction && process.env.ALLOW_SANDBOX_MOCKS !== "false";
+let allowSandboxMocks = !isProduction;
 
 export function getSandboxMockSettings() {
   return { allowSandboxMocks: isProduction ? false : allowSandboxMocks, environment: isProduction ? "production" as const : "preview" as const };

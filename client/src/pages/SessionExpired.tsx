@@ -10,6 +10,11 @@ export default function SessionExpired() {
   const returnTo = typeof window !== "undefined"
     ? getSafeReturnPath(new URLSearchParams(window.location.search).get("returnTo"))
     : "/";
+  const isPreviewBuild = import.meta.env.MODE !== "production";
+  const startDevLogin = () => {
+    const target = getSafeReturnPath(returnTo, "/admin");
+    window.location.assign(`/api/auth/dev-login?redirect_to=${encodeURIComponent(target)}`);
+  };
 
   return (
     <main className="min-h-screen w-full bg-background px-4 py-10 text-foreground sm:flex sm:items-center sm:justify-center">
@@ -29,6 +34,12 @@ export default function SessionExpired() {
               <LogIn className="mr-2 h-4 w-4" aria-hidden="true" />
               Entrar novamente
             </Button>
+            {isPreviewBuild ? (
+              <Button variant="outline" onClick={startDevLogin} data-testid="dev-admin-login">
+                <LogIn className="mr-2 h-4 w-4" aria-hidden="true" />
+                Entrar como Admin (Dev Mode)
+              </Button>
+            ) : null}
             <Button variant="outline" onClick={() => setLocation("/")}>
               <Home className="mr-2 h-4 w-4" aria-hidden="true" />
               Ver agenda pública

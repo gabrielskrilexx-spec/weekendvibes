@@ -4,6 +4,7 @@ import { encodeOAuthState, OAUTH_STATE_COOKIE } from "@shared/const";
 const mocks = vi.hoisted(() => ({
   exchangeCodeForToken: vi.fn(),
   getUserInfo: vi.fn(),
+  createSessionToken: vi.fn(() => Promise.resolve("dev-session-token")),
   upsertUser: vi.fn(),
 }));
 
@@ -11,6 +12,7 @@ vi.mock("./_core/sdk", () => ({
   sdk: {
     exchangeCodeForToken: mocks.exchangeCodeForToken,
     getUserInfo: mocks.getUserInfo,
+    createSessionToken: mocks.createSessionToken,
   },
 }));
 
@@ -37,19 +39,26 @@ function createResponse() {
       response.clearedCookie = name;
       return response;
     },
-    cookie() {
+    cookie(name: string, value: unknown) {
+      response.cookieName = name;
+      response.cookieValue = value;
       return response;
     },
-    redirect() {
+    cookieName: undefined as unknown,
+    cookieValue: undefined as unknown,
+    redirect(statusOrLocation?: number | string, maybeLocation?: string) {
+      if (typeof statusOrLocation === "number") response.statusCode = statusOrLocation;
+      response.redirectLocation = typeof statusOrLocation === "string" ? statusOrLocation : maybeLocation;
       return response;
     },
+    redirectLocation: undefined as unknown,
   };
   return response;
 }
 
-function register() {
+function register(path = "/api/oauth/callback") {
   let handler: ((req: any, res: any) => Promise<void>) | undefined;
-  const app = { get: vi.fn((_path: string, callback: any) => { handler = callback; }) };
+  const app = { get: vi.fn((registeredPath: string, callback: any) => { if (registeredPath === path) handler = callback; }) };
   registerOAuthRoutes(app as any);
   return handler;
 }
@@ -57,6 +66,19 @@ function register() {
 describe("OAuth callback", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("cria sessão administrativa no Dev Mode e aceita somente retorno interno", async () => {
+    const handler = register("/api/auth/dev-login");
+    const response = createResponse();
+
+    await handler?.({ query: { redirect_to: "https://evil.example/phishing" }, headers: {} }, response);
+
+    expect(response.statusCode).toBe(302);
+    expect(response.redirectLocation).toBe("/admin");
+    expect(response.cookieName).toBe("app_session_id");
+    expect(mocks.upsertUser).toHaveBeenCalledWith(expect.objectContaining({ role: "admin", loginMethod: "dev-mode" }));
+    expect(mocks.createSessionToken).toHaveBeenCalled();
   });
 
   it("rejeita state sem nonce correspondente antes de trocar o código", async () => {

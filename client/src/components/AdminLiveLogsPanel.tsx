@@ -73,7 +73,8 @@ export default function AdminLiveLogsPanel() {
   const refresh = () => {
     void logs.refetch();
   };
-  const visibleLogs = (logs.data?.logs ?? []).filter(entry =>
+  const liveLogEntries = Array.isArray(logs.data?.logs) ? logs.data.logs : [];
+  const visibleLogs = liveLogEntries.filter(entry =>
     (kindFilter === "all" || entry.kind === kindFilter) &&
     (statusFilter === "all" || entry.status === statusFilter) &&
     (!sourceFilter.trim() || (entry.sourceKey ?? "").toLowerCase().includes(sourceFilter.trim().toLowerCase()))

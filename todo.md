@@ -1806,3 +1806,26 @@
 - [x] Corrigir fallback manual para não marcar mocks permitidos como falha crítica
 - [x] Validar painel, persistência, testes e build
 - [x] Publicar checkpoint e entregar a lista das fontes
+
+## Mocks padrão no preview — 26/08/2026
+- [ ] Garantir permitirMocksSandbox=true por padrão quando NODE_ENV não for production
+- [ ] Classificar Failed to fetch e ECONNREFUSED do sandbox como SANDBOX_RESTRICTED
+- [ ] Exibir três eventos simulados e duração não-zero por fonte no Dry-run
+- [ ] Validar o Dry-run autenticado ou documentar bloqueio de sessão
+- [ ] Executar testes, TypeScript, build e publicar checkpoint
+
+## Acesso Dev Mode no preview — 26/08/2026
+- [ ] Auditar fluxo OAuth, criação de sessão e guards de produção
+- [ ] Construir redirect_uri dinamicamente a partir do origin/forwarded host seguro
+- [ ] Adicionar login Admin Dev Mode somente fora de produção, sem segredo no cliente
+- [ ] Garantir mocks padrão no preview e fallback SANDBOX_RESTRICTED por fonte
+- [ ] Executar login Dev Mode e Dry-run autenticado no preview
+- [ ] Validar testes, TypeScript, build e publicar checkpoint
+
+## Login Dev Mode e origem pública do preview — 26/08/2026
+- [x] Auditar origem pública injetada, callback OAuth e criação de sessão
+- [x] Usar a URL pública exata do preview para redirect_uri quando disponível
+- [x] Adicionar rota de sessão Dev Mode somente em NODE_ENV não produtivo
+- [x] Adicionar botão Entrar como Admin (Dev Mode) na tela de sessão expirada
+- [x] Reiniciar servidor e confirmar acesso real ao painel Admin
+- [x] Validar testes, TypeScript, build e publicar checkpoint
