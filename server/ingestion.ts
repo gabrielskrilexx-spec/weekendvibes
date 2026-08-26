@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { invokeLLM } from "./_core/llm";
 import { assertEventDateIsCurrentOrFuture, getIngestionPayloadCache, listActiveLocationAliasValues, saveEvent, saveIngestionPayloadCache } from "./db";
 import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
+import { fetchExternal, readExternalBody } from "./external-fetch";
 
 const DEFAULT_SOURCE_URLS = [
   "https://articket.com.br/e/6784/plants-happy-hour",
@@ -270,7 +271,7 @@ function parseBlackPassCatalogPayload(payload: unknown): BlackPassCatalogEvent[]
 }
 
 async function fetchBlackPassCatalog(): Promise<BlackPassCatalogEvent[]> {
-  const response = await fetch(BLACKPASS_EVENTS_API, { headers: { accept: "application/json", "user-agent": "WeekendVibesBot/1.0 (+public-event-ingestion)" }, signal: AbortSignal.timeout(12_000) });
+  const response = await fetchExternal(BLACKPASS_EVENTS_API, { headers: { accept: "application/json" } }, 12_000);
   if (!response.ok) throw createFetchError(`API pública do Black Pass respondeu ${response.status}`, response.status);
   return parseBlackPassCatalogPayload(await response.json() as unknown);
 }
@@ -355,12 +356,9 @@ export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCac
   const slug = getIngresseSlug(url);
   if (!slug) throw createFetchError(`URL Ingresse sem slug de evento: ${url}`);
   try {
-    const response = await fetch(`${INGRESSE_SITE_API}/${encodeURIComponent(slug)}`, {
-      headers: { accept: "application/json", "user-agent": "WeekendVibesBot/1.0 (+public-event-ingestion)" },
-      signal: AbortSignal.timeout(12_000),
-    });
+    const response = await fetchExternal(`${INGRESSE_SITE_API}/${encodeURIComponent(slug)}`, { headers: { accept: "application/json" } }, 12_000, true);
     if (!response.ok) throw createFetchError(`API pública do Ingresse respondeu ${response.status}`, response.status);
-    const payload = await response.json() as Record<string, unknown>;
+    const payload = JSON.parse(await readExternalBody(response)) as Record<string, unknown>;
     const place = payload.place && typeof payload.place === "object" ? payload.place as Record<string, unknown> : {};
     const session = Array.isArray(payload.sessions) && payload.sessions[0] && typeof payload.sessions[0] === "object" ? payload.sessions[0] as Record<string, unknown> : {};
     const location = place.location && typeof place.location === "object" ? place.location as Record<string, unknown> : {};
@@ -495,9 +493,10 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
       },
       signal: AbortSignal.timeout(isMrIngressosEventUrl(url) ? MR_INGRESSOS_FETCH_TIMEOUT_MS : PUBLIC_FETCH_TIMEOUT_MS),
     };
-    const response = isMrIngressosEventUrl(url) ? await fetchMrIngressosWithRetry(url, requestInit) : await fetch(url, requestInit);
-    if (!response.ok) throw createFetchError(`Fonte pública respondeu ${response.status}`, response.status);
-    const html = await response.text();
+    const response = isMrIngressosEventUrl(url)
+      ? await fetchMrIngressosWithRetry(url, requestInit, (targetUrl: string | URL | Request, targetInit?: RequestInit) => fetchExternal(targetUrl instanceof Request ? targetUrl.url : String(targetUrl), targetInit ?? {}, MR_INGRESSOS_FETCH_TIMEOUT_MS))
+      : await fetchExternal(url, requestInit, PUBLIC_FETCH_TIMEOUT_MS);
+    const html = await readExternalBody(response);
     const imageMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
     const text = html
       .replace(/<script[\s\S]*?<\/script>/gi, " ")

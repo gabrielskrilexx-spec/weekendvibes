@@ -1752,3 +1752,11 @@
 - [x] Exibir resumo final com as três contagens exatas
 - [x] Cobrir retry, timeout e resumo com testes automatizados
 - [x] Validar TypeScript, Vitest, build e publicar checkpoint
+
+## Blindagem de proxy e fetch externo — 26/08/2026
+- [x] Mapear handlers de proxy, fetchers e adaptadores Instagram/Ingresse/Blacktag
+- [x] Normalizar respostas HTTP, HTML de erro e bloqueios anti-bot em JSON sanitizado
+- [x] Adicionar cabeçalhos padrão e captura soberana de DNS, timeout e conexão
+- [x] Integrar isolamento por fonte no Dry-run e na ingestão Instagram
+- [x] Testar respostas 403/502, HTML inválido, rede indisponível e duração não-zero
+- [x] Validar preview, TypeScript, Vitest, build e publicar checkpoint

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { INSTAGRAM_AGENDA_SOURCE_TYPE, listActiveLocationAliasValues, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent } from "./db";
+import { fetchExternal, readExternalBody } from "./external-fetch";
 import { containsTargetVenue } from "./ingestion";
 import { parseMetaBusinessDiscovery } from "./contracts/external";
 import { resolveRegionalCoordinates } from "./geocoding";
@@ -383,8 +384,8 @@ async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId:
     }
     const fields = `business_discovery.username(${target.username}){username,media.limit(25){id,caption,timestamp,permalink,media_url,media_type}}`;
     const url = `${META_GRAPH_BASE_URL}/${accountId}?${new URLSearchParams({ fields, access_token: token }).toString()}`;
-    const response = await fetch(url, { headers: { Accept: "application/json" } });
-    const responseBody = await response.text();
+    const response = await fetchExternal(url, { headers: { Accept: "application/json" } }, 12_000, true);
+    const responseBody = await readExternalBody(response);
     let parsedBody: unknown = null;
     let parsed = false;
     try { parsedBody = JSON.parse(responseBody); parsed = true; } catch { /* resposta não JSON */ }
