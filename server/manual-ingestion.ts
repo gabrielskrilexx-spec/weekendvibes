@@ -121,21 +121,37 @@ export function getIngestionChunkSources() {
   return Array.from(new Set([...publicSources, "instagram"]));
 }
 
+const CHUNK_TIMEOUT_MS = 8_000;
+
+export async function withChunkTimeout<T>(work: Promise<T>, timeoutMs = CHUNK_TIMEOUT_MS): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Tempo limite de 8 segundos excedido para esta fonte.")), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function runIngestionSourceChunk(input: { sourceKey: string; dryRun?: boolean }) {
   const sourceKey = input.sourceKey.trim();
   if (sourceKey === "instagram") {
     if (input.dryRun) {
-      return { sourceKey, dryRun: true, result: await runInstagramPipeline({ dryRun: true }) };
+      return { sourceKey, dryRun: true, result: await withChunkTimeout(runInstagramPipeline({ dryRun: true })) };
     }
-    return { sourceKey, dryRun: false, result: await runInstagramAgendaStep({ archive: false, trigger: "manual" }) };
+    return { sourceKey, dryRun: false, result: await withChunkTimeout(runInstagramAgendaStep({ archive: false, trigger: "manual" })) };
   }
   if (!/^public:[a-z0-9_-]+$/.test(sourceKey)) throw new Error("Fonte de ingestão inválida.");
   if (input.dryRun) {
     const { runIngestionPipeline } = await import("./ingestion");
-    const result = await runIngestionPipeline({ dryRun: true, sourceKey });
+    const result = await withChunkTimeout(runIngestionPipeline({ dryRun: true, sourceKey }));
     return { sourceKey, dryRun: true, result };
   }
-  return { sourceKey, dryRun: false, result: await runPublicAgendaStep({ archive: false, sourceKey, trigger: "manual" }) };
+  return { sourceKey, dryRun: false, result: await withChunkTimeout(runPublicAgendaStep({ archive: false, sourceKey, trigger: "manual" })) };
 }
 
 function messageForProgress(error: unknown) {

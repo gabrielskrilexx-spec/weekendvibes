@@ -1737,3 +1737,11 @@
 - [x] Corrigir sincronização e limpeza dos testes sem mascarar falhas
 - [x] Validar suíte completa, TypeScript e build
 - [x] Publicar checkpoint da correção
+
+## Resiliência de rede por chunk — 26/08/2026
+- [x] Aplicar timeout rígido de 8 segundos ao processamento individual de cada chunk
+- [x] Retornar fallback sanitizado em timeout sem manter conexão pendurada
+- [x] Implementar até duas tentativas no cliente somente para falhas de rede
+- [x] Marcar chunk persistentemente falho como Falha de Conexão e seguir para o próximo
+- [x] Adicionar testes para timeout, retry e continuidade do loop
+- [x] Validar preview, TypeScript, Vitest, build e publicar checkpoint

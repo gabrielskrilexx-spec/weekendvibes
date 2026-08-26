@@ -29,7 +29,25 @@ const sourceLabels: Record<string, string> = {
 
 const labelForSource = (sourceKey: string) =>
   sourceLabels[sourceKey] ?? sourceKey.replace(/^public:/, "");
-const numberValue = (value: unknown) =>
+function isChunkNetworkError(error: unknown) {
+  const message = String(error instanceof Error ? error.message : error ?? "").toLowerCase();
+  return /failed to fetch|network|fetch|timeout|timed out|gateway|502|503|504|econn|socket|transport/.test(message);
+}
+
+async function retryChunkNetwork<T>(work: () => Promise<T>, maxRetries = 2) {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await work();
+    } catch (error) {
+      if (!isChunkNetworkError(error) || attempt >= maxRetries) throw error;
+      attempt += 1;
+      await new Promise(resolve => setTimeout(resolve, 150 * attempt));
+    }
+  }
+}
+
+const formatMetric = (value: unknown) =>
   Number.isFinite(Number(value)) ? Number(value) : 0;
 type DryRunReport = { dryRun: true; startedAt: string; finishedAt: string; durationMs: number; totals: { read: number; filtered: number; persistable: number; duplicates: number; errors: number }; sources: Array<{ routine: "public-agenda" | "instagram-agenda"; sourceKey: string; durationMs: number; medianDurationMs: number; p95DurationMs: number; read: number; filtered: number; persistable: number; duplicates: number; errors: Array<{ sourceUrl?: string; status: number | null; message: string }>; rejectionReasons: Record<string, number> }> };
 
@@ -93,9 +111,13 @@ export default function AdminDryRunPanel() {
       try {
         for (let index = 0; index < sources.length; index += 1) {
           const sourceKey = sources[index];
-          const result = await runSource!.mutateAsync({ sourceKey, dryRun: true });
-          const errors = result.ok ? result.errors.map((message: string) => ({ status: null, message })) : [{ status: null, message: result.message }];
-          sourceReports.push({ routine: sourceKey === "instagram" ? "instagram-agenda" : "public-agenda", sourceKey, durationMs: result.durationMs, medianDurationMs: result.durationMs, p95DurationMs: result.durationMs, read: result.ok ? result.read : 0, filtered: result.ok ? result.ignored : 0, persistable: 0, duplicates: 0, errors, rejectionReasons: result.ok && result.ignored > 0 ? { filtered: result.ignored } : {} });
+          try {
+            const result = await retryChunkNetwork(() => runSource!.mutateAsync({ sourceKey, dryRun: true }));
+            const errors = result.ok ? result.errors.map((message: string) => ({ status: null, message })) : [{ status: null, message: result.message ?? "Falha sanitizada na fonte." }];
+            sourceReports.push({ routine: sourceKey === "instagram" ? "instagram-agenda" : "public-agenda", sourceKey, durationMs: result.durationMs, medianDurationMs: result.durationMs, p95DurationMs: result.durationMs, read: result.ok ? result.read : 0, filtered: result.ok ? result.ignored : 0, persistable: 0, duplicates: 0, errors, rejectionReasons: result.ok && result.ignored > 0 ? { filtered: result.ignored } : {} });
+          } catch (error) {
+            sourceReports.push({ routine: sourceKey === "instagram" ? "instagram-agenda" : "public-agenda", sourceKey, durationMs: 0, medianDurationMs: 0, p95DurationMs: 0, read: 0, filtered: 0, persistable: 0, duplicates: 0, errors: [{ status: null, message: isChunkNetworkError(error) ? "Falha de Conexão após 2 tentativas." : friendlyAdminErrorMessage(error, "Falha sanitizada na fonte.") }], rejectionReasons: { fetchFailed: 1 } });
+          }
         }
         const totals = sourceReports.reduce((acc, source) => ({ read: acc.read + source.read, filtered: acc.filtered + source.filtered, persistable: 0, duplicates: acc.duplicates + source.duplicates, errors: acc.errors + source.errors.length }), { read: 0, filtered: 0, persistable: 0, duplicates: 0, errors: 0 });
         setLocalReport({ dryRun: true, startedAt, finishedAt: new Date().toISOString(), durationMs: Date.now() - Date.parse(startedAt), totals, sources: sourceReports });
@@ -173,11 +195,11 @@ export default function AdminDryRunPanel() {
         <div aria-live="polite" className="mt-6 space-y-5">
           <div className="grid gap-3 sm:grid-cols-5">
             {[
-              ["Lidos", numberValue(report.totals.read)],
-              ["Filtrados", numberValue(report.totals.filtered)],
-              ["Seriam persistidos", numberValue(report.totals.persistable)],
-              ["Duplicidades", numberValue(report.totals.duplicates)],
-              ["Erros", numberValue(report.totals.errors)],
+              ["Lidos", formatMetric(report.totals.read)],
+              ["Filtrados", formatMetric(report.totals.filtered)],
+              ["Seriam persistidos", formatMetric(report.totals.persistable)],
+              ["Duplicidades", formatMetric(report.totals.duplicates)],
+              ["Erros", formatMetric(report.totals.errors)],
             ].map(([label, value]) => (
               <div
                 key={String(label)}
@@ -192,7 +214,7 @@ export default function AdminDryRunPanel() {
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
             <CheckCircle2 size={15} className="text-emerald-300" /> Simulação
-            concluída sem persistência · {numberValue(report.durationMs)} ms ·{" "}
+            concluída sem persistência · {formatMetric(report.durationMs)} ms ·{" "}
             {new Date(report.finishedAt).toLocaleString("pt-BR", {
               timeZone: "America/Sao_Paulo",
             })}
@@ -233,43 +255,43 @@ export default function AdminDryRunPanel() {
                     <div>
                       <p className="text-zinc-500">Lidos</p>
                       <p className="font-black text-white">
-                        {numberValue(source.read)}
+                        {formatMetric(source.read)}
                       </p>
                     </div>
                     <div>
                       <p className="text-zinc-500">Filtrados</p>
                       <p className="font-black text-white">
-                        {numberValue(source.filtered)}
+                        {formatMetric(source.filtered)}
                       </p>
                     </div>
                     <div>
                       <p className="text-zinc-500">Persistíveis</p>
                       <p className="font-black text-cyan-200">
-                        {numberValue(source.persistable)}
+                        {formatMetric(source.persistable)}
                       </p>
                     </div>
                     <div>
                       <p className="text-zinc-500">Duplicados</p>
                       <p className="font-black text-white">
-                        {numberValue(source.duplicates)}
+                        {formatMetric(source.duplicates)}
                       </p>
                     </div>
                     <div>
                       <p className="text-zinc-500">Duração</p>
                       <p className="font-black text-cyan-200">
-                        {numberValue(source.durationMs)} ms
+                        {formatMetric(source.durationMs)} ms
                       </p>
                     </div>
                     <div>
                       <p className="text-zinc-500">Mediana</p>
                       <p className="font-black text-white">
-                        {numberValue(source.medianDurationMs)} ms
+                        {formatMetric(source.medianDurationMs)} ms
                       </p>
                     </div>
                     <div>
                       <p className="text-zinc-500">P95</p>
                       <p className="font-black text-white">
-                        {numberValue(source.p95DurationMs)} ms
+                        {formatMetric(source.p95DurationMs)} ms
                       </p>
                     </div>
                   </div>

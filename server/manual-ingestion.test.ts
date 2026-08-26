@@ -17,7 +17,13 @@ vi.mock("./_core/notification", () => ({ notifyOwner: vi.fn() }));
 vi.mock("./_core/heartbeat", () => ({ listHeartbeatJobs: mocks.listHeartbeatJobs }));
 vi.mock("./ingestion-reports", () => ({ startIngestionRun: mocks.startIngestionRun, finishIngestionRun: mocks.finishIngestionRun }));
 
-import { getNextWednesdayExecution, getWednesdayRoutineStatus, runWednesdayRoutineNow } from "./manual-ingestion";
+import { getNextWednesdayExecution, getWednesdayRoutineStatus, runWednesdayRoutineNow, withChunkTimeout } from "./manual-ingestion";
+
+describe("chunk timeout", () => {
+  it("falha rápido quando uma fonte excede o limite configurado", async () => {
+    await expect(withChunkTimeout(new Promise(resolve => setTimeout(resolve, 50)), 5)).rejects.toThrow("Tempo limite de 8 segundos excedido");
+  });
+});
 
 describe("manual Wednesday routine", () => {
   beforeEach(() => {

@@ -53,6 +53,24 @@ const statusTone = (status: string) =>
         ? "bg-orange-300"
         : "bg-red-300";
 
+export function isChunkNetworkError(error: unknown) {
+  const message = String(error instanceof Error ? error.message : error ?? "").toLowerCase();
+  return /failed to fetch|network|fetch|timeout|timed out|gateway|502|503|504|econn|socket|transport/.test(message);
+}
+
+export async function retryChunkNetwork<T>(work: () => Promise<T>, maxRetries = 2, delayMs = 150) {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await work();
+    } catch (error) {
+      if (!isChunkNetworkError(error) || attempt >= maxRetries) throw error;
+      attempt += 1;
+      await new Promise(resolve => setTimeout(resolve, delayMs * attempt));
+    }
+  }
+}
+
 export default function AdminRoutinePanel() {
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
@@ -78,7 +96,7 @@ export default function AdminRoutinePanel() {
   const sourcesProcedure = (trpc.adminRoutine as unknown as { sources?: { useQuery: typeof trpc.adminRoutine.status.useQuery } }).sources;
   const runSourceProcedure = (trpc.adminRoutine as unknown as { runSource?: { useMutation: typeof trpc.adminRoutine.runNow.useMutation } }).runSource;
   const chunkSources = (sourcesProcedure ? sourcesProcedure.useQuery() : { data: undefined }) as { data?: { sources?: string[] } };
-  const runSource = (runSourceProcedure ? runSourceProcedure.useMutation() : { isPending: false, mutateAsync: undefined }) as { isPending: boolean; mutateAsync?: (input: { sourceKey: string; dryRun: boolean }) => Promise<{ ok: boolean }> };
+  const runSource = (runSourceProcedure ? runSourceProcedure.useMutation() : { isPending: false, mutateAsync: undefined }) as { isPending: boolean; mutateAsync?: (input: { sourceKey: string; dryRun: boolean }) => Promise<{ ok: boolean; message?: string }> };
   const [chunkRunning, setChunkRunning] = useState(false);
   const [chunkIndex, setChunkIndex] = useState(0);
   useEffect(() => {
@@ -129,10 +147,22 @@ export default function AdminRoutinePanel() {
           const sourceKey = sources[index];
           setChunkIndex(index);
           setFeedback({ type: "success", text: `Processando fonte ${index + 1} de ${sources.length}: ${sourceKey}.` });
-          const result = await runSource.mutateAsync!({ sourceKey, dryRun: false });
-          if (result.ok === false) failures += 1;
+          let result: { ok: boolean; message?: string } | undefined;
+          let chunkError: unknown;
+          try {
+            result = await retryChunkNetwork(() => runSource.mutateAsync!({ sourceKey, dryRun: false }));
+          } catch (error) {
+            chunkError = error;
+          }
+          if (chunkError || result?.ok === false) {
+            failures += 1;
+            const message = chunkError
+              ? "Falha de Conexão após 2 tentativas; seguindo para a próxima fonte."
+              : (result?.message ?? "A fonte retornou uma falha sanitizada.");
+            setFeedback({ type: "error", text: `${sourceKey}: ${message}` });
+          }
           completed += 1;
-          await status.refetch();
+          try { await status.refetch(); } catch { /* polling não deve interromper os chunks */ }
         }
         const text = failures > 0 ? `Ingestão concluída parcialmente: ${failures} fonte(s) falharam.` : `Ingestão concluída: ${completed} fonte(s) processada(s).`;
         setFeedback({ type: failures > 0 ? "error" : "success", text });

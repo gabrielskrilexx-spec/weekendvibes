@@ -1,7 +1,7 @@
 import React from "react";
 import { act, create } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
-import AdminRoutinePanel from "./AdminRoutinePanel";
+import AdminRoutinePanel, { isChunkNetworkError, retryChunkNetwork } from "./AdminRoutinePanel";
 
 let statusState: {
   data?: {
@@ -69,6 +69,33 @@ vi.mock("@/lib/trpc", () => ({
     },
   },
 }));
+
+describe("chunk network resilience", () => {
+  it("classifica falhas de transporte sem tratar erros de domínio como rede", () => {
+    expect(isChunkNetworkError(new Error("Failed to fetch"))).toBe(true);
+    expect(isChunkNetworkError(new Error("Fonte inválida"))).toBe(false);
+  });
+
+  it("repete até duas vezes e retorna o sucesso do chunk", async () => {
+    let attempts = 0;
+    const result = await retryChunkNetwork(async () => {
+      attempts += 1;
+      if (attempts < 3) throw new Error("gateway timeout");
+      return "ok";
+    }, 2, 0);
+    expect(result).toBe("ok");
+    expect(attempts).toBe(3);
+  });
+
+  it("encerra após duas novas tentativas quando a rede continua indisponível", async () => {
+    let attempts = 0;
+    await expect(retryChunkNetwork(async () => {
+      attempts += 1;
+      throw new Error("Failed to fetch");
+    }, 2, 0)).rejects.toThrow("Failed to fetch");
+    expect(attempts).toBe(3);
+  });
+});
 
 describe("AdminRoutinePanel", () => {
   it("exibe loading e erro da consulta do schedule", async () => {
