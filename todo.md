@@ -1685,3 +1685,13 @@
 - [x] Adicionar regressões para respostas de sucesso e falha dos dois endpoints
 - [x] Validar runtime, TypeScript, Vitest, build e smoke do preview (84 arquivos/312 testes Vitest, TypeScript, build e E2E aprovados)
 - [x] Salvar checkpoint e publicar a correção
+
+## Sessão Admin, 403 amigável e logs em tempo real
+- [x] Verificar a sessão administrativa disponível no preview e a rota de login
+- [x] Repetir Dry-run e Execução Manual com sessão Admin autenticada (sessão confirmada; Dry-run retornou fallback amigável; Execução Manual excedeu o timeout do navegador e não apareceu no histórico)
+- [x] Adicionar redirecionamento ou modal amigável para respostas 403 nas execuções
+- [x] Definir contrato sanitizado de logs operacionais e consulta protegida
+- [x] Implementar aba de logs em tempo real com atualização incremental e estados vazios/erro
+- [x] Cobrir autenticação, 403, logs e interações com testes Vitest/Playwright
+- [x] Validar TypeScript, suíte Vitest, build e responsividade (85 arquivos/314 testes Vitest, TypeScript, build e E2E aprovados)
+- [x] Salvar checkpoint e publicar a alteração

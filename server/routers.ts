@@ -33,6 +33,7 @@ import {
 } from "./manual-ingestion";
 import {
   listIngestionReport,
+  listIngestionLogs,
   reprocessIngestionSource,
   sanitizeReprocessErrorForTest,
 } from "./ingestion-reports";
@@ -127,6 +128,26 @@ const eventInput = z.object({
 });
 
 const adminOnly = adminProcedure;
+const ingestionLogsOutput = z
+  .object({
+    updatedAt: z.string(),
+    isLive: z.boolean(),
+    logs: z.array(
+      z
+        .object({
+          id: z.string(),
+          runId: z.string(),
+          kind: z.enum(["heartbeat", "ingestion", "retry", "alert"]),
+          timestamp: z.string(),
+          label: z.string(),
+          status: z.string(),
+          sourceKey: z.string().nullable(),
+          message: z.string().nullable(),
+        })
+        .strict()
+    ),
+  })
+  .strict();
 const adminRoutineSuccessOutput = z
   .object({
     ok: z.literal(true),
@@ -391,6 +412,14 @@ export const appRouter = router({
       }),
   }),
   ingestionReports: router({
+    logs: adminOnly
+      .input(
+        z
+          .object({ limit: z.number().int().min(10).max(120).optional() })
+          .optional()
+      )
+      .output(ingestionLogsOutput)
+      .query(({ input }) => listIngestionLogs(input?.limit ?? 80)),
     summary: adminOnly
       .input(
         z

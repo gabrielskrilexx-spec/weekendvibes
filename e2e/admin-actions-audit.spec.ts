@@ -238,6 +238,8 @@ function valueForProcedure(procedure: string) {
     };
   }
   if (procedure === "ingestionReports.summary") return report;
+  if (procedure === "ingestionReports.logs")
+    return { updatedAt: "2026-08-25T15:00:00.000Z", isLive: true, logs: [] };
   if (procedure === "ingestionReports.geocoding")
     return { pending: 0, processing: 0, succeeded: 4, failed: 0 };
   if (procedure === "circuitBreaker.statuses") return [];

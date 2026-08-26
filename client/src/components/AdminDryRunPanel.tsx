@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -9,7 +10,11 @@ import {
 } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { friendlyAdminErrorMessage } from "@/lib/adminFeedback";
+import {
+  friendlyAdminErrorMessage,
+  isAdminSessionError,
+} from "@/lib/adminFeedback";
+import AdminAuthRecoveryDialog from "@/components/AdminAuthRecoveryDialog";
 
 const sourceLabels: Record<string, string> = {
   instagram: "Instagram",
@@ -60,7 +65,12 @@ function DryRunLoadingSkeleton() {
 }
 
 export default function AdminDryRunPanel() {
-  const dryRun = trpc.ingestionReports.dryRun.useMutation();
+  const [authRecoveryOpen, setAuthRecoveryOpen] = useState(false);
+  const dryRun = trpc.ingestionReports.dryRun.useMutation({
+    onError: error => {
+      if (isAdminSessionError(error)) setAuthRecoveryOpen(true);
+    },
+  });
   const report = dryRun.data?.dryRun ? dryRun.data : undefined;
   const failure = dryRun.data?.dryRun === false ? dryRun.data : undefined;
   const run = () => dryRun.mutate();
@@ -75,10 +85,15 @@ export default function AdminDryRunPanel() {
   }, [dryRun.isError, dryRun.error]);
 
   return (
-    <section
-      aria-labelledby="dry-run-heading"
-      className="mt-6 rounded-3xl border border-cyan-300/20 bg-cyan-300/[0.04] p-5 sm:p-7"
-    >
+    <>
+      <AdminAuthRecoveryDialog
+        open={authRecoveryOpen}
+        onOpenChange={setAuthRecoveryOpen}
+      />
+      <section
+        aria-labelledby="dry-run-heading"
+        className="mt-6 rounded-3xl border border-cyan-300/20 bg-cyan-300/[0.04] p-5 sm:p-7"
+      >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-cyan-200">
@@ -262,6 +277,7 @@ export default function AdminDryRunPanel() {
           )}
         </div>
       )}
-    </section>
+      </section>
+    </>
   );
 }

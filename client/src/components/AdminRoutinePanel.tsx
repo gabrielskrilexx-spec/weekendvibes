@@ -10,7 +10,11 @@ import {
 } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { friendlyAdminErrorMessage } from "@/lib/adminFeedback";
+import {
+  friendlyAdminErrorMessage,
+  isAdminSessionError,
+} from "@/lib/adminFeedback";
+import AdminAuthRecoveryDialog from "@/components/AdminAuthRecoveryDialog";
 
 const formatExecution = (value?: string | null) =>
   value
@@ -54,6 +58,7 @@ export default function AdminRoutinePanel() {
     type: "success" | "error";
     text: string;
   } | null>(null);
+  const [authRecoveryOpen, setAuthRecoveryOpen] = useState(false);
   const status = trpc.adminRoutine.status.useQuery(undefined, {
     refetchInterval: 1_000,
   });
@@ -77,6 +82,7 @@ export default function AdminRoutinePanel() {
         "A rotina não pôde ser concluída."
       );
       setFeedback({ type: "error", text });
+      if (isAdminSessionError(error)) setAuthRecoveryOpen(true);
       sonnerToast.error("Falha na execução", { description: text });
     },
   });
@@ -86,6 +92,7 @@ export default function AdminRoutinePanel() {
         status.error,
         "Não foi possível consultar o schedule."
       );
+      if (isAdminSessionError(status.error)) setAuthRecoveryOpen(true);
       sonnerToast.error("Falha na comunicação", { description: message });
     }
   }, [status.isError, status.error]);
@@ -120,6 +127,10 @@ export default function AdminRoutinePanel() {
       className="mt-6 rounded-3xl border border-orange-300/20 bg-gradient-to-br from-orange-300/10 via-white/[0.04] to-fuchsia-400/10 p-5 sm:p-7"
       aria-labelledby="routine-title"
     >
+      <AdminAuthRecoveryDialog
+        open={authRecoveryOpen}
+        onOpenChange={setAuthRecoveryOpen}
+      />
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-2 text-orange-200">

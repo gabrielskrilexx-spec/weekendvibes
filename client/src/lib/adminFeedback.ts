@@ -35,3 +35,16 @@ export function friendlyAdminErrorMessage(
 export function toastDescription(error: unknown, fallback: string): string {
   return friendlyAdminErrorMessage(error, fallback).slice(0, 240);
 }
+
+export function isAdminSessionError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const data = (error as { data?: unknown }).data;
+  const code =
+    data && typeof data === "object" && "code" in data
+      ? String((data as { code?: unknown }).code ?? "")
+      : "";
+  const raw = error instanceof Error ? error.message : String(error);
+  return /UNAUTHORIZED|FORBIDDEN|401|403|unauthorized|forbidden|sessão|session|login|permission|permissão/i.test(
+    `${code} ${raw}`
+  );
+}
