@@ -1858,3 +1858,11 @@
 - [x] Registrar tentativa bloqueada no endpoint Dev Mode somente em produção
 - [x] Adicionar teste Vitest garantindo IP/timestamp e ausência de dados sensíveis
 - [x] Executar TypeScript, suíte focada, build e publicar checkpoint
+
+## Saneamento operacional e saúde das fontes — 26/08/2026
+- [x] Recuperar e revisar alertas acumulados no painel
+- [x] Marcar/arquivar pendências legadas de testes em lote, preservando histórico — 11 resolvidos, sem exclusão do histórico
+- [x] Revisar gatilho crítico 403/502/504, janela de deduplicação de 15 min e cooldown de 24 h
+- [x] Auditar taxa de sucesso, latência média, mediana, P95 e categorias de erro por fonte — sem métricas oficiais recentes disponíveis no recorte atual; nenhum número foi fabricado
+- [x] Confirmar zero pendências legadas e produzir resumo das fontes ativas
+- [x] Executar testes, TypeScript, build e publicar checkpoint

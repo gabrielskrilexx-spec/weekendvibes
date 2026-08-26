@@ -82,7 +82,28 @@ describe("blocked source alert", () => {
     await expect(notifyRepeatedBlockedSourceWebhook(input, fetcher)).resolves.toMatchObject({ sent: true, count: 3 });
     await expect(notifyRepeatedBlockedSourceWebhook(input, fetcher)).resolves.toMatchObject({ sent: false });
     expect(fetcher).toHaveBeenCalledOnce();
-    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({ alert: "scraping_blocked", sourceKey: "blacktag", status: 403, category: "anti_bot_or_proxy", consecutiveFailures: 3 });
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({ alert: "scraping_blocked", sourceKey: "blacktag", status: 403, category: "anti_bot_or_waf", consecutiveFailures: 3 });
+    if (previous === undefined) delete process.env.CRITICAL_ALERT_WEBHOOK_URL; else process.env.CRITICAL_ALERT_WEBHOOK_URL = previous;
+  });
+
+  it("aceita 504, deduplica durante o cooldown e permite novo alerta após 24 horas", async () => {
+    vi.useFakeTimers();
+    resetBlockedSourceFailureCountersForTest();
+    const previous = process.env.CRITICAL_ALERT_WEBHOOK_URL;
+    process.env.CRITICAL_ALERT_WEBHOOK_URL = "https://hooks.example.test/critical";
+    const fetcher = vi.fn().mockResolvedValue({ ok: true });
+    const input = { sourceKey: "mringressos", routine: "public-agenda", status: 504 as const, message: "Gateway timeout" };
+    await notifyRepeatedBlockedSourceWebhook(input, fetcher);
+    await notifyRepeatedBlockedSourceWebhook(input, fetcher);
+    await expect(notifyRepeatedBlockedSourceWebhook(input, fetcher)).resolves.toMatchObject({ sent: true, count: 3 });
+    await expect(notifyRepeatedBlockedSourceWebhook(input, fetcher)).resolves.toMatchObject({ sent: false, skipped: true, count: 4 });
+    vi.advanceTimersByTime(24 * 60 * 60 * 1000 + 1);
+    await notifyRepeatedBlockedSourceWebhook(input, fetcher);
+    await notifyRepeatedBlockedSourceWebhook(input, fetcher);
+    await expect(notifyRepeatedBlockedSourceWebhook(input, fetcher)).resolves.toMatchObject({ sent: true, count: 3 });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({ status: 504, category: "proxy_gateway" });
+    vi.useRealTimers();
     if (previous === undefined) delete process.env.CRITICAL_ALERT_WEBHOOK_URL; else process.env.CRITICAL_ALERT_WEBHOOK_URL = previous;
   });
 });
