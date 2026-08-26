@@ -1697,29 +1697,29 @@
 - [x] Salvar checkpoint e publicar a alteração
 
 ## Logs filtráveis e Execução Manual assíncrona
-- [ ] Revisar orientação de background job para ambiente Autoscale e o contrato atual do run manual
-- [ ] Garantir criação imediata de ingestionRun em estado IN_PROGRESS/running com runId serializável
-- [ ] Desacoplar o processamento da ingestão em tarefa de segundo plano com atualização de progresso/status
-- [ ] Finalizar o run como COMPLETED/FAILED no modelo atual sem quebrar compatibilidade
-- [ ] Adicionar filtro por tipo de evento na aba de Logs em tempo real
-- [ ] Adicionar exportação CSV dos logs filtrados com nome de arquivo contextual
-- [ ] Focar/rolar para a aba de Logs após disparo manual e exibir toast de início
-- [ ] Cobrir background job, retorno sub-segundo, filtros, CSV e polling com Vitest/Playwright
-- [ ] Validar TypeScript, suíte Vitest, build e smoke
-- [ ] Salvar checkpoint e publicar a alteração
+- [x] Revisar orientação de background job para ambiente Autoscale e o contrato atual do run manual
+- [x] Garantir criação imediata de ingestionRun em estado IN_PROGRESS/running com runId serializável
+- [x] Desacoplar o processamento da ingestão em tarefa de segundo plano com atualização de progresso/status
+- [x] Finalizar o run como COMPLETED/FAILED no modelo atual sem quebrar compatibilidade
+- [x] Adicionar filtro por tipo de evento na aba de Logs em tempo real
+- [x] Adicionar exportação CSV dos logs filtrados com nome de arquivo contextual
+- [x] Focar/rolar para a aba de Logs após disparo manual e exibir toast de início
+- [x] Cobrir background job, retorno sub-segundo, filtros, CSV e polling com Vitest/Playwright
+- [x] Validar TypeScript, suíte Vitest, build e smoke
+- [x] Salvar checkpoint e publicar a alteração
 
 ## Chunking sequencial por fonte no Autoscale
-- [ ] Mapear as fontes/adaptadores e os contratos de ingestão real e dry-run
-- [ ] Definir estado acumulado do run, cursor/fonte atual e idempotência de retomada
-- [ ] Implementar endpoint HTTP curto para executar uma fonte por chamada
-- [ ] Implementar retorno parcial sanitizado e atualização persistida após cada fonte
-- [ ] Orquestrar chamadas sequenciais no painel para ingestão real e dry-run
-- [ ] Atualizar progresso, logs e tratamento de falhas por fonte no frontend
-- [ ] Adaptar o fallback agendado para fila/requisições sequenciais curtas
-- [ ] Adicionar filtro por tipo de evento e exportação CSV aos logs em tempo real
-- [ ] Criar testes Vitest/Playwright para chunking, retomada, filtros e exportação
-- [ ] Validar TypeScript, suíte Vitest, build, smoke e limites do Autoscale
-- [ ] Salvar checkpoint e publicar a alteração
+- [x] Mapear as fontes/adaptadores e os contratos de ingestão real e dry-run
+- [x] Definir estado acumulado do run, cursor/fonte atual e idempotência de retomada
+- [x] Implementar endpoint HTTP curto para executar uma fonte por chamada
+- [x] Implementar retorno parcial sanitizado e atualização persistida após cada fonte
+- [x] Orquestrar chamadas sequenciais no painel para ingestão real e dry-run
+- [x] Atualizar progresso, logs e tratamento de falhas por fonte no frontend
+- [x] Adaptar o fallback agendado para fila/requisições sequenciais curtas
+- [x] Adicionar filtro por tipo de evento e exportação CSV aos logs em tempo real
+- [x] Criar testes Vitest/Playwright para chunking, retomada, filtros e exportação
+- [x] Validar TypeScript, suíte Vitest, build, smoke e limites do Autoscale
+- [x] Salvar checkpoint e publicar a alteração
 
 ## Chunking sequencial e logs operacionais — 26/08/2026
 - [x] Expor lista de fontes oficiais como chunks independentes no router Admin
@@ -1728,5 +1728,5 @@
 - [x] Retornar métricas, duração e erros sanitizados por chunk
 - [x] Adicionar filtros por tipo, status e fonte na aba de Logs em tempo real
 - [x] Adicionar exportação CSV respeitando os filtros ativos
-- [ ] Concluir validação completa da suíte Vitest e build após estabilizar testes de integração do ambiente compartilhado
-- [ ] Salvar checkpoint da etapa de chunking sequencial
+- [x] Concluir validação completa da suíte Vitest e build após estabilizar testes de integração do ambiente compartilhado
+- [x] Salvar checkpoint da etapa de chunking sequencial
