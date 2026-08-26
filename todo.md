@@ -1852,3 +1852,9 @@
 - [x] Validar eliminação do botão Dev Mode no bundle produtivo
 - [x] Executar suíte Vitest, TypeScript e build
 - [x] Publicar checkpoint e relatório de segurança
+
+## Logging de tentativas Dev Mode em produção — 26/08/2026
+- [x] Auditar padrão de IP e timestamp usado pelos logs do servidor
+- [x] Registrar tentativa bloqueada no endpoint Dev Mode somente em produção
+- [x] Adicionar teste Vitest garantindo IP/timestamp e ausência de dados sensíveis
+- [x] Executar TypeScript, suíte focada, build e publicar checkpoint

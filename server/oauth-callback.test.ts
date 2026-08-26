@@ -81,18 +81,28 @@ describe("OAuth callback", () => {
     expect(mocks.createSessionToken).toHaveBeenCalled();
   });
 
-  it("recusa o login Dev Mode imediatamente em produção", async () => {
+  it("recusa o login Dev Mode imediatamente em produção e registra IP e timestamp", async () => {
     const previousNodeEnv = process.env.NODE_ENV;
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     process.env.NODE_ENV = "production";
     try {
       const handler = register("/api/auth/dev-login");
       const response = createResponse();
-      await handler?.({ query: { redirect_to: "/admin" }, headers: {} }, response);
+      await handler?.({ query: { redirect_to: "/admin", token: "secret" }, ip: "203.0.113.10", headers: {} }, response);
       expect(response.statusCode).toBe(404);
       expect(response.body).toEqual({ error: "not_found" });
       expect(mocks.upsertUser).not.toHaveBeenCalled();
       expect(mocks.createSessionToken).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith("[Security] Dev Mode access blocked in production", expect.objectContaining({
+        event: "dev_login_blocked_production",
+        ip: "203.0.113.10",
+        timestamp: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+      }));
+      const loggedPayload = warnSpy.mock.calls[0]?.[1] as Record<string, unknown>;
+      expect(loggedPayload).not.toHaveProperty("token");
+      expect(loggedPayload).not.toHaveProperty("redirect_to");
     } finally {
+      warnSpy.mockRestore();
       if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
       else process.env.NODE_ENV = previousNodeEnv;
     }

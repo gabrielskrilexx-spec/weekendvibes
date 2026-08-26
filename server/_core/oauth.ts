@@ -28,6 +28,11 @@ function oauthFailureDetails(error: unknown, stage: "exchange" | "user_info" | "
 export function registerOAuthRoutes(app: Express) {
   app.get("/api/auth/dev-login", async (req: Request, res: Response) => {
     if (process.env.NODE_ENV === "production") {
+      console.warn("[Security] Dev Mode access blocked in production", {
+        event: "dev_login_blocked_production",
+        ip: req.ip || "unknown",
+        timestamp: new Date().toISOString(),
+      });
       res.status(404).json({ error: "not_found" });
       return;
     }
