@@ -49,6 +49,18 @@ describe("security boundaries", () => {
     expect(rejected.headers["Access-Control-Allow-Origin"]).toBeUndefined();
   });
 
+  it("allows the forwarded public preview origin without allowing an unrelated origin", () => {
+    const middleware = createStrictCors();
+    const allowed = createResponse();
+    middleware({ method: "POST", protocol: "http", headers: { origin: "https://preview.example.manus.computer", "x-forwarded-host": "preview.example.manus.computer", "x-forwarded-proto": "https" } } as any, allowed as any, () => undefined);
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.headers["Access-Control-Allow-Origin"]).toBe("https://preview.example.manus.computer");
+
+    const rejected = createResponse();
+    middleware({ method: "POST", protocol: "http", headers: { origin: "https://evil.example", "x-forwarded-host": "preview.example.manus.computer", "x-forwarded-proto": "https" } } as any, rejected as any, () => undefined);
+    expect(rejected.statusCode).toBe(403);
+  });
+
   it("sets browser security headers and redacts internal errors", () => {
     const response = createResponse();
     applySecurityHeaders({ protocol: "https", headers: { "x-forwarded-proto": "https" } } as any, response as any);

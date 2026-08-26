@@ -1829,3 +1829,10 @@
 - [x] Adicionar botão Entrar como Admin (Dev Mode) na tela de sessão expirada
 - [x] Reiniciar servidor e confirmar acesso real ao painel Admin
 - [x] Validar testes, TypeScript, build e publicar checkpoint
+
+## Validação conjunta de acesso e Dry-run no preview — 26/08/2026
+- [x] Auditar o estado publicado do OAuth, Dev Mode e mocks de sandbox
+- [x] Confirmar redirect_uri pela origem pública e guard de produção
+- [x] Validar login Admin Dev Mode no domínio de preview
+- [x] Executar Dry-run autenticado e confirmar fallback mock por fonte — 5 fontes processadas, 6 lidos, 2 filtrados, 0 persistidos, 4 erros sanitizados
+- [x] Executar testes, TypeScript, build e publicar checkpoint

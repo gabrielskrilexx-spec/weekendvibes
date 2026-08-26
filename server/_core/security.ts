@@ -69,7 +69,9 @@ export function createStrictCors(): RequestHandler {
 
   return (req, res, next) => {
     const origin = req.headers.origin;
-    if (typeof origin === "string" && allowedOrigins.has(origin)) {
+    const forwardedOrigin = getForwardedOrigin(req);
+    const isSamePreviewOrigin = process.env.NODE_ENV !== "production" && forwardedOrigin === origin;
+    if (typeof origin === "string" && (allowedOrigins.has(origin) || isSamePreviewOrigin)) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Access-Control-Allow-Credentials", "true");
       res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
@@ -124,6 +126,29 @@ export function applySecurityHeaders(req: Request, res: Response): void {
   if (isProduction && isSecure) {
     res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   }
+}
+
+function getForwardedOrigin(req: Request): string | null {
+  const forwardedHost = firstForwardedValue(req.headers["x-forwarded-host"]);
+  const host = forwardedHost || (typeof req.headers.host === "string" ? req.headers.host : "");
+  if (!host) return null;
+  const forwardedProto = firstForwardedValue(req.headers["x-forwarded-proto"]);
+  const protocol = forwardedProto === "http" || forwardedProto === "https"
+    ? forwardedProto
+    : req.protocol === "http" || req.protocol === "https"
+      ? req.protocol
+      : null;
+  if (!protocol) return null;
+  try {
+    return new URL(`${protocol}://${host}`).origin;
+  } catch {
+    return null;
+  }
+}
+
+function firstForwardedValue(value: string | string[] | undefined): string | null {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return typeof candidate === "string" ? candidate.split(",", 1)[0]?.trim() || null : null;
 }
 
 function getOrigin(value: string | undefined): string | null {
