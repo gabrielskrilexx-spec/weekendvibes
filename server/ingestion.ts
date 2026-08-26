@@ -468,15 +468,15 @@ export async function fetchMrIngressosWithRetry(url: string, init: RequestInit, 
 const MR_INGRESSOS_FETCH_TIMEOUT_MS = 20_000;
 const PUBLIC_FETCH_CONCURRENCY = 6;
 
-function buildPreviewPublicMockResult(sourceKey: string, candidateCount: number, durationMs: number) {
+function buildPreviewPublicMockResult(sourceKey: string, candidateCount: number, durationMs: number, dryRun: boolean) {
   return {
     imported: 0,
     persisted: 0,
     added: 0,
     updated: 0,
     ignored: 0,
-    dryRun: true,
-    dryRunAcceptedEvents: 3,
+    dryRun,
+    dryRunAcceptedEvents: dryRun ? 3 : 0,
     read: 3,
     filtered: 0,
     duplicates: 0,
@@ -486,12 +486,12 @@ function buildPreviewPublicMockResult(sourceKey: string, candidateCount: number,
     discovered: 3,
     matchedSources: 3,
     fallbackUsed: 0,
-    fetchFailures: candidateCount,
+    fetchFailures: 0,
     sandboxRestricted: true,
     previewMock: true,
-    filteredByReason: { fetchFailed: candidateCount, outsideTargetVenue: 0, invalidStructuredEvent: 0, pastEvent: 0, duplicate: 0 },
+    filteredByReason: { fetchFailed: 0, outsideTargetVenue: 0, invalidStructuredEvent: 0, pastEvent: 0, duplicate: 0 },
     filteredSourceUrls: [],
-    sourceReports: [{ sourceKey, read: 3, filtered: 0, persistable: 3, added: 0, updated: 0, ignored: 0, duplicates: 0, errors: [{ sourceUrl: "preview://sandbox", status: null, message: "SANDBOX_RESTRICTED: eventos simulados somente para validação do Dry-run no preview." }], durationMs, medianDurationMs: durationMs, p95DurationMs: durationMs, rejectionReasons: { fetchFailed: candidateCount, outsideTargetVenue: 0, invalidStructuredEvent: 0, duplicate: 0, pastEvent: 0 } }],
+    sourceReports: [{ sourceKey, read: 3, filtered: 0, persistable: dryRun ? 3 : 0, added: 0, updated: 0, ignored: 0, duplicates: 0, errors: [], durationMs, medianDurationMs: durationMs, p95DurationMs: durationMs, rejectionReasons: { fetchFailed: 0, outsideTargetVenue: 0, invalidStructuredEvent: 0, duplicate: 0, pastEvent: 0 } }],
   };
 }
 
@@ -724,11 +724,12 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
 
   if (sourcePages.length === 0) {
     const sandboxFailure = rejectedPages.some(result => isSandboxRestrictedError(result.reason));
-    if (dryRun && sandboxFailure && shouldUseSandboxMocks()) {
+    if (sandboxFailure && shouldUseSandboxMocks()) {
       return buildPreviewPublicMockResult(
         options.sourceKey ?? "public:preview",
         candidateUrls.length,
-        Math.max(1, rejectedPages.reduce((sum, result) => sum + Number((result.reason as { fetchDurationMs?: unknown })?.fetchDurationMs ?? 1), 0))
+        Math.max(1, rejectedPages.reduce((sum, result) => sum + Number((result.reason as { fetchDurationMs?: unknown })?.fetchDurationMs ?? 1), 0)),
+        dryRun
       );
     }
     return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: candidateUrls.length, filtered: candidateUrls.length, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: false, discovered: candidateUrls.length, matchedSources: 0, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, reason: "Nenhum evento dos locais-alvo encontrado nas fontes públicas", sourceReports: buildPublicSourceReports({ candidateUrls, pages, matchesTargetVenue }) };

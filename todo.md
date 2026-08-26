@@ -1798,3 +1798,11 @@
 - [x] Adicionar toggle administrativo de mocks com proteção de produção
 - [x] Criar testes de métricas, alertas e toggle; validar TypeScript, Vitest e build
 - [x] Publicar checkpoint da implementação
+
+## Auditoria de ingestão manual parcial — 26/08/2026
+- [x] Consultar o run parcial e os logs persistidos das cinco fontes afetadas
+- [x] Confirmar categorias SANDBOX_RESTRICTED, HTTP 403 ou timeout por fonte
+- [x] Verificar o estado do toggle de mocks no sandbox
+- [x] Corrigir fallback manual para não marcar mocks permitidos como falha crítica
+- [x] Validar painel, persistência, testes e build
+- [x] Publicar checkpoint e entregar a lista das fontes

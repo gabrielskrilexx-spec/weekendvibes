@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   archiveExpiredSoldOutEvents: vi.fn().mockResolvedValue(4),
@@ -18,7 +18,8 @@ vi.mock("./geocoding", () => ({ processPendingGeocoding: mocks.processPendingGeo
 import { AGENDA_ROUTINE_COMPOSITION, normalizeTrackedStepResultForTest, runFullAgendaRoutine, runInstagramAgendaStep, runPublicAgendaStep, runScheduledWithRetriesForTest, isRetryableAgendaErrorForTest } from "./agenda-routine";
 
 describe("agenda routine composition", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => { vi.clearAllMocks(); vi.stubEnv("CRITICAL_ALERT_WEBHOOK_URL", ""); });
+  afterEach(() => vi.unstubAllEnvs());
 
   it("normaliza o resultado aninhado da fonte pública para persistência operacional", () => {
     expect(normalizeTrackedStepResultForTest({ archived: 0, result: { read: 60, filtered: 58, persisted: 1, duplicates: 1 } })).toEqual({ read: 60, filtered: 58, persisted: 1, duplicates: 1 });
