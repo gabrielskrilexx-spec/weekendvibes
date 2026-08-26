@@ -3,7 +3,49 @@ import { act, create } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 import AdminRoutinePanel from "./AdminRoutinePanel";
 
-let statusState: { data?: { nextExecutionAt: string; timezone: string; runMode: string; isRunning: boolean; progress?: { isRunning: boolean; runId: number | null; phase: string; step: number; totalSteps: number; message: string; error: string | null; sources: Array<{ sourceKey: string; status: string; read: number; added: number; updated: number; ignored: number }> } }; isLoading: boolean; isError: boolean } = { isLoading: true, isError: false };
+let statusState: {
+  data?: {
+    nextExecutionAt: string;
+    timezone: string;
+    runMode: string;
+    isRunning: boolean;
+    recentRuns?: Array<{
+      id: number;
+      routine: string;
+      trigger: string;
+      status: string;
+      startedAt: string;
+      finishedAt: string | null;
+      httpStatus: number | null;
+      durationMs: number | null;
+      expurgatedCount: number;
+      readCount: number;
+      processedCount: number;
+      persistedEventIds: number[];
+      dateFilterValidation: unknown;
+    }>;
+    progress?: {
+      isRunning: boolean;
+      runId: number | null;
+      phase: string;
+      step: number;
+      totalSteps: number;
+      message: string;
+      error: string | null;
+      sources: Array<{
+        sourceKey: string;
+        status: string;
+        read: number;
+        added: number;
+        updated: number;
+        ignored: number;
+      }>;
+    };
+  };
+  isLoading: boolean;
+  isError: boolean;
+  error?: Error;
+} = { isLoading: true, isError: false };
 let mutationState = { isPending: false };
 const mutate = vi.fn();
 const refetch = vi.fn();
@@ -12,7 +54,18 @@ vi.mock("@/lib/trpc", () => ({
   trpc: {
     adminRoutine: {
       status: { useQuery: () => ({ ...statusState, refetch }) },
-      runNow: { useMutation: (options: { onSuccess?: (result: unknown) => void; onError?: (error: Error) => void }) => ({ ...mutationState, mutate: (input?: unknown) => { mutate(input); options.onSuccess?.({ publicSources: { imported: 2 } }); } }) },
+      runNow: {
+        useMutation: (options: {
+          onSuccess?: (result: unknown) => void;
+          onError?: (error: Error) => void;
+        }) => ({
+          ...mutationState,
+          mutate: (input?: unknown) => {
+            mutate(input);
+            options.onSuccess?.({ publicSources: { imported: 2 } });
+          },
+        }),
+      },
     },
   },
 }));
@@ -21,18 +74,35 @@ describe("AdminRoutinePanel", () => {
   it("exibe loading e erro da consulta do schedule", async () => {
     statusState = { isLoading: true, isError: false };
     let loadingTree: ReturnType<typeof create>;
-    await act(async () => { loadingTree = create(<AdminRoutinePanel />); });
+    await act(async () => {
+      loadingTree = create(<AdminRoutinePanel />);
+    });
     expect(loadingTree!.toJSON()).toBeTruthy();
     statusState = { isLoading: false, isError: true };
     let errorTree: ReturnType<typeof create>;
-    await act(async () => { errorTree = create(<AdminRoutinePanel />); });
-    expect(JSON.stringify(errorTree!.toJSON())).toContain("Não foi possível consultar o schedule");
+    await act(async () => {
+      errorTree = create(<AdminRoutinePanel />);
+    });
+    expect(JSON.stringify(errorTree!.toJSON())).toContain(
+      "Não foi possível consultar o schedule"
+    );
   });
   it("exibe a próxima execução e mantém o botão desabilitado enquanto executa", async () => {
-    statusState = { isLoading: false, isError: false, data: { nextExecutionAt: "2026-08-18T13:00:00.000Z", timezone: "America/Sao_Paulo", runMode: "full_auto", isRunning: false } };
+    statusState = {
+      isLoading: false,
+      isError: false,
+      data: {
+        nextExecutionAt: "2026-08-18T13:00:00.000Z",
+        timezone: "America/Sao_Paulo",
+        runMode: "full_auto",
+        isRunning: false,
+      },
+    };
     mutationState = { isPending: true };
     let tree: ReturnType<typeof create>;
-    await act(async () => { tree = create(<AdminRoutinePanel />); });
+    await act(async () => {
+      tree = create(<AdminRoutinePanel />);
+    });
     const rendered = JSON.stringify(tree!.toJSON());
     expect(rendered).toContain("Próxima execução");
     expect(rendered).toContain("18 de agosto de 2026");
@@ -59,14 +129,30 @@ describe("AdminRoutinePanel", () => {
           message: "Coletando fontes públicas e Instagram.",
           error: null,
           sources: [
-            { sourceKey: "public", status: "running", read: 12, added: 1, updated: 2, ignored: 3 },
-            { sourceKey: "instagram", status: "pending", read: 0, added: 0, updated: 0, ignored: 0 },
+            {
+              sourceKey: "public",
+              status: "running",
+              read: 12,
+              added: 1,
+              updated: 2,
+              ignored: 3,
+            },
+            {
+              sourceKey: "instagram",
+              status: "pending",
+              read: 0,
+              added: 0,
+              updated: 0,
+              ignored: 0,
+            },
           ],
         },
       },
     };
     let tree: ReturnType<typeof create>;
-    await act(async () => { tree = create(<AdminRoutinePanel />); });
+    await act(async () => {
+      tree = create(<AdminRoutinePanel />);
+    });
     const rendered = JSON.stringify(tree!.toJSON());
     expect(rendered).toContain("Progresso da ingestão");
     expect(rendered).toContain("Coletando fontes públicas e Instagram");
@@ -78,15 +164,73 @@ describe("AdminRoutinePanel", () => {
     expect(tree!.root.findByType("button").props.disabled).toBe(true);
   });
 
+  it("exibe o histórico visual com status, trigger e duração", async () => {
+    statusState = {
+      isLoading: false,
+      isError: false,
+      data: {
+        nextExecutionAt: "2026-08-18T13:00:00.000Z",
+        timezone: "America/Sao_Paulo",
+        runMode: "full_auto",
+        isRunning: false,
+        recentRuns: [
+          {
+            id: 91,
+            routine: "manual-agenda",
+            trigger: "manual",
+            status: "partial",
+            startedAt: "2026-08-26T12:00:00.000Z",
+            finishedAt: "2026-08-26T12:00:02.345Z",
+            httpStatus: 200,
+            durationMs: 2345,
+            expurgatedCount: 1,
+            readCount: 12,
+            processedCount: 8,
+            persistedEventIds: [701, 702],
+            dateFilterValidation: {
+              timezone: "America/Sao_Paulo",
+              today: "2026-08-26",
+            },
+          },
+        ],
+      },
+    };
+    let tree: ReturnType<typeof create>;
+    await act(async () => {
+      tree = create(<AdminRoutinePanel />);
+    });
+    const rendered = JSON.stringify(tree!.toJSON());
+    expect(rendered).toContain("Execuções recentes");
+    expect(rendered).toContain("Run #");
+    expect(rendered).toContain('"91"');
+    expect(rendered).toContain("manual-agenda");
+    expect(rendered).toContain("Parcial");
+    expect(rendered).toContain("2345 ms");
+    expect(rendered).toContain("IDs persistidos");
+  });
+
   it("confirma o disparo manual e exibe sucesso", async () => {
-    statusState = { isLoading: false, isError: false, data: { nextExecutionAt: "2026-08-18T13:00:00.000Z", timezone: "America/Sao_Paulo", runMode: "full_auto", isRunning: false } };
+    statusState = {
+      isLoading: false,
+      isError: false,
+      data: {
+        nextExecutionAt: "2026-08-18T13:00:00.000Z",
+        timezone: "America/Sao_Paulo",
+        runMode: "full_auto",
+        isRunning: false,
+      },
+    };
     mutationState = { isPending: false };
     const confirm = vi.fn().mockReturnValue(true);
     const originalConfirm = globalThis.confirm;
     globalThis.confirm = confirm;
     let tree: ReturnType<typeof create>;
-    await act(async () => { tree = create(<AdminRoutinePanel />); });
-    await act(async () => { tree!.root.findByType("button").props.onClick(); });
+    await act(async () => {
+      tree = create(<AdminRoutinePanel />);
+    });
+    await act(async () => {
+      tree!.root.findByType("button").props.onClick();
+    });
     expect(confirm).toHaveBeenCalled();
     expect(mutate).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(tree!.toJSON())).toContain("Rotina concluída");

@@ -1667,3 +1667,12 @@
 - [x] Executar TypeScript, suíte Vitest, build e E2E/smoke do painel
 - [x] Fazer commit/push comprovado na branch main (commit 0f035cc; push aceito pelo GitHub)
 - [x] Salvar checkpoint e publicar a auditoria global
+
+## Histórico manual, toasts e skeleton do Dry-run
+- [x] Mapear os dados e o componente atuais da Execução Manual para histórico recente
+- [x] Exibir histórico visual de execuções manuais com status, duração e horário
+- [x] Adicionar toasts amigáveis para falhas de comunicação em queries e mutations administrativas
+- [x] Adicionar skeleton de carregamento no painel de Dry-run durante processamento
+- [x] Cobrir histórico, toasts e skeleton com testes Vitest/Playwright
+- [x] Validar responsividade mobile, TypeScript, Vitest e build de produção (E2E desktop/mobile do painel aprovado; captura visual local parou no gate de autenticação)
+- [x] Salvar checkpoint e publicar a alteração
