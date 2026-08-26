@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { INSTAGRAM_AGENDA_SOURCE_TYPE, listActiveLocationAliasValues, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent } from "./db";
-import { fetchExternal, readExternalBody } from "./external-fetch";
+import { fetchExternal, isSandboxRestrictedError, readExternalBody } from "./external-fetch";
 import { containsTargetVenue } from "./ingestion";
 import { parseMetaBusinessDiscovery } from "./contracts/external";
 import { resolveRegionalCoordinates } from "./geocoding";
@@ -481,6 +481,20 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   if (!dryRun) await recordReferenceDateClockAlert(referenceDate);
   const activeAliases = await listActiveLocationAliasValues();
   const fetched = await fetchInstagramPostsDetailed({ dryRun });
+  const sandboxRestricted = process.env.NODE_ENV === "development" && fetched.posts.length === 0 && fetched.transportFailures.length > 0 && fetched.transportFailures.every(failure => failure.status === 0 || failure.status === 403 || failure.status === 502 || failure.status === 503 || failure.status === 504 || isSandboxRestrictedError(new Error(failure.message)));
+  if (dryRun && sandboxRestricted) {
+    const durationMs = Math.max(1, Date.now() - pipelineStartedAt);
+    const previewMockEvents = [
+      { title: "Preview · Noite na Baixada", eventDate: `${referenceDate}T22:00:00-03:00`, locationName: "Ativa House", city: "Santos" },
+      { title: "Preview · Sunset Guarujá", eventDate: `${referenceDate}T18:00:00-03:00`, locationName: "Laroc Club Guarujá", city: "Guarujá" },
+      { title: "Preview · House Session", eventDate: `${referenceDate}T23:00:00-03:00`, locationName: "Vallum Garden", city: "Santos" },
+    ];
+    return {
+      dryRun: true, previewMock: true, sandboxRestricted: true, durationMs, sourceReports: [{ sourceKey: "instagram", durationMs, read: previewMockEvents.length, filtered: 0, persistable: previewMockEvents.length, added: 0, updated: 0, ignored: 0, duplicates: 0, errors: [{ sourceUrl: "preview://sandbox", status: null, message: "SANDBOX_RESTRICTED: eventos simulados somente para validação do Dry-run no preview." }], rejectionReasons: { fetchFailed: fetched.transportFailures.length, outsideTargetVenue: 0, invalidStructuredEvent: 0, duplicate: 0, pastEvent: 0 } }],
+      previewMockEvents, receivedPosts: previewMockEvents.length, approvedPosts: previewMockEvents.length, degraded: true, transportFailures: fetched.transportFailures,
+      structuredEvents: previewMockEvents.length, imported: 0, persisted: 0, added: 0, updated: 0, ignored: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, rejectedEvents: [], rejectionReasons: {}, persistedEventIds: [], dateFilterValidation: { timezone: "America/Sao_Paulo", today: referenceDate, structuredEvents: previewMockEvents.length, pastEventsRejected: 0, acceptedTodayOrFuture: previewMockEvents.length },
+    };
+  }
   const posts = deduplicateInstagramPosts(fetched.posts);
   const approvedPosts: Array<{ post: InstagramPost; rawText: string }> = [];
   const forceFocusedRun = process.env.INGESTION_FORCE_INSTAGRAM === "1";

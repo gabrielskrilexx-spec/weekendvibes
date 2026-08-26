@@ -50,6 +50,13 @@ export function isBlockedExternalResponse(status: number | null, body = "") {
   return status === 403 || status === 429 || status === 502 || status === 503 || status === 504 || /cloudflare|access denied|captcha|challenge|proxy error|bad gateway/i.test(body.slice(0, 2000));
 }
 
+export function isSandboxRestrictedError(error: unknown) {
+  if (process.env.NODE_ENV === "production") return false;
+  if (error instanceof ExternalFetchError) return error.code === "NETWORK_ERROR" || error.code === "TIMEOUT";
+  const message = String(error instanceof Error ? error.message : error ?? "");
+  return /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|fetch failed|timeout|timed out|proxy/i.test(message);
+}
+
 export function sanitizeExternalFetchError(error: unknown) {
   const status = error && typeof error === "object" && "statusCode" in error ? Number((error as { statusCode?: unknown }).statusCode) : null;
   const code = error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code) : "NETWORK_ERROR";

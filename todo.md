@@ -1760,3 +1760,11 @@
 - [x] Integrar isolamento por fonte no Dry-run e na ingestão Instagram
 - [x] Testar respostas 403/502, HTML inválido, rede indisponível e duração não-zero
 - [x] Validar preview, TypeScript, Vitest, build e publicar checkpoint
+
+## Fallback controlado de preview — 26/08/2026
+- [x] Detectar restrições de rede específicas do sandbox sem mascarar falhas reais
+- [x] Retornar payload JSON `SANDBOX_RESTRICTED` nos handlers de proxy/ingestão
+- [x] Adicionar mock payload explícito de 2–3 eventos somente em preview/desenvolvimento
+- [x] Garantir que produção nunca use eventos simulados
+- [x] Testar Instagram e Dry-run com fallback, TypeScript, Vitest e build
+- [x] Publicar checkpoint da alteração

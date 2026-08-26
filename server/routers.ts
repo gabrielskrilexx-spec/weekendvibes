@@ -27,6 +27,7 @@ import {
   updateIngestionSource,
 } from "./db";
 import { invokeLLM } from "./_core/llm";
+import { isSandboxRestrictedError } from "./external-fetch";
 import {
   getWednesdayRoutineStatus,
   runWednesdayRoutineNow,
@@ -184,6 +185,8 @@ const ingestionChunkSuccessOutput = z.object({
   ignored: z.number().int().nonnegative(),
   errors: z.array(z.string().max(240)).max(20),
   durationMs: z.number().int().nonnegative(),
+  sandboxRestricted: z.boolean().optional(),
+  previewMock: z.boolean().optional(),
 }).strict();
 const ingestionChunkFailureOutput = z.object({
   ok: z.literal(false),
@@ -193,6 +196,8 @@ const ingestionChunkFailureOutput = z.object({
   message: z.string().min(1).max(240),
   errors: z.array(z.string().max(240)).max(20),
   durationMs: z.number().int().nonnegative(),
+  sandboxRestricted: z.boolean().optional(),
+  previewMock: z.boolean().optional(),
 }).strict();
 const ingestionChunkOutput = z.union([ingestionChunkSuccessOutput, ingestionChunkFailureOutput]);
 const mutationAckOutput = z
@@ -329,8 +334,8 @@ export const appRouter = router({
       .input(z.object({ sourceKey: z.string().trim().min(1).max(160), dryRun: z.boolean().default(false) }).strict())
       .output(ingestionChunkOutput)
       .mutation(async ({ input }) => {
+        const startedAt = Date.now();
         try {
-          const startedAt = Date.now();
           const raw = await runIngestionSourceChunk(input);
           const durationMs = Date.now() - startedAt;
           const result = raw.result && typeof raw.result === "object" ? raw.result as Record<string, unknown> : {};
@@ -341,10 +346,11 @@ export const appRouter = router({
           const updated = Number(report?.updated ?? result.updated ?? 0);
           const ignored = Number(report?.ignored ?? result.ignored ?? result.filtered ?? 0);
           const status = errors.length > 0 || result.skipped === true ? "partial" : "succeeded";
-          return { ok: true as const, sourceKey: raw.sourceKey, dryRun: raw.dryRun, status, read: Math.max(0, Math.trunc(read)), added: Math.max(0, Math.trunc(added)), updated: Math.max(0, Math.trunc(updated)), ignored: Math.max(0, Math.trunc(ignored)), errors, durationMs };
+          return { ok: true as const, sourceKey: raw.sourceKey, dryRun: raw.dryRun, status, read: Math.max(0, Math.trunc(read)), added: Math.max(0, Math.trunc(added)), updated: Math.max(0, Math.trunc(updated)), ignored: Math.max(0, Math.trunc(ignored)), errors, durationMs, sandboxRestricted: result.sandboxRestricted === true, previewMock: result.previewMock === true };
         } catch (error) {
           const message = error instanceof Error ? error.message : "Falha interna ao processar a fonte.";
-          return { ok: false as const, sourceKey: input.sourceKey, dryRun: input.dryRun, status: "failed" as const, message: message.replace(/https?:\/\/[^\s]+/gi, "fonte pública").slice(0, 240), errors: ["A fonte não pôde ser processada nesta etapa."], durationMs: 0 };
+          const sandboxRestricted = isSandboxRestrictedError(error);
+          return { ok: false as const, sourceKey: input.sourceKey, dryRun: input.dryRun, status: "failed" as const, message: sandboxRestricted ? "SANDBOX_RESTRICTED: fonte externa bloqueada no ambiente de preview." : message.replace(/https?:\/\/[^\s]+/gi, "fonte pública").slice(0, 240), errors: [sandboxRestricted ? "Fonte restrita no ambiente de preview do Manus." : "A fonte não pôde ser processada nesta etapa."], durationMs: Math.max(1, Date.now() - startedAt), sandboxRestricted };
         }
       }),
     runNow: adminOnly.output(adminRoutineOutput).mutation(async () => {
