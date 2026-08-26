@@ -58,7 +58,7 @@ export function isChunkNetworkError(error: unknown) {
   return /failed to fetch|network|fetch|timeout|timed out|gateway|502|503|504|econn|socket|transport/.test(message);
 }
 
-export async function retryChunkNetwork<T>(work: () => Promise<T>, maxRetries = 2, delayMs = 150) {
+export async function retryChunkNetwork<T>(work: () => Promise<T>, maxRetries = 2, delayMs = 150, onRetry?: (attempt: number) => void) {
   let attempt = 0;
   while (true) {
     try {
@@ -66,6 +66,7 @@ export async function retryChunkNetwork<T>(work: () => Promise<T>, maxRetries = 
     } catch (error) {
       if (!isChunkNetworkError(error) || attempt >= maxRetries) throw error;
       attempt += 1;
+      onRetry?.(attempt);
       await new Promise(resolve => setTimeout(resolve, delayMs * attempt));
     }
   }
@@ -99,6 +100,8 @@ export default function AdminRoutinePanel() {
   const runSource = (runSourceProcedure ? runSourceProcedure.useMutation() : { isPending: false, mutateAsync: undefined }) as { isPending: boolean; mutateAsync?: (input: { sourceKey: string; dryRun: boolean }) => Promise<{ ok: boolean; message?: string }> };
   const [chunkRunning, setChunkRunning] = useState(false);
   const [chunkIndex, setChunkIndex] = useState(0);
+  const [activeChunkRetry, setActiveChunkRetry] = useState<number | null>(null);
+  const [chunkSummary, setChunkSummary] = useState<{ success: number; failure: number; timeout: number } | null>(null);
   useEffect(() => {
     if (status.isError) {
       const message = friendlyAdminErrorMessage(
@@ -138,32 +141,47 @@ export default function AdminRoutinePanel() {
     }
     setChunkRunning(true);
     setChunkIndex(0);
+    setActiveChunkRetry(null);
+    setChunkSummary(null);
     setFeedback({ type: "success", text: `Ingestão iniciada. Processando 1 de ${sources.length}: ${sources[0]}.` });
     void (async () => {
       let completed = 0;
       let failures = 0;
+      let success = 0;
+      let timeout = 0;
       try {
         for (let index = 0; index < sources.length; index += 1) {
           const sourceKey = sources[index];
           setChunkIndex(index);
+          setActiveChunkRetry(null);
           setFeedback({ type: "success", text: `Processando fonte ${index + 1} de ${sources.length}: ${sourceKey}.` });
           let result: { ok: boolean; message?: string } | undefined;
           let chunkError: unknown;
           try {
-            result = await retryChunkNetwork(() => runSource.mutateAsync!({ sourceKey, dryRun: false }));
+            result = await retryChunkNetwork(() => runSource.mutateAsync!({ sourceKey, dryRun: false }), 2, 150, attempt => {
+              setActiveChunkRetry(attempt);
+              setFeedback({ type: "success", text: `Tentando novamente (${attempt}/2) a fonte ${sourceKey}…` });
+            });
           } catch (error) {
             chunkError = error;
           }
           if (chunkError || result?.ok === false) {
             failures += 1;
+            const failureMessage = chunkError instanceof Error ? chunkError.message : result?.message ?? "";
+            if (/8 segundos|tempo limite|timeout/i.test(failureMessage)) timeout += 1;
+            else if (result?.ok !== false) success += 1;
             const message = chunkError
               ? "Falha de Conexão após 2 tentativas; seguindo para a próxima fonte."
               : (result?.message ?? "A fonte retornou uma falha sanitizada.");
             setFeedback({ type: "error", text: `${sourceKey}: ${message}` });
+          } else {
+            success += 1;
           }
           completed += 1;
           try { await status.refetch(); } catch { /* polling não deve interromper os chunks */ }
         }
+        const summary = { success, failure: failures - timeout, timeout };
+        setChunkSummary(summary);
         const text = failures > 0 ? `Ingestão concluída parcialmente: ${failures} fonte(s) falharam.` : `Ingestão concluída: ${completed} fonte(s) processada(s).`;
         setFeedback({ type: failures > 0 ? "error" : "success", text });
         sonnerToast[failures > 0 ? "warning" : "success"]("Execução concluída", { description: text });
@@ -173,6 +191,7 @@ export default function AdminRoutinePanel() {
         if (isAdminSessionError(error)) setAuthRecoveryOpen(true);
         sonnerToast.error("Falha na comunicação", { description: text });
       } finally {
+        setActiveChunkRetry(null);
         setChunkRunning(false);
         await status.refetch();
       }
@@ -260,6 +279,11 @@ export default function AdminRoutinePanel() {
           andamento.
         </span>
       </div>
+      {activeChunkRetry !== null && !progress && (
+        <div className="mt-5 inline-flex items-center gap-2 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm font-bold text-amber-100" role="status" data-testid="chunk-retry-indicator">
+          <Loader2 size={15} className="animate-spin" /> Tentando novamente ({activeChunkRetry}/2)…
+        </div>
+      )}
       {progress && (progress.isRunning || progress.runId) && (
         <div
           className="mt-5 rounded-2xl border border-cyan-300/20 bg-cyan-300/5 p-4"
@@ -274,6 +298,11 @@ export default function AdminRoutinePanel() {
               <p className="mt-1 text-sm font-bold text-zinc-100">
                 {progress.message}
               </p>
+              {activeChunkRetry !== null && (
+                <p className="mt-2 inline-flex items-center gap-2 text-xs font-black text-amber-200" role="status" data-testid="chunk-retry-indicator">
+                  <Loader2 size={13} className="animate-spin" /> Tentando novamente ({activeChunkRetry}/2)…
+                </p>
+              )}
             </div>
             <span
               className={`rounded-full px-2.5 py-1 text-[11px] font-black uppercase ${progress.phase === "failed" ? "bg-red-300/15 text-red-200" : progress.isRunning ? "bg-yellow-300/15 text-yellow-100" : "bg-emerald-300/15 text-emerald-200"}`}
@@ -392,6 +421,16 @@ export default function AdminRoutinePanel() {
           {progress.error && (
             <p className="mt-3 text-xs text-red-200">{progress.error}</p>
           )}
+        </div>
+      )}
+      {chunkSummary && (
+        <div className="mt-5 rounded-2xl border border-emerald-300/20 bg-emerald-300/5 p-4" data-testid="chunk-summary" aria-live="polite">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-200">Resumo da execução por chunk</p>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+            <div className="rounded-xl bg-emerald-300/10 px-2 py-3"><strong className="block text-lg text-emerald-200">{chunkSummary.success}</strong><span className="text-zinc-400">Sucesso</span></div>
+            <div className="rounded-xl bg-red-300/10 px-2 py-3"><strong className="block text-lg text-red-200">{chunkSummary.failure}</strong><span className="text-zinc-400">Falha</span></div>
+            <div className="rounded-xl bg-amber-300/10 px-2 py-3"><strong className="block text-lg text-amber-200">{chunkSummary.timeout}</strong><span className="text-zinc-400">Timeout</span></div>
+          </div>
         </div>
       )}
       <div

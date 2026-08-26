@@ -1745,3 +1745,10 @@
 - [x] Marcar chunk persistentemente falho como Falha de Conexão e seguir para o próximo
 - [x] Adicionar testes para timeout, retry e continuidade do loop
 - [x] Validar preview, TypeScript, Vitest, build e publicar checkpoint
+
+## Visualização de retries e resumo de chunks — 26/08/2026
+- [x] Exibir indicador visual enquanto o chunk está sendo tentado novamente
+- [x] Contabilizar chunks com sucesso, falha e timeout no processamento manual
+- [x] Exibir resumo final com as três contagens exatas
+- [x] Cobrir retry, timeout e resumo com testes automatizados
+- [x] Validar TypeScript, Vitest, build e publicar checkpoint
