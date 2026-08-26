@@ -1676,3 +1676,12 @@
 - [x] Cobrir histórico, toasts e skeleton com testes Vitest/Playwright
 - [x] Validar responsividade mobile, TypeScript, Vitest e build de produção (E2E desktop/mobile do painel aprovado; captura visual local parou no gate de autenticação)
 - [x] Salvar checkpoint e publicar a alteração
+
+## Diagnóstico de transporte tRPC no preview
+- [x] Reiniciar o servidor de dev/preview e capturar o estado do processo
+- [x] Reproduzir Dry-run e Execução Manual com logs do backend no instante da chamada
+- [x] Identificar a exceção exata no limite tRPC/SuperJSON ou na rotina de ingestão (preview sem sessão respondeu 403 FORBIDDEN, não erro de transformação)
+- [x] Garantir try-catch soberano e resposta JSON sanitizada para falhas internas
+- [x] Adicionar regressões para respostas de sucesso e falha dos dois endpoints
+- [x] Validar runtime, TypeScript, Vitest, build e smoke do preview (84 arquivos/312 testes Vitest, TypeScript, build e E2E aprovados)
+- [x] Salvar checkpoint e publicar a correção

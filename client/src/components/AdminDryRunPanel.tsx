@@ -61,7 +61,8 @@ function DryRunLoadingSkeleton() {
 
 export default function AdminDryRunPanel() {
   const dryRun = trpc.ingestionReports.dryRun.useMutation();
-  const report = dryRun.data;
+  const report = dryRun.data?.dryRun ? dryRun.data : undefined;
+  const failure = dryRun.data?.dryRun === false ? dryRun.data : undefined;
   const run = () => dryRun.mutate();
   useEffect(() => {
     if (dryRun.isError) {
@@ -107,7 +108,7 @@ export default function AdminDryRunPanel() {
         </button>
       </div>
 
-      {dryRun.error && (
+      {(dryRun.error || failure) && (
         <div
           role="alert"
           className="mt-5 flex items-start gap-3 rounded-2xl border border-red-300/25 bg-red-300/10 p-4 text-sm text-red-100"
@@ -116,10 +117,11 @@ export default function AdminDryRunPanel() {
           <div>
             <p className="font-bold">Não foi possível concluir a simulação.</p>
             <p className="mt-1 text-red-100/80">
-              {friendlyAdminErrorMessage(
-                dryRun.error,
-                "O servidor retornou uma falha sem detalhes."
-              )}
+              {failure?.message ??
+                friendlyAdminErrorMessage(
+                  dryRun.error,
+                  "O servidor retornou uma falha sem detalhes."
+                )}
             </p>
           </div>
         </div>

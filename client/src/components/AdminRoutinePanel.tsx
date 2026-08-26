@@ -59,6 +59,13 @@ export default function AdminRoutinePanel() {
   });
   const runNow = trpc.adminRoutine.runNow.useMutation({
     onSuccess: result => {
+      if (result.ok === false) {
+        const text = result.message;
+        setFeedback({ type: "error", text });
+        sonnerToast.error("Falha na execução", { description: text });
+        status.refetch();
+        return;
+      }
       const text = `Rotina concluída: ${result.publicSources && typeof result.publicSources === "object" && "imported" in result.publicSources ? String(result.publicSources.imported) : "0"} eventos públicos e atualização do Instagram processados.`;
       setFeedback({ type: "success", text });
       sonnerToast.success("Execução concluída", { description: text });

@@ -127,7 +127,7 @@ const eventInput = z.object({
 });
 
 const adminOnly = adminProcedure;
-const adminRoutineOutput = z
+const adminRoutineSuccessOutput = z
   .object({
     ok: z.literal(true),
     archived: z.number().int().nonnegative(),
@@ -139,6 +139,17 @@ const adminRoutineOutput = z
     finishedAt: z.string(),
   })
   .strict();
+const adminRoutineFailureOutput = z
+  .object({
+    ok: z.literal(false),
+    message: z.string().min(1).max(240),
+    details: z.array(z.string().max(240)).max(20),
+  })
+  .strict();
+const adminRoutineOutput = z.union([
+  adminRoutineSuccessOutput,
+  adminRoutineFailureOutput,
+]);
 const mutationAckOutput = z
   .object({ ok: z.literal(true), id: z.number().int().positive().optional() })
   .strict();
@@ -179,7 +190,7 @@ const eventRemoveOutput = z
       .strict(),
   })
   .strict();
-const dryRunOutput = z
+const dryRunSuccessOutput = z
   .object({
     dryRun: z.literal(true),
     startedAt: z.string(),
@@ -221,6 +232,15 @@ const dryRunOutput = z
       .strict(),
   })
   .strict();
+const dryRunFailureOutput = z
+  .object({
+    dryRun: z.literal(false),
+    success: z.literal(false),
+    message: z.string().min(1).max(240),
+    details: z.array(z.string().max(240)).max(20),
+  })
+  .strict();
+const dryRunOutput = z.union([dryRunSuccessOutput, dryRunFailureOutput]);
 const reprocessOutput = z
   .object({
     ok: z.boolean(),
@@ -258,22 +278,30 @@ export const appRouter = router({
       normalizeJsonForTransport(await getWednesdayRoutineStatus())
     ),
     runNow: adminOnly.output(adminRoutineOutput).mutation(async () => {
-      const result = await runWednesdayRoutineNow();
-      const importedFrom = (value: unknown) =>
-        value &&
-        typeof value === "object" &&
-        "imported" in value &&
-        typeof (value as { imported?: unknown }).imported === "number"
-          ? Math.max(0, Math.trunc((value as { imported: number }).imported))
-          : 0;
-      return {
-        ok: true as const,
-        archived: Math.max(0, Math.trunc(result.archived)),
-        publicSources: { imported: importedFrom(result.publicSources) },
-        instagram: { imported: importedFrom(result.instagram) },
-        startedAt: String(result.startedAt),
-        finishedAt: String(result.finishedAt),
-      };
+      try {
+        const result = await runWednesdayRoutineNow();
+        const importedFrom = (value: unknown) =>
+          value &&
+          typeof value === "object" &&
+          "imported" in value &&
+          typeof (value as { imported?: unknown }).imported === "number"
+            ? Math.max(0, Math.trunc((value as { imported: number }).imported))
+            : 0;
+        return {
+          ok: true as const,
+          archived: Math.max(0, Math.trunc(result.archived)),
+          publicSources: { imported: importedFrom(result.publicSources) },
+          instagram: { imported: importedFrom(result.instagram) },
+          startedAt: String(result.startedAt),
+          finishedAt: String(result.finishedAt),
+        };
+      } catch {
+        return {
+          ok: false as const,
+          message: "Falha interna ao conectar com as fontes.",
+          details: [],
+        };
+      }
     }),
   }),
   locationAliases: router({
@@ -396,9 +424,18 @@ export const appRouter = router({
     geocoding: adminOnly.query(async () =>
       normalizeJsonForTransport(await listGeocodingSummary())
     ),
-    dryRun: adminOnly
-      .output(dryRunOutput)
-      .mutation(async () => normalizeJsonForTransport(await runDryRun())),
+    dryRun: adminOnly.output(dryRunOutput).mutation(async () => {
+      try {
+        return normalizeJsonForTransport(await runDryRun());
+      } catch {
+        return {
+          dryRun: false as const,
+          success: false as const,
+          message: "Falha interna ao conectar com as fontes.",
+          details: [],
+        };
+      }
+    }),
     reprocess: adminOnly
       .input(z.object({ sourceKey: z.enum(["public", "instagram"]) }))
       .output(reprocessOutput)
