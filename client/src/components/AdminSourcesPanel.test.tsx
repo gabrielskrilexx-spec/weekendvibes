@@ -6,15 +6,20 @@ import AdminSourcesPanel from "./AdminSourcesPanel";
 const refetch = vi.fn();
 const invalidate = vi.fn();
 const mutate = vi.fn();
+const mockSettingsMutate = vi.fn();
 const source = { id: 1, name: "Moby House", kind: "instagram", handle: "mobydicksantos", url: "https://www.instagram.com/mobydicksantos/", isEnabled: 1, priority: 10, frequencyMinutes: 10080, lastSuccessAt: new Date("2026-08-15T12:00:00Z"), lastStatus: "succeeded" };
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
+    ingestionReports: {
+      mockSettings: { useQuery: () => ({ data: { allowSandboxMocks: true, environment: "preview" }, isLoading: false }) },
+      setMockSettings: { useMutation: () => ({ isPending: false, mutate: mockSettingsMutate }) },
+    },
     ingestionSources: {
       list: { useQuery: () => ({ data: [source], isLoading: false, isError: false, isFetching: false, refetch }) },
       update: { useMutation: () => ({ isPending: false, mutate }) },
     },
-    useUtils: () => ({ ingestionSources: { list: { invalidate } } }),
+    useUtils: () => ({ ingestionSources: { list: { invalidate } }, ingestionReports: { mockSettings: { invalidate } } }),
   },
 }));
 
@@ -27,6 +32,15 @@ describe("AdminSourcesPanel", () => {
     expect(rendered).toContain("Moby House");
     expect(rendered).toContain("Último sucesso");
     expect(rendered).toContain("Ativa");
+  });
+
+  it("exibe e alterna o toggle de mocks do sandbox", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const toggle = tree!.root.findByProps({ role: "switch" });
+    expect(toggle.props["aria-checked"]).toBe(true);
+    await act(async () => { toggle.props.onClick(); });
+    expect(mockSettingsMutate).toHaveBeenCalledWith({ allowSandboxMocks: false });
   });
 
   it("permite pausar uma fonte", async () => {

@@ -34,6 +34,28 @@ export type IngestionFailureAlertResult = {
 };
 
 const consecutiveWebhookNotifications = new Set<string>();
+const blockedFailureCounts = new Map<string, number>();
+const blockedWebhookNotifications = new Set<string>();
+
+export async function notifyRepeatedBlockedSourceWebhook(input: { sourceKey: string; routine: string; status: 403 | 502; message: string }, fetcher: typeof fetch = fetch) {
+  const endpoint = process.env.CRITICAL_ALERT_WEBHOOK_URL?.trim();
+  const key = `${clean(input.routine, 64)}|${clean(input.sourceKey, 120)}|${input.status}`;
+  const count = (blockedFailureCounts.get(key) ?? 0) + 1;
+  blockedFailureCounts.set(key, count);
+  if (!endpoint || count < 3 || blockedWebhookNotifications.has(key)) return { sent: false, skipped: true, count } as const;
+  let parsed: URL;
+  try { parsed = new URL(endpoint); if (parsed.protocol !== "https:") return { sent: false, skipped: true, count } as const; } catch { return { sent: false, skipped: true, count } as const; }
+  const payload = { alert: "scraping_blocked", sourceKey: clean(input.sourceKey, 120), routine: clean(input.routine, 64), status: input.status, category: "anti_bot_or_proxy", consecutiveFailures: count, occurredAt: new Date().toISOString(), message: clean(input.message, 240) };
+  try {
+    const response = await fetcher(parsed.toString(), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+    if (!response.ok) return { sent: false, skipped: false, count } as const;
+    blockedWebhookNotifications.add(key);
+    return { sent: true, skipped: false, count } as const;
+  } catch { return { sent: false, skipped: false, count } as const; }
+}
+
+export function resetBlockedSourceFailureCountersForTest() { blockedFailureCounts.clear(); blockedWebhookNotifications.clear(); }
+
 
 export type ConsecutiveFailureWebhookInput = {
   routine: string;
@@ -145,6 +167,9 @@ export async function handleIngestionFailureAlert(
 
   const state = typeof db.transaction === "function" ? await db.transaction(execute) : await execute(db as unknown as AlertExecutor);
   const shouldNotify = !state.deduplicated;
+  if ((input.status === 403 || input.status === 502) && input.sourceKey) {
+    await notifyRepeatedBlockedSourceWebhook({ sourceKey: input.sourceKey, routine: input.routine, status: input.status, message: input.message });
+  }
   if (shouldNotify && notify) {
     await notify({ fingerprint: alert.fingerprint, integration: alert.integration, severity: alert.severity, title: alert.title, message: alert.message, runId: alert.runId });
   }

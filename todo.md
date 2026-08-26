@@ -1789,3 +1789,12 @@
 - [x] Validar redirect_to com allowlist segura e fallback amigável
 - [x] Adicionar testes de callback e URL de autenticação
 - [x] Reiniciar preview, validar login e publicar checkpoint — rota local validada; login interativo requer sessão do usuário
+
+## Telemetria de bloqueios e controle de mocks — 26/08/2026
+- [x] Auditar logs, métricas, webhook e configurações de ingestão no Admin
+- [x] Categorizar bloqueios Anti-Bot/WAF, proxy/server, timeout/DNS e sandbox
+- [x] Exibir latência média e taxa de sucesso por fonte
+- [x] Disparar alertas específicos para falhas consecutivas 403/502
+- [x] Adicionar toggle administrativo de mocks com proteção de produção
+- [x] Criar testes de métricas, alertas e toggle; validar TypeScript, Vitest e build
+- [x] Publicar checkpoint da implementação

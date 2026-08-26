@@ -51,6 +51,7 @@ import {
 import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
 import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
+import { getSandboxMockSettings, setSandboxMocksAllowed } from "./ingestion-preview-settings";
 
 const safeFilter = (max = 120) => z.string().trim().max(max).optional();
 const latitudeInput = z
@@ -291,6 +292,7 @@ const dryRunFailureOutput = z
   })
   .strict();
 const dryRunOutput = z.union([dryRunSuccessOutput, dryRunFailureOutput]);
+const sourceTelemetryOutput = z.array(z.object({ sourceKey: z.string(), runs: z.number().int().nonnegative(), successes: z.number().int().nonnegative(), successRate: z.number().min(0).max(1), averageLatencyMs: z.number().int().nonnegative(), errors: z.array(z.object({ category: z.enum(["anti_bot", "proxy", "timeout_dns", "sandbox", "other"]), count: z.number().int().nonnegative() }).strict()) }).strict());
 const reprocessOutput = z
   .object({
     ok: z.boolean(),
@@ -508,6 +510,10 @@ export const appRouter = router({
     geocoding: adminOnly.query(async () =>
       normalizeJsonForTransport(await listGeocodingSummary())
     ),
+    telemetry: adminOnly.query(async () => {
+      const report = await listIngestionReport(50, { periodDays: 7 });
+      return { sourceTelemetry: sourceTelemetryOutput.parse(report.sourceTelemetry) };
+    }),
     dryRun: adminOnly.output(dryRunOutput).mutation(async () => {
       try {
         return normalizeJsonForTransport(await runDryRun());
@@ -553,6 +559,11 @@ export const appRouter = router({
           };
         }
       }),
+    mockSettings: adminOnly.query(() => getSandboxMockSettings()),
+    setMockSettings: adminOnly
+      .input(z.object({ allowSandboxMocks: z.boolean() }).strict())
+      .output(z.object({ allowSandboxMocks: z.boolean(), environment: z.enum(["preview", "production"]) }).strict())
+      .mutation(({ input }) => setSandboxMocksAllowed(input.allowSandboxMocks)),
     geocodeNow: adminOnly
       .output(
         z

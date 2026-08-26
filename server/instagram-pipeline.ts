@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { INSTAGRAM_AGENDA_SOURCE_TYPE, listActiveLocationAliasValues, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent } from "./db";
 import { fetchExternal, isSandboxRestrictedError, readExternalBody } from "./external-fetch";
+import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import { containsTargetVenue } from "./ingestion";
 import { parseMetaBusinessDiscovery } from "./contracts/external";
 import { resolveRegionalCoordinates } from "./geocoding";
@@ -482,7 +483,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   const activeAliases = await listActiveLocationAliasValues();
   const fetched = await fetchInstagramPostsDetailed({ dryRun });
   const sandboxRestricted = process.env.NODE_ENV === "development" && fetched.posts.length === 0 && fetched.transportFailures.length > 0 && fetched.transportFailures.every(failure => failure.status === 0 || failure.status === 403 || failure.status === 502 || failure.status === 503 || failure.status === 504 || isSandboxRestrictedError(new Error(failure.message)));
-  if (dryRun && sandboxRestricted) {
+  if (dryRun && sandboxRestricted && shouldUseSandboxMocks()) {
     const durationMs = Math.max(1, Date.now() - pipelineStartedAt);
     const previewMockEvents = [
       { title: "Preview · Noite na Baixada", eventDate: `${referenceDate}T22:00:00-03:00`, locationName: "Ativa House", city: "Santos" },

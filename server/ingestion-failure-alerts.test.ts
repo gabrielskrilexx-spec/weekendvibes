@@ -3,6 +3,8 @@ import {
   buildIngestionFailureFingerprint,
   handleIngestionFailureAlert,
   notifyConsecutiveFailureWebhook,
+  notifyRepeatedBlockedSourceWebhook,
+  resetBlockedSourceFailureCountersForTest,
 } from "./ingestion-failure-alerts";
 
 function fakeDb(existing?: { id: number; isResolved: number }) {
@@ -65,6 +67,23 @@ describe("ingestion failure alerts", () => {
 
     expect(result).toMatchObject({ notified: true, reopened: true, deduplicated: false });
     expect(notify).toHaveBeenCalledOnce();
+  });
+});
+
+describe("blocked source alert", () => {
+  it("notifica no terceiro 403 e deduplica depois", async () => {
+    resetBlockedSourceFailureCountersForTest();
+    const previous = process.env.CRITICAL_ALERT_WEBHOOK_URL;
+    process.env.CRITICAL_ALERT_WEBHOOK_URL = "https://hooks.example.test/critical";
+    const fetcher = vi.fn().mockResolvedValue({ ok: true });
+    const input = { sourceKey: "blacktag", routine: "public-agenda", status: 403 as const, message: "Cloudflare challenge" };
+    await notifyRepeatedBlockedSourceWebhook(input, fetcher);
+    await notifyRepeatedBlockedSourceWebhook(input, fetcher);
+    await expect(notifyRepeatedBlockedSourceWebhook(input, fetcher)).resolves.toMatchObject({ sent: true, count: 3 });
+    await expect(notifyRepeatedBlockedSourceWebhook(input, fetcher)).resolves.toMatchObject({ sent: false });
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({ alert: "scraping_blocked", sourceKey: "blacktag", status: 403, category: "anti_bot_or_proxy", consecutiveFailures: 3 });
+    if (previous === undefined) delete process.env.CRITICAL_ALERT_WEBHOOK_URL; else process.env.CRITICAL_ALERT_WEBHOOK_URL = previous;
   });
 });
 

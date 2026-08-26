@@ -3,6 +3,7 @@ import { invokeLLM } from "./_core/llm";
 import { assertEventDateIsCurrentOrFuture, getIngestionPayloadCache, listActiveLocationAliasValues, saveEvent, saveIngestionPayloadCache } from "./db";
 import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
 import { fetchExternal, isSandboxRestrictedError, readExternalBody, sanitizeExternalFetchError } from "./external-fetch";
+import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 
 const DEFAULT_SOURCE_URLS = [
   "https://articket.com.br/e/6784/plants-happy-hour",
@@ -723,7 +724,13 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
 
   if (sourcePages.length === 0) {
     const sandboxFailure = rejectedPages.some(result => isSandboxRestrictedError(result.reason));
-    if (dryRun && sandboxFailure) return buildPreviewPublicMockResult(options.sourceKey ?? "public:preview", candidateUrls.length, Math.max(1, rejectedPages.reduce((sum, result) => sum + Number((result.reason as { fetchDurationMs?: unknown })?.fetchDurationMs ?? 1), 0)));
+    if (dryRun && sandboxFailure && shouldUseSandboxMocks()) {
+      return buildPreviewPublicMockResult(
+        options.sourceKey ?? "public:preview",
+        candidateUrls.length,
+        Math.max(1, rejectedPages.reduce((sum, result) => sum + Number((result.reason as { fetchDurationMs?: unknown })?.fetchDurationMs ?? 1), 0))
+      );
+    }
     return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: candidateUrls.length, filtered: candidateUrls.length, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: false, discovered: candidateUrls.length, matchedSources: 0, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, reason: "Nenhum evento dos locais-alvo encontrado nas fontes públicas", sourceReports: buildPublicSourceReports({ candidateUrls, pages, matchesTargetVenue }) };
   }
 

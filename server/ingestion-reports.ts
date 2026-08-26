@@ -430,6 +430,40 @@ function buildWeeklyTrend(
   return Array.from(buckets.values());
 }
 
+export type SourceTelemetry = {
+  sourceKey: string;
+  runs: number;
+  successes: number;
+  successRate: number;
+  averageLatencyMs: number;
+  errors: { category: "anti_bot" | "proxy" | "timeout_dns" | "sandbox" | "other"; count: number }[];
+};
+type SourceErrorCategory = SourceTelemetry["errors"][number]["category"];
+
+
+export function buildSourceTelemetryForTest(runs: Array<{ sourceKey: string | null; status: string; durationMs?: number | null; httpStatus?: number | null; details: unknown }>): SourceTelemetry[] {
+  const grouped = new Map<string, SourceTelemetry & { latencyTotal: number; latencyCount: number; categories: Record<string, number> }>();
+  for (const run of runs) {
+    const sourceKey = run.sourceKey ?? "unknown";
+    const current = grouped.get(sourceKey) ?? { sourceKey, runs: 0, successes: 0, successRate: 0, averageLatencyMs: 0, errors: [], latencyTotal: 0, latencyCount: 0, categories: {} };
+    current.runs += 1;
+    if (run.status === "succeeded") current.successes += 1;
+    const duration = Number(run.durationMs ?? 0);
+    if (Number.isFinite(duration) && duration > 0) { current.latencyTotal += duration; current.latencyCount += 1; }
+    const text = JSON.stringify(run.details ?? "").toLowerCase();
+    const status = Number(run.httpStatus ?? 0);
+    let category: SourceErrorCategory | "none" = "none";
+    if (text.includes("sandbox_restricted") || text.includes("previewmock")) category = "sandbox";
+    else if ([403, 429].includes(status) || /anti.?bot|cloudflare|challenge|waf|forbidden/.test(text)) category = "anti_bot";
+    else if ([502, 503, 504].includes(status) || /bad gateway|proxy|gateway|server error/.test(text)) category = "proxy";
+    else if (/timeout|timed out|enotfound|eai_again|econnrefused|network/.test(text)) category = "timeout_dns";
+    else if (run.status === "failed") category = "other";
+    if (category !== "none") current.categories[category] = (current.categories[category] ?? 0) + 1;
+    grouped.set(sourceKey, current);
+  }
+  return Array.from(grouped.values()).map(item => ({ sourceKey: item.sourceKey, runs: item.runs, successes: item.successes, successRate: item.runs ? Number((item.successes / item.runs).toFixed(4)) : 0, averageLatencyMs: item.latencyCount ? Math.round(item.latencyTotal / item.latencyCount) : 0, errors: Object.entries(item.categories).map(([category, count]) => ({ category: category as SourceErrorCategory, count })) }));
+}
+
 export function buildSourceReconciliationForTest(
   runs: Array<{
     sourceKey: string | null;
@@ -1043,6 +1077,7 @@ export async function listIngestionReport(
       criticalAlerts: [],
       consecutiveFailures: [],
       sourceMetrics: [],
+      sourceTelemetry: [],
       freshness: [],
       timeline: [],
       reconciliationBySource: [],
@@ -1151,6 +1186,7 @@ export async function listIngestionReport(
       runs: Number(row.runs ?? 0),
       failed: Number(row.failed ?? 0),
     }));
+  const sourceTelemetry = buildSourceTelemetryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), durationMs: run.durationMs, httpStatus: run.httpStatus, details: run.details })));
   const freshness = sourceConfigs.map(source => ({
     sourceKey: source.sourceKey,
     name: source.name,
@@ -1278,6 +1314,7 @@ export async function listIngestionReport(
     criticalAlerts,
     consecutiveFailures,
     sourceMetrics,
+    sourceTelemetry,
     freshness,
     timeline,
     reconciliationBySource: buildSourceReconciliationForTest(trendRuns),

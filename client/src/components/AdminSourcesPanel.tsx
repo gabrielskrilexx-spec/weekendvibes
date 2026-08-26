@@ -16,6 +16,7 @@ function formatLastSuccess(value: string | Date | null) {
 
 export default function AdminSourcesPanel() {
   const sources = trpc.ingestionSources.list.useQuery(undefined, { refetchInterval: 30_000 });
+  const mockSettings = trpc.ingestionReports.mockSettings.useQuery(undefined, { refetchInterval: 30_000 });
   const utils = trpc.useUtils();
   const [pendingSourceId, setPendingSourceId] = useState<number | null>(null);
   const update = trpc.ingestionSources.update.useMutation({
@@ -25,6 +26,13 @@ export default function AdminSourcesPanel() {
     },
     onError: error => sonnerToast.error("Não foi possível salvar a fonte", { description: error.message || "Tente novamente." }),
     onSettled: () => setPendingSourceId(null),
+  });
+  const mockSettingsUpdate = trpc.ingestionReports.setMockSettings.useMutation({
+    onSuccess: async result => {
+      await utils.ingestionReports.mockSettings.invalidate();
+      sonnerToast.success(result.allowSandboxMocks ? "Mocks de sandbox ativados" : "Mocks de sandbox desativados", { description: result.allowSandboxMocks ? "Falhas externas no preview poderão usar eventos de teste marcados." : "O preview tentará acessar as fontes reais e não usará fallback simulado." });
+    },
+    onError: error => sonnerToast.error("Não foi possível atualizar os mocks", { description: error.message || "Tente novamente." }),
   });
   const saveSource = (sourceId: number, input: { isEnabled: boolean; priority: number; frequencyMinutes: number }) => {
     if (update.isPending) return;
@@ -44,6 +52,7 @@ export default function AdminSourcesPanel() {
       </div>
       {sources.isLoading && <p className="mt-5 rounded-2xl border border-white/10 p-5 text-sm text-zinc-400">Carregando fontes...</p>}
       {sources.isError && <p role="alert" className="mt-5 rounded-2xl border border-rose-300/20 bg-rose-400/10 p-5 text-sm text-rose-100">Não foi possível carregar as fontes. Tente atualizar novamente.</p>}
+      <div className="mt-5 rounded-2xl border border-violet-300/20 bg-violet-300/5 p-4" data-testid="sandbox-mock-settings"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-black text-violet-100">Permitir Mocks no Sandbox</p><p className="mt-1 text-xs leading-relaxed text-zinc-400">Quando ativo, falhas de rede no preview podem usar eventos simulados marcados. Em produção, esta opção permanece sempre desativada.</p></div><button type="button" role="switch" aria-checked={mockSettings.data?.allowSandboxMocks === true} aria-busy={mockSettingsUpdate.isPending} disabled={mockSettings.isLoading || mockSettingsUpdate.isPending || mockSettings.data?.environment === "production"} onClick={() => mockSettingsUpdate.mutate({ allowSandboxMocks: !(mockSettings.data?.allowSandboxMocks === true) })} className={`inline-flex min-h-11 items-center justify-center rounded-xl border px-4 py-2 text-xs font-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200 disabled:cursor-wait disabled:opacity-50 ${mockSettings.data?.allowSandboxMocks ? "border-violet-200/50 bg-violet-300 text-zinc-950" : "border-white/10 text-zinc-300"}`}>{mockSettingsUpdate.isPending ? <><Loader2 size={14} className="mr-2 animate-spin" /> Salvando...</> : mockSettings.data?.allowSandboxMocks ? "Ativado" : "Desativado"}</button></div></div>
       <div className="mt-5 space-y-3">
         {sources.data?.map(source => {
           const rowPending = update.isPending && pendingSourceId === source.id;
