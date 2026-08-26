@@ -409,7 +409,7 @@ type PublicPage = {
   circuitOpen?: boolean;
 };
 
-function publicSourceKey(url: string) {
+export function publicSourceKey(url: string) {
   try {
     const host = new URL(url).hostname.toLowerCase();
     if (host.includes("ingresse")) return "public:ingresse";
@@ -520,8 +520,11 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
   }
 }
 
-async function discoverCandidatePages(options: { dryRun?: boolean } = {}) {
-  const bases = getConfiguredSourceUrls();
+async function discoverCandidatePages(options: IngestionPipelineOptions = {}) {
+  const configuredBases = getConfiguredSourceUrls();
+  const bases = options.sourceKey
+    ? configuredBases.filter(url => options.sourceKey === "public" || publicSourceKey(url) === options.sourceKey)
+    : configuredBases;
   const discovered = new Set(bases);
   const basePages = await fetchWithConcurrency(bases, url => guardedFetchPublicPage(url, options), PUBLIC_FETCH_CONCURRENCY);
   for (let index = 0; index < basePages.length; index += 1) {
@@ -541,7 +544,8 @@ async function discoverCandidatePages(options: { dryRun?: boolean } = {}) {
   return Array.from(discovered).filter(url => {
     try {
       const host = new URL(url).hostname;
-      return !host.endsWith("zig.tickets") || url !== "https://zig.tickets/pt-BR";
+      const belongsToSource = !options.sourceKey || options.sourceKey === "public" || publicSourceKey(url) === options.sourceKey;
+      return belongsToSource && (!host.endsWith("zig.tickets") || url !== "https://zig.tickets/pt-BR");
     } catch { return false; }
   }).slice(0, 120);
 }
@@ -562,7 +566,7 @@ export type IngestionSourceReport = {
   rejectionReasons: { fetchFailed: number; outsideTargetVenue: number; invalidStructuredEvent: number; duplicate: number; pastEvent: number };
 };
 
-type IngestionPipelineOptions = { dryRun?: boolean };
+export type IngestionPipelineOptions = { dryRun?: boolean; sourceKey?: string };
 type PublicSourceReportInput = {
   candidateUrls: string[];
   pages: PromiseSettledResult<PublicPage>[];

@@ -30,6 +30,8 @@ import { invokeLLM } from "./_core/llm";
 import {
   getWednesdayRoutineStatus,
   runWednesdayRoutineNow,
+  getIngestionChunkSources,
+  runIngestionSourceChunk,
 } from "./manual-ingestion";
 import {
   listIngestionReport,
@@ -171,6 +173,28 @@ const adminRoutineOutput = z.union([
   adminRoutineSuccessOutput,
   adminRoutineFailureOutput,
 ]);
+const ingestionChunkSuccessOutput = z.object({
+  ok: z.literal(true),
+  sourceKey: z.string().min(1).max(160),
+  dryRun: z.boolean(),
+  status: z.enum(["succeeded", "partial", "failed"]),
+  read: z.number().int().nonnegative(),
+  added: z.number().int().nonnegative(),
+  updated: z.number().int().nonnegative(),
+  ignored: z.number().int().nonnegative(),
+  errors: z.array(z.string().max(240)).max(20),
+  durationMs: z.number().int().nonnegative(),
+}).strict();
+const ingestionChunkFailureOutput = z.object({
+  ok: z.literal(false),
+  sourceKey: z.string().min(1).max(160),
+  dryRun: z.boolean(),
+  status: z.literal("failed"),
+  message: z.string().min(1).max(240),
+  errors: z.array(z.string().max(240)).max(20),
+  durationMs: z.number().int().nonnegative(),
+}).strict();
+const ingestionChunkOutput = z.union([ingestionChunkSuccessOutput, ingestionChunkFailureOutput]);
 const mutationAckOutput = z
   .object({ ok: z.literal(true), id: z.number().int().positive().optional() })
   .strict();
@@ -298,6 +322,31 @@ export const appRouter = router({
     status: adminOnly.query(async () =>
       normalizeJsonForTransport(await getWednesdayRoutineStatus())
     ),
+    sources: adminOnly
+      .output(z.object({ sources: z.array(z.string().min(1).max(160)).max(80) }).strict())
+      .query(() => ({ sources: getIngestionChunkSources() })),
+    runSource: adminOnly
+      .input(z.object({ sourceKey: z.string().trim().min(1).max(160), dryRun: z.boolean().default(false) }).strict())
+      .output(ingestionChunkOutput)
+      .mutation(async ({ input }) => {
+        try {
+          const startedAt = Date.now();
+          const raw = await runIngestionSourceChunk(input);
+          const durationMs = Date.now() - startedAt;
+          const result = raw.result && typeof raw.result === "object" ? raw.result as Record<string, unknown> : {};
+          const report = Array.isArray(result.sourceReports) ? result.sourceReports[0] as Record<string, unknown> | undefined : undefined;
+          const errors = Array.isArray(report?.errors) ? report.errors.slice(0, 20).map(error => String(error && typeof error === "object" && "message" in error ? (error as { message?: unknown }).message ?? "Falha sanitizada" : error).slice(0, 240)) : [];
+          const read = Number(report?.read ?? result.read ?? result.receivedPosts ?? result.discovered ?? 0);
+          const added = Number(report?.added ?? result.added ?? result.imported ?? 0);
+          const updated = Number(report?.updated ?? result.updated ?? 0);
+          const ignored = Number(report?.ignored ?? result.ignored ?? result.filtered ?? 0);
+          const status = errors.length > 0 || result.skipped === true ? "partial" : "succeeded";
+          return { ok: true as const, sourceKey: raw.sourceKey, dryRun: raw.dryRun, status, read: Math.max(0, Math.trunc(read)), added: Math.max(0, Math.trunc(added)), updated: Math.max(0, Math.trunc(updated)), ignored: Math.max(0, Math.trunc(ignored)), errors, durationMs };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Falha interna ao processar a fonte.";
+          return { ok: false as const, sourceKey: input.sourceKey, dryRun: input.dryRun, status: "failed" as const, message: message.replace(/https?:\/\/[^\s]+/gi, "fonte pública").slice(0, 240), errors: ["A fonte não pôde ser processada nesta etapa."], durationMs: 0 };
+        }
+      }),
     runNow: adminOnly.output(adminRoutineOutput).mutation(async () => {
       try {
         const result = await runWednesdayRoutineNow();

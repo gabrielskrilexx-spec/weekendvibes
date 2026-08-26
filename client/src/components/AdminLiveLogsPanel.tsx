@@ -52,6 +52,9 @@ function LogsSkeleton() {
 
 export default function AdminLiveLogsPanel() {
   const [authRecoveryOpen, setAuthRecoveryOpen] = useState(false);
+  const [kindFilter, setKindFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("");
   const logs = trpc.ingestionReports.logs.useQuery(
     { limit: 80 },
     { refetchInterval: 3_000, staleTime: 1_500 }
@@ -69,6 +72,23 @@ export default function AdminLiveLogsPanel() {
 
   const refresh = () => {
     void logs.refetch();
+  };
+  const visibleLogs = (logs.data?.logs ?? []).filter(entry =>
+    (kindFilter === "all" || entry.kind === kindFilter) &&
+    (statusFilter === "all" || entry.status === statusFilter) &&
+    (!sourceFilter.trim() || (entry.sourceKey ?? "").toLowerCase().includes(sourceFilter.trim().toLowerCase()))
+  );
+  const exportCsv = () => {
+    const escape = (value: string) => `"${value.replace(/"/g, '""')}"`;
+    const rows = [["ID", "Run", "Tipo", "Status", "Fonte", "Data", "Mensagem"], ...visibleLogs.map(entry => [entry.id, entry.runId, entry.kind, entry.status, entry.sourceKey ?? "", entry.timestamp, entry.message ?? ""])];
+    const csv = rows.map(row => row.map(value => escape(String(value))).join(",")).join("\n");
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `weekendvibes-logs-${new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Sao_Paulo" }).format(new Date())}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -108,6 +128,15 @@ export default function AdminLiveLogsPanel() {
           </span>
           <button
             type="button"
+            onClick={exportCsv}
+            disabled={visibleLogs.length === 0}
+            className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-300/20 px-3 py-2 text-xs font-bold text-cyan-100 disabled:opacity-50"
+            data-testid="export-live-logs-csv"
+          >
+            Exportar CSV
+          </button>
+          <button
+            type="button"
             onClick={refresh}
             disabled={logs.isFetching}
             className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-200 disabled:cursor-wait disabled:opacity-50"
@@ -121,6 +150,13 @@ export default function AdminLiveLogsPanel() {
             Atualizar
           </button>
         </div>
+      </div>
+
+      <div className="mt-5 grid gap-2 sm:grid-cols-4">
+        <select aria-label="Filtrar tipo de log" value={kindFilter} onChange={event => setKindFilter(event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-black/20 px-3 text-xs text-zinc-200"><option value="all">Todos os tipos</option>{Object.entries(kindLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+        <select aria-label="Filtrar status do log" value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-black/20 px-3 text-xs text-zinc-200"><option value="all">Todos os status</option><option value="succeeded">Sucesso</option><option value="partial">Parcial</option><option value="failed">Falha</option><option value="retry">Retry</option></select>
+        <input aria-label="Filtrar fonte do log" value={sourceFilter} onChange={event => setSourceFilter(event.target.value)} placeholder="Fonte específica" className="min-h-10 rounded-xl border border-white/10 bg-black/20 px-3 text-xs text-zinc-200 placeholder:text-zinc-600" />
+        <p className="flex items-center text-xs text-zinc-500">{visibleLogs.length} evento(s) visível(is)</p>
       </div>
 
       {logs.isLoading && (
@@ -147,14 +183,14 @@ export default function AdminLiveLogsPanel() {
       )}
       {!logs.isLoading &&
         !logs.isError &&
-        (logs.data?.logs.length ?? 0) === 0 && (
+        visibleLogs.length === 0 && (
           <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-5 text-sm text-zinc-400">
             Ainda não há eventos operacionais recentes.
           </div>
         )}
-      {(logs.data?.logs.length ?? 0) > 0 && (
+      {visibleLogs.length > 0 && (
         <div className="mt-6 space-y-2" aria-live="polite">
-          {logs.data?.logs.map(entry => (
+          {visibleLogs.map(entry => (
             <article
               key={entry.id}
               className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-3 sm:grid-cols-[auto_1fr_auto] sm:items-center"

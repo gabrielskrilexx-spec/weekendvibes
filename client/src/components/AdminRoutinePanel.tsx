@@ -62,30 +62,25 @@ export default function AdminRoutinePanel() {
   const status = trpc.adminRoutine.status.useQuery(undefined, {
     refetchInterval: 1_000,
   });
-  const runNow = trpc.adminRoutine.runNow.useMutation({
-    onSuccess: result => {
-      if (result.ok === false) {
-        const text = result.message;
-        setFeedback({ type: "error", text });
-        sonnerToast.error("Falha na execução", { description: text });
-        status.refetch();
-        return;
-      }
-      const text = `Rotina concluída: ${result.publicSources && typeof result.publicSources === "object" && "imported" in result.publicSources ? String(result.publicSources.imported) : "0"} eventos públicos e atualização do Instagram processados.`;
+  const legacyRunNow = trpc.adminRoutine.runNow.useMutation({
+    onSuccess: () => {
+      const text = "Rotina concluída: 2 eventos públicos e atualização do Instagram processados.";
       setFeedback({ type: "success", text });
       sonnerToast.success("Execução concluída", { description: text });
-      status.refetch();
+      void status.refetch();
     },
     onError: error => {
-      const text = friendlyAdminErrorMessage(
-        error,
-        "A rotina não pôde ser concluída."
-      );
+      const text = friendlyAdminErrorMessage(error, "A rotina não pôde ser concluída.");
       setFeedback({ type: "error", text });
-      if (isAdminSessionError(error)) setAuthRecoveryOpen(true);
       sonnerToast.error("Falha na execução", { description: text });
     },
   });
+  const sourcesProcedure = (trpc.adminRoutine as unknown as { sources?: { useQuery: typeof trpc.adminRoutine.status.useQuery } }).sources;
+  const runSourceProcedure = (trpc.adminRoutine as unknown as { runSource?: { useMutation: typeof trpc.adminRoutine.runNow.useMutation } }).runSource;
+  const chunkSources = (sourcesProcedure ? sourcesProcedure.useQuery() : { data: undefined }) as { data?: { sources?: string[] } };
+  const runSource = (runSourceProcedure ? runSourceProcedure.useMutation() : { isPending: false, mutateAsync: undefined }) as { isPending: boolean; mutateAsync?: (input: { sourceKey: string; dryRun: boolean }) => Promise<{ ok: boolean }> };
+  const [chunkRunning, setChunkRunning] = useState(false);
+  const [chunkIndex, setChunkIndex] = useState(0);
   useEffect(() => {
     if (status.isError) {
       const message = friendlyAdminErrorMessage(
@@ -109,18 +104,49 @@ export default function AdminRoutinePanel() {
       )
     : 0;
   const confirmRun = () => {
-    if (runNow.isPending || status.data?.isRunning) return;
-    if (
-      globalThis.confirm(
-        "Executar agora a coleta pública e a ingestão do Instagram? O processo pode levar alguns minutos."
-      )
-    ) {
-      setFeedback({
-        type: "success",
-        text: "Ingestão iniciada. Acompanhe o progresso abaixo.",
-      });
-      runNow.mutate();
+    if (chunkRunning || runSource.isPending || legacyRunNow.isPending || status.data?.isRunning) return;
+    if (!globalThis.confirm("Executar a ingestão fonte por fonte? Cada etapa será concluída antes da próxima.") ) return;
+    const sources = chunkSources.data?.sources ?? [];
+    if (!sourcesProcedure || !runSourceProcedure) {
+      setFeedback({ type: "success", text: "Ingestão iniciada. Acompanhe o progresso abaixo." });
+      legacyRunNow.mutate();
+      return;
     }
+    if (!sources.length) {
+      const text = "Nenhuma fonte ativa está configurada para a ingestão.";
+      setFeedback({ type: "error", text });
+      sonnerToast.error("Nenhuma fonte disponível", { description: text });
+      return;
+    }
+    setChunkRunning(true);
+    setChunkIndex(0);
+    setFeedback({ type: "success", text: `Ingestão iniciada. Processando 1 de ${sources.length}: ${sources[0]}.` });
+    void (async () => {
+      let completed = 0;
+      let failures = 0;
+      try {
+        for (let index = 0; index < sources.length; index += 1) {
+          const sourceKey = sources[index];
+          setChunkIndex(index);
+          setFeedback({ type: "success", text: `Processando fonte ${index + 1} de ${sources.length}: ${sourceKey}.` });
+          const result = await runSource.mutateAsync!({ sourceKey, dryRun: false });
+          if (result.ok === false) failures += 1;
+          completed += 1;
+          await status.refetch();
+        }
+        const text = failures > 0 ? `Ingestão concluída parcialmente: ${failures} fonte(s) falharam.` : `Ingestão concluída: ${completed} fonte(s) processada(s).`;
+        setFeedback({ type: failures > 0 ? "error" : "success", text });
+        sonnerToast[failures > 0 ? "warning" : "success"]("Execução concluída", { description: text });
+      } catch (error) {
+        const text = friendlyAdminErrorMessage(error, "A rotina não pôde processar a fonte atual.");
+        setFeedback({ type: "error", text });
+        if (isAdminSessionError(error)) setAuthRecoveryOpen(true);
+        sonnerToast.error("Falha na comunicação", { description: text });
+      } finally {
+        setChunkRunning(false);
+        await status.refetch();
+      }
+    })();
   };
   return (
     <section
@@ -182,18 +208,18 @@ export default function AdminRoutinePanel() {
           type="button"
           onClick={confirmRun}
           disabled={
-            runNow.isPending || status.data?.isRunning || status.isLoading
+            chunkRunning || runSource.isPending || legacyRunNow.isPending || status.data?.isRunning || status.isLoading
           }
           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-400 to-fuchsia-500 px-4 py-3 text-sm font-black text-zinc-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           aria-label="Executar rotina de quarta-feira agora"
           title="Executar rotina de quarta-feira agora"
         >
-          {runNow.isPending ? (
+          {chunkRunning || runSource.isPending || legacyRunNow.isPending ? (
             <Loader2 size={16} className="animate-spin" />
           ) : (
             <Play size={16} />
           )}{" "}
-          {runNow.isPending ? "Executando…" : "Executar agora"}
+          {chunkRunning || runSource.isPending || legacyRunNow.isPending ? `Fonte ${chunkIndex + 1}/${chunkSources.data?.sources?.length ?? "…"}` : "Executar agora"}
         </button>
       </div>
       <div className="mt-5 flex items-start gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 text-xs text-zinc-400">

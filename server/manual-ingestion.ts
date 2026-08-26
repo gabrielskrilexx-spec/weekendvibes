@@ -3,8 +3,9 @@ import { ingestionRuns } from "../drizzle/schema";
 import { getDb, recordOperationalAlert } from "./db";
 import { listHeartbeatJobs } from "./_core/heartbeat";
 import { notifyOwner } from "./_core/notification";
-import { InstagramIntegrationFailure } from "./instagram-pipeline";
-import { runFullAgendaRoutine, type AgendaProgressUpdate } from "./agenda-routine";
+import { InstagramIntegrationFailure, runInstagramPipeline } from "./instagram-pipeline";
+import { runFullAgendaRoutine, runPublicAgendaStep, runInstagramAgendaStep, type AgendaProgressUpdate } from "./agenda-routine";
+import { getConfiguredSourceUrls, publicSourceKey } from "./ingestion";
 import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
 
 let activeRun: Promise<ManualRoutineResult> | null = null;
@@ -91,6 +92,28 @@ export function runWednesdayRoutineNow() {
 
 export function isWednesdayRoutineRunning() {
   return activeRun !== null;
+}
+
+export function getIngestionChunkSources() {
+  const publicSources = getConfiguredSourceUrls().map(publicSourceKey).filter(key => key !== "public:unknown");
+  return Array.from(new Set([...publicSources, "instagram"]));
+}
+
+export async function runIngestionSourceChunk(input: { sourceKey: string; dryRun?: boolean }) {
+  const sourceKey = input.sourceKey.trim();
+  if (sourceKey === "instagram") {
+    if (input.dryRun) {
+      return { sourceKey, dryRun: true, result: await runInstagramPipeline({ dryRun: true }) };
+    }
+    return { sourceKey, dryRun: false, result: await runInstagramAgendaStep({ archive: false, trigger: "manual" }) };
+  }
+  if (!/^public:[a-z0-9_-]+$/.test(sourceKey)) throw new Error("Fonte de ingestão inválida.");
+  if (input.dryRun) {
+    const { runIngestionPipeline } = await import("./ingestion");
+    const result = await runIngestionPipeline({ dryRun: true, sourceKey });
+    return { sourceKey, dryRun: true, result };
+  }
+  return { sourceKey, dryRun: false, result: await runPublicAgendaStep({ archive: false, sourceKey, trigger: "manual" }) };
 }
 
 function messageForProgress(error: unknown) {

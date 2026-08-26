@@ -31,6 +31,7 @@ const labelForSource = (sourceKey: string) =>
   sourceLabels[sourceKey] ?? sourceKey.replace(/^public:/, "");
 const numberValue = (value: unknown) =>
   Number.isFinite(Number(value)) ? Number(value) : 0;
+type DryRunReport = { dryRun: true; startedAt: string; finishedAt: string; durationMs: number; totals: { read: number; filtered: number; persistable: number; duplicates: number; errors: number }; sources: Array<{ routine: "public-agenda" | "instagram-agenda"; sourceKey: string; durationMs: number; medianDurationMs: number; p95DurationMs: number; read: number; filtered: number; persistable: number; duplicates: number; errors: Array<{ sourceUrl?: string; status: number | null; message: string }>; rejectionReasons: Record<string, number> }> };
 
 function DryRunLoadingSkeleton() {
   return (
@@ -66,23 +67,47 @@ function DryRunLoadingSkeleton() {
 
 export default function AdminDryRunPanel() {
   const [authRecoveryOpen, setAuthRecoveryOpen] = useState(false);
-  const dryRun = trpc.ingestionReports.dryRun.useMutation({
-    onError: error => {
-      if (isAdminSessionError(error)) setAuthRecoveryOpen(true);
-    },
-  });
-  const report = dryRun.data?.dryRun ? dryRun.data : undefined;
-  const failure = dryRun.data?.dryRun === false ? dryRun.data : undefined;
-  const run = () => dryRun.mutate();
-  useEffect(() => {
-    if (dryRun.isError) {
-      const message = friendlyAdminErrorMessage(
-        dryRun.error,
-        "A simulação não pôde ser concluída."
-      );
-      sonnerToast.error("Falha na comunicação", { description: message });
+  const [running, setRunning] = useState(false);
+  const [localReport, setLocalReport] = useState<DryRunReport | undefined>();
+  const [localFailure, setLocalFailure] = useState<{ message: string } | undefined>();
+  const legacyDryRun = trpc.ingestionReports.dryRun.useMutation();
+  const report = localReport ?? (legacyDryRun.data?.dryRun ? legacyDryRun.data as DryRunReport : undefined);
+  const failure = localFailure ?? (legacyDryRun.data?.dryRun === false ? legacyDryRun.data : undefined) ?? (legacyDryRun.isError ? { message: friendlyAdminErrorMessage(legacyDryRun.error, "Não foi possível comunicar com o servidor") } : undefined);
+  const adminRoutine = (trpc as unknown as { adminRoutine?: { sources?: { useQuery: () => unknown }; runSource?: { useMutation: () => { mutateAsync: (input: { sourceKey: string; dryRun: boolean }) => Promise<any> } } } }).adminRoutine;
+  const chunkSourcesProcedure = adminRoutine?.sources;
+  const chunkSources = chunkSourcesProcedure ? chunkSourcesProcedure.useQuery() as { data?: { sources?: string[] } } : undefined;
+  const runSourceProcedure = adminRoutine?.runSource;
+  const runSource = runSourceProcedure ? runSourceProcedure.useMutation() : undefined;
+  const run = () => {
+    if (running) return;
+    const sources = chunkSources?.data?.sources ?? [];
+        if (!runSourceProcedure) { legacyDryRun.mutate(); return; }
+    if (!sources.length) {
+      setLocalFailure({ message: "Nenhuma fonte ativa está configurada para a simulação." });
+      return;
     }
-  }, [dryRun.isError, dryRun.error]);
+    setRunning(true); setLocalReport(undefined); setLocalFailure(undefined);
+    void (async () => {
+      const startedAt = new Date().toISOString();
+      const sourceReports: DryRunReport["sources"] = [];
+      try {
+        for (let index = 0; index < sources.length; index += 1) {
+          const sourceKey = sources[index];
+          const result = await runSource!.mutateAsync({ sourceKey, dryRun: true });
+          const errors = result.ok ? result.errors.map((message: string) => ({ status: null, message })) : [{ status: null, message: result.message }];
+          sourceReports.push({ routine: sourceKey === "instagram" ? "instagram-agenda" : "public-agenda", sourceKey, durationMs: result.durationMs, medianDurationMs: result.durationMs, p95DurationMs: result.durationMs, read: result.ok ? result.read : 0, filtered: result.ok ? result.ignored : 0, persistable: 0, duplicates: 0, errors, rejectionReasons: result.ok && result.ignored > 0 ? { filtered: result.ignored } : {} });
+        }
+        const totals = sourceReports.reduce((acc, source) => ({ read: acc.read + source.read, filtered: acc.filtered + source.filtered, persistable: 0, duplicates: acc.duplicates + source.duplicates, errors: acc.errors + source.errors.length }), { read: 0, filtered: 0, persistable: 0, duplicates: 0, errors: 0 });
+        setLocalReport({ dryRun: true, startedAt, finishedAt: new Date().toISOString(), durationMs: Date.now() - Date.parse(startedAt), totals, sources: sourceReports });
+        sonnerToast.success("Dry-run concluído", { description: `${sourceReports.length} fonte(s) processada(s), sem persistência.` });
+      } catch (error) {
+        const message = friendlyAdminErrorMessage(error, "A simulação não pôde ser concluída.");
+        setLocalFailure({ message });
+        if (isAdminSessionError(error)) setAuthRecoveryOpen(true);
+        sonnerToast.error("Falha na comunicação", { description: message });
+      } finally { setRunning(false); }
+    })();
+  };
 
   return (
     <>
@@ -110,20 +135,20 @@ export default function AdminDryRunPanel() {
         <button
           type="button"
           onClick={run}
-          disabled={dryRun.isPending}
+          disabled={running || legacyDryRun.isPending}
           className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-cyan-300 px-4 py-3 text-xs font-black text-zinc-950 transition hover:bg-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 disabled:cursor-wait disabled:opacity-60"
-          aria-busy={dryRun.isPending}
+          aria-busy={running || legacyDryRun.isPending}
         >
-          {dryRun.isPending ? (
+          {running || legacyDryRun.isPending ? (
             <Loader2 size={16} className="animate-spin" />
           ) : (
             <Play size={16} />
           )}
-          {dryRun.isPending ? "Simulando..." : "Simular ingestão (Dry-run)"}
+          {running || legacyDryRun.isPending ? "Simulando..." : "Simular ingestão (Dry-run)"}
         </button>
       </div>
 
-      {(dryRun.error || failure) && (
+      {failure && (
         <div
           role="alert"
           className="mt-5 flex items-start gap-3 rounded-2xl border border-red-300/25 bg-red-300/10 p-4 text-sm text-red-100"
@@ -134,7 +159,7 @@ export default function AdminDryRunPanel() {
             <p className="mt-1 text-red-100/80">
               {failure?.message ??
                 friendlyAdminErrorMessage(
-                  dryRun.error,
+                  failure.message,
                   "O servidor retornou uma falha sem detalhes."
                 )}
             </p>
@@ -142,7 +167,7 @@ export default function AdminDryRunPanel() {
         </div>
       )}
 
-      {dryRun.isPending && <DryRunLoadingSkeleton />}
+      {(running || legacyDryRun.isPending) && <DryRunLoadingSkeleton />}
 
       {report && (
         <div aria-live="polite" className="mt-6 space-y-5">

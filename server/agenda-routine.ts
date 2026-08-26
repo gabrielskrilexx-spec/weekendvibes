@@ -152,7 +152,7 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
 export async function runPublicAgendaStep(options: AgendaStepOptions = {}) {
   const execute = async () => {
     const archived = options.archive === false ? 0 : await archiveExpiredSoldOutEvents();
-    const result = await runIngestionPipeline();
+    const result = await runIngestionPipeline({ sourceKey: options.sourceKey });
     return { archived, result };
   };
   return options.track === false ? execute() : trackedStep("public-agenda", options.sourceKey ?? "public", execute, options);
