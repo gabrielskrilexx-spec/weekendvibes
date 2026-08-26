@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { operationalAlertFingerprint, recordOperationalAlert, resolveOperationalAlert } from "./db";
+import { operationalAlertFingerprint, recordOperationalAlert, resolveOperationalAlert, resolveAllOperationalAlerts } from "./db";
 
 describe("operational alerts", () => {
   it("gera fingerprint estável por integração e mensagem normalizada", () => {
@@ -25,5 +25,17 @@ describe("operational alerts", () => {
 
     await resolveOperationalAlert(4, fakeDb);
     expect(updateWhere).toHaveBeenCalled();
+  });
+
+  it("arquiva todos os alertas abertos e retorna a contagem sem apagar histórico", async () => {
+    const updateWhere = vi.fn().mockResolvedValue(undefined);
+    const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
+    const fakeDb = {
+      select: vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ id: 4 }, { id: 5 }]) }) }),
+      update: vi.fn().mockReturnValue({ set: updateSet }),
+    } as never;
+
+    await expect(resolveAllOperationalAlerts(fakeDb)).resolves.toEqual({ resolvedCount: 2 });
+    expect(updateWhere).toHaveBeenCalledOnce();
   });
 });

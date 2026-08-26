@@ -140,6 +140,16 @@ export async function resolveOperationalAlert(id: number, dbOverride?: Awaited<R
   await db.update(operationalAlerts).set({ isResolved: 1, updatedAt: new Date() }).where(eq(operationalAlerts.id, id));
 }
 
+export async function resolveAllOperationalAlerts(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const openAlerts = await db.select({ id: operationalAlerts.id }).from(operationalAlerts).where(eq(operationalAlerts.isResolved, 0));
+  if (openAlerts.length > 0) {
+    await db.update(operationalAlerts).set({ isResolved: 1, updatedAt: new Date() }).where(eq(operationalAlerts.isResolved, 0));
+  }
+  return { resolvedCount: openAlerts.length };
+}
+
 const normalizeAlias = (value: string) => value.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
 export async function listLocationAliases(dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<LocationAlias[]> {

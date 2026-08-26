@@ -16,6 +16,7 @@ import {
   listEvents,
   listTodayEvents,
   resolveOperationalAlert,
+  resolveAllOperationalAlerts,
   saveEvent,
   updateEvent,
   updateEventsPublication,
@@ -588,6 +589,12 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         await resolveOperationalAlert(input.id);
         return { ok: true as const, id: input.id };
+      }),
+    resolveAll: adminOnly
+      .output(z.object({ ok: z.literal(true), resolvedCount: z.number().int().nonnegative() }).strict())
+      .mutation(async () => {
+        const result = await resolveAllOperationalAlerts();
+        return { ok: true as const, resolvedCount: result.resolvedCount };
       }),
   }),
   ingestionSources: router({

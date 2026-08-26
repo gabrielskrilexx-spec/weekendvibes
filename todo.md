@@ -1866,3 +1866,12 @@
 - [x] Auditar taxa de sucesso, latência média, mediana, P95 e categorias de erro por fonte — sem métricas oficiais recentes disponíveis no recorte atual; nenhum número foi fabricado
 - [x] Confirmar zero pendências legadas e produzir resumo das fontes ativas
 - [x] Executar testes, TypeScript, build e publicar checkpoint
+
+## Saneamento em lote de alertas operacionais — 26/08/2026
+- [x] Auditar contrato do painel de alertas, persistência e tabela de saúde
+- [x] Implementar arquivamento em lote preservando o histórico
+- [x] Adicionar botão administrativo com confirmação, loading, toast e revalidação
+- [x] Manter gatilho 403/502/504 em 3 falhas e cooldown anti-flood
+- [x] Validar estado vazio e métricas da tabela de desempenho
+- [x] Adicionar testes Vitest de limpeza e deduplicação
+- [x] Executar TypeScript, build e publicar checkpoint

@@ -16,6 +16,13 @@ export default function AdminAlertsPanel() {
   const [integration, setIntegration] = useState("all");
   const [resolvingId, setResolvingId] = useState<number | null>(null);
   const report = trpc.ingestionReports.summary.useQuery(undefined, { refetchInterval: 30_000 });
+  const resolveAll = trpc.operationalAlerts.resolveAll.useMutation({
+    onSuccess: async result => {
+      await report.refetch();
+      sonnerToast.success("Pendências arquivadas", { description: `${result.resolvedCount} alerta(s) antigo(s) foram marcados como resolvidos.` });
+    },
+    onError: error => sonnerToast.error("Não foi possível limpar as pendências", { description: error.message || "Tente novamente." }),
+  });
   const resolve = trpc.operationalAlerts.resolve.useMutation({
     onSuccess: async () => {
       await report.refetch();
@@ -40,7 +47,10 @@ export default function AdminAlertsPanel() {
         <h2 id="admin-alerts-heading" className="mt-1 text-xl font-black">Alertas de integração</h2>
         <p className="mt-1 max-w-2xl text-sm text-zinc-400">Área exclusiva para administradores acompanharem falhas de Meta, OCR, OpenAI, fontes públicas e do pipeline.</p>
       </div>
-      <button type="button" onClick={refresh} disabled={report.isFetching} aria-label="Atualizar alertas de integração" aria-busy={report.isFetching} className="inline-flex items-center gap-2 self-start rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-200 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 disabled:cursor-wait disabled:opacity-50"><RefreshCw size={15} className={report.isFetching ? "animate-spin" : ""} /> {report.isFetching ? "Atualizando..." : "Atualizar"}</button>
+      <div className="flex flex-wrap gap-2 self-start">
+        <button type="button" onClick={refresh} disabled={report.isFetching || resolveAll.isPending} aria-label="Atualizar alertas de integração" aria-busy={report.isFetching} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-200 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 disabled:cursor-wait disabled:opacity-50"><RefreshCw size={15} className={report.isFetching ? "animate-spin" : ""} /> {report.isFetching ? "Atualizando..." : "Atualizar"}</button>
+        <button type="button" onClick={() => { if (window.confirm(`Arquivar ${openCount} alerta(s) em aberto? O histórico será preservado.`)) resolveAll.mutate(); }} disabled={openCount === 0 || report.isFetching || resolveAll.isPending} aria-label="Arquivar todas as pendências abertas" aria-busy={resolveAll.isPending} className="inline-flex items-center gap-2 rounded-xl bg-emerald-300 px-3 py-2 text-xs font-black text-zinc-950 hover:bg-emerald-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 disabled:cursor-not-allowed disabled:opacity-50">{resolveAll.isPending ? <><Loader2 size={15} className="animate-spin" /> Arquivando...</> : "Arquivar pendências"}</button>
+      </div>
     </div>
 
     <div className="mt-5 grid gap-3 sm:grid-cols-3">
