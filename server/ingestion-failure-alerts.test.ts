@@ -4,6 +4,7 @@ import {
   handleIngestionFailureAlert,
   notifyConsecutiveFailureWebhook,
   notifyRepeatedBlockedSourceWebhook,
+  notifyPerformanceDegradationWebhook,
   resetBlockedSourceFailureCountersForTest,
 } from "./ingestion-failure-alerts";
 
@@ -104,6 +105,21 @@ describe("blocked source alert", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({ status: 504, category: "proxy_gateway" });
     vi.useRealTimers();
+    if (previous === undefined) delete process.env.CRITICAL_ALERT_WEBHOOK_URL; else process.env.CRITICAL_ALERT_WEBHOOK_URL = previous;
+  });
+});
+
+describe("performance degradation webhook", () => {
+  it("notifica P95 elevado e aplica cooldown por fonte", async () => {
+    resetBlockedSourceFailureCountersForTest();
+    const previous = process.env.CRITICAL_ALERT_WEBHOOK_URL;
+    process.env.CRITICAL_ALERT_WEBHOOK_URL = "https://hooks.example.test/critical";
+    const fetcher = vi.fn().mockResolvedValue({ ok: true });
+    const input = { sourceKey: "public:mringressos", p95LatencyMs: 4820, thresholdMs: 3000, consecutiveRuns: 2, message: "P95 elevado sem tokens" };
+    await expect(notifyPerformanceDegradationWebhook(input, fetcher)).resolves.toMatchObject({ sent: true });
+    await expect(notifyPerformanceDegradationWebhook(input, fetcher)).resolves.toMatchObject({ sent: false, skipped: true });
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({ alert: "performance_degraded", severity: "WARNING", sourceKey: "public:mringressos", p95LatencyMs: 4820, thresholdMs: 3000 });
     if (previous === undefined) delete process.env.CRITICAL_ALERT_WEBHOOK_URL; else process.env.CRITICAL_ALERT_WEBHOOK_URL = previous;
   });
 });

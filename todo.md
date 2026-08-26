@@ -1884,3 +1884,12 @@
 - [x] Integrar retenção ao mecanismo de atualização periódica apropriado — Heartbeat monitor
 - [x] Adicionar testes Vitest de gráfico, telemetria e retenção
 - [x] Validar UI, TypeScript, build e publicar checkpoint
+
+## Período de telemetria e alerta de P95 — 26/08/2026
+- [x] Auditar query de resumo, agregação histórica e serviço de alertas
+- [x] Adicionar seletor reativo de 7, 15, 30 dias e todos aos gráficos
+- [x] Expor P95 por fonte e detectar degradação em rodadas consecutivas
+- [x] Integrar alerta P95 ao cooldown de 24h e deduplicação existente
+- [x] Gerar telemetria de preview com variação temporal sem persistir mocks como eventos
+- [x] Adicionar testes Vitest de período, P95 e cooldown
+- [x] Executar TypeScript, build e publicar checkpoint

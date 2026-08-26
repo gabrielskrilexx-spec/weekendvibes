@@ -38,6 +38,8 @@ const BLOCKED_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 const BLOCKED_WEBHOOK_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const blockedFailureCounts = new Map<string, { count: number; windowStartedAt: number }>();
 const blockedWebhookCooldownUntil = new Map<string, number>();
+const performanceWebhookCooldownUntil = new Map<string, number>();
+const PERFORMANCE_WEBHOOK_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 type BlockedSourceStatus = 403 | 502 | 504;
 
@@ -62,7 +64,19 @@ export async function notifyRepeatedBlockedSourceWebhook(input: { sourceKey: str
   } catch { return { sent: false, skipped: false, count: state.count } as const; }
 }
 
-export function resetBlockedSourceFailureCountersForTest() { blockedFailureCounts.clear(); blockedWebhookCooldownUntil.clear(); }
+export function resetBlockedSourceFailureCountersForTest() { blockedFailureCounts.clear(); blockedWebhookCooldownUntil.clear(); performanceWebhookCooldownUntil.clear(); }
+
+export async function notifyPerformanceDegradationWebhook(input: { sourceKey: string; p95LatencyMs: number; thresholdMs: number; consecutiveRuns: number; message: string }, fetcher: typeof fetch = fetch) {
+  const endpoint = process.env.CRITICAL_ALERT_WEBHOOK_URL?.trim();
+  if (!endpoint) return { sent: false, skipped: true } as const;
+  let parsed: URL;
+  try { parsed = new URL(endpoint); if (parsed.protocol !== "https:") return { sent: false, skipped: true } as const; } catch { return { sent: false, skipped: true } as const; }
+  const key = clean(input.sourceKey, 120);
+  const now = Date.now();
+  if ((performanceWebhookCooldownUntil.get(key) ?? 0) > now) return { sent: false, skipped: true } as const;
+  const payload = { alert: "performance_degraded", severity: "WARNING", sourceKey: key, p95LatencyMs: Math.max(0, Math.round(input.p95LatencyMs)), thresholdMs: Math.max(0, Math.round(input.thresholdMs)), consecutiveRuns: Math.max(2, Math.min(10, Math.round(input.consecutiveRuns))), occurredAt: new Date().toISOString(), message: clean(input.message, 240) };
+  try { const response = await fetcher(parsed.toString(), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }); if (!response.ok) return { sent: false, skipped: false } as const; performanceWebhookCooldownUntil.set(key, now + PERFORMANCE_WEBHOOK_COOLDOWN_MS); return { sent: true, skipped: false } as const; } catch { return { sent: false, skipped: false } as const; }
+}
 
 
 export type ConsecutiveFailureWebhookInput = {

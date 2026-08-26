@@ -293,7 +293,7 @@ const dryRunFailureOutput = z
   })
   .strict();
 const dryRunOutput = z.union([dryRunSuccessOutput, dryRunFailureOutput]);
-const sourceTelemetryOutput = z.array(z.object({ sourceKey: z.string(), runs: z.number().int().nonnegative(), successes: z.number().int().nonnegative(), successRate: z.number().min(0).max(1), averageLatencyMs: z.number().int().nonnegative(), errors: z.array(z.object({ category: z.enum(["anti_bot", "proxy", "timeout_dns", "sandbox", "other"]), count: z.number().int().nonnegative() }).strict()) }).strict());
+const sourceTelemetryOutput = z.array(z.object({ sourceKey: z.string(), runs: z.number().int().nonnegative(), successes: z.number().int().nonnegative(), successRate: z.number().min(0).max(1), averageLatencyMs: z.number().int().nonnegative(), p95LatencyMs: z.number().int().nonnegative(), errors: z.array(z.object({ category: z.enum(["anti_bot", "proxy", "timeout_dns", "sandbox", "other"]), count: z.number().int().nonnegative() }).strict()) }).strict());
 const reprocessOutput = z
   .object({
     ok: z.boolean(),
@@ -484,7 +484,7 @@ export const appRouter = router({
           .object({
             size: z.number().int().min(1).max(50).optional(),
             periodDays: z
-              .union([z.literal(7), z.literal(30), z.literal(90)])
+              .union([z.literal(7), z.literal(15), z.literal(30), z.literal(90), z.literal("all")])
               .optional(),
             routine: z
               .enum(["instagram-agenda", "public-agenda", "manual-reprocess"])
