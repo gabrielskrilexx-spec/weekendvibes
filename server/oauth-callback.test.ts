@@ -81,6 +81,23 @@ describe("OAuth callback", () => {
     expect(mocks.createSessionToken).toHaveBeenCalled();
   });
 
+  it("recusa o login Dev Mode imediatamente em produção", async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      const handler = register("/api/auth/dev-login");
+      const response = createResponse();
+      await handler?.({ query: { redirect_to: "/admin" }, headers: {} }, response);
+      expect(response.statusCode).toBe(404);
+      expect(response.body).toEqual({ error: "not_found" });
+      expect(mocks.upsertUser).not.toHaveBeenCalled();
+      expect(mocks.createSessionToken).not.toHaveBeenCalled();
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+    }
+  });
+
   it("rejeita state sem nonce correspondente antes de trocar o código", async () => {
     const handler = register();
     const response = createResponse();

@@ -10,7 +10,7 @@ export default function SessionExpired() {
   const returnTo = typeof window !== "undefined"
     ? getSafeReturnPath(new URLSearchParams(window.location.search).get("returnTo"))
     : "/";
-  const isPreviewBuild = import.meta.env.MODE !== "production";
+  const isPreviewBuild = !import.meta.env.PROD;
   const startDevLogin = () => {
     const target = getSafeReturnPath(returnTo, "/admin");
     window.location.assign(`/api/auth/dev-login?redirect_to=${encodeURIComponent(target)}`);

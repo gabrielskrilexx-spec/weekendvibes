@@ -1836,3 +1836,12 @@
 - [x] Validar login Admin Dev Mode no domínio de preview
 - [x] Executar Dry-run autenticado e confirmar fallback mock por fonte — 5 fontes processadas, 6 lidos, 2 filtrados, 0 persistidos, 4 erros sanitizados
 - [x] Executar testes, TypeScript, build e publicar checkpoint
+
+## Limpeza operacional e blindagem de produção — 26/08/2026
+- [x] Auditar e revisar os alertas operacionais atualmente abertos — 11 alertas resolvidos, histórico preservado
+- [x] Melhorar tooltips dos erros sanitizados no Dry-run
+- [x] Garantir HTTP 404/403 no endpoint Dev Mode em produção
+- [x] Confirmar remoção do botão Dev Mode do bundle produtivo via `import.meta.env.PROD`
+- [x] Garantir mocks sempre falsos em produção, independentemente do banco/request
+- [x] Adicionar teste Vitest de regressão em NODE_ENV=production
+- [x] Executar suíte, TypeScript, build e publicar relatório de validação

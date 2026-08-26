@@ -82,6 +82,7 @@ describe("AdminDryRunPanel", () => {
     expect(markup).toContain("410 ms");
     expect(markup).toContain("Ver detalhes dos erros (1)");
     expect(markup).toContain("Fonte pública indisponível");
+    expect(markup).toContain("Há 1 erro(s) sanitizado(s) em Black Pass");
     expect(markup).toContain("sem persistência");
   });
 });

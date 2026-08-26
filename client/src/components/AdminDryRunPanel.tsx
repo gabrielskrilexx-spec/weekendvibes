@@ -15,6 +15,7 @@ import {
   isAdminSessionError,
 } from "@/lib/adminFeedback";
 import AdminAuthRecoveryDialog from "@/components/AdminAuthRecoveryDialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const sourceLabels: Record<string, string> = {
   instagram: "Instagram",
@@ -29,6 +30,14 @@ const sourceLabels: Record<string, string> = {
 
 const labelForSource = (sourceKey: string) =>
   sourceLabels[sourceKey] ?? sourceKey.replace(/^public:/, "");
+function errorCategory(error: { status: number | null; message: string }) {
+  if (error.status === 403 || /blocked|anti-bot|waf/i.test(error.message)) return "Bloqueio de acesso ou proteção Anti-Bot/WAF.";
+  if (error.status === 502 || error.status === 503 || error.status === 504) return "Instabilidade do servidor ou proxy externo.";
+  if (/timeout|timed out/i.test(error.message)) return "A fonte excedeu o limite de tempo da tentativa.";
+  if (/sandbox|restricted/i.test(error.message)) return "A rede do preview restringiu a fonte; o fallback simulado pode ser usado.";
+  return "Falha sanitizada da fonte; detalhes internos foram omitidos por segurança.";
+}
+
 function isChunkNetworkError(error: unknown) {
   const message = String(error instanceof Error ? error.message : error ?? "").toLowerCase();
   return /failed to fetch|network|fetch|timeout|timed out|gateway|502|503|504|econn|socket|transport/.test(message);
@@ -254,10 +263,14 @@ export default function AdminDryRunPanel() {
                       </p>
                     </div>
                     {source.errors.length > 0 ? (
-                      <AlertTriangle
-                        size={18}
-                        className="shrink-0 text-yellow-200"
-                      />
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span tabIndex={0} aria-label={`Há ${source.errors.length} erro(s) sanitizado(s) em ${labelForSource(source.sourceKey)}`} className="inline-flex cursor-help rounded-full outline-none focus-visible:ring-2 focus-visible:ring-yellow-200">
+                            <AlertTriangle size={18} className="shrink-0 text-yellow-200" aria-hidden="true" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-xs leading-relaxed">Há {source.errors.length} erro(s) sanitizado(s). Abra “Ver detalhes dos erros” para ver a categoria e o status público, sem dados internos.</TooltipContent>
+                      </Tooltip>
                     ) : (
                       <CheckCircle2
                         size={18}
@@ -316,18 +329,14 @@ export default function AdminDryRunPanel() {
                       </summary>
                       <div className="space-y-2 border-t border-yellow-300/10 p-3">
                         {source.errors.map((error, index) => (
-                          <p
-                            key={`${source.sourceKey}-error-${index}`}
-                            className={`rounded-xl border p-3 text-xs leading-5 ${source.sourceKey === "public:ingresse" && error.status === 403 ? "border-red-300/30 bg-red-400/10 text-red-100" : "border-yellow-300/15 bg-yellow-300/5 text-yellow-100"}`}
-                          >
-                            {source.sourceKey === "public:ingresse" &&
-                            error.status === 403
-                              ? "Acesso temporariamente bloqueado (HTTP 403): "
-                              : error.status
-                                ? `HTTP ${error.status}: `
-                                : ""}
-                            {error.message}
-                          </p>
+                          <Tooltip key={`${source.sourceKey}-error-${index}`}>
+                            <TooltipTrigger asChild>
+                              <p className={`rounded-xl border p-3 text-xs leading-5 outline-none focus-visible:ring-2 focus-visible:ring-yellow-200 ${source.sourceKey === "public:ingresse" && error.status === 403 ? "border-red-300/30 bg-red-400/10 text-red-100" : "border-yellow-300/15 bg-yellow-300/5 text-yellow-100"}`} tabIndex={0}>
+                                {source.sourceKey === "public:ingresse" && error.status === 403 ? "Acesso temporariamente bloqueado (HTTP 403): " : error.status ? `HTTP ${error.status}: ` : ""}{error.message}
+                              </p>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-xs leading-relaxed">{errorCategory(error)}</TooltipContent>
+                          </Tooltip>
                         ))}
                       </div>
                     </details>
