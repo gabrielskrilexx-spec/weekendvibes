@@ -1664,6 +1664,6 @@
 - [x] Normalizar queries administrativas e manter campos de data como ISO strings
 - [x] Corrigir explicitamente Execução Manual e Dry-run sem quebrar progresso, auditoria ou idempotência
 - [x] Adicionar testes de contrato/serialização e erros sanitizados por domínio
-- [ ] Executar TypeScript, suíte Vitest, build e E2E/smoke do painel
-- [ ] Fazer commit/push comprovado na branch main ou registrar eventual bloqueio do remote
-- [ ] Salvar checkpoint e publicar a auditoria global
+- [x] Executar TypeScript, suíte Vitest, build e E2E/smoke do painel
+- [x] Fazer commit/push comprovado na branch main (commit 0f035cc; push aceito pelo GitHub)
+- [x] Salvar checkpoint e publicar a auditoria global
