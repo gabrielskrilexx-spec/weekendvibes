@@ -1768,3 +1768,10 @@
 - [x] Garantir que produção nunca use eventos simulados
 - [x] Testar Instagram e Dry-run com fallback, TypeScript, Vitest e build
 - [x] Publicar checkpoint da alteração
+
+## Regressão de proxy no preview — 26/08/2026
+- [x] Reproduzir falha de transporte do Instagram e Dry-run público no preview
+- [x] Garantir payload JSON estruturado para HTTP, HTML anti-bot, DNS e timeout
+- [x] Eliminar duração 0 ms em falhas capturadas no handler de chunk
+- [x] Validar fallback simulado somente em Dry-run de desenvolvimento
+- [x] Executar testes completos, TypeScript, build e publicar checkpoint

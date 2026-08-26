@@ -34,7 +34,7 @@ function isChunkNetworkError(error: unknown) {
   return /failed to fetch|network|fetch|timeout|timed out|gateway|502|503|504|econn|socket|transport/.test(message);
 }
 
-async function retryChunkNetwork<T>(work: () => Promise<T>, maxRetries = 2) {
+async function retryChunkNetwork<T>(work: () => Promise<T>, maxRetries = 2, onRetry?: (attempt: number) => void) {
   let attempt = 0;
   while (true) {
     try {
@@ -42,6 +42,7 @@ async function retryChunkNetwork<T>(work: () => Promise<T>, maxRetries = 2) {
     } catch (error) {
       if (!isChunkNetworkError(error) || attempt >= maxRetries) throw error;
       attempt += 1;
+      onRetry?.(attempt);
       await new Promise(resolve => setTimeout(resolve, 150 * attempt));
     }
   }
@@ -88,6 +89,7 @@ export default function AdminDryRunPanel() {
   const [running, setRunning] = useState(false);
   const [localReport, setLocalReport] = useState<DryRunReport | undefined>();
   const [localFailure, setLocalFailure] = useState<{ message: string } | undefined>();
+  const [activeRetry, setActiveRetry] = useState<number | null>(null);
   const legacyDryRun = trpc.ingestionReports.dryRun.useMutation();
   const report = localReport ?? (legacyDryRun.data?.dryRun ? legacyDryRun.data as DryRunReport : undefined);
   const failure = localFailure ?? (legacyDryRun.data?.dryRun === false ? legacyDryRun.data : undefined) ?? (legacyDryRun.isError ? { message: friendlyAdminErrorMessage(legacyDryRun.error, "Não foi possível comunicar com o servidor") } : undefined);
@@ -104,19 +106,21 @@ export default function AdminDryRunPanel() {
       setLocalFailure({ message: "Nenhuma fonte ativa está configurada para a simulação." });
       return;
     }
-    setRunning(true); setLocalReport(undefined); setLocalFailure(undefined);
+    setRunning(true); setActiveRetry(null); setLocalReport(undefined); setLocalFailure(undefined);
     void (async () => {
       const startedAt = new Date().toISOString();
       const sourceReports: DryRunReport["sources"] = [];
       try {
         for (let index = 0; index < sources.length; index += 1) {
           const sourceKey = sources[index];
+          const sourceStartedAt = Date.now();
           try {
-            const result = await retryChunkNetwork(() => runSource!.mutateAsync({ sourceKey, dryRun: true }));
+            const result = await retryChunkNetwork(() => runSource!.mutateAsync({ sourceKey, dryRun: true }), 2, (attempt: number) => setActiveRetry(attempt));
             const errors = result.ok ? result.errors.map((message: string) => ({ status: null, message })) : [{ status: null, message: result.message ?? "Falha sanitizada na fonte." }];
             sourceReports.push({ routine: sourceKey === "instagram" ? "instagram-agenda" : "public-agenda", sourceKey, durationMs: result.durationMs, medianDurationMs: result.durationMs, p95DurationMs: result.durationMs, read: result.ok ? result.read : 0, filtered: result.ok ? result.ignored : 0, persistable: 0, duplicates: 0, errors, rejectionReasons: result.ok && result.ignored > 0 ? { filtered: result.ignored } : {} });
           } catch (error) {
-            sourceReports.push({ routine: sourceKey === "instagram" ? "instagram-agenda" : "public-agenda", sourceKey, durationMs: 0, medianDurationMs: 0, p95DurationMs: 0, read: 0, filtered: 0, persistable: 0, duplicates: 0, errors: [{ status: null, message: isChunkNetworkError(error) ? "Falha de Conexão após 2 tentativas." : friendlyAdminErrorMessage(error, "Falha sanitizada na fonte.") }], rejectionReasons: { fetchFailed: 1 } });
+            const durationMs = Math.max(1, Date.now() - sourceStartedAt);
+            sourceReports.push({ routine: sourceKey === "instagram" ? "instagram-agenda" : "public-agenda", sourceKey, durationMs, medianDurationMs: durationMs, p95DurationMs: durationMs, read: 0, filtered: 0, persistable: 0, duplicates: 0, errors: [{ status: null, message: isChunkNetworkError(error) ? "Falha de Conexão após 2 tentativas." : friendlyAdminErrorMessage(error, "Falha sanitizada na fonte.") }], rejectionReasons: { fetchFailed: 1 } });
           }
         }
         const totals = sourceReports.reduce((acc, source) => ({ read: acc.read + source.read, filtered: acc.filtered + source.filtered, persistable: 0, duplicates: acc.duplicates + source.duplicates, errors: acc.errors + source.errors.length }), { read: 0, filtered: 0, persistable: 0, duplicates: 0, errors: 0 });
@@ -127,7 +131,7 @@ export default function AdminDryRunPanel() {
         setLocalFailure({ message });
         if (isAdminSessionError(error)) setAuthRecoveryOpen(true);
         sonnerToast.error("Falha na comunicação", { description: message });
-      } finally { setRunning(false); }
+      } finally { setActiveRetry(null); setRunning(false); }
     })();
   };
 
@@ -189,7 +193,17 @@ export default function AdminDryRunPanel() {
         </div>
       )}
 
-      {(running || legacyDryRun.isPending) && <DryRunLoadingSkeleton />}
+      {(running || legacyDryRun.isPending) && (
+        <>
+          <DryRunLoadingSkeleton />
+          {activeRetry !== null && (
+            <div role="status" aria-live="polite" className="mt-3 flex items-center gap-2 rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm font-semibold text-amber-100">
+              <Loader2 size={15} className="animate-spin" />
+              Tentando novamente a fonte atual ({activeRetry}/2)…
+            </div>
+          )}
+        </>
+      )}
 
       {report && (
         <div aria-live="polite" className="mt-6 space-y-5">
