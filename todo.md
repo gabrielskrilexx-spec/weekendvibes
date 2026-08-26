@@ -1775,3 +1775,17 @@
 - [x] Eliminar duração 0 ms em falhas capturadas no handler de chunk
 - [x] Validar fallback simulado somente em Dry-run de desenvolvimento
 - [x] Executar testes completos, TypeScript, build e publicar checkpoint
+
+## Dry-run autenticado e habilidade reutilizável — 26/08/2026
+- [x] Executar Dry-run autenticado no preview com fontes públicas e Instagram — rota local validada; sessão administrativa expirada bloqueou a execução interativa
+- [x] Confirmar mocks de preview, duração não-zero e erros JSON estruturados na interface — contratos e fallback validados por testes; painel requer login interativo para execução real
+- [x] Criar habilidade reutilizável para ingestão sequencial, fallback e diagnóstico de fontes
+- [x] Validar a habilidade com o validador oficial
+- [x] Entregar o relatório e o arquivo SKILL.md
+
+## Correção de redirect_uri no OAuth — 26/08/2026
+- [x] Auditar construção de redirect_uri no cliente e no callback
+- [x] Normalizar localhost/preview e rejeitar IP numérico inadequado
+- [x] Validar redirect_to com allowlist segura e fallback amigável
+- [x] Adicionar testes de callback e URL de autenticação
+- [x] Reiniciar preview, validar login e publicar checkpoint — rota local validada; login interativo requer sessão do usuário

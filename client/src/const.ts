@@ -1,6 +1,6 @@
-import { getSafeReturnPath, OAUTH_STATE_COOKIE, encodeOAuthState } from "@shared/const";
+import { getOAuthCallbackUri, getSafeReturnPath, OAUTH_STATE_COOKIE, encodeOAuthState } from "@shared/const";
 
-export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+export { COOKIE_NAME, ONE_YEAR_MS, getOAuthCallbackUri } from "@shared/const";
 
 export const LEGAL_ACCEPTANCE_VERSION = "2026-08-17";
 const LEGAL_ACCEPTANCE_KEY = "weekendvibes:legal-acceptance";
@@ -37,7 +37,7 @@ export function completePendingLogin() {
 function startLoginWithoutConsent(requestedReturnTo?: string) {
   const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
   const appId = import.meta.env.VITE_APP_ID;
-  const redirectUri = `${window.location.origin}/api/oauth/callback`;
+  const redirectUri = getOAuthCallbackUri(window.location.origin);
 
   const nonce = crypto.randomUUID();
   document.cookie = `${OAUTH_STATE_COOKIE}=${nonce}; Path=/; Max-Age=600; SameSite=None; Secure`;

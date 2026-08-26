@@ -14,6 +14,23 @@ export const OAUTH_STATE_COOKIE = "__Host-oauth_state";
 // CSRF nonce. Defined here so the client encoder and server decoder never drift.
 export type OAuthState = { redirectUri: string; nonce?: string; returnTo?: string };
 
+/** Normaliza apenas o alias local rejeitado pelo OAuth; origens públicas permanecem intactas. */
+export const normalizeOAuthRedirectUri = (candidate: unknown): string => {
+  if (typeof candidate !== "string" || !candidate) return "";
+  try {
+    const url = new URL(candidate);
+    if (url.hostname === "127.0.0.1") url.hostname = "localhost";
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return "";
+  }
+};
+
+export const getOAuthCallbackUri = (origin: string): string => {
+  const normalizedOrigin = normalizeOAuthRedirectUri(origin);
+  return normalizedOrigin ? `${normalizedOrigin}/api/oauth/callback` : "/api/oauth/callback";
+};
+
 /** Accept only same-origin application paths; never external URLs or protocol-relative paths. */
 export const getSafeReturnPath = (candidate: unknown, fallback = "/"): string => {
   if (typeof candidate !== "string" || !candidate.startsWith("/") || candidate.startsWith("//")) return fallback;

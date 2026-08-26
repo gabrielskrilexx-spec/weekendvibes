@@ -39,7 +39,8 @@ export function registerOAuthRoutes(app: Express) {
     // forge `state`, but cannot plant this cookie in the victim's browser.
     const oauthState = decodeOAuthState(state);
     const { nonce } = oauthState;
-    const returnTo = getSafeReturnPath(oauthState.returnTo);
+    const requestedReturnTo = getQueryParam(req, "redirect_to");
+    const returnTo = getSafeReturnPath(requestedReturnTo ?? oauthState.returnTo);
     const expectedNonce = parseCookieHeader(req.headers.cookie ?? "")[OAUTH_STATE_COOKIE];
     if (!nonce || nonce !== expectedNonce) {
       res.status(403).json({ error: "invalid oauth state" });
