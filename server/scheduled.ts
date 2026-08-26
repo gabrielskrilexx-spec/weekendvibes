@@ -1,11 +1,10 @@
 import type { Request, Response } from "express";
 import { sdk } from "./_core/sdk";
-import { runFullAgendaRoutine, runPublicAgendaStep } from "./agenda-routine";
-import { notifyIngestionSummary } from "./ingestion-failure-alerts";
+import * as agendaRoutine from "./agenda-routine";
+import * as failureAlerts from "./ingestion-failure-alerts";
 import { HttpError } from "@shared/_core/errors";
 import { redactError } from "./_core/security";
 import { notifyOwner } from "./_core/notification";
-import { handleIngestionFailureAlert } from "./ingestion-failure-alerts";
 
 function buildPublicAutomationSummary(result: unknown, startedAt: string, finishedAt: string) {
   const value = result && typeof result === "object" ? result as Record<string, unknown> : {};
@@ -35,11 +34,11 @@ export async function ingestEventsHandler(req: Request, res: Response) {
   }
   if (!user.isCron) return res.status(403).json({ error: "cron-only" });
   try {
-    const { archived, result } = await runPublicAgendaStep();
+    const { archived, result } = await agendaRoutine.runPublicAgendaStep();
     const fetchFailed = Number((result as { filteredByReason?: { fetchFailed?: unknown } }).filteredByReason?.fetchFailed ?? 0);
     if (fetchFailed > 0) {
       try {
-        await handleIngestionFailureAlert({
+        await failureAlerts.handleIngestionFailureAlert({
           routine: "public-agenda",
           sourceKey: "public",
           integration: "public",
@@ -58,7 +57,7 @@ export async function ingestEventsHandler(req: Request, res: Response) {
     const finishedAt = new Date().toISOString();
     const summary = buildPublicAutomationSummary(result, startedAt, finishedAt);
     try {
-      const notification = await notifyIngestionSummary({ routine: "public-agenda", status: summary.status, startedAt, finishedAt, added: summary.added, updated: summary.updated, ignored: summary.ignored, errors: summary.errors, sources: summary.sources.map(source => ({ sourceKey: source.sourceKey, read: source.read, added: source.added, updated: source.updated, ignored: source.ignored, errors: source.errors.length })) });
+      const notification = await failureAlerts.notifyIngestionSummary({ routine: "public-agenda", status: summary.status, startedAt, finishedAt, added: summary.added, updated: summary.updated, ignored: summary.ignored, errors: summary.errors, sources: summary.sources.map(source => ({ sourceKey: source.sourceKey, read: source.read, added: source.added, updated: source.updated, ignored: source.ignored, errors: source.errors.length })) });
       if (!notification.sent) console.info("[Ingestion summary]", JSON.stringify({ routine: "public-agenda", status: summary.status, added: summary.added, updated: summary.updated, ignored: summary.ignored, errors: summary.errors.length, webhook: notification.skipped ? "not_configured" : "unavailable" }));
     } catch (notificationError) {
       console.warn("[Scheduled] Ingestion summary notification failed", redactError(notificationError));
@@ -82,7 +81,7 @@ export async function ingestFullAgendaHandler(req: Request, res: Response) {
   }
   if (!user.isCron) return res.status(403).json({ error: "cron-only" });
   try {
-    const result = await runFullAgendaRoutine({ trigger: "scheduled" });
+    const result = await agendaRoutine.runFullAgendaRoutine({ trigger: "scheduled" });
     const finishedAt = new Date().toISOString();
     return res.status(result.status === "failed" ? 502 : 200).json({ ok: result.status !== "failed", status: result.status, startedAt, finishedAt, result });
   } catch (error) {

@@ -1,12 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 describe("INGESTION_SOURCE_URLS", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   it("contains the configured public event sources", () => {
+    const sources = [
+      "https://articket.com.br/",
+      "https://blacktag.com.br/",
+      "https://zig.tickets/pt-BR",
+      "https://www.ingresse.com/laroc-guaruja-apresenta-reveillon-2027-feat-mau-p/",
+    ];
+    vi.stubEnv("INGESTION_SOURCE_URLS", JSON.stringify(sources));
     const raw = process.env.INGESTION_SOURCE_URLS;
     expect(raw).toBeTruthy();
 
-    const sources = JSON.parse(raw ?? "[]") as string[];
-    expect(sources).toEqual(
+    const configured = JSON.parse(raw ?? "[]") as string[];
+    expect(configured).toEqual(
       expect.arrayContaining([
         "https://articket.com.br/",
         "https://blacktag.com.br/",
@@ -14,10 +23,12 @@ describe("INGESTION_SOURCE_URLS", () => {
         "https://www.ingresse.com/laroc-guaruja-apresenta-reveillon-2027-feat-mau-p/",
       ]),
     );
-    expect(sources.every(source => source.startsWith("https://"))).toBe(true);
+    expect(configured.every(source => source.startsWith("https://"))).toBe(true);
   });
 
   it("trata DISABLED como ausência de foco temporário no parser", async () => {
+    vi.stubEnv("INGESTION_SOURCE_URLS", JSON.stringify(["https://articket.com.br/", "https://blacktag.com.br/", "https://zig.tickets/pt-BR", "https://www.ingresse.com/laroc-guaruja-apresenta-reveillon-2027-feat-mau-p/"]));
+    vi.stubEnv("INGESTION_FOCUS_URLS", "DISABLED");
     expect((process.env.INGESTION_FOCUS_URLS ?? "").trim().toUpperCase()).toBe("DISABLED");
     const { getConfiguredSourceUrls } = await import("./ingestion");
     const sources = getConfiguredSourceUrls();

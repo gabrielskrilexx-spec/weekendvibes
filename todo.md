@@ -1730,3 +1730,10 @@
 - [x] Adicionar exportação CSV respeitando os filtros ativos
 - [x] Concluir validação completa da suíte Vitest e build após estabilizar testes de integração do ambiente compartilhado
 - [x] Salvar checkpoint da etapa de chunking sequencial
+
+## Correção da suíte legada — 26/08/2026
+- [x] Reproduzir e mapear os 7 timeouts/interferências dos testes legados
+- [x] Isolar estado compartilhado, timers, mocks e conexões entre testes
+- [x] Corrigir sincronização e limpeza dos testes sem mascarar falhas
+- [x] Validar suíte completa, TypeScript e build
+- [x] Publicar checkpoint da correção

@@ -5,7 +5,6 @@ import { listHeartbeatJobs } from "./_core/heartbeat";
 import { notifyOwner } from "./_core/notification";
 import { InstagramIntegrationFailure, runInstagramPipeline } from "./instagram-pipeline";
 import { runFullAgendaRoutine, runPublicAgendaStep, runInstagramAgendaStep, type AgendaProgressUpdate } from "./agenda-routine";
-import { getConfiguredSourceUrls, publicSourceKey } from "./ingestion";
 import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
 
 let activeRun: Promise<ManualRoutineResult> | null = null;
@@ -94,8 +93,31 @@ export function isWednesdayRoutineRunning() {
   return activeRun !== null;
 }
 
+function configuredSourceUrlsForChunks() {
+  const raw = process.env.INGESTION_SOURCE_URLS ?? "";
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string" && value.startsWith("https://")) : [];
+  } catch {
+    return raw.split(/[\n,]+/).map(value => value.trim()).filter(value => value.startsWith("https://"));
+  }
+}
+function sourceKeyForChunk(url: string) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    if (host.includes("ingresse")) return "public:ingresse";
+    if (host.includes("blacktag")) return "public:blacktag";
+    if (host.includes("blackpass")) return "public:blackpass";
+    if (host.includes("mringressos")) return "public:mringressos";
+    if (host.includes("articket")) return "public:articket";
+    if (host.endsWith("zig.tickets")) return "public:zig";
+  } catch {
+    // URL inválida não deve criar um chunk executável.
+  }
+  return "public:unknown";
+}
 export function getIngestionChunkSources() {
-  const publicSources = getConfiguredSourceUrls().map(publicSourceKey).filter(key => key !== "public:unknown");
+  const publicSources = configuredSourceUrlsForChunks().map(sourceKeyForChunk).filter(key => key !== "public:unknown");
   return Array.from(new Set([...publicSources, "instagram"]));
 }
 
