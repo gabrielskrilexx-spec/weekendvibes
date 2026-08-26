@@ -1646,3 +1646,13 @@
 - [x] Confirmar sessão administrativa persistente para validação visual manual no navegador (sessão não disponível nesta execução; gate exibido)
 - [x] Confirmar smoke test de produção após propagação da próxima versão (HTTP 200 e raiz pública validada)
 - [x] Confirmar push remoto caso a infraestrutura GitHub exija credencial adicional (push via shell recusado por remote S3; checkpoint gerenciado é a via suportada)
+
+## Acionamento manual com progresso em tempo real
+- [x] Mapear e preservar o fluxo existente de ingestão manual, autorização e idempotência
+- [x] Implementar estado de execução e atualizações de progresso por etapa e por fonte
+- [x] Adicionar botão Admin com confirmação, loading, disabled e feedback acessível
+- [x] Exibir progresso em tempo real e resultado final sanitizado no painel
+- [x] Adicionar testes Vitest para contrato, progresso, concorrência e erros
+- [x] Adicionar/atualizar teste Playwright para acionamento manual e progresso
+- [x] Validar mobile, TypeScript, suíte Vitest e build de produção (TypeScript, 80 arquivos/302 testes Vitest, build e E2E aprovados; captura mobile chegou ao gate de login)
+- [x] Salvar checkpoint e publicar a alteração

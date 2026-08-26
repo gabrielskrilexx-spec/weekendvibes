@@ -19,7 +19,17 @@ import { notifyIngestionSummary } from "./ingestion-failure-alerts";
 import { reconcileIngestionResult } from "./reconciliation";
 
 export type AgendaStepOptions = { archive?: boolean; track?: boolean; sourceKey?: string; runId?: number; trigger?: "manual" | "scheduled" };
-export type FullAgendaRoutineOptions = { trigger?: "manual" | "scheduled"; runId?: number };
+export type AgendaProgressUpdate = {
+  phase: "starting" | "archiving" | "collecting" | "finalizing" | "completed" | "failed";
+  step: number;
+  totalSteps: number;
+  message: string;
+  sourceKey?: "public" | "instagram";
+  sourceStatus?: "pending" | "running" | "succeeded" | "failed";
+  metrics?: { read?: number; added?: number; updated?: number; ignored?: number };
+  error?: string;
+};
+export type FullAgendaRoutineOptions = { trigger?: "manual" | "scheduled"; runId?: number; onProgress?: (update: AgendaProgressUpdate) => void };
 export type RetryAttempt = { attempt: number; startedAt: string; failedAt: string; reason: string; httpStatus: number | null };
 const MAX_SCHEDULED_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 1000;
@@ -246,21 +256,42 @@ export function buildIngestionExecutiveSummaryForTest(input: { routine: string; 
 
 export async function runFullAgendaRoutine(options: FullAgendaRoutineOptions = {}) {
   const trigger = options.trigger ?? "scheduled";
+  const reportProgress = (update: AgendaProgressUpdate) => {
+    try { options.onProgress?.(update); } catch (error) { console.warn("[Agenda routine] Progresso descartado:", safeAutomationError(error)); }
+  };
   const startedAt = new Date().toISOString();
   const startedAtMs = Date.now();
   const ownsRun = options.runId === undefined;
   const runId = options.runId ?? await startIngestionRun({ routine: "full-agenda", sourceKey: "all" });
   let archived = 0;
   let archiveError: { sourceKey: string; status: number | null; message: string } | undefined;
+  reportProgress({ phase: "starting", step: 0, totalSteps: 4, message: "Iniciando execução da ingestão." });
+  reportProgress({ phase: "archiving", step: 1, totalSteps: 4, message: "Limpando eventos expirados." });
   try {
     archived = await archiveExpiredSoldOutEvents();
   } catch (error) {
     archiveError = { sourceKey: "pipeline", status: automationErrorStatus(error), message: safeAutomationError(error) };
   }
-  const [publicStep, instagramStep] = await Promise.allSettled([
-    runPublicAgendaStep({ archive: false, track: false }),
-    runInstagramAgendaStep({ archive: false, track: false }),
-  ]);
+  reportProgress({ phase: "collecting", step: 2, totalSteps: 4, message: "Coletando fontes públicas e Instagram.", sourceKey: "public", sourceStatus: "running" });
+  reportProgress({ phase: "collecting", step: 2, totalSteps: 4, message: "Coletando fontes públicas e Instagram.", sourceKey: "instagram", sourceStatus: "running" });
+  const publicPromise = runPublicAgendaStep({ archive: false, track: false }).then(value => {
+    const source = sourceReportsFromResult("public", value && typeof value === "object" && "result" in value ? (value as { result: unknown }).result : value)[0];
+    reportProgress({ phase: "collecting", step: 2, totalSteps: 4, message: "Fontes públicas concluídas.", sourceKey: "public", sourceStatus: "succeeded", metrics: source ? { read: source.read, added: source.added, updated: source.updated, ignored: source.ignored } : undefined });
+    return value;
+  }, error => {
+    reportProgress({ phase: "collecting", step: 2, totalSteps: 4, message: "Fontes públicas concluídas com erro.", sourceKey: "public", sourceStatus: "failed", error: safeAutomationError(error) });
+    throw error;
+  });
+  const instagramPromise = runInstagramAgendaStep({ archive: false, track: false }).then(value => {
+    const source = sourceReportsFromResult("instagram", value && typeof value === "object" && "result" in value ? (value as { result: unknown }).result : value)[0];
+    reportProgress({ phase: "collecting", step: 2, totalSteps: 4, message: "Instagram concluído.", sourceKey: "instagram", sourceStatus: "succeeded", metrics: source ? { read: source.read, added: source.added, updated: source.updated, ignored: source.ignored } : undefined });
+    return value;
+  }, error => {
+    reportProgress({ phase: "collecting", step: 2, totalSteps: 4, message: "Instagram concluído com erro.", sourceKey: "instagram", sourceStatus: "failed", error: safeAutomationError(error) });
+    throw error;
+  });
+  const [publicStep, instagramStep] = await Promise.allSettled([publicPromise, instagramPromise]);
+  reportProgress({ phase: "finalizing", step: 3, totalSteps: 4, message: "Consolidando métricas e auditando o resultado." });
   const publicValue = publicStep.status === "fulfilled" ? publicStep.value : undefined;
   const instagramValue = instagramStep.status === "fulfilled" ? instagramStep.value : undefined;
   const publicSources = publicValue && typeof publicValue === "object" && "result" in publicValue ? (publicValue as { result: unknown }).result : { imported: 0, persisted: 0 };
@@ -276,6 +307,7 @@ export async function runFullAgendaRoutine(options: FullAgendaRoutineOptions = {
     extraErrors: archiveError ? [archiveError] : [],
   });
   const result = { archived, publicSources, instagram, status: summary.status, automationSummary: summary, errors: summary.errors };
+  reportProgress({ phase: summary.status === "failed" ? "failed" : "completed", step: 4, totalSteps: 4, message: summary.status === "succeeded" ? "Ingestão concluída com sucesso." : summary.status === "partial" ? "Ingestão concluída parcialmente; revise os erros." : "Ingestão concluída com falha crítica." });
   if (ownsRun) await finishIngestionRun(runId, {
     status: summary.status,
     importedCount: summary.added + summary.updated,

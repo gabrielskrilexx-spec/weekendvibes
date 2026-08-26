@@ -17,10 +17,18 @@ const collisions = [{ key: "2026-12-31:Laroc", civilDate: "31/12/2026", venue: "
 
 const source = { id: 1, sourceKey: "instagram:ativahouse", name: "Ativa House", kind: "instagram", handle: "ativahouse", url: "https://www.instagram.com/ativahouse/", isEnabled: 1, priority: 1, frequencyMinutes: 1440, lastSuccessAt: "2026-08-25T12:00:00.000Z", lastStatus: "succeeded" };
 
+let routineTriggered = false;
+let routineStatusPolls = 0;
+
 function valueForProcedure(procedure: string) {
   if (procedure === "auth.me") return adminUser;
   if (procedure === "events.list") return [{ id: 100, title: "Réveillon Guarujá 2027", eventDate: "2026-12-31T22:00:00.000Z", locationName: "Laroc Club Guarujá", city: "Guarujá", category: "balada", genre: "house_eletronica", priceCents: 12000, description: "Evento", address: "Guarujá", sourceUrl: "https://example.com/100", imageUrl: "https://example.com/100.jpg", latitude: "-23.98", longitude: "-46.25", isPublished: 1 }, { id: 101, title: "Réveillon Guarujá 2027 - Laroc", eventDate: "2026-12-31T19:00:00.000Z", locationName: "Laroc Club Guarujá", city: "Guarujá", category: "balada", genre: "house_eletronica", priceCents: 0, description: "Evento", address: "Guarujá", sourceUrl: "https://example.com/101", imageUrl: "", latitude: null, longitude: null, isPublished: 1 }];
-  if (procedure === "adminRoutine.status") return { enabled: true, runMode: "full_auto", timezone: "America/Sao_Paulo", cron: "0 0 10 * * 3", nextExecutionAt: "2026-08-26T13:00:00.000Z", lastExecutedAt: null, isRunning: false, recentRuns: [], source: "heartbeat" };
+  if (procedure === "adminRoutine.status") {
+    if (!routineTriggered) return { enabled: true, runMode: "full_auto", timezone: "America/Sao_Paulo", cron: "0 0 10 * * 3", nextExecutionAt: "2026-08-26T13:00:00.000Z", lastExecutedAt: null, isRunning: false, recentRuns: [], source: "heartbeat" };
+    routineStatusPolls += 1;
+    const isLive = routineStatusPolls === 1;
+    return { enabled: true, runMode: "full_auto", timezone: "America/Sao_Paulo", cron: "0 0 10 * * 3", nextExecutionAt: "2026-08-26T13:00:00.000Z", lastExecutedAt: null, isRunning: isLive, progress: { isRunning: isLive, runId: 9100, phase: isLive ? "collecting" : "completed", step: isLive ? 2 : 4, totalSteps: 4, message: isLive ? "Coletando fontes públicas e Instagram." : "Ingestão concluída com sucesso.", error: null, sources: [{ sourceKey: "public", status: isLive ? "running" : "succeeded", read: isLive ? 10 : 12, added: isLive ? 0 : 2, updated: 0, ignored: 0 }, { sourceKey: "instagram", status: isLive ? "pending" : "succeeded", read: 0, added: isLive ? 0 : 1, updated: 0, ignored: 0 }] }, recentRuns: [], source: "heartbeat" };
+  }
   if (procedure === "ingestionReports.summary") return report;
   if (procedure === "ingestionReports.geocoding") return { pending: 0, processing: 0, succeeded: 4, failed: 0 };
   if (procedure === "circuitBreaker.statuses") return [];
@@ -50,6 +58,7 @@ test("audita fluxos administrativos principais sem ações mortas", async ({ pag
     const url = new URL(route.request().url());
     const procedures = (url.pathname.split("/").pop() ?? "").split(",").filter(Boolean);
     requests.push(...procedures);
+    if (procedures.includes("adminRoutine.runNow")) routineTriggered = true;
     const values = procedures.map(procedure => route.request().method() === "GET" ? trpcPayload(valueForProcedure(procedure)) : trpcPayload(mutationValue(procedure)));
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(values.length > 1 ? values : values[0] ?? trpcPayload([])) });
   });
@@ -74,6 +83,9 @@ test("audita fluxos administrativos principais sem ações mortas", async ({ pag
 
   const routineButton = page.getByRole("button", { name: "Executar rotina de quarta-feira agora" });
   await routineButton.click();
+  await expect(page.getByTestId("manual-ingestion-progress")).toBeVisible();
+  await expect(page.getByText("Coletando fontes públicas e Instagram.")).toBeVisible();
+  await expect(page.getByText("Processando…")).toBeVisible();
   await expect(page.getByText(/Rotina concluída/)).toBeVisible();
 
   const filters = page.getByTestId("ingestion-filters");

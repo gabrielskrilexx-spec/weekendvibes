@@ -54,6 +54,23 @@ describe("manual Wednesday routine", () => {
     expect(mocks.runIngestionPipeline.mock.invocationCallOrder[0]).toBeLessThan(mocks.runInstagramPipeline.mock.invocationCallOrder[0]);
   });
 
+  it("expõe progresso consultável durante a execução manual e marca a conclusão", async () => {
+    mocks.archiveExpiredSoldOutEvents.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve(0), 20)));
+    const running = runWednesdayRoutineNow();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const during = await getWednesdayRoutineStatus();
+    expect(during.isRunning).toBe(true);
+    expect(during.progress.isRunning).toBe(true);
+    expect(during.progress.phase).toBe("archiving");
+    expect(during.progress.totalSteps).toBe(4);
+    await running;
+    const after = await getWednesdayRoutineStatus();
+    expect(after.isRunning).toBe(false);
+    expect(after.progress.isRunning).toBe(false);
+    expect(after.progress.step).toBe(4);
+    expect(after.progress.phase).toBe("completed");
+  });
+
   it("persiste um ingestionRuns manual com trigger e metadados agregados", async () => {
     mocks.runInstagramPipeline.mockResolvedValue({ persisted: 3, receivedPosts: 7, structuredEvents: 3, persistedEventIds: [11, 12, 13], dateFilterValidation: { referenceDate: "2026-08-20", allEventsOnOrAfterReference: true } });
     const result = await runWednesdayRoutineNow();

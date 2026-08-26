@@ -33,6 +33,21 @@ describe("agenda routine composition", () => {
     expect(mocks.runInstagramPipeline).toHaveBeenCalledTimes(1);
   });
 
+  it("emite progresso por fase e por fonte durante a rotina completa", async () => {
+    const updates: Array<{ phase: string; step: number; sourceKey?: string; sourceStatus?: string }> = [];
+    await runFullAgendaRoutine({ trigger: "manual", onProgress: update => updates.push({ phase: update.phase, step: update.step, sourceKey: update.sourceKey, sourceStatus: update.sourceStatus }) });
+    expect(updates[0]).toMatchObject({ phase: "starting", step: 0 });
+    expect(updates.some(update => update.phase === "archiving" && update.step === 1)).toBe(true);
+    expect(updates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceKey: "public", sourceStatus: "running" }),
+      expect.objectContaining({ sourceKey: "public", sourceStatus: "succeeded" }),
+      expect.objectContaining({ sourceKey: "instagram", sourceStatus: "running" }),
+      expect.objectContaining({ sourceKey: "instagram", sourceStatus: "succeeded" }),
+      expect.objectContaining({ phase: "finalizing", step: 3 }),
+      expect.objectContaining({ phase: "completed", step: 4 }),
+    ]));
+  });
+
   it("mantém as pernas pública e Instagram disponíveis para os callbacks agendados", async () => {
     await runPublicAgendaStep();
     await runInstagramAgendaStep();

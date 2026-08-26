@@ -4,10 +4,26 @@ import { getDb, recordOperationalAlert } from "./db";
 import { listHeartbeatJobs } from "./_core/heartbeat";
 import { notifyOwner } from "./_core/notification";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
-import { runFullAgendaRoutine } from "./agenda-routine";
+import { runFullAgendaRoutine, type AgendaProgressUpdate } from "./agenda-routine";
 import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
 
 let activeRun: Promise<ManualRoutineResult> | null = null;
+
+type ManualProgressSource = { sourceKey: "public" | "instagram"; status: "pending" | "running" | "succeeded" | "failed"; read: number; added: number; updated: number; ignored: number; error: string | null };
+export type ManualRoutineProgress = { isRunning: boolean; runId: number | null; phase: AgendaProgressUpdate["phase"]; step: number; totalSteps: number; message: string; startedAt: string | null; updatedAt: string; error: string | null; sources: ManualProgressSource[] };
+
+const initialManualProgress = (): ManualRoutineProgress => ({ isRunning: false, runId: null, phase: "completed", step: 4, totalSteps: 4, message: "Nenhuma execução em andamento.", startedAt: null, updatedAt: new Date().toISOString(), error: null, sources: [{ sourceKey: "public", status: "pending", read: 0, added: 0, updated: 0, ignored: 0, error: null }, { sourceKey: "instagram", status: "pending", read: 0, added: 0, updated: 0, ignored: 0, error: null }] });
+let manualProgress = initialManualProgress();
+
+function updateManualProgress(update: Partial<ManualRoutineProgress> & { sourceKey?: "public" | "instagram"; sourceStatus?: ManualProgressSource["status"]; metrics?: { read?: number; added?: number; updated?: number; ignored?: number }; error?: string | null }) {
+  const sources = update.sourceKey ? manualProgress.sources.map(item => item.sourceKey === update.sourceKey ? { ...item, status: update.sourceStatus ?? item.status, read: update.metrics?.read ?? item.read, added: update.metrics?.added ?? item.added, updated: update.metrics?.updated ?? item.updated, ignored: update.metrics?.ignored ?? item.ignored, error: update.error ?? item.error } : item) : manualProgress.sources;
+  const { sourceKey: _sourceKey, sourceStatus: _sourceStatus, metrics: _metrics, ...progressUpdate } = update;
+  manualProgress = { ...manualProgress, ...progressUpdate, sources, updatedAt: new Date().toISOString() };
+}
+
+export function getManualRoutineProgress(): ManualRoutineProgress {
+  return JSON.parse(JSON.stringify(manualProgress)) as ManualRoutineProgress;
+}
 
 export type ManualRoutineResult = {
   archived: number;
@@ -25,9 +41,11 @@ const getIntegration = (error: unknown) => error instanceof InstagramIntegration
 async function executeRoutine(): Promise<ManualRoutineResult> {
   const startedAt = new Date().toISOString();
   const startedAtMs = Date.now();
+  manualProgress = { ...initialManualProgress(), isRunning: true, phase: "starting", step: 0, message: "Preparando a ingestão manual.", startedAt };
   const manualRunId = await startIngestionRun({ routine: "manual-agenda", sourceKey: "manual" });
+  updateManualProgress({ runId: manualRunId ?? null, phase: "starting", step: 0, message: manualRunId ? "Execução registrada; iniciando as fontes." : "Iniciando sem registro de auditoria disponível." });
   try {
-    const result = await runFullAgendaRoutine({ trigger: "manual", runId: manualRunId });
+    const result = await runFullAgendaRoutine({ trigger: "manual", runId: manualRunId, onProgress: update => updateManualProgress({ phase: update.phase, step: update.step, totalSteps: update.totalSteps, message: update.message, sourceKey: update.sourceKey, sourceStatus: update.sourceStatus, metrics: update.metrics, error: update.error ?? null }) });
     const finishedAt = new Date().toISOString();
     await finishIngestionRun(manualRunId, {
       routine: "manual-agenda",
@@ -37,8 +55,10 @@ async function executeRoutine(): Promise<ManualRoutineResult> {
       durationMs: Date.now() - startedAtMs,
       details: { trigger: "manual", archived: result.archived, publicSources: result.publicSources, instagram: result.instagram, status: result.status, automationSummary: result.automationSummary, errors: result.errors },
     });
+    updateManualProgress({ isRunning: false, phase: result.status === "failed" ? "failed" : "completed", step: 4, totalSteps: 4, message: result.status === "succeeded" ? "Ingestão concluída com sucesso." : result.status === "partial" ? "Ingestão concluída parcialmente; revise os erros." : "Ingestão concluída com falha crítica.", error: Array.isArray(result.errors) && result.errors.length > 0 ? "Uma ou mais fontes retornaram falhas sanitizadas." : null });
     return { ...result, startedAt, finishedAt };
   } catch (error) {
+    updateManualProgress({ isRunning: false, phase: "failed", step: 4, totalSteps: 4, message: "A ingestão manual falhou; consulte o histórico de auditoria.", error: messageForProgress(error) });
     const integration = getIntegration(error);
     const message = error instanceof Error ? error.message : String(error);
     await finishIngestionRun(manualRunId, {
@@ -71,6 +91,10 @@ export function runWednesdayRoutineNow() {
 
 export function isWednesdayRoutineRunning() {
   return activeRun !== null;
+}
+
+function messageForProgress(error: unknown) {
+  return String(error instanceof Error ? error.message : error ?? "Falha não especificada").replace(/https?:\/\/[^\s]+/gi, "fonte pública").replace(/[\r\n\t]+/g, " ").trim().slice(0, 240);
 }
 
 export function getNextWednesdayExecution(now = new Date()) {
@@ -107,6 +131,7 @@ export async function getWednesdayRoutineStatus(now = new Date()) {
     nextExecutionAt: null as string | null,
     lastExecutedAt: recentRuns[0]?.finishedAt ?? null,
     isRunning: isWednesdayRoutineRunning(),
+    progress: getManualRoutineProgress(),
     recentRuns,
     source: "metadata-unavailable" as const,
   };
@@ -123,6 +148,7 @@ export async function getWednesdayRoutineStatus(now = new Date()) {
       nextExecutionAt: job.nextExecutionAt ?? getNextWednesdayExecution(now),
       lastExecutedAt: recentRuns[0]?.finishedAt ?? job.lastExecutedAt ?? null,
       isRunning: isWednesdayRoutineRunning(),
+      progress: getManualRoutineProgress(),
       recentRuns,
       source: (hasCompleteMetadata ? "heartbeat" : "heartbeat-derived") as "heartbeat" | "heartbeat-derived",
     };
