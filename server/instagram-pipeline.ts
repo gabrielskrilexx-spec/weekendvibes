@@ -111,7 +111,63 @@ export type InstagramPost = {
   ownerUsername?: string;
   username?: string;
   mediaType?: InstagramMediaOrigin;
+  highlightTitle?: string;
+  ocrText?: string;
 };
+
+export const INSTAGRAM_AGENDA_TITLE_REGEX = /programa(?:ção|cao)|agenda/i;
+
+export function isAgendaHighlightTitle(title: unknown) {
+  return INSTAGRAM_AGENDA_TITLE_REGEX.test(String(title ?? "").normalize("NFC"));
+}
+
+export function buildInstagramScraperPayload(targets: ReadonlyArray<{ username: string; directUrl: string }>) {
+  return {
+    directUrls: targets.map(target => target.directUrl),
+    usernames: targets.map(target => target.username),
+    resultsType: "details",
+    resultsLimit: 25,
+    stories: true,
+    highlights: true,
+    includeStories: true,
+    includeHighlights: true,
+  } as const;
+}
+
+export function normalizeInstagramMediaItem(item: Record<string, unknown>, fallbackUsername = ""): InstagramPost | null {
+  const mediaType = String(item.mediaType ?? item.type ?? item.productType ?? "post").toLowerCase();
+  const normalizedType: InstagramMediaOrigin = mediaType.includes("highlight") ? "highlight" : mediaType.includes("story") ? "story" : "post";
+  const imageUrl = String(item.displayUrl ?? item.imageUrl ?? item.media_url ?? item.url ?? "");
+  const owner = item.owner && typeof item.owner === "object" ? item.owner as Record<string, unknown> : undefined;
+  const highlight = item.highlight && typeof item.highlight === "object" ? item.highlight as Record<string, unknown> : undefined;
+  const username = String(item.ownerUsername ?? item.username ?? owner?.username ?? fallbackUsername);
+  const highlightTitle = String(item.highlightTitle ?? highlight?.title ?? item.title ?? "");
+  if (!imageUrl && !item.caption && !item.text) return null;
+  if (normalizedType === "highlight" && !isAgendaHighlightTitle(highlightTitle)) return null;
+  return {
+    id: item.id ? String(item.id) : undefined,
+    shortCode: item.shortCode ? String(item.shortCode) : undefined,
+    url: item.url ? String(item.url) : undefined,
+    permalink: item.permalink ? String(item.permalink) : undefined,
+    caption: item.caption ? String(item.caption) : undefined,
+    text: item.text ? String(item.text) : undefined,
+    timestamp: typeof item.timestamp === "number" || typeof item.timestamp === "string" ? item.timestamp : undefined,
+    takenAt: typeof item.takenAt === "number" || typeof item.takenAt === "string" ? item.takenAt : undefined,
+    displayUrl: imageUrl || undefined,
+    imageUrl: imageUrl || undefined,
+    ownerUsername: username || undefined,
+    username: username || undefined,
+    mediaType: normalizedType,
+    highlightTitle: highlightTitle || undefined,
+    ocrText: item.ocrText ? String(item.ocrText) : undefined,
+  };
+}
+
+export function normalizeInstagramMediaPayload(payload: unknown, fallbackUsername = ""): InstagramPost[] {
+  const root = payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
+  const candidates = Array.isArray(payload) ? payload : [root.data, root.items, root.posts, root.stories, root.highlights].flatMap(value => Array.isArray(value) ? value : []);
+  return candidates.map(item => item && typeof item === "object" ? normalizeInstagramMediaItem(item as Record<string, unknown>, fallbackUsername) : null).filter((item): item is InstagramPost => Boolean(item));
+}
 
 export type StructuredEvent = {
   title: string;
@@ -196,7 +252,7 @@ export function validateStructuredInstagramEvent(event: Partial<StructuredEvent>
   else if (eventCalendarDate(event.eventDate, parsedDate) < saoPauloCalendarDate(now)) reasons.push("past_event");
   if (!ALLOWED_CITIES.has(String(event.city))) reasons.push("outside_target_venue");
   if (!containsTargetVenue(`${String(event.locationName ?? "")} ${String(event.address ?? "")}`, activeAliases)) reasons.push("outside_target_venue");
-  if (typeof event.sourceUrl !== "string" || !/^https:\/\/www\.instagram\.com\/(p|reel|tv)\//i.test(event.sourceUrl)) reasons.push("invalid_source_url");
+  if (typeof event.sourceUrl !== "string" || !/^https:\/\/www\.instagram\.com\/(p|reel|tv|stories|s)\//i.test(event.sourceUrl)) reasons.push("invalid_source_url");
   if (!ALLOWED_CATEGORIES.has(String(event.category))) reasons.push("invalid_category");
   if (!ALLOWED_GENRES.has(String(event.genre))) reasons.push("invalid_genre");
   return Array.from(new Set(reasons));
@@ -277,7 +333,7 @@ async function openAiChat(body: Record<string, unknown>) {
 export async function prepareImageForOcr(imageUrl: string) {
   if (!imageUrl) return "";
   if (imageUrl.startsWith("data:image/")) return imageUrl;
-  const response = await fetch(imageUrl, { headers: { Accept: "image/*", "User-Agent": "WeekendVibes/1.0" } });
+  const response = await fetchExternal(imageUrl, { headers: { Accept: "image/*", "User-Agent": "WeekendVibes/1.0" } }, 8_000, false);
   if (!response.ok) throw new Error(`Instagram image download failed with ${response.status}`);
   const contentType = response.headers.get("content-type")?.split(";")[0] || "image/jpeg";
   if (!contentType.startsWith("image/")) throw new Error(`Instagram image returned unsupported content type: ${contentType}`);
@@ -418,10 +474,29 @@ async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId:
   return { posts, transportFailures };
 }
 
+async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean } = {}) {
+  const token = process.env.APIFY_API_TOKEN?.trim();
+  if (!token) return { posts: [] as InstagramPost[], transportFailures: [] as InstagramTransportFailure[] };
+  const payload = buildInstagramScraperPayload(INSTAGRAM_TARGETS);
+  try {
+    const response = await fetchExternal(`https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "WeekendVibes/1.0" }, body: JSON.stringify(payload) }, 8_000, true);
+    const body = await readExternalBody(response);
+    if (!response.ok) return { posts: [] as InstagramPost[], transportFailures: [{ username: "apify-instagram", status: response.status, kind: "proxy_or_session" as const, message: `Apify respondeu HTTP ${response.status}.` }] };
+    const parsed = JSON.parse(body) as unknown;
+    const posts = normalizeInstagramMediaPayload(parsed).filter(post => post.mediaType === "story" || post.mediaType === "highlight");
+    return { posts, transportFailures: [] as InstagramTransportFailure[] };
+  } catch (error) {
+    const message = normalizeDiagnosticText(error instanceof Error ? error.message : error);
+    return { posts: [] as InstagramPost[], transportFailures: [{ username: "apify-instagram", status: 0, kind: "proxy_or_session" as const, message: message || "Falha ao consultar o scraper de Stories." }] };
+  }
+}
+
 export async function fetchInstagramPostsDetailed(options: { dryRun?: boolean } = {}) {
   const token = requiredEnv("META_INSTAGRAM_TOKEN");
   const accountId = requiredEnv("META_INSTAGRAM_ACCOUNT_ID");
-  return fetchMetaBusinessDiscoveryPostsDetailed(token, accountId, options);
+  const meta = await fetchMetaBusinessDiscoveryPostsDetailed(token, accountId, options);
+  const supplemental = await fetchApifyStoriesAndHighlights(options);
+  return { posts: [...meta.posts, ...supplemental.posts], transportFailures: [...meta.transportFailures, ...supplemental.transportFailures] };
 }
 
 export async function fetchInstagramPosts() {
@@ -435,7 +510,22 @@ export async function fetchInstagramPosts() {
  * privados e não fabricamos eventos quando Stories não estão disponíveis.
  */
 export async function fetchInstagramStories(): Promise<InstagramPost[]> {
-  return [];
+  const result = await fetchApifyStoriesAndHighlights({ dryRun: true });
+  return result.posts.filter(post => post.mediaType === "story");
+}
+
+export function createMeuLugarSandboxStoryMock(referenceDate = getInstagramReferenceDate()): InstagramPost {
+  return {
+    id: "sandbox-meulugar-story-1",
+    url: "https://www.instagram.com/stories/meulugar.bar/1234567890/",
+    ownerUsername: "meulugar.bar",
+    username: "meulugar.bar",
+    mediaType: "story",
+    displayUrl: "https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?auto=format&fit=crop&w=1200&q=80",
+    imageUrl: "https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?auto=format&fit=crop&w=1200&q=80",
+    timestamp: `${referenceDate}T12:00:00-03:00`,
+    ocrText: `Meu Lugar Bar — Programação especial\n${referenceDate}\n22h\nAtrações: DJs convidados\nSantos`,
+  };
 }
 
 function deduplicateInstagramPosts(posts: InstagramPost[]) {
@@ -450,13 +540,13 @@ function deduplicateInstagramPosts(posts: InstagramPost[]) {
 
 async function extractStructuredEvents(referenceDate: string, approvedPosts: Array<{ post: InstagramPost; rawText: string }>) {
   if (approvedPosts.length === 0) return [] as StructuredEvent[];
-  const raw = approvedPosts.map(({ post, rawText }) => `SOURCE_URL: ${postUrl(post)}\nACCOUNT: ${post.ownerUsername ?? post.username ?? ""}\nRAW_POST_TEXT: ${rawText}`).join("\n\n").slice(0, 48_000);
+  const raw = approvedPosts.map(({ post, rawText }) => `SOURCE_URL: ${postUrl(post)}\nACCOUNT: ${post.ownerUsername ?? post.username ?? ""}\nMEDIA_ORIGIN: ${post.mediaType ?? "post"}${post.highlightTitle ? `\nHIGHLIGHT_TITLE: ${post.highlightTitle}` : ""}\nRAW_POST_TEXT: ${rawText}`).join("\n\n").slice(0, 48_000);
   try {
     const result = await openAiChat({
       model: MODEL,
       temperature: 0,
       messages: [
-        { role: "system", content: `Extraia somente eventos futuros de fim de semana, públicos e musicais, localizados exclusivamente em Santos ou Guarujá. Data de Referência: ${referenceDate}. Ignore rigorosamente qualquer postagem ou evento que se refira a data anterior à Data de Referência; não tente inferir datas passadas como futuras. A data mínima aceita é ${referenceDate}. Se a legenda informar dia e mês, mas omitir o ano, infira o ano atual ou futuro que torne a data válida a partir da Data de Referência; nunca use um ano passado por padrão. Retorne eventDate em ISO 8601. Use apenas informações presentes no texto bruto. Se data, cidade, endereço ou gênero não forem verificáveis, descarte o evento. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Não invente preços; use 0 quando o texto não informar preço.` },
+        { role: "system", content: `Extraia somente eventos futuros de fim de semana, públicos e musicais, localizados exclusivamente em Santos ou Guarujá. Data de Referência: ${referenceDate}. Ignore rigorosamente qualquer postagem ou evento que se refira a data anterior à Data de Referência; não tente inferir datas passadas como futuras. A data mínima aceita é ${referenceDate}. Para MEDIA_ORIGIN story ou highlight, trate RAW_POST_TEXT como OCR da arte gráfica e extraia Nome do Evento, Data, Horário e Atrações somente do texto reconhecido. Se a legenda informar dia e mês, mas omitir o ano, infira o ano atual ou futuro que torne a data válida a partir da Data de Referência; nunca use um ano passado por padrão. Retorne eventDate em ISO 8601. Use apenas informações presentes no texto bruto. Se data, cidade, endereço ou gênero não forem verificáveis, descarte o evento. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Não invente preços; use 0 quando o texto não informar preço.` },
         { role: "user", content: raw },
       ],
       response_format: { type: "json_schema", json_schema: { name: "instagram_weekend_events", strict: true, schema: {
@@ -485,7 +575,9 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   const sandboxRestricted = process.env.NODE_ENV !== "production" && fetched.posts.length === 0 && fetched.transportFailures.length > 0 && fetched.transportFailures.every(failure => failure.status === 0 || failure.status === 403 || failure.status === 502 || failure.status === 503 || failure.status === 504 || isSandboxRestrictedError(new Error(failure.message)));
   if (sandboxRestricted && shouldUseSandboxMocks()) {
     const durationMs = Math.max(1, Date.now() - pipelineStartedAt);
+    const meuLugarStory = createMeuLugarSandboxStoryMock(referenceDate);
     const previewMockEvents = [
+      { title: "Meu Lugar · Programação especial", eventDate: `${referenceDate}T22:00:00-03:00`, locationName: "Meu Lugar", city: "Santos", source: meuLugarStory.url, mediaOrigin: meuLugarStory.mediaType },
       { title: "Preview · Noite na Baixada", eventDate: `${referenceDate}T22:00:00-03:00`, locationName: "Ativa House", city: "Santos" },
       { title: "Preview · Sunset Guarujá", eventDate: `${referenceDate}T18:00:00-03:00`, locationName: "Laroc Club Guarujá", city: "Guarujá" },
       { title: "Preview · House Session", eventDate: `${referenceDate}T23:00:00-03:00`, locationName: "Vallum Garden", city: "Santos" },
@@ -503,7 +595,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     if (!forceFocusedRun && !isWithinInstagramLookback(post)) continue;
     const caption = String(post.caption ?? post.text ?? "");
     const postUsername = post.ownerUsername ?? post.username;
-    const ocrText = caption.trim() ? "" : await extractOcrText(String(post.displayUrl ?? post.imageUrl ?? post.media_url ?? ""));
+    const ocrText = caption.trim() ? "" : (post.ocrText?.trim() || await extractOcrText(String(post.displayUrl ?? post.imageUrl ?? post.media_url ?? "")));
     const rawText = [caption, ocrText].filter(value => value.trim()).join("\n");
     const regionalMarker = hasRegionalHashtag(rawText) ? "\nREGIONAL_HASHTAG_MATCH: Santos/Guarujá" : "";
     if (rawText.trim()) approvedPosts.push({ post, rawText: `${rawText}${regionalMarker}` });

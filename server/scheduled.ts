@@ -34,6 +34,11 @@ export async function ingestEventsHandler(req: Request, res: Response) {
   }
   if (!user.isCron) return res.status(403).json({ error: "cron-only" });
   try {
+    const configuredSource = process.env.INGESTION_SOURCE_URL ?? process.env.INGESTION_SOURCE_URLS;
+    if (configuredSource !== undefined && configuredSource.trim() === "") {
+      const finishedAt = new Date().toISOString();
+      return res.json({ ok: true, status: "skipped", skipped: true, result: { skipped: true, reason: "Nenhuma fonte pública configurada." }, fetchFailed: 0, startedAt, finishedAt });
+    }
     const { archived, result } = await agendaRoutine.runPublicAgendaStep();
     const fetchFailed = Number((result as { filteredByReason?: { fetchFailed?: unknown } }).filteredByReason?.fetchFailed ?? 0);
     if (fetchFailed > 0) {

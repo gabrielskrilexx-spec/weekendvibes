@@ -244,7 +244,7 @@ export async function notifyIngestionSummary(input: IngestionSummaryWebhookInput
     })),
   };
   try {
-    const response = await fetcher(parsed.toString(), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+    const response = await fetcher(parsed.toString(), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(1_000) });
     return response.ok ? { sent: true, skipped: false } as const : { sent: false, skipped: false } as const;
   } catch {
     return { sent: false, skipped: false } as const;

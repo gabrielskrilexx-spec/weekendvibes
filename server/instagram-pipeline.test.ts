@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import { eq, or } from "drizzle-orm";
 import { ingestionSources } from "../drizzle/schema";
 import { getDb } from "./db";
-import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent } from "./instagram-pipeline";
+import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText } from "./instagram-pipeline";
 
 describe("Instagram weekend pipeline", () => {
   beforeEach(async () => {
@@ -117,8 +117,40 @@ describe("Instagram weekend pipeline", () => {
     await expect(fetchInstagramPosts()).rejects.toThrow("Missing required environment variable: META_INSTAGRAM_TOKEN");
   });
 
-  it("returns no Stories instead of using an undocumented or session-based collector", async () => {
-    await expect(fetchInstagramStories()).resolves.toEqual([]);
+  it("builds an Apify payload with Stories and Highlights enabled", () => {
+    const payload = buildInstagramScraperPayload([{ username: "meulugar.bar", directUrl: "https://www.instagram.com/meulugar.bar/" }]);
+    expect(payload).toMatchObject({ stories: true, highlights: true, includeStories: true, includeHighlights: true, usernames: ["meulugar.bar"] });
+  });
+
+  it("filters Highlights to agenda titles and normalizes Story media", () => {
+    expect(isAgendaHighlightTitle("Programação")).toBe(true);
+    expect(isAgendaHighlightTitle("Cardápio")).toBe(false);
+    const story = normalizeInstagramMediaItem({ id: 1, type: "story", imageUrl: "https://img.example/story.jpg", username: "meulugar.bar" });
+    expect(story).toMatchObject({ id: "1", mediaType: "story", ownerUsername: "meulugar.bar" });
+    expect(normalizeInstagramMediaItem({ type: "highlight", title: "Cardápio", imageUrl: "https://img.example/menu.jpg" })).toBeNull();
+    expect(normalizeInstagramMediaPayload({ items: [{ type: "highlight", title: "Agenda da semana", imageUrl: "https://img.example/agenda.jpg" }] })).toEqual([expect.objectContaining({ mediaType: "highlight", highlightTitle: "Agenda da semana" })]);
+  });
+
+  it("creates a valid Meu Lugar sandbox Story with OCR text for Vision", () => {
+    const story = createMeuLugarSandboxStoryMock("2030-08-14");
+    expect(story).toMatchObject({ ownerUsername: "meulugar.bar", mediaType: "story", displayUrl: expect.stringMatching(/^https:\/\//), ocrText: expect.stringContaining("Programação") });
+  });
+
+  it("sends Story artwork to Vision and returns the OCR text", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: "Meu Lugar · Sexta · 22h · Santos" } }] }), { status: 200, headers: { "content-type": "application/json" } }));
+    globalThis.fetch = fetchMock as typeof fetch;
+    try {
+      await expect(extractOcrText("data:image/png;base64,AA==")).resolves.toContain("Meu Lugar");
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("chat/completions"), expect.objectContaining({ method: "POST", body: expect.stringContaining("image_url") }));
+    } finally { globalThis.fetch = originalFetch; }
+  });
+
+  it("returns no remote Stories when the optional Apify token is absent", async () => {
+    const originalToken = process.env.APIFY_API_TOKEN;
+    delete process.env.APIFY_API_TOKEN;
+    try { await expect(fetchInstagramStories()).resolves.toEqual([]); }
+    finally { if (originalToken) process.env.APIFY_API_TOKEN = originalToken; }
   });
 
   it("classifies only supported transport/session failures for graceful degradation", () => {
@@ -138,12 +170,12 @@ describe("Instagram weekend pipeline", () => {
     try {
       const forbidden = await fetchInstagramPostsDetailed();
       expect(forbidden.posts).toEqual([]);
-      expect(forbidden.transportFailures).toEqual([expect.objectContaining({ status: 403, kind: "proxy_or_session" })]);
+      expect(forbidden.transportFailures).toEqual(expect.arrayContaining([expect.objectContaining({ status: 403, kind: "proxy_or_session" })]));
       process.env.INGESTION_FOCUS_INSTAGRAM = "flamingomusicbar";
       globalThis.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { message: "invalid proxy response" } }), { status: 502 }));
       const badGateway = await fetchInstagramPostsDetailed();
       expect(badGateway.posts).toEqual([]);
-      expect(badGateway.transportFailures).toEqual([expect.objectContaining({ status: 502, kind: "proxy_or_session" })]);
+      expect(badGateway.transportFailures).toEqual(expect.arrayContaining([expect.objectContaining({ status: 502, kind: "proxy_or_session" })]));
       expect(getInstagramSessionGeneration()).toBeGreaterThan(before);
     } finally {
       globalThis.fetch = originalFetch;

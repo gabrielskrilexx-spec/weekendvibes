@@ -1928,3 +1928,10 @@
 - [x] Adicionar legenda persistente sobre métricas Sandbox e taxa de sucesso real
 - [x] Exibir cobertura real por fonte com proporção e barra visual
 - [x] Atualizar testes Vitest, validar TypeScript/build e publicar checkpoint
+
+## Stories e Destaques do Instagram — Meu Lugar
+- [x] Ampliar o payload do scraper Instagram para Stories e Destaques focados em agenda
+- [x] Adicionar normalização e filtro de mídia story/highlight por título de agenda
+- [x] Processar imagens de Stories/Destaques com Vision/OCR e extração estruturada de eventos
+- [x] Criar mock sandbox de Story do @meulugar.bar e integrá-lo ao pipeline
+- [x] Adicionar testes Vitest do parser, Vision e pipeline; validar TypeScript/build e publicar checkpoint
