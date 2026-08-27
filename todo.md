@@ -1941,3 +1941,9 @@
 - [x] Exibir badge de origem Post, Story ou Destaque na listagem administrativa
 - [x] Adicionar ação “Sincronizar Stories” por fonte com estado de carregamento
 - [x] Atualizar contratos, testes de UI e validações TypeScript/build; publicar checkpoint
+
+## Revalidação de mocks no preview e OCR visual
+- [x] Confirmar NODE_ENV efetivo do preview e preservar guard estrito em produção
+- [x] Habilitar mocks apenas no preview sem alterar comportamento produtivo
+- [x] Revalidar miniaturas, tags de origem e sincronização de Stories no Admin
+- [x] Executar testes, TypeScript/build e publicar checkpoint
