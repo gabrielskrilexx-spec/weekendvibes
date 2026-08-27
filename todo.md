@@ -1982,3 +1982,9 @@
 - [x] Revalidar o incidente real após hard restart e limpeza de cache
 - [x] Auditar os três routers efetivamente chamados pelo painel em server/routers.ts
 - [x] Validar snippets literais, runtime real, testes e build antes do checkpoint emergencial
+
+- [x] Exibir toast de sucesso acessível após sincronização de Stories
+- [x] Remover otimisticamente a colisão excluída usando deletedId
+- [x] Exibir indicador visual para status SANDBOX_RESTRICTED nos relatórios de ingestão
+- [x] Adicionar testes de componente para os três comportamentos
+- [x] Validar Vitest, TypeScript, build e publicar checkpoint

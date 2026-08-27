@@ -9,13 +9,19 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/trpc", () => ({ trpc: { collisionReview: { list: { useQuery: () => state.query }, resolveMany: { useMutation: () => state.resolveMany } }, events: { remove: { useMutation: () => state.remove }, list: { invalidate: vi.fn() } }, useUtils: () => ({ events: { list: { invalidate: vi.fn() } } }) } }));
 
-import CollisionReviewPanel, { getDeleteCollisionErrorMessage } from "./CollisionReviewPanel";
+import CollisionReviewPanel, { getDeleteCollisionErrorMessage, removeCollisionByDeletedId } from "./CollisionReviewPanel";
 
 describe("CollisionReviewPanel", () => {
   it("mapeia falhas tRPC para mensagens descritivas e sanitizadas", () => {
     expect(getDeleteCollisionErrorMessage({ message: "Unable to transform response from server" })).toContain("serializar");
     expect(getDeleteCollisionErrorMessage({ message: "Foreign key constraint failed" })).toContain("dependências");
     expect(getDeleteCollisionErrorMessage({ message: "Database unavailable" })).toContain("indisponível");
+  });
+
+  it("remove imediatamente do cache a colisão correspondente ao deletedId", () => {
+    const rows = [{ left: { id: 10 }, right: { id: 20 } }, { left: { id: 30 }, right: { id: 40 } }];
+    expect(removeCollisionByDeletedId(rows, "20")).toEqual([{ left: { id: 30 }, right: { id: 40 } }]);
+    expect(removeCollisionByDeletedId(rows, "999")).toEqual(rows);
   });
 
   it("exibe a colisão, a similaridade, a recomendação e a seleção em massa sem apagar automaticamente", () => {

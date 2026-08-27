@@ -6,6 +6,12 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 const formatDate = (value: Date | string) => new Date(value).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
 const formatPrice = (value: number) => value > 0 ? `R$ ${(value / 100).toFixed(2).replace(".", ",")}` : "Sem preço";
 
+type CollisionRow = { left: { id: number }; right: { id: number } };
+export function removeCollisionByDeletedId<T extends CollisionRow>(rows: T[], deletedId: string | number) {
+  const id = Number(deletedId);
+  return Number.isSafeInteger(id) ? rows.filter(row => row.left.id !== id && row.right.id !== id) : rows;
+}
+
 export function getDeleteCollisionErrorMessage(error: unknown) {
   const raw = error && typeof error === "object" && "message" in error ? String((error as { message?: unknown }).message ?? "") : "";
   if (/unable to transform|transform response|serializ/i.test(raw)) return "O servidor atualizou o evento, mas não conseguiu serializar a confirmação. Atualize a lista e tente novamente se a colisão continuar visível.";
@@ -27,7 +33,23 @@ export default function CollisionReviewPanel() {
   const toggleCollisionSelection = (key: string) => setSelectedCollisionKeys(current => current.includes(key) ? current.filter(selectedKey => selectedKey !== key) : [...current, key]);
   const toggleAllCollisions = () => setSelectedCollisionKeys(allCollisionsSelected ? [] : collisionRows.map(collision => collision.key));
   const remove = trpc.events.remove.useMutation({
-    onSuccess: result => { setPending(null); setNotice(result.success ? `Registro ${result.deletedId} removido. Revise as colisões restantes.` : "O registro já não estava disponível."); void collisions.refetch(); void utils.events.list.invalidate(); },
+    onSuccess: result => {
+      setPending(null);
+      if (result.success) {
+        const deletedId = String(result.deletedId);
+        const deletedIdNumber = Number(deletedId);
+        utils.collisionReview.list.setData({ limit: 100 }, current => current ? removeCollisionByDeletedId(current, deletedIdNumber) : current);
+        setSelectedCollisionKeys(current => current.filter(key => {
+          const collision = collisionRows.find(row => row.key === key);
+          return !collision || (collision.left.id !== deletedIdNumber && collision.right.id !== deletedIdNumber);
+        }));
+        setNotice(`Registro ${deletedId} removido. Revise as colisões restantes.`);
+      } else {
+        setNotice("O registro já não estava disponível.");
+      }
+      void collisions.refetch();
+      void utils.events.list.invalidate();
+    },
     onError: error => { setPending(null); setNotice(`Não foi possível remover: ${getDeleteCollisionErrorMessage(error)}`); },
   });
   const resolveMany = trpc.collisionReview.resolveMany.useMutation({

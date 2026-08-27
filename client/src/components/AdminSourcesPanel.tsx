@@ -38,7 +38,7 @@ export default function AdminSourcesPanel() {
   const syncStories = trpc.adminRoutine.syncStories.useMutation({
     onSuccess: async result => {
       await Promise.all([utils.adminRoutine.status.invalidate(), utils.ingestionReports.logs.invalidate()]);
-      if (result.success) sonnerToast.success("Stories sincronizados", { description: "A solicitação foi aceita e o processamento de Vision/OCR foi registrado." });
+      if (result.success) sonnerToast.success("Stories sincronizados", { description: "A sincronização foi concluída e o processamento de Vision/OCR foi registrado.", icon: <CheckCircle2 size={16} aria-hidden="true" />, duration: 5000 });
     },
     onError: error => sonnerToast.error("Não foi possível sincronizar Stories", { description: error.message || "Tente novamente." }),
     onSettled: () => setPendingStorySourceId(null),

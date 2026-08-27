@@ -216,6 +216,15 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     expect(mocks.reportRefetch).toHaveBeenCalledTimes(1);
   });
 
+  it("exibe indicador visual quando o ACK retorna SANDBOX_RESTRICTED", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    await act(async () => { await mutationOptions.onSuccess?.({ success: true, status: "SANDBOX_RESTRICTED", read: 0, persisted: 0 }, { sourceKey: "instagram" }); });
+    expect(mocks.toastWarning).toHaveBeenCalledWith("Sandbox / Mocks", expect.objectContaining({ description: expect.stringContaining("bloqueada no preview") }));
+    expect(JSON.stringify(tree!.toJSON())).toContain("sandbox-restricted-indicator");
+    expect(JSON.stringify(tree!.toJSON())).toContain("Sandbox / Mocks");
+  });
+
   it("mantém o erro sanitizado e atualiza os relatórios", async () => {
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminReportsPanel />); });
