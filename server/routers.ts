@@ -337,7 +337,7 @@ export const appRouter = router({
       .output(z.object({ sources: z.array(z.string().min(1).max(160)).max(80) }).strict())
       .query(() => ({ sources: getIngestionChunkSources() })),
     runSource: adminOnly
-      .input(z.object({ sourceKey: z.string().trim().min(1).max(160), dryRun: z.boolean().default(false) }).strict())
+      .input(z.object({ sourceKey: z.string().trim().min(1).max(160), dryRun: z.boolean().default(false), storiesOnly: z.boolean().default(false) }).strict())
       .output(ingestionChunkOutput)
       .mutation(async ({ input }) => {
         const startedAt = Date.now();

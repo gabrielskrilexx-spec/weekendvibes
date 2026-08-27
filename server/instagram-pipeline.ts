@@ -563,21 +563,22 @@ async function extractStructuredEvents(referenceDate: string, approvedPosts: Arr
   }
 }
 
-export type InstagramPipelineOptions = { dryRun?: boolean };
+export type InstagramPipelineOptions = { dryRun?: boolean; storiesOnly?: boolean };
 
 export async function runInstagramPipeline(options: InstagramPipelineOptions = {}) {
   const pipelineStartedAt = Date.now();
   const dryRun = options.dryRun === true;
+  const storiesOnly = options.storiesOnly === true;
   const referenceDate = getInstagramReferenceDate();
   if (!dryRun) await recordReferenceDateClockAlert(referenceDate);
   const activeAliases = await listActiveLocationAliasValues();
-  const fetched = await fetchInstagramPostsDetailed({ dryRun });
-  const sandboxRestricted = process.env.NODE_ENV !== "production" && fetched.posts.length === 0 && fetched.transportFailures.length > 0 && fetched.transportFailures.every(failure => failure.status === 0 || failure.status === 403 || failure.status === 502 || failure.status === 503 || failure.status === 504 || isSandboxRestrictedError(new Error(failure.message)));
+  const fetched = storiesOnly ? await fetchApifyStoriesAndHighlights({ dryRun }) : await fetchInstagramPostsDetailed({ dryRun });
+  const sandboxRestricted = process.env.NODE_ENV !== "production" && fetched.posts.length === 0 && (fetched.transportFailures.length === 0 && storiesOnly ? !process.env.APIFY_API_TOKEN : fetched.transportFailures.length > 0 && fetched.transportFailures.every(failure => failure.status === 0 || failure.status === 403 || failure.status === 502 || failure.status === 503 || failure.status === 504 || isSandboxRestrictedError(new Error(failure.message))));
   if (sandboxRestricted && shouldUseSandboxMocks()) {
     const durationMs = Math.max(1, Date.now() - pipelineStartedAt);
     const meuLugarStory = createMeuLugarSandboxStoryMock(referenceDate);
     const previewMockEvents = [
-      { title: "Meu Lugar · Programação especial", eventDate: `${referenceDate}T22:00:00-03:00`, locationName: "Meu Lugar", city: "Santos", source: meuLugarStory.url, mediaOrigin: meuLugarStory.mediaType },
+      { title: "Meu Lugar · Programação especial", eventDate: `${referenceDate}T22:00:00-03:00`, locationName: "Meu Lugar", city: "Santos", source: meuLugarStory.url, mediaOrigin: meuLugarStory.mediaType, imageUrl: meuLugarStory.displayUrl, ocrText: meuLugarStory.ocrText },
       { title: "Preview · Noite na Baixada", eventDate: `${referenceDate}T22:00:00-03:00`, locationName: "Ativa House", city: "Santos" },
       { title: "Preview · Sunset Guarujá", eventDate: `${referenceDate}T18:00:00-03:00`, locationName: "Laroc Club Guarujá", city: "Guarujá" },
       { title: "Preview · House Session", eventDate: `${referenceDate}T23:00:00-03:00`, locationName: "Vallum Garden", city: "Santos" },
@@ -602,6 +603,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   }
 
   const structuredEvents = await extractStructuredEvents(referenceDate, approvedPosts);
+  const mediaOriginBySourceUrl = new Map(approvedPosts.map(({ post }) => [postUrl(post), post.mediaType ?? "post"]));
   let imported = 0;
   let added = 0;
   let updated = 0;
@@ -620,6 +622,8 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     const eventDate = normalizeStructuredEventDate(event.eventDate);
     const coordinates = await resolveRegionalCoordinates({ locationName: event.locationName, address: event.address, city: event.city });
     const sourceUrl = event.sourceUrl;
+    const mediaOrigin = mediaOriginBySourceUrl.get(sourceUrl) ?? "post";
+    const sourceType = mediaOrigin === "story" ? "instagram_story" : mediaOrigin === "highlight" ? "instagram_highlight" : INSTAGRAM_AGENDA_SOURCE_TYPE;
     const sourceHash = crypto.createHash("md5").update(`${sourceUrl}|${eventDate.toISOString().slice(0, 10)}|${event.title}`).digest("hex");
     const saved = dryRun ? { created: true, id: undefined, updated: false } : await saveEvent({
       title: event.title, slug: `${event.title.toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}-${eventDate.getTime()}`,
@@ -627,7 +631,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
       category: event.category, genre: event.genre, priceCents: event.priceCents || 0, priceNote: event.priceCents ? undefined : "Preço não informado na agenda do Instagram",
       ticketStatus: event.priceCents ? "available" : "unknown", sourceUrl, imageUrl: event.imageUrl || undefined, latitude: coordinates?.latitude, longitude: coordinates?.longitude,
       neighborhood: coordinates?.neighborhood ?? undefined, formattedAddress: coordinates?.formattedAddress ?? undefined, locationPrecision: coordinates ? (coordinates.confidence === "low" ? "approximate" : "exact") : undefined,
-      sourceHash, sourceType: INSTAGRAM_AGENDA_SOURCE_TYPE, isPublished: 1, isArchived: 0,
+      sourceHash, sourceType, isPublished: 1, isArchived: 0,
     });
     if (!saved || typeof saved !== "object" || saved.created) added += 1;
     else if (saved.updated) updated += 1;

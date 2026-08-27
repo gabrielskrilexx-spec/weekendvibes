@@ -137,12 +137,13 @@ export async function withChunkTimeout<T>(work: Promise<T>, timeoutMs = CHUNK_TI
   }
 }
 
-export async function runIngestionSourceChunk(input: { sourceKey: string; dryRun?: boolean }) {
+export async function runIngestionSourceChunk(input: { sourceKey: string; dryRun?: boolean; storiesOnly?: boolean }) {
   const sourceKey = input.sourceKey.trim();
   if (sourceKey === "instagram") {
     if (input.dryRun) {
-      return { sourceKey, dryRun: true, result: await withChunkTimeout(runInstagramPipeline({ dryRun: true })) };
+      return { sourceKey, dryRun: true, result: await withChunkTimeout(runInstagramPipeline({ dryRun: true, storiesOnly: input.storiesOnly === true })) };
     }
+    if (input.storiesOnly) return { sourceKey, dryRun: false, result: await withChunkTimeout(runInstagramPipeline({ dryRun: false, storiesOnly: true })) };
     return { sourceKey, dryRun: false, result: await withChunkTimeout(runInstagramAgendaStep({ archive: false, trigger: "manual" })) };
   }
   if (!/^public:[a-z0-9_-]+$/.test(sourceKey)) throw new Error("Fonte de ingestão inválida.");

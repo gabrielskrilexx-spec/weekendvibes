@@ -1935,3 +1935,9 @@
 - [x] Processar imagens de Stories/Destaques com Vision/OCR e extração estruturada de eventos
 - [x] Criar mock sandbox de Story do @meulugar.bar e integrá-lo ao pipeline
 - [x] Adicionar testes Vitest do parser, Vision e pipeline; validar TypeScript/build e publicar checkpoint
+
+## Auditoria visual de mídia e Stories no Admin
+- [x] Exibir miniatura da mídia extraída quando houver URL de imagem
+- [x] Exibir badge de origem Post, Story ou Destaque na listagem administrativa
+- [x] Adicionar ação “Sincronizar Stories” por fonte com estado de carregamento
+- [x] Atualizar contratos, testes de UI e validações TypeScript/build; publicar checkpoint
