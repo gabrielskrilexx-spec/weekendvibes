@@ -2008,3 +2008,9 @@
 - [x] Limpar caches e recompilar Vite/Express do zero
 - [x] Reiniciar runtime e validar ações reais no preview
 - [x] Executar Vitest, TypeScript, build e publicar checkpoint
+
+- [x] Revisar o estado atual da detecção de versão e do rodapé do painel
+- [x] Adicionar badge discreto com o hash da versão atual
+- [x] Destacar o badge quando uma nova versão for detectada
+- [x] Adicionar testes para os estados normal e nova versão
+- [x] Validar TypeScript, Vitest, build e publicar checkpoint

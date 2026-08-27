@@ -69,6 +69,7 @@ export default function AdminReportsPanel() {
   const [selectedRun, setSelectedRun] = useState<ReportRun | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [newVersionAvailable, setNewVersionAvailable] = useState(false);
+  const [detectedVersion, setDetectedVersion] = useState<string | null>(null);
   const knownVersionRef = useRef<string | null>(null);
   const versionToastShownRef = useRef(false);
   useEffect(() => {
@@ -80,6 +81,7 @@ export default function AdminReportsPanel() {
         const payload = await response.json() as { version?: unknown };
         if (cancelled || typeof payload.version !== "string" || payload.version.length === 0) return;
         if (isNewVersionAvailable(knownVersionRef.current, payload.version)) {
+          setDetectedVersion(payload.version);
           setNewVersionAvailable(true);
           if (!versionToastShownRef.current) {
             versionToastShownRef.current = true;
@@ -281,5 +283,13 @@ export default function AdminReportsPanel() {
         </div>
       </div>;
     })()}
+    <footer className="mt-7 flex flex-col gap-3 border-t border-white/10 pt-4 text-[11px] font-bold uppercase tracking-[0.14em] sm:flex-row sm:items-center sm:justify-between" data-testid="admin-version-footer" aria-live="polite">
+      <div className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-2 ${newVersionAvailable ? "border-cyan-300/50 bg-cyan-300/15 text-cyan-100" : "border-white/10 bg-black/10 text-zinc-500"}`} title={newVersionAvailable ? `Nova versão detectada: ${detectedVersion ?? "atualização disponível"}` : `Versão atual do painel: ${adminBuildTag}`}>
+        <span className={`h-2 w-2 rounded-full ${newVersionAvailable ? "bg-cyan-200" : "bg-emerald-300"}`} aria-hidden="true" />
+        <span>Versão atual: {adminBuildTag}</span>
+        {newVersionAvailable && <span className="text-cyan-200">· Nova versão detectada{detectedVersion ? `: ${detectedVersion}` : ""}</span>}
+      </div>
+      {newVersionAvailable && <button type="button" onClick={() => { if (typeof window !== "undefined") window.location.reload(); }} className="inline-flex min-h-10 w-fit items-center justify-center rounded-xl border border-cyan-300/40 px-3 py-2 text-cyan-100 hover:bg-cyan-300/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200">Recarregar agora</button>}
+    </footer>
   </section>;
 }

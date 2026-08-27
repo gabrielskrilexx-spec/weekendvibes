@@ -149,12 +149,32 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     expect(JSON.stringify(tree!.toJSON())).toContain("Sandbox / Mocks");
   });
 
-  it("exibe uma tag de versão para auditoria do bundle", async () => {
+  it("exibe o hash atual no badge do rodapé", async () => {
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminReportsPanel />); });
     const versionTag = tree!.root.findByProps({ "data-testid": "admin-build-version" });
+    const footer = tree!.root.findByProps({ "data-testid": "admin-version-footer" });
     expect(String(versionTag.props.children)).toContain("Versão do painel:");
-    expect(JSON.stringify(tree!.toJSON())).toContain("CORRECTED-27E8D794");
+    const initialMarkup = JSON.stringify(tree!.toJSON());
+    expect(footer.findAllByType("span").some(span => span.children.join("").includes("Versão atual: CORRECTED-27E8D794"))).toBe(true);
+    expect(initialMarkup).not.toContain("Nova versão detectada");
+  });
+
+  it("destaca no badge do rodapé a versão remota detectada", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ version: "CORRECTED-27E8D794" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ version: "NEXT-BUILD" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); await Promise.resolve(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    const footer = tree!.root.findByProps({ "data-testid": "admin-version-footer" });
+    const footerMarkup = JSON.stringify(tree!.toJSON());
+    expect(footer.findAllByType("span").some(span => span.children.join("").includes("Versão atual: CORRECTED-27E8D794"))).toBe(true);
+    expect(footer.findAllByType("span").some(span => span.children.join("").includes("Nova versão detectada: NEXT-BUILD"))).toBe(true);
+    expect(footer.findAllByType("button").some(button => button.children.join(" ").includes("Recarregar agora"))).toBe(true);
+    vi.useRealTimers();
   });
 
   it("exibe o horário da última avaliação do filtro em São Paulo", async () => {
