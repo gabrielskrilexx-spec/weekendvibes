@@ -7,6 +7,7 @@ const { archiveExpiredSoldOutEvents, runIngestionPipeline } = vi.hoisted(() => (
 
 vi.mock("./db", () => ({ archiveExpiredSoldOutEvents }));
 vi.mock("./ingestion", () => ({ runIngestionPipeline }));
+vi.mock("./ingestion-failure-alerts", () => ({ notifyIngestionSummary: vi.fn().mockResolvedValue({ sent: false, skipped: true }) }));
 
 import { sdk } from "./_core/sdk";
 import { ingestEventsHandler } from "./scheduled";

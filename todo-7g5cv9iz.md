@@ -13,3 +13,4 @@
 - [x] Cobrir a Badge de sandbox nas três superfícies administrativas e a segregação da taxa real com testes de regressão.
 - [x] Adicionar uma série visual separada de `Execuções Simuladas (Sandbox)` no gráfico de telemetria.
 - [x] Adicionar teste de regressão para a Badge `Sandbox / Mocks` na tabela de Histórico de Execuções.
+- [x] Isolar a notificação externa no teste de arquivamento agendado para a suíte completa ser determinística.
