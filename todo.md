@@ -1910,3 +1910,14 @@
 - [x] Tornar resolução de colisões estritamente serializável
 - [x] Adicionar testes Vitest das três rotas
 - [x] Executar TypeScript, build e publicar checkpoint
+
+## Segregação de execuções Sandbox/Mocks — 27/08/2026
+- [x] Auditar payloads e componentes de logs, telemetria e histórico
+- [x] Adicionar badge Sandbox / Mocks em runs e fontes restritas
+- [x] Expor contagem separada de execuções simuladas
+- [x] Excluir SANDBOX_RESTRICTED da taxa de sucesso real
+- [x] Adicionar testes Vitest de badge e segregação de métricas
+- [x] Validar TypeScript, build e publicar checkpoint
+- [x] Adicionar badges “Sandbox / Mocks” em Logs em tempo real, Telemetria e Histórico de Execuções para runs SANDBOX_RESTRICTED
+- [x] Separar execuções SANDBOX_RESTRICTED da taxa de sucesso real e expor contagem de execuções simuladas
+- [x] Atualizar testes Vitest de segregação de métricas e renderização das badges

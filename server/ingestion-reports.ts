@@ -438,6 +438,7 @@ export type SourceTelemetry = {
   successRate: number;
   averageLatencyMs: number;
   p95LatencyMs: number;
+  simulatedExecutions: number;
   errors: { category: "anti_bot" | "proxy" | "timeout_dns" | "sandbox" | "other"; count: number }[];
 };
 
@@ -448,26 +449,29 @@ export type SourceTelemetryHistoryPoint = {
   runs: number;
   successes: number;
   successRate: number;
+  simulatedExecutions: number;
   averageLatencyMs: number;
   p95LatencyMs: number;
 };
 
-export function buildSourceTelemetryHistoryForTest(runs: Array<{ sourceKey: string | null; status: string; startedAt: string | Date; finishedAt?: string | Date | null; durationMs?: number | null }>): SourceTelemetryHistoryPoint[] {
-  const grouped = new Map<string, { date: string; sourceKey: string; runs: number; successes: number; latencyTotal: number; latencyCount: number; latencies: number[] }>();
+export function buildSourceTelemetryHistoryForTest(runs: Array<{ sourceKey: string | null; status: string; startedAt: string | Date; finishedAt?: string | Date | null; durationMs?: number | null; details?: unknown }>): SourceTelemetryHistoryPoint[] {
+  const grouped = new Map<string, { date: string; sourceKey: string; runs: number; successes: number; simulatedExecutions: number; latencyTotal: number; latencyCount: number; latencies: number[] }>();
   for (const run of runs) {
     const sourceKey = run.sourceKey ?? "unknown";
     const startedAt = new Date(run.startedAt);
     if (Number.isNaN(startedAt.getTime())) continue;
     const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(startedAt);
     const key = `${date}:${sourceKey}`;
-    const current = grouped.get(key) ?? { date, sourceKey, runs: 0, successes: 0, latencyTotal: 0, latencyCount: 0, latencies: [] };
+    const current = grouped.get(key) ?? { date, sourceKey, runs: 0, successes: 0, simulatedExecutions: 0, latencyTotal: 0, latencyCount: 0, latencies: [] };
+    const isSandbox = /sandbox_restricted|previewmock/i.test(JSON.stringify(run.details ?? ""));
     current.runs += 1;
-    if (run.status === "succeeded") current.successes += 1;
+    if (isSandbox) current.simulatedExecutions += 1;
+    else if (run.status === "succeeded") current.successes += 1;
     const measured = Number(run.durationMs ?? (run.finishedAt ? new Date(run.finishedAt).getTime() - startedAt.getTime() : 0));
     if (Number.isFinite(measured) && measured > 0) { current.latencyTotal += measured; current.latencyCount += 1; current.latencies.push(measured); }
     grouped.set(key, current);
   }
-  return Array.from(grouped.values()).sort((a, b) => a.date.localeCompare(b.date) || a.sourceKey.localeCompare(b.sourceKey)).map(item => ({ date: item.date, label: new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" }).format(new Date(`${item.date}T12:00:00-03:00`)), sourceKey: item.sourceKey, runs: item.runs, successes: item.successes, successRate: item.runs ? Number((item.successes / item.runs).toFixed(4)) : 0, averageLatencyMs: item.latencyCount ? Math.round(item.latencyTotal / item.latencyCount) : 0, p95LatencyMs: item.latencies.length ? item.latencies.sort((a, b) => a - b)[Math.min(item.latencies.length - 1, Math.ceil(item.latencies.length * 0.95) - 1)] : 0 }));
+  return Array.from(grouped.values()).sort((a, b) => a.date.localeCompare(b.date) || a.sourceKey.localeCompare(b.sourceKey)).map(item => ({ date: item.date, label: new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" }).format(new Date(`${item.date}T12:00:00-03:00`)), sourceKey: item.sourceKey, runs: item.runs, successes: item.successes, successRate: item.runs - item.simulatedExecutions > 0 ? Number((item.successes / (item.runs - item.simulatedExecutions)).toFixed(4)) : 0, simulatedExecutions: item.simulatedExecutions, averageLatencyMs: item.latencyCount ? Math.round(item.latencyTotal / item.latencyCount) : 0, p95LatencyMs: item.latencies.length ? item.latencies.sort((a, b) => a - b)[Math.min(item.latencies.length - 1, Math.ceil(item.latencies.length * 0.95) - 1)] : 0 }));
 }
 type SourceErrorCategory = SourceTelemetry["errors"][number]["category"];
 
@@ -479,12 +483,14 @@ export function findConsecutiveP95PerformanceAlertsForTest(runs: Array<{ sourceK
 
 
 export function buildSourceTelemetryForTest(runs: Array<{ sourceKey: string | null; status: string; durationMs?: number | null; httpStatus?: number | null; details: unknown }>): SourceTelemetry[] {
-  const grouped = new Map<string, SourceTelemetry & { latencyTotal: number; latencyCount: number; latencies: number[]; categories: Record<string, number> }>();
+  const grouped = new Map<string, SourceTelemetry & { latencyTotal: number; latencyCount: number; latencies: number[]; categories: Record<string, number>; realRuns: number }>();
   for (const run of runs) {
     const sourceKey = run.sourceKey ?? "unknown";
-    const current = grouped.get(sourceKey) ?? { sourceKey, runs: 0, successes: 0, successRate: 0, averageLatencyMs: 0, p95LatencyMs: 0, errors: [], latencyTotal: 0, latencyCount: 0, latencies: [], categories: {} };
+    const current = grouped.get(sourceKey) ?? { sourceKey, runs: 0, successes: 0, successRate: 0, averageLatencyMs: 0, p95LatencyMs: 0, simulatedExecutions: 0, errors: [], latencyTotal: 0, latencyCount: 0, latencies: [], categories: {}, realRuns: 0 };
+    const isSandbox = /sandbox_restricted|previewmock/i.test(JSON.stringify(run.details ?? ""));
     current.runs += 1;
-    if (run.status === "succeeded") current.successes += 1;
+    if (isSandbox) current.simulatedExecutions += 1;
+    else { current.realRuns += 1; if (run.status === "succeeded") current.successes += 1; }
     const duration = Number(run.durationMs ?? 0);
     if (Number.isFinite(duration) && duration > 0) { current.latencyTotal += duration; current.latencyCount += 1; current.latencies.push(duration); }
     const text = JSON.stringify(run.details ?? "").toLowerCase();
@@ -498,7 +504,7 @@ export function buildSourceTelemetryForTest(runs: Array<{ sourceKey: string | nu
     if (category !== "none") current.categories[category] = (current.categories[category] ?? 0) + 1;
     grouped.set(sourceKey, current);
   }
-  return Array.from(grouped.values()).map(item => { const sorted = [...item.latencies].sort((a, b) => a - b); const p95LatencyMs = sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1)] : 0; return { sourceKey: item.sourceKey, runs: item.runs, successes: item.successes, successRate: item.runs ? Number((item.successes / item.runs).toFixed(4)) : 0, averageLatencyMs: item.latencyCount ? Math.round(item.latencyTotal / item.latencyCount) : 0, p95LatencyMs, errors: Object.entries(item.categories).map(([category, count]) => ({ category: category as SourceErrorCategory, count })) }; });
+  return Array.from(grouped.values()).map(item => { const sorted = [...item.latencies].sort((a, b) => a - b); const p95LatencyMs = sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1)] : 0; return { sourceKey: item.sourceKey, runs: item.runs, successes: item.successes, successRate: item.realRuns ? Number((item.successes / item.realRuns).toFixed(4)) : 0, simulatedExecutions: item.simulatedExecutions, averageLatencyMs: item.latencyCount ? Math.round(item.latencyTotal / item.latencyCount) : 0, p95LatencyMs, errors: Object.entries(item.categories).map(([category, count]) => ({ category: category as SourceErrorCategory, count })) }; });
 }
 
 export function buildSourceReconciliationForTest(
@@ -1226,7 +1232,7 @@ export async function listIngestionReport(
   const sourceTelemetry = buildSourceTelemetryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), durationMs: run.durationMs, httpStatus: run.httpStatus, details: run.details })));
   const performanceAlerts = findConsecutiveP95PerformanceAlertsForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, durationMs: run.durationMs })), new Map(sourceConfigs.map(source => [source.sourceKey, source.p95LatencyThresholdMs ?? 3000])));
   await Promise.all(performanceAlerts.map(async alert => { const message = `Desempenho degradado: P95 de ${Math.round(alert.p95LatencyMs)} ms em ${alert.sourceKey}, acima do limite de ${alert.thresholdMs} ms por ${alert.consecutiveRuns} rodadas consecutivas.`; await handleIngestionFailureAlert({ routine: "performance-monitor", sourceKey: alert.sourceKey, integration: alert.sourceKey.startsWith("instagram") ? "meta" : "public", severity: "WARNING", alertType: "performance_degraded", message }); await notifyPerformanceDegradationWebhook({ ...alert, message }); }));
-  const sourceTelemetryHistory = buildSourceTelemetryHistoryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, finishedAt: run.finishedAt, durationMs: run.durationMs })));
+  const sourceTelemetryHistory = buildSourceTelemetryHistoryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, finishedAt: run.finishedAt, durationMs: run.durationMs, details: run.details })));
   const freshness = sourceConfigs.map(source => ({
     sourceKey: source.sourceKey,
     name: source.name,

@@ -270,6 +270,8 @@ const dryRunSuccessOutput = z
               .strict()
           ),
           rejectionReasons: z.record(z.string(), z.number().nonnegative()),
+          sandboxRestricted: z.boolean().optional(),
+          previewMock: z.boolean().optional(),
         })
         .strict()
     ),
@@ -293,7 +295,7 @@ const dryRunFailureOutput = z
   })
   .strict();
 const dryRunOutput = z.union([dryRunSuccessOutput, dryRunFailureOutput]);
-const sourceTelemetryOutput = z.array(z.object({ sourceKey: z.string(), runs: z.number().int().nonnegative(), successes: z.number().int().nonnegative(), successRate: z.number().min(0).max(1), averageLatencyMs: z.number().int().nonnegative(), p95LatencyMs: z.number().int().nonnegative(), errors: z.array(z.object({ category: z.enum(["anti_bot", "proxy", "timeout_dns", "sandbox", "other"]), count: z.number().int().nonnegative() }).strict()) }).strict());
+const sourceTelemetryOutput = z.array(z.object({ sourceKey: z.string(), runs: z.number().int().nonnegative(), successes: z.number().int().nonnegative(), successRate: z.number().min(0).max(1), averageLatencyMs: z.number().int().nonnegative(), p95LatencyMs: z.number().int().nonnegative(), simulatedExecutions: z.number().int().nonnegative(), errors: z.array(z.object({ category: z.enum(["anti_bot", "proxy", "timeout_dns", "sandbox", "other"]), count: z.number().int().nonnegative() }).strict()) }).strict());
 const reprocessOutput = z
   .object({
     ok: z.boolean(),

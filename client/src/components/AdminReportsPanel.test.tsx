@@ -30,6 +30,7 @@ const reportData = {
   reconciliationBySource: [],
   sourceMetrics: [],
   sourceTelemetryHistory: [],
+  sourceTelemetry: [],
   timeline: [],
   runs: [],
   criticalAlerts: [],
@@ -86,6 +87,15 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     expect(JSON.stringify(tree!.toJSON())).toContain("Timeline de retries");
     expect(JSON.stringify(tree!.toJSON())).toContain("Tentativa #\",\"1");
     expect(JSON.stringify(tree!.toJSON())).toContain("Evento #\",\"1234");
+  });
+
+  it("renderiza Sandbox / Mocks e separa o denominador de sucesso real", async () => {
+    latestReportData = { ...reportData, sourceTelemetry: [{ sourceKey: "instagram", runs: 2, successes: 1, successRate: 1, averageLatencyMs: 100, p95LatencyMs: 120, simulatedExecutions: 1, errors: [{ category: "sandbox", count: 1 }] }] } as typeof reportData;
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    const markup = JSON.stringify(tree!.toJSON());
+    expect(markup).toContain("Sandbox / Mocks");
+    expect(markup).toContain("reais");
   });
 
   it("renderiza o histórico de latência e sucesso quando há telemetria por fonte", async () => {

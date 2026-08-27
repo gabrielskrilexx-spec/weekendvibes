@@ -41,7 +41,7 @@ const state = vi.hoisted(() => ({
           label: "public-agenda retry 1",
           status: "retry",
           sourceKey: "public:blackpass",
-          message: "timeout temporário",
+          message: "SANDBOX_RESTRICTED: timeout temporário",
         },
       ],
     } as LogsData | undefined,
@@ -75,6 +75,7 @@ describe("AdminLiveLogsPanel", () => {
     expect(markup).toContain("public-agenda terminou");
     expect(markup).toContain("public:blackpass");
     expect(markup).toContain("timeout temporário");
+    expect(markup).toContain("Sandbox / Mocks");
     expect(markup).toContain("run 42");
   });
 

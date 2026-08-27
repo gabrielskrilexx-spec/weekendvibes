@@ -59,7 +59,7 @@ async function retryChunkNetwork<T>(work: () => Promise<T>, maxRetries = 2, onRe
 
 const formatMetric = (value: unknown) =>
   Number.isFinite(Number(value)) ? Number(value) : 0;
-type DryRunReport = { dryRun: true; startedAt: string; finishedAt: string; durationMs: number; totals: { read: number; filtered: number; persistable: number; duplicates: number; errors: number }; sources: Array<{ routine: "public-agenda" | "instagram-agenda"; sourceKey: string; durationMs: number; medianDurationMs: number; p95DurationMs: number; read: number; filtered: number; persistable: number; duplicates: number; errors: Array<{ sourceUrl?: string; status: number | null; message: string }>; rejectionReasons: Record<string, number> }> };
+type DryRunReport = { dryRun: true; startedAt: string; finishedAt: string; durationMs: number; totals: { read: number; filtered: number; persistable: number; duplicates: number; errors: number }; sources: Array<{ routine: "public-agenda" | "instagram-agenda"; sourceKey: string; durationMs: number; medianDurationMs: number; p95DurationMs: number; read: number; filtered: number; persistable: number; duplicates: number; sandboxRestricted?: boolean; previewMock?: boolean; errors: Array<{ sourceUrl?: string; status: number | null; message: string }>; rejectionReasons: Record<string, number> }> };
 
 function DryRunLoadingSkeleton() {
   return (
@@ -126,10 +126,10 @@ export default function AdminDryRunPanel() {
           try {
             const result = await retryChunkNetwork(() => runSource!.mutateAsync({ sourceKey, dryRun: true }), 2, (attempt: number) => setActiveRetry(attempt));
             const errors = result.ok ? result.errors.map((message: string) => ({ status: null, message })) : [{ status: null, message: result.message ?? "Falha sanitizada na fonte." }];
-            sourceReports.push({ routine: sourceKey === "instagram" ? "instagram-agenda" : "public-agenda", sourceKey, durationMs: result.durationMs, medianDurationMs: result.durationMs, p95DurationMs: result.durationMs, read: result.ok ? result.read : 0, filtered: result.ok ? result.ignored : 0, persistable: 0, duplicates: 0, errors, rejectionReasons: result.ok && result.ignored > 0 ? { filtered: result.ignored } : {} });
+            sourceReports.push({ routine: sourceKey === "instagram" ? "instagram-agenda" : "public-agenda", sourceKey, durationMs: result.durationMs, medianDurationMs: result.durationMs, p95DurationMs: result.durationMs, read: result.ok ? result.read : 0, filtered: result.ok ? result.ignored : 0, persistable: 0, duplicates: 0, sandboxRestricted: result.sandboxRestricted === true, previewMock: result.previewMock === true, errors, rejectionReasons: result.ok && result.ignored > 0 ? { filtered: result.ignored } : {} });
           } catch (error) {
             const durationMs = Math.max(1, Date.now() - sourceStartedAt);
-            sourceReports.push({ routine: sourceKey === "instagram" ? "instagram-agenda" : "public-agenda", sourceKey, durationMs, medianDurationMs: durationMs, p95DurationMs: durationMs, read: 0, filtered: 0, persistable: 0, duplicates: 0, errors: [{ status: null, message: isChunkNetworkError(error) ? "Falha de Conexão após 2 tentativas." : friendlyAdminErrorMessage(error, "Falha sanitizada na fonte.") }], rejectionReasons: { fetchFailed: 1 } });
+            sourceReports.push({ routine: sourceKey === "instagram" ? "instagram-agenda" : "public-agenda", sourceKey, durationMs, medianDurationMs: durationMs, p95DurationMs: durationMs, read: 0, filtered: 0, persistable: 0, duplicates: 0, sandboxRestricted: false, previewMock: false, errors: [{ status: null, message: isChunkNetworkError(error) ? "Falha de Conexão após 2 tentativas." : friendlyAdminErrorMessage(error, "Falha sanitizada na fonte.") }], rejectionReasons: { fetchFailed: 1 } });
           }
         }
         const totals = sourceReports.reduce((acc, source) => ({ read: acc.read + source.read, filtered: acc.filtered + source.filtered, persistable: 0, duplicates: acc.duplicates + source.duplicates, errors: acc.errors + source.errors.length }), { read: 0, filtered: 0, persistable: 0, duplicates: 0, errors: 0 });
@@ -257,6 +257,7 @@ export default function AdminDryRunPanel() {
                     <div>
                       <h3 className="font-bold text-white">
                         {labelForSource(source.sourceKey)}
+                        {source.sandboxRestricted || source.previewMock ? <span className="ml-2 inline-flex rounded-full border border-yellow-300/30 bg-yellow-300/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-yellow-100" title="Execução simulada no preview; não representa o desempenho da rede de produção.">Sandbox / Mocks</span> : null}
                       </h3>
                       <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-zinc-500">
                         {source.routine} · {source.sourceKey}

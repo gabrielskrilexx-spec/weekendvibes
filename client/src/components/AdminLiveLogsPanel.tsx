@@ -17,6 +17,8 @@ import {
 } from "@/lib/adminFeedback";
 import AdminAuthRecoveryDialog from "@/components/AdminAuthRecoveryDialog";
 
+const isSandboxLog = (entry: { message?: string | null }) => /sandbox_restricted|previewmock/i.test(entry.message ?? "");
+
 const kindLabel: Record<string, string> = {
   ingestion: "Ingestão",
   retry: "Retry",
@@ -230,6 +232,7 @@ export default function AdminLiveLogsPanel() {
                 </p>
                 <p className="mt-1 break-words text-xs text-zinc-500">
                   {entry.sourceKey ?? "fonte não identificada"}
+                  {isSandboxLog(entry) && <span className="ml-2 inline-flex rounded-full border border-yellow-300/30 bg-yellow-300/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-yellow-100" title="Esta entrada usa dados simulados porque a fonte externa está restrita no ambiente de preview.">Sandbox / Mocks</span>}
                   {entry.message ? ` · ${entry.message}` : ""}
                 </p>
               </div>

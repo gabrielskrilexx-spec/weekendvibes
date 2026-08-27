@@ -11,8 +11,16 @@ describe("telemetria por fonte", () => {
     ]);
     expect(result).toEqual(expect.arrayContaining([
       expect.objectContaining({ sourceKey: "blacktag", runs: 3, successes: 1, successRate: 0.3333, averageLatencyMs: 220, errors: expect.arrayContaining([{ category: "anti_bot", count: 1 }, { category: "proxy", count: 1 }]) }),
-      expect.objectContaining({ sourceKey: "instagram", errors: [{ category: "sandbox", count: 1 }] }),
+      expect.objectContaining({ sourceKey: "instagram", runs: 1, successes: 0, simulatedExecutions: 1, successRate: 0, errors: [{ category: "sandbox", count: 1 }] }),
     ]));
+  });
+
+  it("separa execuções sandbox da taxa de sucesso real", () => {
+    const result = buildSourceTelemetryForTest([
+      { sourceKey: "blackpass", status: "succeeded", httpStatus: 200, durationMs: 100, details: { previewMock: true } },
+      { sourceKey: "blackpass", status: "succeeded", httpStatus: 200, durationMs: 200, details: {} },
+    ]);
+    expect(result).toEqual([expect.objectContaining({ runs: 2, successes: 1, simulatedExecutions: 1, successRate: 1 })]);
   });
 
   it("detecta P95 elevado somente após duas rodadas consecutivas", () => {
@@ -30,6 +38,6 @@ describe("telemetria por fonte", () => {
       { sourceKey: "blackpass", status: "succeeded", startedAt: "2026-08-25T12:00:00.000Z", durationMs: 100 },
       { sourceKey: "blackpass", status: "failed", startedAt: "2026-08-25T13:00:00.000Z", durationMs: 300 },
     ]);
-    expect(result).toEqual([expect.objectContaining({ sourceKey: "blackpass", runs: 2, successes: 1, successRate: 0.5, averageLatencyMs: 200 })]);
+    expect(result).toEqual([expect.objectContaining({ sourceKey: "blackpass", runs: 2, successes: 1, simulatedExecutions: 0, successRate: 0.5, averageLatencyMs: 200 })]);
   });
 });
