@@ -1988,3 +1988,10 @@
 - [x] Exibir indicador visual para status SANDBOX_RESTRICTED nos relatórios de ingestão
 - [x] Adicionar testes de componente para os três comportamentos
 - [x] Validar Vitest, TypeScript, build e publicar checkpoint
+
+- [x] Inspecionar processos, arquitetura Vite/Express e origem da versão visível 4A446F29
+- [x] Limpar artefatos de build e caches compatíveis com o projeto
+- [x] Atualizar o identificador de versão do painel para CORRECTED-27E8D794
+- [x] Gerar bundle limpo e reiniciar o preview em desenvolvimento
+- [x] Confirmar nos logs e na tela que o novo bundle está sendo servido
+- [x] Validar e publicar checkpoint da recompilação

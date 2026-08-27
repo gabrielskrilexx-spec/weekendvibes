@@ -129,7 +129,7 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     await act(async () => { tree = create(<AdminReportsPanel />); });
     const versionTag = tree!.root.findByProps({ "data-testid": "admin-build-version" });
     expect(String(versionTag.props.children)).toContain("Versão do painel:");
-    expect(JSON.stringify(tree!.toJSON())).toContain("4a464f29");
+    expect(JSON.stringify(tree!.toJSON())).toContain("CORRECTED-27E8D794");
   });
 
   it("exibe o horário da última avaliação do filtro em São Paulo", async () => {
