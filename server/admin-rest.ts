@@ -23,7 +23,16 @@ async function requireAdmin(req: Request) {
   return user;
 }
 
-function sendFailure(res: Response, error: unknown, fallback: string) {
+function logRestError(req: Request, error: unknown) {
+  console.error("[REST Error]", {
+    route: req.path,
+    method: req.method,
+    error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : error,
+  });
+}
+
+function sendFailure(req: Request, res: Response, error: unknown, fallback: string) {
+  logRestError(req, error);
   if (error instanceof Error && error.message === "ADMIN_REQUIRED") {
     return res.status(403).json({ success: false, message: "Permissão administrativa necessária." });
   }
@@ -40,12 +49,13 @@ export function registerAdminRestRoutes(app: Express) {
       const input = storiesInput.parse(req.body ?? {});
       try {
         await runIngestionSourceChunk({ sourceKey: input.sourceKey ?? "instagram", dryRun: false, storiesOnly: true });
-      } catch {
+      } catch (error) {
+        logRestError(req, error);
         return res.json({ success: true, status: "SANDBOX_RESTRICTED" });
       }
       return res.json({ success: true });
     } catch (error) {
-      return sendFailure(res, error, "Não foi possível sincronizar os Stories.");
+      return sendFailure(req, res, error, "Não foi possível sincronizar os Stories.");
     }
   });
 
@@ -56,7 +66,7 @@ export function registerAdminRestRoutes(app: Express) {
       await deleteLocationAlias(input.id);
       return res.json({ success: true, deletedId: String(input.id) });
     } catch (error) {
-      return sendFailure(res, error, "Não foi possível remover o alias.");
+      return sendFailure(req, res, error, "Não foi possível remover o alias.");
     }
   });
 
@@ -67,7 +77,7 @@ export function registerAdminRestRoutes(app: Express) {
       const result = await deleteEvents(input.ids);
       return res.json({ success: true, count: Number(result.deleted), ids: result.deletedIds.map(id => String(id)) });
     } catch (error) {
-      return sendFailure(res, error, "Não foi possível excluir os eventos.");
+      return sendFailure(req, res, error, "Não foi possível excluir os eventos.");
     }
   });
 
@@ -78,7 +88,7 @@ export function registerAdminRestRoutes(app: Express) {
       const result = await updateEventsPublication(input.ids);
       return res.json({ success: true, count: Number(result.updated), ids: result.ids.map(id => String(id)) });
     } catch (error) {
-      return sendFailure(res, error, "Não foi possível aprovar os eventos.");
+      return sendFailure(req, res, error, "Não foi possível aprovar os eventos.");
     }
   });
 
@@ -89,7 +99,7 @@ export function registerAdminRestRoutes(app: Express) {
       const result = await deleteEvents(input.ids);
       return res.json({ success: true, count: Number(result.deleted), ids: result.deletedIds.map(id => String(id)) });
     } catch (error) {
-      return sendFailure(res, error, "Não foi possível resolver as colisões.");
+      return sendFailure(req, res, error, "Não foi possível resolver as colisões.");
     }
   });
 }

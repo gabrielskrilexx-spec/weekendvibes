@@ -10,7 +10,7 @@ export async function postAdminJson<T extends AdminRestAck>(path: string, body: 
     response = await fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      credentials: "same-origin",
+      credentials: "include",
       body: JSON.stringify(body),
     });
   } catch {

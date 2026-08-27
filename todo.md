@@ -2021,3 +2021,9 @@
 - [x] Adicionar testes de contrato e integração para os endpoints REST
 - [x] Limpar caches, reiniciar runtime, validar preview, Vitest, TypeScript e build
 - [x] Publicar checkpoint da migração REST
+
+- [x] Auditar express.json, cliente REST e autenticação por cookie
+- [x] Adicionar console.error sanitizado e detalhado nos catches REST
+- [x] Corrigir rejeições de payload ou sessão encontradas
+- [x] Adicionar testes de regressão para parser, credentials e erros REST
+- [x] Validar logs reais, TypeScript, Vitest, build e publicar checkpoint
