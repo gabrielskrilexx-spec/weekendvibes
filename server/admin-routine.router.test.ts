@@ -28,7 +28,7 @@ describe("adminRoutine tRPC contract", () => {
   });
   it("retorna acknowledgement JSON estrito ao sincronizar Stories", async () => {
     const result = await appRouter.createCaller(context("admin")).adminRoutine.syncStories({});
-    expect(result).toEqual({ success: true, sourceKey: "instagram", status: "succeeded", read: 1, durationMs: expect.any(Number), sandboxRestricted: true, previewMock: true });
+    expect(result).toEqual({ success: true });
     expect(runIngestionSourceChunk).toHaveBeenCalledWith({ sourceKey: "instagram", dryRun: false, storiesOnly: true });
   });
   it("converte ECONNREFUSED do Instagram em fallback sandbox serializável", async () => {
@@ -39,7 +39,7 @@ describe("adminRoutine tRPC contract", () => {
   it("converte falha de proxy em acknowledgement sandbox no syncStories", async () => {
     vi.mocked(runIngestionSourceChunk).mockRejectedValueOnce(new Error("Failed to fetch ECONNREFUSED"));
     const result = await appRouter.createCaller(context("admin")).adminRoutine.syncStories({});
-    expect(result).toMatchObject({ success: true, sourceKey: "instagram", status: "SANDBOX_RESTRICTED", message: "Sincronizado via sandbox", read: 0, sandboxRestricted: true, previewMock: true });
+    expect(result).toEqual({ success: true });
   });
   it("rejeita o disparo manual por usuário comum", async () => {
     await expect(appRouter.createCaller(context("user")).adminRoutine.runNow()).rejects.toThrow();

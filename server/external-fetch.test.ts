@@ -27,6 +27,11 @@ describe("external fetch hardening", () => {
     expect(isBlockedExternalResponse(200, "evento público válido")).toBe(false);
   });
 
+  it("classifies blocked HTTP errors as sandbox-restricted outside production", async () => {
+    const { isSandboxRestrictedError } = await import("./external-fetch");
+    expect(isSandboxRestrictedError(new ExternalFetchError("HTTP 502", "HTTP_ERROR", 502))).toBe(true);
+  });
+
   it("returns a sanitized error when the response body cannot be read", async () => {
     const response = new Response(null, { status: 200 });
     Object.defineProperty(response, "text", { value: vi.fn().mockRejectedValue(new Error("socket closed")) });

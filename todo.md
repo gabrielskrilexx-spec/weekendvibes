@@ -1966,3 +1966,16 @@
 - [x] Garantir retorno literal com deletedId string na resolução de colisões
 - [x] Garantir fallback SANDBOX_RESTRICTED na ingestão Instagram diante de proxy inválido
 - [x] Recarregar preview, validar rotas reais, executar suíte/build e publicar checkpoint
+
+## Correção estrita das três procedures tRPC
+- [x] Auditar os retornos efetivos de syncStories, exclusão de duplicata e ingestão Instagram
+- [x] Forçar syncStories a retornar somente { success: true }
+- [x] Forçar exclusão de duplicata a retornar { success: true, deletedId: String(input.id) }
+- [x] Capturar falhas de proxy do Instagram no preview e retornar SANDBOX_RESTRICTED sem throw
+- [x] Validar build de produção e publicar checkpoint sem criar novas telas ou modais
+
+- [x] Corrigir syncStories para acknowledgement JSON estrito e sem exceções tRPC
+- [x] Garantir exclusões de eventos e colisões com IDs string e payloads literais
+- [x] Converter bloqueios HTTP/rede do Instagram em fallback SANDBOX_RESTRICTED no preview
+- [x] Validar runtime, Vitest, TypeScript e build de produção
+- [x] Salvar checkpoint publicado após as correções

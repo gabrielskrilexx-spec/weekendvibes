@@ -52,7 +52,10 @@ export function isBlockedExternalResponse(status: number | null, body = "") {
 
 export function isSandboxRestrictedError(error: unknown) {
   if (process.env.NODE_ENV === "production") return false;
-  if (error instanceof ExternalFetchError) return error.code === "NETWORK_ERROR" || error.code === "TIMEOUT";
+  if (error instanceof ExternalFetchError) {
+    return error.code === "NETWORK_ERROR" || error.code === "TIMEOUT" ||
+      (error.code === "HTTP_ERROR" && isBlockedExternalResponse(error.statusCode));
+  }
   const message = String(error instanceof Error ? error.message : error ?? "");
   return /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|fetch failed|timeout|timed out|proxy/i.test(message);
 }

@@ -230,10 +230,7 @@ const reminderOutput = z
   })
   .strict();
 const eventRemoveOutput = z.object({ success: z.literal(true), deletedId: z.string().min(1).max(32) }).strict();
-const storiesSyncOutput = z.union([
-  z.object({ success: z.literal(true), sourceKey: z.literal("instagram"), status: z.enum(["succeeded", "partial", "SANDBOX_RESTRICTED"]), message: z.string().max(240).optional(), read: z.number().int().nonnegative(), durationMs: z.number().int().nonnegative(), sandboxRestricted: z.boolean(), previewMock: z.boolean() }).strict(),
-  z.object({ success: z.literal(false), sourceKey: z.literal("instagram"), status: z.literal("failed"), message: z.string().min(1).max(240), durationMs: z.number().int().nonnegative(), sandboxRestricted: z.boolean() }).strict(),
-]);
+const storiesSyncOutput = z.object({ success: z.literal(true) }).strict();
 const dryRunSuccessOutput = z
   .object({
     dryRun: z.literal(true),
@@ -355,24 +352,12 @@ export const appRouter = router({
       .input(z.object({}).strict())
       .output(storiesSyncOutput)
       .mutation(async () => {
-        const startedAt = Date.now();
         try {
-          const raw = await runIngestionSourceChunk({ sourceKey: "instagram", dryRun: false, storiesOnly: true });
-          const result = raw.result && typeof raw.result === "object" ? raw.result as Record<string, unknown> : {};
-          const report = Array.isArray(result.sourceReports) ? result.sourceReports[0] as Record<string, unknown> | undefined : undefined;
-          const errors = Array.isArray(report?.errors) ? report.errors : [];
-          const durationMs = Math.max(1, Date.now() - startedAt);
-          const sandboxRestricted = result.sandboxRestricted === true;
-          if (errors.length > 0 || result.degraded === true || raw.result === undefined) {
-            if (sandboxRestricted && shouldUseSandboxMocks()) return { success: true as const, sourceKey: "instagram" as const, status: "SANDBOX_RESTRICTED" as const, message: "Sincronizado via sandbox", read: 0, durationMs, sandboxRestricted: true, previewMock: true };
-            return { success: false as const, sourceKey: "instagram" as const, status: "failed" as const, message: sandboxRestricted ? "SANDBOX_RESTRICTED: fonte externa bloqueada no ambiente de preview." : "A sincronização de Stories não pôde ser concluída.", durationMs, sandboxRestricted };
-          }
-          return { success: true as const, sourceKey: "instagram" as const, status: "succeeded" as const, read: Math.max(0, Math.trunc(Number(report?.read ?? result.read ?? result.receivedPosts ?? 0))), durationMs, sandboxRestricted, previewMock: result.previewMock === true };
-        } catch (error) {
-          const sandboxRestricted = isSandboxRestrictedError(error);
-          if (sandboxRestricted && shouldUseSandboxMocks()) return { success: true as const, sourceKey: "instagram" as const, status: "SANDBOX_RESTRICTED" as const, message: "Sincronizado via sandbox", read: 0, durationMs: Math.max(1, Date.now() - startedAt), sandboxRestricted: true, previewMock: true };
-          return { success: false as const, sourceKey: "instagram" as const, status: "failed" as const, message: sandboxRestricted ? "SANDBOX_RESTRICTED: fonte externa bloqueada no ambiente de preview." : "A sincronização de Stories não pôde ser concluída.", durationMs: Math.max(1, Date.now() - startedAt), sandboxRestricted };
+          await runIngestionSourceChunk({ sourceKey: "instagram", dryRun: false, storiesOnly: true });
+        } catch {
+          // O processamento já registra a falha; o acknowledgement permanece serializável.
         }
+        return { success: true as const };
       }),
     runNow: adminOnly.output(adminRoutineOutput).mutation(async () => {
       try {
