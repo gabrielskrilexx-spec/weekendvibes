@@ -498,6 +498,7 @@ export const appRouter = router({
             trigger: z.enum(["manual", "scheduled"]).optional(),
             runId: z.number().int().positive().optional(),
             sourceKey: z.string().trim().max(255).optional(),
+            executionKind: z.enum(["all", "real", "simulated"]).optional(),
           })
           .optional()
       )
@@ -509,6 +510,7 @@ export const appRouter = router({
           trigger: input?.trigger,
           runId: input?.runId,
           sourceKey: input?.sourceKey,
+          executionKind: input?.executionKind,
         })
       ),
     geocoding: adminOnly.query(async () =>

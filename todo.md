@@ -1921,3 +1921,10 @@
 - [x] Adicionar badges “Sandbox / Mocks” em Logs em tempo real, Telemetria e Histórico de Execuções para runs SANDBOX_RESTRICTED
 - [x] Separar execuções SANDBOX_RESTRICTED da taxa de sucesso real e expor contagem de execuções simuladas
 - [x] Atualizar testes Vitest de segregação de métricas e renderização das badges
+
+## Filtro e cobertura de métricas reais — 27/08/2026
+- [x] Adicionar filtro Todas / Somente Reais / Somente Simuladas ao histórico e à telemetria
+- [x] Conectar o filtro aos dados, tabela e gráficos do painel
+- [x] Adicionar legenda persistente sobre métricas Sandbox e taxa de sucesso real
+- [x] Exibir cobertura real por fonte com proporção e barra visual
+- [x] Atualizar testes Vitest, validar TypeScript/build e publicar checkpoint
