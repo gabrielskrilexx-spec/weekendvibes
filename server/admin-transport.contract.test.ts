@@ -100,6 +100,7 @@ vi.mock("./geocoding", () => ({
 vi.mock("./dry-run", () => ({ runDryRun: vi.fn() }));
 
 import { appRouter } from "./routers";
+import { reprocessIngestionSource } from "./ingestion-reports";
 
 const adminContext = {
   user: {
@@ -119,6 +120,12 @@ const adminContext = {
 
 describe("admin transport contracts", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("returns the strict sandbox acknowledgement when Instagram reprocess throws", async () => {
+    vi.mocked(reprocessIngestionSource).mockRejectedValueOnce(new Error("502 proxy html"));
+    const result = await appRouter.createCaller(adminContext).ingestionReports.reprocess({ sourceKey: "instagram" });
+    expect(result).toEqual({ success: true, status: "SANDBOX_RESTRICTED", read: 0, persisted: 0 });
+  });
 
   it("normalizes admin-facing lists and detail queries into JSON-safe values", async () => {
     const caller = appRouter.createCaller(adminContext);

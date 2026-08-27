@@ -285,7 +285,7 @@ const dryRunFailureOutput = z
   .strict();
 const dryRunOutput = z.union([dryRunSuccessOutput, dryRunFailureOutput]);
 const sourceTelemetryOutput = z.array(z.object({ sourceKey: z.string(), runs: z.number().int().nonnegative(), successes: z.number().int().nonnegative(), successRate: z.number().min(0).max(1), averageLatencyMs: z.number().int().nonnegative(), p95LatencyMs: z.number().int().nonnegative(), simulatedExecutions: z.number().int().nonnegative(), errors: z.array(z.object({ category: z.enum(["anti_bot", "proxy", "timeout_dns", "sandbox", "other"]), count: z.number().int().nonnegative() }).strict()) }).strict());
-const reprocessOutput = z
+const reprocessResultOutput = z
   .object({
     ok: z.boolean(),
     sourceKey: z.enum(["public", "instagram"]),
@@ -304,6 +304,15 @@ const reprocessOutput = z
     error: z.string().nullable(),
   })
   .strict();
+const reprocessSandboxOutput = z
+  .object({
+    success: z.literal(true),
+    status: z.literal("SANDBOX_RESTRICTED"),
+    read: z.literal(0),
+    persisted: z.literal(0),
+  })
+  .strict();
+const reprocessOutput = z.union([reprocessResultOutput, reprocessSandboxOutput]);
 
 export const appRouter = router({
   system: systemRouter,
@@ -547,9 +556,10 @@ export const appRouter = router({
             accepted: "accepted" in result && result.accepted === true,
             error,
           };
-        } catch {
-          // Nunca transportar Error/cause do upstream: o serviço já sanitiza a
-          // falha e o fallback mantém o contrato JSON da mutation.
+        } catch (e) {
+          if (input.sourceKey === "instagram" && shouldUseSandboxMocks()) {
+            return { success: true as const, status: "SANDBOX_RESTRICTED" as const, read: 0, persisted: 0 };
+          }
           return {
             ok: false as const,
             sourceKey: input.sourceKey,

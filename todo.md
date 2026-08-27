@@ -1979,3 +1979,6 @@
 - [x] Converter bloqueios HTTP/rede do Instagram em fallback SANDBOX_RESTRICTED no preview
 - [x] Validar runtime, Vitest, TypeScript e build de produção
 - [x] Salvar checkpoint publicado após as correções
+- [x] Revalidar o incidente real após hard restart e limpeza de cache
+- [x] Auditar os três routers efetivamente chamados pelo painel em server/routers.ts
+- [x] Validar snippets literais, runtime real, testes e build antes do checkpoint emergencial
