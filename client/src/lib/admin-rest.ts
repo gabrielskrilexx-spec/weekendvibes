@@ -1,15 +1,31 @@
+import { COOKIE_NAME } from "@shared/const";
+
 export type AdminRestAck = {
   success: boolean;
   message?: string;
   [key: string]: unknown;
 };
 
+function getPreviewAuthHeaders(): Record<string, string> {
+  try {
+    if (typeof sessionStorage === "undefined") return {};
+    const raw = sessionStorage.getItem("manus-cookie");
+    if (!raw) return {};
+    const prefix = `${COOKIE_NAME}=`;
+    const pair = raw.split(";").find(value => value.trim().startsWith(prefix));
+    const token = pair?.trim().slice(prefix.length);
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
 export async function postAdminJson<T extends AdminRestAck>(path: string, body: unknown): Promise<T> {
   let response: Response;
   try {
     response = await fetch(path, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "application/json", ...getPreviewAuthHeaders() },
       credentials: "include",
       body: JSON.stringify(body),
     });

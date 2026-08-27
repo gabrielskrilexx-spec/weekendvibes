@@ -2027,3 +2027,10 @@
 - [x] Corrigir rejeições de payload ou sessão encontradas
 - [x] Adicionar testes de regressão para parser, credentials e erros REST
 - [x] Validar logs reais, TypeScript, Vitest, build e publicar checkpoint
+
+- [x] Auditar o middleware de admin usado pelo tRPC e pelas rotas Express existentes
+- [x] Rastrear a origem do 403 em sync-stories e comparar cookies/cabeçalhos reais
+- [x] Alinhar os cinco endpoints REST ao mesmo mecanismo de sessão e autorização
+- [x] Ajustar o cliente fetch somente se houver cabeçalho administrativo obrigatório
+- [x] Adicionar regressões de autorização e validar runtime autenticado, TypeScript e build
+- [x] Reiniciar o Express e publicar checkpoint
