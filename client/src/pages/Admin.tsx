@@ -44,7 +44,7 @@ export default function Admin() {
     onSuccess: result => {
       setNotice(result.success ? "Evento removido com sucesso." : "O evento já não estava disponível.");
       setPendingDelete(null);
-      if (result.success) utils.events.list.setData({ size: 100 }, current => current?.filter(event => event.id !== result.deletedId));
+      if (result.success) utils.events.list.setData({ size: 100 }, current => current?.filter(event => String(event.id) !== result.deletedId));
       void events.refetch();
     },
       onError: error => { setPendingDelete(null); setNotice(`Não foi possível remover o evento: ${error.message}`); },

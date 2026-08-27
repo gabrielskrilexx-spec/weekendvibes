@@ -84,7 +84,7 @@ describe("events admin procedures", () => {
     ).resolves.toEqual({ ok: true, updated: true, id: 1 });
     await expect(caller.events.remove({ id: 1 })).resolves.toEqual({
       success: true,
-      deletedId: 1,
+      deletedId: "1",
     });
   });
   it("returns serializable contracts for bulk approval and deletion", async () => {

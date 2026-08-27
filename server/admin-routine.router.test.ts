@@ -34,12 +34,12 @@ describe("adminRoutine tRPC contract", () => {
   it("converte ECONNREFUSED do Instagram em fallback sandbox serializável", async () => {
     vi.mocked(runIngestionSourceChunk).mockRejectedValueOnce(new Error("ECONNREFUSED"));
     const result = await appRouter.createCaller(context("admin")).adminRoutine.runSource({ sourceKey: "instagram", dryRun: false });
-    expect(result).toMatchObject({ ok: true, sourceKey: "instagram", status: "partial", sandboxRestricted: true, previewMock: true, errors: ["Fonte restrita no ambiente de preview; fallback sandbox aplicado."] });
+    expect(result).toMatchObject({ ok: true, sourceKey: "instagram", status: "SANDBOX_RESTRICTED", sandboxRestricted: true, previewMock: true, errors: ["Fonte restrita no ambiente de preview; fallback sandbox aplicado."] });
   });
   it("converte falha de proxy em acknowledgement sandbox no syncStories", async () => {
     vi.mocked(runIngestionSourceChunk).mockRejectedValueOnce(new Error("Failed to fetch ECONNREFUSED"));
     const result = await appRouter.createCaller(context("admin")).adminRoutine.syncStories({});
-    expect(result).toMatchObject({ success: true, sourceKey: "instagram", status: "partial", read: 0, sandboxRestricted: true, previewMock: true });
+    expect(result).toMatchObject({ success: true, sourceKey: "instagram", status: "SANDBOX_RESTRICTED", message: "Sincronizado via sandbox", read: 0, sandboxRestricted: true, previewMock: true });
   });
   it("rejeita o disparo manual por usuário comum", async () => {
     await expect(appRouter.createCaller(context("user")).adminRoutine.runNow()).rejects.toThrow();

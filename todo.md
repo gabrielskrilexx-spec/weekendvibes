@@ -1954,3 +1954,15 @@
 - [x] Corrigir retorno JSON estrito da resolução de colisões
 - [x] Blindar proxy/transport da ingestão Instagram com fallback SANDBOX_RESTRICTED no preview
 - [x] Adicionar testes de serialização, transporte e ações administrativas; validar E2E, TypeScript/build e publicar checkpoint
+
+## Auditoria OCR no histórico de Stories
+- [ ] Expor detalhes OCR brutos de forma sanitizada no histórico administrativo
+- [ ] Adicionar modal de detalhes ao histórico de Sincronizar Stories
+- [ ] Cobrir contrato, estados de UI e abertura do modal com testes; validar TypeScript/build e publicar checkpoint
+
+## Correção no runtime tRPC do preview
+- [x] Rastrear respostas HTTP reais e logs das três ações administrativas
+- [x] Garantir retorno JSON estrito e catch soberano em syncStories
+- [x] Garantir retorno literal com deletedId string na resolução de colisões
+- [x] Garantir fallback SANDBOX_RESTRICTED na ingestão Instagram diante de proxy inválido
+- [x] Recarregar preview, validar rotas reais, executar suíte/build e publicar checkpoint
