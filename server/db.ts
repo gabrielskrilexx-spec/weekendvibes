@@ -241,12 +241,13 @@ export async function listEnabledInstagramSources(dbOverride?: Awaited<ReturnTyp
   return rows.filter(source => source.kind === "instagram" && source.isEnabled === 1);
 }
 
-export async function updateIngestionSource(id: number, input: { isEnabled: boolean; priority: number; frequencyMinutes: number }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+export async function updateIngestionSource(id: number, input: { isEnabled: boolean; priority: number; frequencyMinutes: number; p95LatencyThresholdMs?: number }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) throw new Error("Database unavailable");
   const priority = Math.min(Math.max(Math.round(input.priority), 1), 1000);
   const frequencyMinutes = Math.min(Math.max(Math.round(input.frequencyMinutes), 60), 525600);
-  await db.update(ingestionSources).set({ isEnabled: input.isEnabled ? 1 : 0, priority, frequencyMinutes, updatedAt: new Date() }).where(eq(ingestionSources.id, id));
+  const p95LatencyThresholdMs = Math.min(Math.max(Math.round(input.p95LatencyThresholdMs ?? 3000), 500), 60000);
+  await db.update(ingestionSources).set({ isEnabled: input.isEnabled ? 1 : 0, priority, frequencyMinutes, p95LatencyThresholdMs, updatedAt: new Date() }).where(eq(ingestionSources.id, id));
   return listIngestionSources(db);
 }
 

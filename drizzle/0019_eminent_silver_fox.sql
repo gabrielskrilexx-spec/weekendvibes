@@ -1,0 +1,1 @@
+ALTER TABLE `ingestionSources` ADD `p95LatencyThresholdMs` int DEFAULT 3000 NOT NULL;

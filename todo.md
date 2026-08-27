@@ -1893,3 +1893,12 @@
 - [x] Gerar telemetria de preview com variação temporal sem persistir mocks como eventos
 - [x] Adicionar testes Vitest de período, P95 e cooldown
 - [x] Executar TypeScript, build e publicar checkpoint
+
+## Limites P95 por fonte e histórico de desempenho — 26/08/2026
+- [x] Auditar modelo, router e tela de configuração das fontes
+- [x] Adicionar limite P95 configurável por fonte com padrão de 3000 ms
+- [x] Persistir e consumir o limite dinâmico na avaliação de desempenho
+- [x] Adicionar linha de P95 aos gráficos históricos
+- [x] Criar histórico visual de alertas performance_degraded com cooldown
+- [x] Adicionar testes Vitest de configuração, P95 e histórico
+- [x] Validar TypeScript, build e publicar checkpoint

@@ -448,31 +448,32 @@ export type SourceTelemetryHistoryPoint = {
   successes: number;
   successRate: number;
   averageLatencyMs: number;
+  p95LatencyMs: number;
 };
 
 export function buildSourceTelemetryHistoryForTest(runs: Array<{ sourceKey: string | null; status: string; startedAt: string | Date; finishedAt?: string | Date | null; durationMs?: number | null }>): SourceTelemetryHistoryPoint[] {
-  const grouped = new Map<string, { date: string; sourceKey: string; runs: number; successes: number; latencyTotal: number; latencyCount: number }>();
+  const grouped = new Map<string, { date: string; sourceKey: string; runs: number; successes: number; latencyTotal: number; latencyCount: number; latencies: number[] }>();
   for (const run of runs) {
     const sourceKey = run.sourceKey ?? "unknown";
     const startedAt = new Date(run.startedAt);
     if (Number.isNaN(startedAt.getTime())) continue;
     const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(startedAt);
     const key = `${date}:${sourceKey}`;
-    const current = grouped.get(key) ?? { date, sourceKey, runs: 0, successes: 0, latencyTotal: 0, latencyCount: 0 };
+    const current = grouped.get(key) ?? { date, sourceKey, runs: 0, successes: 0, latencyTotal: 0, latencyCount: 0, latencies: [] };
     current.runs += 1;
     if (run.status === "succeeded") current.successes += 1;
     const measured = Number(run.durationMs ?? (run.finishedAt ? new Date(run.finishedAt).getTime() - startedAt.getTime() : 0));
-    if (Number.isFinite(measured) && measured > 0) { current.latencyTotal += measured; current.latencyCount += 1; }
+    if (Number.isFinite(measured) && measured > 0) { current.latencyTotal += measured; current.latencyCount += 1; current.latencies.push(measured); }
     grouped.set(key, current);
   }
-  return Array.from(grouped.values()).sort((a, b) => a.date.localeCompare(b.date) || a.sourceKey.localeCompare(b.sourceKey)).map(item => ({ date: item.date, label: new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" }).format(new Date(`${item.date}T12:00:00-03:00`)), sourceKey: item.sourceKey, runs: item.runs, successes: item.successes, successRate: item.runs ? Number((item.successes / item.runs).toFixed(4)) : 0, averageLatencyMs: item.latencyCount ? Math.round(item.latencyTotal / item.latencyCount) : 0 }));
+  return Array.from(grouped.values()).sort((a, b) => a.date.localeCompare(b.date) || a.sourceKey.localeCompare(b.sourceKey)).map(item => ({ date: item.date, label: new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" }).format(new Date(`${item.date}T12:00:00-03:00`)), sourceKey: item.sourceKey, runs: item.runs, successes: item.successes, successRate: item.runs ? Number((item.successes / item.runs).toFixed(4)) : 0, averageLatencyMs: item.latencyCount ? Math.round(item.latencyTotal / item.latencyCount) : 0, p95LatencyMs: item.latencies.length ? item.latencies.sort((a, b) => a - b)[Math.min(item.latencies.length - 1, Math.ceil(item.latencies.length * 0.95) - 1)] : 0 }));
 }
 type SourceErrorCategory = SourceTelemetry["errors"][number]["category"];
 
-export function findConsecutiveP95PerformanceAlertsForTest(runs: Array<{ sourceKey: string | null; status: string; startedAt: string | Date; durationMs?: number | null }>, thresholdMs = 3000) {
+export function findConsecutiveP95PerformanceAlertsForTest(runs: Array<{ sourceKey: string | null; status: string; startedAt: string | Date; durationMs?: number | null }>, thresholdMs: number | Map<string, number> = 3000) {
   const bySource = new Map<string, Array<{ startedAt: number; durationMs: number }>>();
   for (const run of runs) { const durationMs = Number(run.durationMs ?? 0); const startedAt = new Date(run.startedAt).getTime(); if (!run.sourceKey || !Number.isFinite(durationMs) || durationMs <= 0 || !Number.isFinite(startedAt)) continue; const list = bySource.get(run.sourceKey) ?? []; list.push({ startedAt, durationMs }); bySource.set(run.sourceKey, list); }
-  return Array.from(bySource.entries()).flatMap(([sourceKey, list]) => { const sortedRuns = list.sort((a, b) => b.startedAt - a.startedAt); if (sortedRuns.length < 2 || sortedRuns[0].durationMs <= thresholdMs || sortedRuns[1].durationMs <= thresholdMs) return []; const samples = sortedRuns.slice(0, 20).map(item => item.durationMs).sort((a, b) => a - b); const p95LatencyMs = samples[Math.min(samples.length - 1, Math.ceil(samples.length * 0.95) - 1)]; return [{ sourceKey, p95LatencyMs, thresholdMs, consecutiveRuns: 2 }]; });
+  return Array.from(bySource.entries()).flatMap(([sourceKey, list]) => { const sourceThreshold = typeof thresholdMs === "number" ? thresholdMs : thresholdMs.get(sourceKey) ?? 3000; const sortedRuns = list.sort((a, b) => b.startedAt - a.startedAt); if (sortedRuns.length < 2 || sortedRuns[0].durationMs <= sourceThreshold || sortedRuns[1].durationMs <= sourceThreshold) return []; const samples = sortedRuns.slice(0, 20).map(item => item.durationMs).sort((a, b) => a - b); const p95LatencyMs = samples[Math.min(samples.length - 1, Math.ceil(samples.length * 0.95) - 1)]; return [{ sourceKey, p95LatencyMs, thresholdMs: sourceThreshold, consecutiveRuns: 2 }]; });
 }
 
 
@@ -1222,7 +1223,7 @@ export async function listIngestionReport(
       failed: Number(row.failed ?? 0),
     }));
   const sourceTelemetry = buildSourceTelemetryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), durationMs: run.durationMs, httpStatus: run.httpStatus, details: run.details })));
-  const performanceAlerts = findConsecutiveP95PerformanceAlertsForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, durationMs: run.durationMs })));
+  const performanceAlerts = findConsecutiveP95PerformanceAlertsForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, durationMs: run.durationMs })), new Map(sourceConfigs.map(source => [source.sourceKey, source.p95LatencyThresholdMs ?? 3000])));
   await Promise.all(performanceAlerts.map(async alert => { const message = `Desempenho degradado: P95 de ${Math.round(alert.p95LatencyMs)} ms em ${alert.sourceKey}, acima do limite de ${alert.thresholdMs} ms por ${alert.consecutiveRuns} rodadas consecutivas.`; await handleIngestionFailureAlert({ routine: "performance-monitor", sourceKey: alert.sourceKey, integration: alert.sourceKey.startsWith("instagram") ? "meta" : "public", severity: "WARNING", alertType: "performance_degraded", message }); await notifyPerformanceDegradationWebhook({ ...alert, message }); }));
   const sourceTelemetryHistory = buildSourceTelemetryHistoryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, finishedAt: run.finishedAt, durationMs: run.durationMs })));
   const freshness = sourceConfigs.map(source => ({

@@ -7,7 +7,7 @@ const refetch = vi.fn();
 const invalidate = vi.fn();
 const mutate = vi.fn();
 const mockSettingsMutate = vi.fn();
-const source = { id: 1, name: "Moby House", kind: "instagram", handle: "mobydicksantos", url: "https://www.instagram.com/mobydicksantos/", isEnabled: 1, priority: 10, frequencyMinutes: 10080, lastSuccessAt: new Date("2026-08-15T12:00:00Z"), lastStatus: "succeeded" };
+const source = { id: 1, name: "Moby House", kind: "instagram", handle: "mobydicksantos", url: "https://www.instagram.com/mobydicksantos/", isEnabled: 1, priority: 10, frequencyMinutes: 10080, p95LatencyThresholdMs: 3000, lastSuccessAt: new Date("2026-08-15T12:00:00Z"), lastStatus: "succeeded" };
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
@@ -43,11 +43,19 @@ describe("AdminSourcesPanel", () => {
     expect(mockSettingsMutate).toHaveBeenCalledWith({ allowSandboxMocks: false });
   });
 
+  it("persiste o limite P95 configurável", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const input = tree!.root.findByProps({ "aria-label": "Limite P95 de Moby House" });
+    await act(async () => { input.props.onBlur({ currentTarget: { value: "4500" } }); });
+    expect(mutate).toHaveBeenCalledWith({ id: 1, isEnabled: true, priority: 10, frequencyMinutes: 10080, p95LatencyThresholdMs: 4500 });
+  });
+
   it("permite pausar uma fonte", async () => {
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminSourcesPanel />); });
     const button = tree!.root.findAllByType("button").find(item => item.props["aria-pressed"] === true);
     await act(async () => { button?.props.onClick(); });
-    expect(mutate).toHaveBeenCalledWith({ id: 1, isEnabled: false, priority: 10, frequencyMinutes: 10080 });
+    expect(mutate).toHaveBeenCalledWith({ id: 1, isEnabled: false, priority: 10, frequencyMinutes: 10080, p95LatencyThresholdMs: 3000 });
   });
 });
