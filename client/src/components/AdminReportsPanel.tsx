@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock3, Loader2, MapPin, RefreshCw, Trash2, XCircle } from "lucide-react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast as sonnerToast } from "sonner";
@@ -33,6 +33,11 @@ export function exportRunsCsvForTest(runs: Array<{ id: number; routine: string; 
 const freshnessCopy = { healthy: { label: "Atualizada", tone: "text-emerald-300", dot: "bg-emerald-300" }, delayed: { label: "Atrasada", tone: "text-yellow-200", dot: "bg-yellow-200" }, critical: { label: "Crítica", tone: "text-red-300", dot: "bg-red-300" }, never: { label: "Nunca sincronizada", tone: "text-zinc-400", dot: "bg-zinc-500" } } as const;
 const severityCopy = { INFO: "border-cyan-300/20 bg-cyan-300/5 text-cyan-100", WARNING: "border-yellow-300/20 bg-yellow-300/5 text-yellow-100", CRITICAL: "border-red-300/30 bg-red-300/10 text-red-100" } as const;
 const adminBuildTag = "CORRECTED-27E8D794";
+const versionManifestPath = "/__manus__/version.json";
+
+export function isNewVersionAvailable(currentVersion: string | null, latestVersion: unknown) {
+  return Boolean(currentVersion && typeof latestVersion === "string" && latestVersion.length > 0 && latestVersion !== currentVersion);
+}
 const rpcErrorCode = (error: unknown) => {
   if (!error || typeof error !== "object") return "";
   const data = (error as { data?: unknown }).data;
@@ -63,6 +68,34 @@ export default function AdminReportsPanel() {
   const [sourceFilter, setSourceFilter] = useState("");
   const [selectedRun, setSelectedRun] = useState<ReportRun | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [newVersionAvailable, setNewVersionAvailable] = useState(false);
+  const knownVersionRef = useRef<string | null>(null);
+  const versionToastShownRef = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    const checkVersion = async () => {
+      try {
+        const response = await fetch(`${versionManifestPath}?t=${Date.now()}`, { cache: "no-store", headers: { Accept: "application/json" } });
+        if (!response.ok) return;
+        const payload = await response.json() as { version?: unknown };
+        if (cancelled || typeof payload.version !== "string" || payload.version.length === 0) return;
+        if (isNewVersionAvailable(knownVersionRef.current, payload.version)) {
+          setNewVersionAvailable(true);
+          if (!versionToastShownRef.current) {
+            versionToastShownRef.current = true;
+            sonnerToast.info("Nova versão disponível", { description: "Uma atualização do painel foi detectada. Recarregue a página para continuar usando a versão mais recente." });
+          }
+          return;
+        }
+        if (!knownVersionRef.current) knownVersionRef.current = payload.version;
+      } catch {
+        // A verificação é auxiliar; uma falha de rede não deve interromper o painel.
+      }
+    };
+    void checkVersion();
+    const intervalId = globalThis.setInterval(() => void checkVersion(), 30_000);
+    return () => { cancelled = true; globalThis.clearInterval(intervalId); };
+  }, []);
   const report = trpc.ingestionReports.summary.useQuery({ periodDays, routine: routineFilter === "all" ? undefined : routineFilter, status: statusFilter === "all" ? undefined : statusFilter, trigger: triggerFilter === "all" ? undefined : triggerFilter, runId: runIdFilter.trim() ? Number(runIdFilter) : undefined, sourceKey: sourceFilter.trim() || undefined, executionKind }, { refetchInterval: 30_000 });
   const geocoding = trpc.ingestionReports.geocoding.useQuery(undefined, { refetchInterval: 30_000 });
   const reprocess = trpc.ingestionReports.reprocess.useMutation({
@@ -204,6 +237,7 @@ export default function AdminReportsPanel() {
       <div><p className="text-xs font-black uppercase tracking-[0.2em] text-yellow-200">Observabilidade</p><h2 id="reports-heading" className="mt-1 text-xl font-black">Relatórios operacionais</h2><p className="mt-1 text-sm text-zinc-400">Acompanhe a saúde da ingestão e reexecute uma fonte sem duplicar eventos.</p><p data-testid="admin-build-version" className="mt-2 text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">Versão do painel: {adminBuildTag}</p><p data-testid="filter-evaluated-at" className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-cyan-200/70">Última avaliação do filtro: {data?.filterEvaluatedAt ? new Date(data.filterEvaluatedAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }) : "aguardando avaliação"} · São Paulo</p></div>
       <div className="flex flex-wrap gap-2 self-start"><button type="button" onClick={() => void report.refetch()} disabled={report.isFetching} aria-busy={report.isFetching} aria-label="Atualizar relatórios" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-200 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300 disabled:cursor-wait disabled:opacity-50"><RefreshCw size={15} className={report.isFetching ? "animate-spin" : ""} /> {report.isFetching ? "Atualizando..." : "Atualizar"}</button><button type="button" onClick={() => void clearClientCache()} disabled={isClearingCache} aria-busy={isClearingCache} aria-label="Limpar cache do painel" data-testid="clear-client-cache" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-yellow-300/30 px-3 py-2 text-xs font-bold text-yellow-100 hover:bg-yellow-300/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300 disabled:cursor-wait disabled:opacity-50">{isClearingCache ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />} {isClearingCache ? "Limpando..." : "Limpar Cache"}</button></div>
     </div>
+    {newVersionAvailable && <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-cyan-300/30 bg-cyan-300/10 p-4 text-cyan-50 sm:flex-row sm:items-center sm:justify-between" role="status" aria-live="polite" data-testid="new-version-notice"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200">Atualização disponível</p><p className="mt-1 text-sm font-bold">Uma nova versão do painel foi detectada.</p><p className="mt-1 text-xs text-cyan-100/75">Recarregue a página para aplicar as correções e melhorias mais recentes.</p></div><button type="button" onClick={() => { if (typeof window !== "undefined") window.location.reload(); }} className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl bg-cyan-300 px-4 py-2 text-xs font-black text-zinc-950 hover:bg-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-100">Recarregar página</button></div>}
     <div className="mt-5 grid gap-3 sm:grid-cols-4">{cards.map(item => <div key={item.label} className="rounded-2xl border border-white/10 bg-black/10 p-4"><item.icon size={17} className={item.tone} /><p className="mt-3 text-2xl font-black">{item.value}</p><p className="text-xs text-zinc-500">{item.label}</p></div>)}</div>
     <div className={`mt-5 rounded-2xl border p-4 ${metaStatusCopy.tone}`} aria-live="polite" data-testid="meta-integration-status">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

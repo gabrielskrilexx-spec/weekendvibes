@@ -1995,3 +1995,9 @@
 - [x] Gerar bundle limpo e reiniciar o preview em desenvolvimento
 - [x] Confirmar nos logs e na tela que o novo bundle está sendo servido
 - [x] Validar e publicar checkpoint da recompilação
+
+- [x] Revisar a origem da versão e o mecanismo atual de atualização do painel
+- [x] Detectar nova versão sem interromper operações em andamento
+- [x] Exibir aviso visual com ação de recarregamento da página
+- [x] Adicionar testes para detecção, aviso e recarregamento
+- [x] Validar TypeScript, Vitest, build e publicar checkpoint

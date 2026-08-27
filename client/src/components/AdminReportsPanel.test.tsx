@@ -2,7 +2,7 @@ import React from "react";
 import { act, create } from "react-test-renderer";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import AdminReportsPanel, { buildRunsCsvFilename, exportRunsCsvForTest } from "./AdminReportsPanel";
+import AdminReportsPanel, { buildRunsCsvFilename, exportRunsCsvForTest, isNewVersionAvailable } from "./AdminReportsPanel";
 
 const mocks = vi.hoisted(() => ({
   mutate: vi.fn(),
@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
   toastWarning: vi.fn(),
+  toastInfo: vi.fn(),
   summaryInput: undefined as unknown,
 }));
 
@@ -39,7 +40,7 @@ const reportData = {
 };
 latestReportData = reportData;
 
-vi.mock("sonner", () => ({ toast: { success: mocks.toastSuccess, warning: mocks.toastWarning, error: mocks.toastError } }));
+vi.mock("sonner", () => ({ toast: { success: mocks.toastSuccess, warning: mocks.toastWarning, error: mocks.toastError, info: mocks.toastInfo } }));
 vi.mock("recharts", () => { const passthrough = ({ children }: { children?: ReactNode }) => children; return { CartesianGrid: passthrough, Legend: passthrough, Line: passthrough, LineChart: passthrough, ResponsiveContainer: passthrough, Tooltip: passthrough, XAxis: passthrough, YAxis: passthrough }; });
 vi.mock("@/lib/trpc", () => ({
   trpc: {
@@ -62,6 +63,7 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     mocks.toastSuccess.mockReset();
     mocks.toastError.mockReset();
     mocks.toastWarning.mockReset();
+    mocks.toastInfo.mockReset();
     mocks.summaryInput = undefined;
     mutationOptions = {};
     mutationState = { isPending: false };
@@ -69,6 +71,29 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("detecta somente uma versão remota diferente da versão conhecida", () => {
+    expect(isNewVersionAvailable(null, "NEXT")).toBe(false);
+    expect(isNewVersionAvailable("CURRENT", "CURRENT")).toBe(false);
+    expect(isNewVersionAvailable("CURRENT", "NEXT")).toBe(true);
+    expect(isNewVersionAvailable("CURRENT", null)).toBe(false);
+  });
+
+  it("exibe o aviso visual quando o manifesto detecta uma versão nova", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ version: "CURRENT" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ version: "NEXT" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); await Promise.resolve(); });
+    expect(JSON.stringify(tree!.toJSON())).not.toContain("Atualização disponível");
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(JSON.stringify(tree!.toJSON())).toContain("Atualização disponível");
+    expect(JSON.stringify(tree!.toJSON())).toContain("Recarregar página");
+    expect(mocks.toastInfo).toHaveBeenCalledWith("Nova versão disponível", expect.objectContaining({ description: expect.stringContaining("Recarregue a página") }));
+    vi.useRealTimers();
   });
 
   it("gera nome de CSV com data, rotina e fuso de São Paulo", () => {
