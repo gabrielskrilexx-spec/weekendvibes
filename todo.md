@@ -2034,3 +2034,10 @@
 - [x] Ajustar o cliente fetch somente se houver cabeçalho administrativo obrigatório
 - [x] Adicionar regressões de autorização e validar runtime autenticado, TypeScript e build
 - [x] Reiniciar o Express e publicar checkpoint
+
+- [x] Auditar o middleware efetivo de admin e a cadeia de cookies/headers
+- [x] Aplicar o middleware comum no topo das cinco rotas REST administrativas
+- [x] Validar a sessão ativa sem relaxar autorização
+- [x] Adicionar regressão de 403/200 para sessão autenticada
+- [x] Reiniciar Express, validar build e testar o preview
+- [x] Publicar checkpoint da correção de autorização

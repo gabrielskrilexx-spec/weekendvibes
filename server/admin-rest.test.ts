@@ -65,6 +65,14 @@ describe("admin REST actions", () => {
     expect(result.json).toEqual(expected);
   });
 
+  it("rejects REST actions when the authenticated user is not admin", async () => {
+    authenticateRequest.mockResolvedValue({ role: "user" });
+    const result = await post("/api/admin/sync-stories", {});
+    expect(result.status).toBe(403);
+    expect(result.json).toEqual({ success: false, message: "Permissão administrativa necessária." });
+    expect(runIngestionSourceChunk).not.toHaveBeenCalled();
+  });
+
   it("returns a sandbox acknowledgement when Stories processing fails", async () => {
     runIngestionSourceChunk.mockRejectedValueOnce(new Error("ECONNREFUSED"));
     const result = await post("/api/admin/sync-stories", {});

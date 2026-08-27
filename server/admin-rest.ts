@@ -1,4 +1,4 @@
-import type { Express, Request, Response } from "express";
+import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { deleteLocationAlias, deleteEvents, updateEventsPublication } from "./db";
 import { runIngestionSourceChunk } from "./manual-ingestion";
@@ -15,12 +15,6 @@ function messageFromError(error: unknown, fallback: string) {
   if (/Database unavailable/i.test(raw)) return "O banco de dados está temporariamente indisponível. Tente novamente.";
   if (/foreign|constraint|referenc/i.test(raw)) return "Não foi possível concluir a operação por causa de dependências relacionadas.";
   return fallback;
-}
-
-async function requireAdmin(req: Request) {
-  const user = await sdk.authenticateRequest(req);
-  if (user.role !== "admin") throw new Error("ADMIN_REQUIRED");
-  return user;
 }
 
 function logRestError(req: Request, error: unknown) {
@@ -42,10 +36,23 @@ function sendFailure(req: Request, res: Response, error: unknown, fallback: stri
   return res.status(500).json({ success: false, message: messageFromError(error, fallback) });
 }
 
+/** Express middleware compartilhado pelas mutações REST e equivalente à autorização admin do tRPC. */
+async function requireAdminMiddleware(req: Request, res: Response, next: NextFunction) {
+  try {
+    const user = await sdk.authenticateRequest(req);
+    if (user.role !== "admin") {
+      return res.status(403).json({ success: false, message: "Permissão administrativa necessária." });
+    }
+    res.locals.adminUser = user;
+    return next();
+  } catch (error) {
+    return sendFailure(req, res, error, "Sessão administrativa necessária.");
+  }
+}
+
 export function registerAdminRestRoutes(app: Express) {
-  app.post("/api/admin/sync-stories", async (req, res) => {
+  app.post("/api/admin/sync-stories", requireAdminMiddleware, async (req, res) => {
     try {
-      await requireAdmin(req);
       const input = storiesInput.parse(req.body ?? {});
       try {
         await runIngestionSourceChunk({ sourceKey: input.sourceKey ?? "instagram", dryRun: false, storiesOnly: true });
@@ -59,9 +66,8 @@ export function registerAdminRestRoutes(app: Express) {
     }
   });
 
-  app.post("/api/admin/remove-alias", async (req, res) => {
+  app.post("/api/admin/remove-alias", requireAdminMiddleware, async (req, res) => {
     try {
-      await requireAdmin(req);
       const input = aliasInput.parse(req.body ?? {});
       await deleteLocationAlias(input.id);
       return res.json({ success: true, deletedId: String(input.id) });
@@ -70,9 +76,8 @@ export function registerAdminRestRoutes(app: Express) {
     }
   });
 
-  app.post("/api/admin/remove-events", async (req, res) => {
+  app.post("/api/admin/remove-events", requireAdminMiddleware, async (req, res) => {
     try {
-      await requireAdmin(req);
       const input = idsInput.parse(req.body ?? {});
       const result = await deleteEvents(input.ids);
       return res.json({ success: true, count: Number(result.deleted), ids: result.deletedIds.map(id => String(id)) });
@@ -81,9 +86,8 @@ export function registerAdminRestRoutes(app: Express) {
     }
   });
 
-  app.post("/api/admin/approve-events", async (req, res) => {
+  app.post("/api/admin/approve-events", requireAdminMiddleware, async (req, res) => {
     try {
-      await requireAdmin(req);
       const input = idsInput.parse(req.body ?? {});
       const result = await updateEventsPublication(input.ids);
       return res.json({ success: true, count: Number(result.updated), ids: result.ids.map(id => String(id)) });
@@ -92,9 +96,8 @@ export function registerAdminRestRoutes(app: Express) {
     }
   });
 
-  app.post("/api/admin/resolve-collision", async (req, res) => {
+  app.post("/api/admin/resolve-collision", requireAdminMiddleware, async (req, res) => {
     try {
-      await requireAdmin(req);
       const input = idsInput.parse(req.body ?? {});
       const result = await deleteEvents(input.ids);
       return res.json({ success: true, count: Number(result.deleted), ids: result.deletedIds.map(id => String(id)) });
