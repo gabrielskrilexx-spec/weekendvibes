@@ -58,6 +58,14 @@ describe("agenda routine composition", () => {
     expect(AGENDA_ROUTINE_COMPOSITION).toEqual(["archiveExpiredSoldOutEvents", "runIngestionPipeline", "runInstagramPipeline"]);
   });
 
+  it("converte falha de transporte do Instagram em fallback mock no preview", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    mocks.runInstagramPipeline.mockRejectedValueOnce(new Error("ECONNREFUSED: sandbox proxy"));
+    const result = await runInstagramAgendaStep({ runId: 987, trigger: "manual" });
+    expect(result).toEqual(expect.objectContaining({ previewMock: true, sandboxRestricted: true, status: "SANDBOX_RESTRICTED", imported: 0 }));
+    expect(mocks.finishIngestionRun).toHaveBeenCalledWith(987, expect.objectContaining({ status: "succeeded", httpStatus: 200, details: expect.objectContaining({ error: "SANDBOX_RESTRICTED" }) }));
+  });
+
   it("finaliza o run pré-criado pelo ACK manual com trigger manual", async () => {
     await runInstagramAgendaStep({ runId: 987, trigger: "manual" });
     expect(mocks.startIngestionRun).not.toHaveBeenCalled();

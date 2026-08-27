@@ -22,6 +22,7 @@ import {
   getMetaFailureStatus,
 } from "./instagram-pipeline";
 import { listHeartbeatJobs } from "./_core/heartbeat";
+import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 
 export function isCriticalIngestionFailure(details: unknown) {
   const text =

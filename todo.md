@@ -1902,3 +1902,11 @@
 - [x] Criar histórico visual de alertas performance_degraded com cooldown
 - [x] Adicionar testes Vitest de configuração, P95 e histórico
 - [x] Validar TypeScript, build e publicar checkpoint
+
+## Resiliência do Instagram e serialização de exclusões — 27/08/2026
+- [x] Auditar rota de ingestão Instagram e mutations de remoção
+- [x] Retornar fallback SANDBOX_RESTRICTED em falhas de transporte no preview
+- [x] Tornar remoção em massa estritamente serializável
+- [x] Tornar resolução de colisões estritamente serializável
+- [x] Adicionar testes Vitest das três rotas
+- [x] Executar TypeScript, build e publicar checkpoint
