@@ -2014,3 +2014,10 @@
 - [x] Destacar o badge quando uma nova versão for detectada
 - [x] Adicionar testes para os estados normal e nova versão
 - [x] Validar TypeScript, Vitest, build e publicar checkpoint
+
+- [x] Auditar registro de rotas Express, autenticação e consumidores das cinco ações administrativas
+- [x] Criar endpoints REST JSON protegidos para Stories, alias, remoção/aprovação em massa e colisões
+- [x] Migrar os componentes React dessas ações de tRPC para fetch com JSON estrito
+- [x] Adicionar testes de contrato e integração para os endpoints REST
+- [x] Limpar caches, reiniciar runtime, validar preview, Vitest, TypeScript e build
+- [x] Publicar checkpoint da migração REST

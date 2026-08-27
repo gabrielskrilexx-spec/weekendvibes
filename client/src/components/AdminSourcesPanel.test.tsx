@@ -3,8 +3,9 @@ import { act, create } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 import AdminSourcesPanel from "./AdminSourcesPanel";
 
-const { refetch, invalidate, mutate, mockSettingsMutate, syncStoriesMutate } = vi.hoisted(() => ({ refetch: vi.fn(), invalidate: vi.fn(), mutate: vi.fn(), mockSettingsMutate: vi.fn(), syncStoriesMutate: vi.fn() }));
-const source = { id: 1, name: "Moby House", kind: "instagram", handle: "mobydicksantos", url: "https://www.instagram.com/mobydicksantos/", isEnabled: 1, priority: 10, frequencyMinutes: 10080, p95LatencyThresholdMs: 3000, lastSuccessAt: new Date("2026-08-15T12:00:00Z"), lastStatus: "succeeded" };
+const { refetch, invalidate, mutate, mockSettingsMutate, fetchMock } = vi.hoisted(() => ({ refetch: vi.fn(), invalidate: vi.fn(), mutate: vi.fn(), mockSettingsMutate: vi.fn(), fetchMock: vi.fn() }));
+const source = { id: 1, sourceKey: "instagram:mobydicksantos", name: "Moby House", kind: "instagram", handle: "mobydicksantos", url: "https://www.instagram.com/mobydicksantos/", isEnabled: 1, priority: 10, frequencyMinutes: 10080, p95LatencyThresholdMs: 3000, lastSuccessAt: new Date("2026-08-15T12:00:00Z"), lastStatus: "succeeded" };
+vi.stubGlobal("fetch", fetchMock);
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
@@ -17,7 +18,6 @@ vi.mock("@/lib/trpc", () => ({
       update: { useMutation: () => ({ isPending: false, mutate }) },
     },
     adminRoutine: {
-      syncStories: { useMutation: () => ({ isPending: false, mutate: syncStoriesMutate }) },
       status: { invalidate },
     },
     useUtils: () => ({ ingestionSources: { list: { invalidate } }, ingestionReports: { mockSettings: { invalidate }, logs: { invalidate } }, adminRoutine: { status: { invalidate } } }),
@@ -53,12 +53,13 @@ describe("AdminSourcesPanel", () => {
   });
 
   it("aciona a sincronização dedicada de Stories para perfis Instagram", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminSourcesPanel />); });
     const button = tree!.root.findByProps({ "aria-label": "Sincronizar Stories de Moby House" });
     expect(button).toBeDefined();
-    await act(async () => { button?.props.onClick(); });
-    expect(syncStoriesMutate).toHaveBeenCalledWith({});
+    await act(async () => { await button?.props.onClick(); });
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/sync-stories", expect.objectContaining({ method: "POST", body: JSON.stringify({ sourceKey: "instagram:mobydicksantos" }) }));
   });
 
   it("permite pausar uma fonte", async () => {

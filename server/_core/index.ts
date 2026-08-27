@@ -13,6 +13,7 @@ import { heartbeatMonitorHandler } from "../scheduled-heartbeat-monitor";
 import { serveStatic, setupVite } from "./vite";
 import { applySecurityHeaders, createRateLimit, createStrictCors } from "./security";
 import { registerMapsJavascriptRoute } from "../maps-javascript";
+import { registerAdminRestRoutes } from "../admin-rest";
 
 async function startServer() {
   const app = express();
@@ -33,6 +34,7 @@ async function startServer() {
   app.use("/api/maps", createRateLimit({ windowMs: 60 * 1000, max: 30, name: "maps-script" }));
   registerMapsJavascriptRoute(app);
   registerOAuthRoutes(app);
+  registerAdminRestRoutes(app);
   const noStoreScheduledResponse = (_req: Request, res: Response, next: NextFunction) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.setHeader("Pragma", "no-cache");
