@@ -23,6 +23,7 @@ let statusState: {
       processedCount: number;
       persistedEventIds: number[];
       dateFilterValidation: unknown;
+      ocrAudit?: Array<{ mediaOrigin: "post" | "story" | "highlight"; imageUrl: string; sourceUrl: string; highlightTitle: string | null; ocrText: string; rawText: string }>;
     }>;
     progress?: {
       isRunning: boolean;
@@ -218,6 +219,7 @@ describe("AdminRoutinePanel", () => {
               timezone: "America/Sao_Paulo",
               today: "2026-08-26",
             },
+            ocrAudit: [{ mediaOrigin: "story", imageUrl: "https://cdn.example.com/meu-lugar-story.jpg", sourceUrl: "https://www.instagram.com/meulugar.bar/", highlightTitle: null, ocrText: "Meu Lugar · Programação especial · 22h", rawText: "Meu Lugar · Programação especial · 22h" }],
           },
         ],
       },
@@ -234,6 +236,11 @@ describe("AdminRoutinePanel", () => {
     expect(rendered).toContain("Parcial");
     expect(rendered).toContain("2345 ms");
     expect(rendered).toContain("IDs persistidos");
+    const detailButton = tree!.root.findByProps({ "aria-label": "Auditar OCR da execução 91" });
+    await act(async () => { detailButton.props.onClick(); });
+    const dialog = tree!.root.findByProps({ "data-testid": "ocr-audit-dialog" });
+    expect(dialog.props["data-testid"]).toBe("ocr-audit-dialog");
+    expect(dialog.props["data-ocr-entry-count"]).toBe(1);
   });
 
   it("confirma o disparo manual e exibe sucesso", async () => {

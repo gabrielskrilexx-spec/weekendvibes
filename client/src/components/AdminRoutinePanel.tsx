@@ -7,6 +7,7 @@ import {
   Loader2,
   Play,
   ShieldAlert,
+  Eye,
 } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -15,6 +16,15 @@ import {
   isAdminSessionError,
 } from "@/lib/adminFeedback";
 import AdminAuthRecoveryDialog from "@/components/AdminAuthRecoveryDialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 const formatExecution = (value?: string | null) =>
   value
@@ -53,6 +63,16 @@ const statusTone = (status: string) =>
         ? "bg-orange-300"
         : "bg-red-300";
 
+type OcrAuditItem = {
+  mediaOrigin: "post" | "story" | "highlight";
+  imageUrl: string;
+  sourceUrl: string;
+  highlightTitle: string | null;
+  ocrText: string;
+  rawText: string;
+};
+type OcrAuditRun = { id: number; routine: string; startedAt: string; ocrAudit?: OcrAuditItem[] };
+
 export function isChunkNetworkError(error: unknown) {
   const message = String(error instanceof Error ? error.message : error ?? "").toLowerCase();
   return /failed to fetch|network|fetch|timeout|timed out|gateway|502|503|504|econn|socket|transport/.test(message);
@@ -78,6 +98,7 @@ export default function AdminRoutinePanel() {
     text: string;
   } | null>(null);
   const [authRecoveryOpen, setAuthRecoveryOpen] = useState(false);
+  const [selectedOcrRun, setSelectedOcrRun] = useState<OcrAuditRun | null>(null);
   const status = trpc.adminRoutine.status.useQuery(undefined, {
     refetchInterval: 1_000,
   });
@@ -528,6 +549,15 @@ export default function AdminRoutinePanel() {
                         </span>
                       </p>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedOcrRun(run as OcrAuditRun)}
+                      disabled={!Array.isArray((run as OcrAuditRun).ocrAudit) || (run as OcrAuditRun).ocrAudit?.length === 0}
+                      className="mt-3 inline-flex min-h-9 items-center gap-2 rounded-lg border border-fuchsia-300/30 px-3 py-2 text-xs font-bold text-fuchsia-100 hover:bg-fuchsia-300/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-200 disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label={`Auditar OCR da execução ${run.id}`}
+                    >
+                      <Eye size={14} /> Ver detalhes OCR
+                    </button>
                   </div>
                 </div>
               </div>
@@ -539,6 +569,34 @@ export default function AdminRoutinePanel() {
           </p>
         )}
       </div>
+      <Dialog open={selectedOcrRun !== null} onOpenChange={open => { if (!open) setSelectedOcrRun(null); }}>
+        <DialogContent data-testid="ocr-audit-dialog" data-ocr-entry-count={selectedOcrRun?.ocrAudit?.length ?? 0} className="max-h-[85vh] overflow-y-auto border-fuchsia-300/20 bg-zinc-950 text-zinc-100 sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Auditoria OCR · Run #{selectedOcrRun?.id}</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Dados brutos sanitizados extraídos das artes de Stories e Destaques. O conteúdo é somente leitura.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {(selectedOcrRun?.ocrAudit ?? []).map((item, index) => (
+              <article key={`${selectedOcrRun?.id}-ocr-${index}`} className="grid gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:grid-cols-[140px_1fr]">
+                <div>
+                  {item.imageUrl ? <img src={item.imageUrl} alt={`Arte da origem ${item.mediaOrigin}`} loading="lazy" className="h-32 w-full rounded-xl border border-white/10 object-cover" /> : <div className="grid h-32 place-items-center rounded-xl border border-dashed border-white/10 text-xs text-zinc-500">Sem imagem</div>}
+                  <p className="mt-2 text-[11px] font-black uppercase tracking-wide text-fuchsia-200">{item.mediaOrigin === "highlight" ? "Destaque" : item.mediaOrigin === "story" ? "Story" : "Post"}</p>
+                </div>
+                <div className="min-w-0 space-y-3 text-xs">
+                  <div><p className="font-black uppercase tracking-wide text-zinc-500">Texto OCR</p><pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-black/30 p-3 font-sans text-zinc-200">{item.ocrText || "Nenhum texto OCR registrado."}</pre></div>
+                  <div><p className="font-black uppercase tracking-wide text-zinc-500">Texto bruto combinado</p><pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-black/30 p-3 font-sans text-zinc-300">{item.rawText || "Nenhum texto bruto registrado."}</pre></div>
+                  {item.highlightTitle && <p className="text-zinc-400">Destaque: <strong className="text-zinc-200">{item.highlightTitle}</strong></p>}
+                  {item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex text-fuchsia-200 underline underline-offset-4">Abrir origem no Instagram</a>}
+                </div>
+              </article>
+            ))}
+            {(selectedOcrRun?.ocrAudit ?? []).length === 0 && <p className="rounded-xl border border-dashed border-white/10 p-5 text-sm text-zinc-500">Esta execução não possui dados OCR disponíveis.</p>}
+          </div>
+          <DialogFooter><Button type="button" variant="outline" onClick={() => setSelectedOcrRun(null)}>Fechar</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
       {feedback && (
         <div
           role="status"

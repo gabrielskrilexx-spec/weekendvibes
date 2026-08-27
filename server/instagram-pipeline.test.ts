@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import { eq, or } from "drizzle-orm";
 import { ingestionSources } from "../drizzle/schema";
 import { getDb } from "./db";
-import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText } from "./instagram-pipeline";
+import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries } from "./instagram-pipeline";
 
 describe("Instagram weekend pipeline", () => {
   beforeEach(async () => {
@@ -10,6 +10,11 @@ describe("Instagram weekend pipeline", () => {
     if (!db) return;
     await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null }).where(or(eq(ingestionSources.sourceKey, "instagram:curvaosurfhouse"), eq(ingestionSources.sourceKey, "instagram:flamingomusicbar")));
   });
+  it("sanitizes OCR audit entries for the administrative history", () => {
+    const [entry] = buildOcrAuditEntries([{ post: { mediaType: "story", displayUrl: "https://cdn.example.com/story.jpg", url: "https://www.instagram.com/meulugar.bar/", ocrText: "Programação 22h", highlightTitle: "Programação" }, rawText: "Programação 22h\nSantos" }]);
+    expect(entry).toEqual({ mediaOrigin: "story", imageUrl: "https://cdn.example.com/story.jpg", sourceUrl: "https://www.instagram.com/meulugar.bar/", highlightTitle: "Programação", ocrText: "Programação 22h", rawText: "Programação 22h\nSantos" });
+  });
+
   it("preserves the Sao Paulo civil day for date-only structured events", () => {
     expect(normalizeStructuredEventDate("2026-08-20").toISOString()).toBe("2026-08-20T15:00:00.000Z");
   });

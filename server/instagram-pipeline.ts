@@ -115,6 +115,26 @@ export type InstagramPost = {
   ocrText?: string;
 };
 
+export type InstagramOcrAuditItem = {
+  mediaOrigin: InstagramMediaOrigin;
+  imageUrl: string;
+  sourceUrl: string;
+  highlightTitle: string | null;
+  ocrText: string;
+  rawText: string;
+};
+
+export function buildOcrAuditEntries(posts: Array<{ post: InstagramPost; rawText: string }>): InstagramOcrAuditItem[] {
+  return posts.slice(0, 25).map(({ post, rawText }) => ({
+    mediaOrigin: post.mediaType ?? "post",
+    imageUrl: String(post.displayUrl ?? post.imageUrl ?? post.media_url ?? "").slice(0, 1000),
+    sourceUrl: postUrl(post).slice(0, 1000),
+    highlightTitle: post.highlightTitle ? String(post.highlightTitle).slice(0, 160) : null,
+    ocrText: String(post.ocrText ?? "").slice(0, 3000),
+    rawText: rawText.slice(0, 5000),
+  })).filter(item => item.imageUrl.startsWith("https://") || item.ocrText.length > 0 || item.rawText.length > 0);
+}
+
 export const INSTAGRAM_AGENDA_TITLE_REGEX = /programa(?:ção|cao)|agenda/i;
 
 export function isAgendaHighlightTitle(title: unknown) {
@@ -585,7 +605,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     ];
     return {
       dryRun, previewMock: true, sandboxRestricted: true, durationMs, sourceReports: [{ sourceKey: "instagram", durationMs, read: previewMockEvents.length, filtered: 0, persistable: dryRun ? previewMockEvents.length : 0, added: 0, updated: 0, ignored: 0, duplicates: 0, errors: [], rejectionReasons: { fetchFailed: 0, outsideTargetVenue: 0, invalidStructuredEvent: 0, duplicate: 0, pastEvent: 0 } }],
-      previewMockEvents, receivedPosts: previewMockEvents.length, approvedPosts: previewMockEvents.length, degraded: false, transportFailures: [],
+      previewMockEvents, ocrAudit: previewMockEvents.map(event => ({ mediaOrigin: event.mediaOrigin ?? "story", imageUrl: String(event.imageUrl ?? "").slice(0, 1000), sourceUrl: String(event.source ?? "").slice(0, 1000), highlightTitle: null, ocrText: String(event.ocrText ?? "").slice(0, 3000), rawText: String(event.ocrText ?? "").slice(0, 5000) })).filter(item => item.imageUrl.startsWith("https://")), receivedPosts: previewMockEvents.length, approvedPosts: previewMockEvents.length, degraded: false, transportFailures: [],
       structuredEvents: previewMockEvents.length, imported: 0, persisted: 0, added: 0, updated: 0, ignored: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, rejectedEvents: [], rejectionReasons: {}, persistedEventIds: [], dateFilterValidation: { timezone: "America/Sao_Paulo", today: referenceDate, structuredEvents: previewMockEvents.length, pastEventsRejected: 0, acceptedTodayOrFuture: previewMockEvents.length },
     };
   }
@@ -668,6 +688,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     approvedPosts: approvedPosts.length,
     degraded: fetched.transportFailures.length > 0,
     transportFailures: fetched.transportFailures,
+    ocrAudit: buildOcrAuditEntries(approvedPosts),
 
     structuredEvents: structuredEvents.length,
     imported,

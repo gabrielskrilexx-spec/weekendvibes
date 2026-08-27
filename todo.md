@@ -1956,9 +1956,9 @@
 - [x] Adicionar testes de serialização, transporte e ações administrativas; validar E2E, TypeScript/build e publicar checkpoint
 
 ## Auditoria OCR no histórico de Stories
-- [ ] Expor detalhes OCR brutos de forma sanitizada no histórico administrativo
-- [ ] Adicionar modal de detalhes ao histórico de Sincronizar Stories
-- [ ] Cobrir contrato, estados de UI e abertura do modal com testes; validar TypeScript/build e publicar checkpoint
+- [x] Expor detalhes OCR brutos de forma sanitizada no histórico administrativo
+- [x] Adicionar modal de detalhes ao histórico de Sincronizar Stories
+- [x] Cobrir contrato, estados de UI e abertura do modal com testes; validar TypeScript/build e publicar checkpoint
 
 ## Correção no runtime tRPC do preview
 - [x] Rastrear respostas HTTP reais e logs das três ações administrativas
