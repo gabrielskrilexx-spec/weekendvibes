@@ -206,6 +206,16 @@ const ingestionChunkOutput = z.union([ingestionChunkSuccessOutput, ingestionChun
 const mutationAckOutput = z
   .object({ ok: z.literal(true), id: z.number().int().positive().optional() })
   .strict();
+const adminBatchMutationOutput = z
+  .object({
+    success: z.literal(true),
+    count: z.number().int().nonnegative(),
+    ids: z.array(z.string().min(1).max(32)),
+  })
+  .strict();
+const aliasRemoveOutput = z
+  .object({ success: z.literal(true), deletedId: z.string().min(1).max(32) })
+  .strict();
 const eventCreateOutput = z
   .object({
     created: z.boolean(),
@@ -429,10 +439,10 @@ export const appRouter = router({
       }),
     remove: adminOnly
       .input(z.object({ id: z.number().int().positive() }))
-      .output(mutationAckOutput)
+      .output(aliasRemoveOutput)
       .mutation(async ({ input }) => {
         await deleteLocationAlias(input.id);
-        return { ok: true as const, id: input.id };
+        return { success: true as const, deletedId: String(input.id) };
       }),
   }),
   circuitBreaker: router({
@@ -456,22 +466,14 @@ export const appRouter = router({
       .input(
         z.object({ ids: z.array(z.number().int().positive()).min(1).max(100) })
       )
-      .output(
-        z
-          .object({
-            ok: z.literal(true),
-            deleted: z.number().int().nonnegative(),
-            deletedIds: z.array(z.number().int().positive()),
-          })
-          .strict()
-      )
+      .output(adminBatchMutationOutput)
       .mutation(async ({ input }) => {
         try {
           const result = await deleteEvents(input.ids);
           return {
-            ok: true as const,
-            deleted: result.deleted,
-            deletedIds: result.deletedIds,
+            success: true as const,
+            count: Number(result.deleted),
+            ids: result.deletedIds.map(id => String(id)),
           };
         } catch (error) {
           return throwSanitizedAdminMutationError(
@@ -783,22 +785,14 @@ export const appRouter = router({
       .input(
         z.object({ ids: z.array(z.number().int().positive()).min(1).max(100) })
       )
-      .output(
-        z
-          .object({
-            ok: z.literal(true),
-            updated: z.number().int().nonnegative(),
-            ids: z.array(z.number().int().positive()),
-          })
-          .strict()
-      )
+      .output(adminBatchMutationOutput)
       .mutation(async ({ input }) => {
         try {
           const result = await updateEventsPublication(input.ids);
           return {
-            ok: true as const,
-            updated: result.updated,
-            ids: result.ids,
+            success: true as const,
+            count: Number(result.updated),
+            ids: result.ids.map(id => String(id)),
           };
         } catch (error) {
           return throwSanitizedAdminMutationError(
@@ -811,22 +805,14 @@ export const appRouter = router({
       .input(
         z.object({ ids: z.array(z.number().int().positive()).min(1).max(100) })
       )
-      .output(
-        z
-          .object({
-            ok: z.literal(true),
-            deleted: z.number().int().nonnegative(),
-            deletedIds: z.array(z.number().int().positive()),
-          })
-          .strict()
-      )
+      .output(adminBatchMutationOutput)
       .mutation(async ({ input }) => {
         try {
           const result = await deleteEvents(input.ids);
           return {
-            ok: true as const,
-            deleted: result.deleted,
-            deletedIds: result.deletedIds,
+            success: true as const,
+            count: Number(result.deleted),
+            ids: result.deletedIds.map(id => String(id)),
           };
         } catch (error) {
           return throwSanitizedAdminMutationError(

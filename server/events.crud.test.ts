@@ -90,18 +90,18 @@ describe("events admin procedures", () => {
   it("returns serializable contracts for bulk approval and deletion", async () => {
     const caller = appRouter.createCaller(ctx());
     await expect(caller.events.publishMany({ ids: [1, 2] })).resolves.toEqual({
-      ok: true,
-      updated: 2,
-      ids: [1, 2],
+      success: true,
+      count: 2,
+      ids: ["1", "2"],
     });
     await expect(caller.events.removeMany({ ids: [1, 2] })).resolves.toEqual({
-      ok: true,
-      deleted: 2,
-      deletedIds: [1, 2],
+      success: true,
+      count: 2,
+      ids: ["1", "2"],
     });
     await expect(
       caller.collisionReview.resolveMany({ ids: [2] })
-    ).resolves.toEqual({ ok: true, deleted: 2, deletedIds: [1, 2] });
+    ).resolves.toEqual({ success: true, count: 2, ids: ["1", "2"] });
   });
   it("rejects invalid update IDs before reaching the database", async () => {
     const caller = appRouter.createCaller(ctx());

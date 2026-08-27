@@ -53,7 +53,7 @@ export default function CollisionReviewPanel() {
     onError: error => { setPending(null); setNotice(`Não foi possível remover: ${getDeleteCollisionErrorMessage(error)}`); },
   });
   const resolveMany = trpc.collisionReview.resolveMany.useMutation({
-    onSuccess: result => { setSelectedCollisionKeys([]); setNotice(`${result.deleted} duplicata(s) resolvida(s) com sucesso.`); void collisions.refetch(); void utils.events.list.invalidate(); },
+    onSuccess: result => { setSelectedCollisionKeys([]); setNotice(`${result.count} duplicata(s) resolvida(s) com sucesso.`); void collisions.refetch(); void utils.events.list.invalidate(); },
     onError: error => setNotice(`Não foi possível resolver as colisões: ${getDeleteCollisionErrorMessage(error)}`),
   });
   const isBulkPending = resolveMany.isPending || remove.isPending;

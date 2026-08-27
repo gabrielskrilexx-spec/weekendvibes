@@ -2001,3 +2001,10 @@
 - [x] Exibir aviso visual com ação de recarregamento da página
 - [x] Adicionar testes para detecção, aviso e recarregamento
 - [x] Validar TypeScript, Vitest, build e publicar checkpoint
+
+- [x] Auditar transformer tRPC/SuperJSON no cliente e servidor
+- [x] Mapear mutations administrativas de Stories, aliases, aprovação, remoção em massa e colisões
+- [x] Padronizar todos os retornos administrativos afetados como objetos literais primitivos
+- [x] Limpar caches e recompilar Vite/Express do zero
+- [x] Reiniciar runtime e validar ações reais no preview
+- [x] Executar Vitest, TypeScript, build e publicar checkpoint
