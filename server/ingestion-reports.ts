@@ -1049,9 +1049,12 @@ export type IngestionReportFilters = {
   status?: "running" | "succeeded" | "partial" | "failed";
   trigger?: "manual" | "scheduled";
   runId?: number;
-  sourceKey?: string;
+    sourceKey?: string;
+  executionKind?: "all" | "real" | "simulated";
 };
-
+function isSandboxExecution(details: unknown) {
+  return /sandbox_restricted|previewmock/i.test(JSON.stringify(parseDetails(details) ?? ""));
+}
 function runTrigger(details: unknown): "manual" | "scheduled" {
   const parsed = parseDetails(details);
   return parsed &&
@@ -1167,15 +1170,17 @@ export async function listIngestionReport(
     .limit(Math.max(safeSize * 4, 100));
   const runs = runsRaw
     .filter(
-      run => !filters.trigger || runTrigger(run.details) === filters.trigger
+      run => (!filters.trigger || runTrigger(run.details) === filters.trigger) &&
+        (filters.executionKind === "all" || !filters.executionKind || (filters.executionKind === "simulated" ? isSandboxExecution(run.details) : !isSandboxExecution(run.details)))
     )
     .slice(0, safeSize);
-  const trendRuns = await db
+  const trendRunsRaw = await db
     .select()
     .from(ingestionRuns)
     .where(cutoff ? gte(ingestionRuns.startedAt, cutoff) : undefined)
     .orderBy(desc(ingestionRuns.startedAt))
     .limit(500);
+  const trendRuns = trendRunsRaw.filter(run => filters.executionKind === "all" || !filters.executionKind || (filters.executionKind === "simulated" ? isSandboxExecution(run.details) : !isSandboxExecution(run.details)));
   const metaRuns = await db
     .select({
       status: ingestionRuns.status,
@@ -1221,14 +1226,27 @@ export async function listIngestionReport(
     .groupBy(ingestionRuns.sourceKey)
     .orderBy(desc(sql`sum(${ingestionRuns.importedCount})`));
   const sourceConfigs = await db.select().from(ingestionSources);
-  const sourceMetrics = sourceRows
-    .filter(row => row.sourceKey)
-    .map(row => ({
-      sourceKey: String(row.sourceKey),
-      imported: Number(row.imported ?? 0),
-      runs: Number(row.runs ?? 0),
-      failed: Number(row.failed ?? 0),
-    }));
+  const sourceMetricGroups = new Map<string, { imported: number; runs: number; failed: number; realSuccesses: number; simulated: number }>();
+  for (const run of trendRuns) {
+    const sourceKey = String(run.sourceKey ?? "unknown");
+    const current = sourceMetricGroups.get(sourceKey) ?? { imported: 0, runs: 0, failed: 0, realSuccesses: 0, simulated: 0 };
+    const simulated = isSandboxExecution(run.details);
+    current.runs += 1;
+    current.imported += Number(run.importedCount ?? 0);
+    if (run.status === "failed") current.failed += 1;
+    if (simulated) current.simulated += 1;
+    else if (run.status === "succeeded") current.realSuccesses += 1;
+    sourceMetricGroups.set(sourceKey, current);
+  }
+  const sourceMetrics = Array.from(sourceMetricGroups.entries()).map(([sourceKey, value]) => ({
+    sourceKey,
+    imported: value.imported,
+    runs: value.runs,
+    failed: value.failed,
+    realSuccesses: value.realSuccesses,
+    simulatedExecutions: value.simulated,
+    realCoverage: value.runs > 0 ? Number((value.realSuccesses / value.runs).toFixed(4)) : 0,
+  }));
   const sourceTelemetry = buildSourceTelemetryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), durationMs: run.durationMs, httpStatus: run.httpStatus, details: run.details })));
   const performanceAlerts = findConsecutiveP95PerformanceAlertsForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, durationMs: run.durationMs })), new Map(sourceConfigs.map(source => [source.sourceKey, source.p95LatencyThresholdMs ?? 3000])));
   await Promise.all(performanceAlerts.map(async alert => { const message = `Desempenho degradado: P95 de ${Math.round(alert.p95LatencyMs)} ms em ${alert.sourceKey}, acima do limite de ${alert.thresholdMs} ms por ${alert.consecutiveRuns} rodadas consecutivas.`; await handleIngestionFailureAlert({ routine: "performance-monitor", sourceKey: alert.sourceKey, integration: alert.sourceKey.startsWith("instagram") ? "meta" : "public", severity: "WARNING", alertType: "performance_degraded", message }); await notifyPerformanceDegradationWebhook({ ...alert, message }); }));

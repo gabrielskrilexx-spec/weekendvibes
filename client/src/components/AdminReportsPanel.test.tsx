@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
   toastWarning: vi.fn(),
+  summaryInput: undefined as unknown,
 }));
 
 
@@ -43,7 +44,7 @@ vi.mock("recharts", () => { const passthrough = ({ children }: { children?: Reac
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     ingestionReports: {
-      summary: { useQuery: () => ({ data: latestReportData, refetch: mocks.reportRefetch }) },
+      summary: { useQuery: (input: unknown) => { mocks.summaryInput = input; return { data: latestReportData, refetch: mocks.reportRefetch }; } },
       geocoding: { useQuery: () => ({ data: { pending: 0, processing: 0, succeeded: 0, failed: 0 }, refetch: vi.fn() }) },
       geocodeNow: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
       reprocess: { useMutation: (options: typeof mutationOptions) => { mutationOptions = options; return { ...mutationState, mutate: mocks.mutate }; } },
@@ -61,6 +62,7 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     mocks.toastSuccess.mockReset();
     mocks.toastError.mockReset();
     mocks.toastWarning.mockReset();
+    mocks.summaryInput = undefined;
     mutationOptions = {};
     mutationState = { isPending: false };
   });
@@ -87,6 +89,14 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     expect(JSON.stringify(tree!.toJSON())).toContain("Timeline de retries");
     expect(JSON.stringify(tree!.toJSON())).toContain("Tentativa #\",\"1");
     expect(JSON.stringify(tree!.toJSON())).toContain("Evento #\",\"1234");
+  });
+
+  it("aplica o filtro de tipo de execução à consulta", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    const filter = tree!.root.findByProps({ "data-testid": "execution-kind-filter" });
+    await act(async () => { filter.props.onChange({ target: { value: "simulated" } }); });
+    expect(mocks.summaryInput).toEqual(expect.objectContaining({ executionKind: "simulated" }));
   });
 
   it("renderiza Sandbox / Mocks e separa o denominador de sucesso real", async () => {
