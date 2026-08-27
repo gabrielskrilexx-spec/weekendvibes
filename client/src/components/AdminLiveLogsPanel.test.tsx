@@ -14,6 +14,7 @@ type LogsData = {
     status: string;
     sourceKey: string | null;
     message: string | null;
+    sandboxRestricted?: boolean;
   }>;
 };
 
@@ -41,7 +42,8 @@ const state = vi.hoisted(() => ({
           label: "public-agenda retry 1",
           status: "retry",
           sourceKey: "public:blackpass",
-          message: "SANDBOX_RESTRICTED: timeout temporário",
+          message: "timeout temporário",
+          sandboxRestricted: true,
         },
       ],
     } as LogsData | undefined,

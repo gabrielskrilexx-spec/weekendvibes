@@ -41,6 +41,11 @@ function parseDetails(details: unknown): unknown {
   }
 }
 
+function isSandboxRestrictedDetails(details: unknown) {
+  const text = typeof details === "string" ? details : JSON.stringify(details ?? "");
+  return /sandbox_restricted|previewmock/i.test(text);
+}
+
 function safeReportError(value: unknown) {
   return String(value ?? "Falha não especificada")
     .replace(/https?:\/\/[^\s]+/gi, "fonte pública")
@@ -1577,6 +1582,7 @@ export type LiveIngestionLog = {
   status: string;
   sourceKey: string | null;
   message: string | null;
+  sandboxRestricted: boolean;
 };
 
 function readLogMessage(value: unknown): string | null {
@@ -1625,6 +1631,8 @@ export async function listIngestionLogs(limit = 80): Promise<{
   const logs: LiveIngestionLog[] = [];
   for (const run of runs) {
     const sourceKey = run.sourceKey ?? run.routine;
+    const details = parseDetails(run.details);
+    const sandboxRestricted = isSandboxRestrictedDetails(details);
     logs.push({
       id: `run-${run.id}-started`,
       runId: String(run.id),
@@ -1634,6 +1642,7 @@ export async function listIngestionLogs(limit = 80): Promise<{
       status: run.status,
       sourceKey,
       message: null,
+      sandboxRestricted,
     });
     if (run.finishedAt) {
       logs.push({
@@ -1645,10 +1654,11 @@ export async function listIngestionLogs(limit = 80): Promise<{
         status: run.status,
         sourceKey,
         message: null,
+        sandboxRestricted,
       });
     }
 
-    const details = parseDetails(run.details);
+
     const root =
       details && typeof details === "object"
         ? (details as Record<string, unknown>)
@@ -1676,6 +1686,7 @@ export async function listIngestionLogs(limit = 80): Promise<{
         status: "retry",
         sourceKey,
         message: readLogMessage(item.reason ?? item.error),
+        sandboxRestricted: sandboxRestricted || isSandboxRestrictedDetails(item.reason ?? item.error),
       });
     });
 
@@ -1695,6 +1706,7 @@ export async function listIngestionLogs(limit = 80): Promise<{
         sourceKey:
           typeof item.sourceKey === "string" ? item.sourceKey : sourceKey,
         message: readLogMessage(item.message ?? entry),
+        sandboxRestricted: sandboxRestricted || isSandboxRestrictedDetails(item.message ?? entry),
       });
     });
   }
@@ -1709,6 +1721,7 @@ export async function listIngestionLogs(limit = 80): Promise<{
       status: alert.severity.toLowerCase(),
       sourceKey: alert.integration,
       message: readLogMessage(alert.message),
+      sandboxRestricted: isSandboxRestrictedDetails(alert.message),
     });
   });
 

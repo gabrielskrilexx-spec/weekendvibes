@@ -17,7 +17,7 @@ import {
 } from "@/lib/adminFeedback";
 import AdminAuthRecoveryDialog from "@/components/AdminAuthRecoveryDialog";
 
-const isSandboxLog = (entry: { message?: string | null }) => /sandbox_restricted|previewmock/i.test(entry.message ?? "");
+const isSandboxLog = (entry: { message?: string | null; sandboxRestricted?: boolean }) => entry.sandboxRestricted === true || /sandbox_restricted|previewmock/i.test(entry.message ?? "");
 
 const kindLabel: Record<string, string> = {
   ingestion: "Ingestão",

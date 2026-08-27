@@ -99,11 +99,19 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
   });
 
   it("renderiza o histórico de latência e sucesso quando há telemetria por fonte", async () => {
-    latestReportData = { ...reportData, sourceTelemetryHistory: [{ date: "2026-08-26", label: "26/08", sourceKey: "public:blackpass", runs: 2, successes: 1, successRate: 0.5, averageLatencyMs: 1200 }] } as typeof reportData;
+    latestReportData = { ...reportData, sourceTelemetryHistory: [{ date: "2026-08-26", label: "26/08", sourceKey: "public:blackpass", runs: 2, successes: 1, successRate: 1, simulatedExecutions: 1, averageLatencyMs: 1200, p95LatencyMs: 1400 }] } as typeof reportData;
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminReportsPanel />); });
     expect(tree!.root.findByProps({ "data-testid": "source-telemetry-history" })).toBeTruthy();
     expect(JSON.stringify(tree!.toJSON())).toContain("Histórico de latência e sucesso");
+    expect(JSON.stringify(tree!.toJSON())).toContain("Sandbox / Mocks");
+  });
+
+  it("exibe Sandbox / Mocks na tabela de Histórico de Execuções para um run restrito", async () => {
+    latestReportData = { ...reportData, runs: [{ id: 77, sourceKey: "instagram", routine: "instagram-agenda", status: "succeeded", importedCount: 0, startedAt: "2026-08-26T03:00:00.000Z", finishedAt: "2026-08-26T03:00:01.000Z", durationMs: 1000, counts: JSON.stringify({ read: 2, filtered: 0, structured: 2, persisted: 0 }), details: JSON.stringify({ error: "SANDBOX_RESTRICTED", sandboxRestricted: true }) }] } as typeof reportData;
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    expect(JSON.stringify(tree!.toJSON())).toContain("Sandbox / Mocks");
   });
 
   it("exibe uma tag de versão para auditoria do bundle", async () => {

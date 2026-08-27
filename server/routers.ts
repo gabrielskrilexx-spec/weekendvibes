@@ -148,6 +148,7 @@ const ingestionLogsOutput = z
           status: z.string(),
           sourceKey: z.string().nullable(),
           message: z.string().nullable(),
+          sandboxRestricted: z.boolean().optional(),
         })
         .strict()
     ),
