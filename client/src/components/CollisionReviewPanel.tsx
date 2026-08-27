@@ -27,7 +27,7 @@ export default function CollisionReviewPanel() {
   const toggleCollisionSelection = (key: string) => setSelectedCollisionKeys(current => current.includes(key) ? current.filter(selectedKey => selectedKey !== key) : [...current, key]);
   const toggleAllCollisions = () => setSelectedCollisionKeys(allCollisionsSelected ? [] : collisionRows.map(collision => collision.key));
   const remove = trpc.events.remove.useMutation({
-    onSuccess: result => { setPending(null); setNotice(result.deleted ? `Registro ${result.id} removido. Revise as colisões restantes.` : "O registro já não estava disponível."); void collisions.refetch(); void utils.events.list.invalidate(); },
+    onSuccess: result => { setPending(null); setNotice(result.success ? `Registro ${result.deletedId} removido. Revise as colisões restantes.` : "O registro já não estava disponível."); void collisions.refetch(); void utils.events.list.invalidate(); },
     onError: error => { setPending(null); setNotice(`Não foi possível remover: ${getDeleteCollisionErrorMessage(error)}`); },
   });
   const resolveMany = trpc.collisionReview.resolveMany.useMutation({

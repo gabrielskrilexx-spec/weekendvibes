@@ -83,14 +83,8 @@ describe("events admin procedures", () => {
       caller.events.update({ id: 1, data: { title: "Festival Atualizado" } })
     ).resolves.toEqual({ ok: true, updated: true, id: 1 });
     await expect(caller.events.remove({ id: 1 })).resolves.toEqual({
-      deleted: true,
-      id: 1,
-      deletedDependencies: {
-        favorites: 0,
-        reminders: 0,
-        geocodingJobs: 0,
-        geocodingAuditLogs: 0,
-      },
+      success: true,
+      deletedId: 1,
     });
   });
   it("returns serializable contracts for bulk approval and deletion", async () => {

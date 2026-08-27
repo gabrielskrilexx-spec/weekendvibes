@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
-import { getWednesdayRoutineStatus, runWednesdayRoutineNow } from "./manual-ingestion";
+import { getWednesdayRoutineStatus, runWednesdayRoutineNow, runIngestionSourceChunk } from "./manual-ingestion";
 
 vi.mock("./manual-ingestion", () => ({
   getWednesdayRoutineStatus: vi.fn(() => ({ enabled: true, runMode: "full_auto", timezone: "America/Sao_Paulo", cron: "0 0 10 * * 3", nextExecutionAt: "2026-08-19T13:00:00.000Z", isRunning: false })),
   runWednesdayRoutineNow: vi.fn().mockResolvedValue({ archived: 0, publicSources: { imported: 2 }, instagram: { imported: 1 }, startedAt: "2026-08-12T13:00:00.000Z", finishedAt: "2026-08-12T13:00:02.000Z" }),
+  runIngestionSourceChunk: vi.fn().mockResolvedValue({ sourceKey: "instagram", dryRun: false, result: { sourceReports: [{ read: 1, errors: [] }], sandboxRestricted: true, previewMock: true, degraded: false } }),
 }));
 
 const context = (role: "admin" | "user") => ({
@@ -25,8 +26,24 @@ describe("adminRoutine tRPC contract", () => {
     expect(result.publicSources).toEqual({ imported: 2 });
     expect(runWednesdayRoutineNow).toHaveBeenCalledTimes(1);
   });
+  it("retorna acknowledgement JSON estrito ao sincronizar Stories", async () => {
+    const result = await appRouter.createCaller(context("admin")).adminRoutine.syncStories({});
+    expect(result).toEqual({ success: true, sourceKey: "instagram", status: "succeeded", read: 1, durationMs: expect.any(Number), sandboxRestricted: true, previewMock: true });
+    expect(runIngestionSourceChunk).toHaveBeenCalledWith({ sourceKey: "instagram", dryRun: false, storiesOnly: true });
+  });
+  it("converte ECONNREFUSED do Instagram em fallback sandbox serializável", async () => {
+    vi.mocked(runIngestionSourceChunk).mockRejectedValueOnce(new Error("ECONNREFUSED"));
+    const result = await appRouter.createCaller(context("admin")).adminRoutine.runSource({ sourceKey: "instagram", dryRun: false });
+    expect(result).toMatchObject({ ok: true, sourceKey: "instagram", status: "partial", sandboxRestricted: true, previewMock: true, errors: ["Fonte restrita no ambiente de preview; fallback sandbox aplicado."] });
+  });
+  it("converte falha de proxy em acknowledgement sandbox no syncStories", async () => {
+    vi.mocked(runIngestionSourceChunk).mockRejectedValueOnce(new Error("Failed to fetch ECONNREFUSED"));
+    const result = await appRouter.createCaller(context("admin")).adminRoutine.syncStories({});
+    expect(result).toMatchObject({ success: true, sourceKey: "instagram", status: "partial", read: 0, sandboxRestricted: true, previewMock: true });
+  });
   it("rejeita o disparo manual por usuário comum", async () => {
     await expect(appRouter.createCaller(context("user")).adminRoutine.runNow()).rejects.toThrow();
     expect(runWednesdayRoutineNow).not.toHaveBeenCalled();
+    await expect(appRouter.createCaller(context("user")).adminRoutine.syncStories({})).rejects.toThrow();
   });
 });

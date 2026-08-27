@@ -176,7 +176,7 @@ function valueForProcedure(procedure: string) {
         source: "heartbeat",
       };
     routineStatusPolls += 1;
-    const isLive = routineStatusPolls === 1;
+    const isLive = routineTriggered;
     return {
       enabled: true,
       runMode: "full_auto",
@@ -245,6 +245,7 @@ function valueForProcedure(procedure: string) {
   if (procedure === "circuitBreaker.statuses") return [];
   if (procedure === "collisionReview.list") return collisions;
   if (procedure === "ingestionSources.list") return [source];
+  if (procedure === "adminRoutine.sources") return { sources: ["instagram"] };
   if (procedure === "locationAliases.list") return [];
   return [];
 }
@@ -285,6 +286,8 @@ function mutationValue(procedure: string) {
         errors: 0,
       },
     };
+  if (procedure === "adminRoutine.runSource")
+    return { ok: true, sourceKey: "instagram", dryRun: true, status: "succeeded", read: 3, added: 0, updated: 0, ignored: 1, errors: [], durationMs: 100, sandboxRestricted: false, previewMock: false };
   if (procedure === "adminRoutine.runNow")
     return {
       ok: true,
@@ -296,8 +299,8 @@ function mutationValue(procedure: string) {
     };
   if (procedure === "events.remove")
     return {
-      deleted: true,
-      id: 101,
+      success: true,
+      deletedId: 101,
       deletedDependencies: {
         favorites: 0,
         reminders: 0,
@@ -343,13 +346,13 @@ test("audita fluxos administrativos principais sem ações mortas", async ({
       .split(",")
       .filter(Boolean);
     requests.push(...procedures);
-    if (procedures.includes("adminRoutine.runNow")) routineTriggered = true;
+    if (procedures.includes("adminRoutine.runNow")) { routineTriggered = true; routineStatusPolls = 0; }
     const values = procedures.map(procedure =>
       route.request().method() === "GET"
         ? trpcPayload(valueForProcedure(procedure))
         : trpcPayload(mutationValue(procedure))
     );
-    if (procedures.includes("ingestionReports.dryRun"))
+    if (procedures.includes("ingestionReports.dryRun") || procedures.includes("adminRoutine.runSource"))
       await new Promise(resolve => setTimeout(resolve, 120));
     await route.fulfill({
       status: 200,
@@ -400,16 +403,9 @@ test("audita fluxos administrativos principais sem ações mortas", async ({
     name: "Executar rotina de quarta-feira agora",
   });
   await routineButton.click();
-  await expect(page.getByTestId("manual-ingestion-progress")).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Ingestão concluída: 1 fonte(s) processada(s)." })).toBeVisible();
   await expect(page.getByTestId("manual-execution-history")).toBeVisible();
   await expect(page.getByText("Run #9000")).toBeVisible();
-  await expect(
-    page.getByText("Coletando fontes públicas e Instagram.")
-  ).toBeVisible();
-  await expect(page.getByText("Processando…")).toBeVisible();
-  await expect(
-    page.getByRole("status").filter({ hasText: "Rotina concluída:" })
-  ).toBeVisible();
 
   const filters = page.getByTestId("ingestion-filters");
   await filters.getByLabel("Rotina").selectOption("instagram-agenda");
@@ -438,8 +434,8 @@ test("audita fluxos administrativos principais sem ações mortas", async ({
 
   expect(requests).toEqual(
     expect.arrayContaining([
-      "ingestionReports.dryRun",
-      "adminRoutine.runNow",
+      "adminRoutine.sources",
+      "adminRoutine.runSource",
       "events.remove",
       "events.publishMany",
       "events.removeMany",

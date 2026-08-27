@@ -52,7 +52,7 @@ import {
 import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
 import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
-import { getSandboxMockSettings, setSandboxMocksAllowed } from "./ingestion-preview-settings";
+import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
 
 const safeFilter = (max = 120) => z.string().trim().max(max).optional();
 const latitudeInput = z
@@ -229,20 +229,11 @@ const reminderOutput = z
     remindAt: z.string().nullable(),
   })
   .strict();
-const eventRemoveOutput = z
-  .object({
-    deleted: z.boolean(),
-    id: z.number().int().positive(),
-    deletedDependencies: z
-      .object({
-        favorites: z.number().int().nonnegative(),
-        reminders: z.number().int().nonnegative(),
-        geocodingJobs: z.number().int().nonnegative(),
-        geocodingAuditLogs: z.number().int().nonnegative(),
-      })
-      .strict(),
-  })
-  .strict();
+const eventRemoveOutput = z.object({ success: z.literal(true), deletedId: z.number().int().positive() }).strict();
+const storiesSyncOutput = z.union([
+  z.object({ success: z.literal(true), sourceKey: z.literal("instagram"), status: z.enum(["succeeded", "partial"]), read: z.number().int().nonnegative(), durationMs: z.number().int().nonnegative(), sandboxRestricted: z.boolean(), previewMock: z.boolean() }).strict(),
+  z.object({ success: z.literal(false), sourceKey: z.literal("instagram"), status: z.literal("failed"), message: z.string().min(1).max(240), durationMs: z.number().int().nonnegative(), sandboxRestricted: z.boolean() }).strict(),
+]);
 const dryRunSuccessOutput = z
   .object({
     dryRun: z.literal(true),
@@ -356,7 +347,30 @@ export const appRouter = router({
         } catch (error) {
           const message = error instanceof Error ? error.message : "Falha interna ao processar a fonte.";
           const sandboxRestricted = isSandboxRestrictedError(error);
+          if (sandboxRestricted && shouldUseSandboxMocks()) return { ok: true as const, sourceKey: input.sourceKey, dryRun: input.dryRun, status: "partial" as const, read: 0, added: 0, updated: 0, ignored: 0, errors: ["Fonte restrita no ambiente de preview; fallback sandbox aplicado."], durationMs: Math.max(1, Date.now() - startedAt), sandboxRestricted: true, previewMock: true };
           return { ok: false as const, sourceKey: input.sourceKey, dryRun: input.dryRun, status: "failed" as const, message: sandboxRestricted ? "SANDBOX_RESTRICTED: fonte externa bloqueada no ambiente de preview." : message.replace(/https?:\/\/[^\s]+/gi, "fonte pública").slice(0, 240), errors: [sandboxRestricted ? "Fonte restrita no ambiente de preview do Manus." : "A fonte não pôde ser processada nesta etapa."], durationMs: Math.max(1, Date.now() - startedAt), sandboxRestricted };
+        }
+      }),
+    syncStories: adminOnly
+      .input(z.object({}).strict())
+      .output(storiesSyncOutput)
+      .mutation(async () => {
+        const startedAt = Date.now();
+        try {
+          const raw = await runIngestionSourceChunk({ sourceKey: "instagram", dryRun: false, storiesOnly: true });
+          const result = raw.result && typeof raw.result === "object" ? raw.result as Record<string, unknown> : {};
+          const report = Array.isArray(result.sourceReports) ? result.sourceReports[0] as Record<string, unknown> | undefined : undefined;
+          const errors = Array.isArray(report?.errors) ? report.errors : [];
+          const durationMs = Math.max(1, Date.now() - startedAt);
+          const sandboxRestricted = result.sandboxRestricted === true;
+          if (errors.length > 0 || result.degraded === true || raw.result === undefined) {
+            return { success: false as const, sourceKey: "instagram" as const, status: "failed" as const, message: sandboxRestricted ? "SANDBOX_RESTRICTED: fonte externa bloqueada no ambiente de preview." : "A sincronização de Stories não pôde ser concluída.", durationMs, sandboxRestricted };
+          }
+          return { success: true as const, sourceKey: "instagram" as const, status: "succeeded" as const, read: Math.max(0, Math.trunc(Number(report?.read ?? result.read ?? result.receivedPosts ?? 0))), durationMs, sandboxRestricted, previewMock: result.previewMock === true };
+        } catch (error) {
+          const sandboxRestricted = isSandboxRestrictedError(error);
+          if (sandboxRestricted && shouldUseSandboxMocks()) return { success: true as const, sourceKey: "instagram" as const, status: "partial" as const, read: 0, durationMs: Math.max(1, Date.now() - startedAt), sandboxRestricted: true, previewMock: true };
+          return { success: false as const, sourceKey: "instagram" as const, status: "failed" as const, message: sandboxRestricted ? "SANDBOX_RESTRICTED: fonte externa bloqueada no ambiente de preview." : "A sincronização de Stories não pôde ser concluída.", durationMs: Math.max(1, Date.now() - startedAt), sandboxRestricted };
         }
       }),
     runNow: adminOnly.output(adminRoutineOutput).mutation(async () => {
@@ -831,20 +845,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         try {
           const result = await deleteEvent(input.id);
-          return {
-            deleted: Boolean(result.deleted),
-            id: Number(result.id),
-            deletedDependencies: {
-              favorites: Number(result.deletedDependencies?.favorites ?? 0),
-              reminders: Number(result.deletedDependencies?.reminders ?? 0),
-              geocodingJobs: Number(
-                result.deletedDependencies?.geocodingJobs ?? 0
-              ),
-              geocodingAuditLogs: Number(
-                result.deletedDependencies?.geocodingAuditLogs ?? 0
-              ),
-            },
-          } as const;
+          return { success: true as const, deletedId: Number(result.id) };
         } catch (error) {
           const raw = error instanceof Error ? error.message : "";
           const message = /Database unavailable/i.test(raw)

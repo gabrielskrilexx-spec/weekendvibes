@@ -42,9 +42,9 @@ export default function Admin() {
   const update = trpc.events.update.useMutation({ onSuccess: () => { setNotice("Alterações salvas com sucesso."); sonnerToast.success("Evento atualizado", { description: "As alterações foram salvas." }); setForm(emptyForm); setEditingId(null); void events.refetch(); }, onError: error => { setNotice(`Não foi possível editar: ${error.message}`); sonnerToast.error("Não foi possível editar", { description: error.message }); } });
   const remove = trpc.events.remove.useMutation({
     onSuccess: result => {
-      setNotice(result.deleted ? "Evento removido com sucesso." : "O evento já não estava disponível.");
+      setNotice(result.success ? "Evento removido com sucesso." : "O evento já não estava disponível.");
       setPendingDelete(null);
-      if (result.deleted) utils.events.list.setData({ size: 100 }, current => current?.filter(event => event.id !== result.id));
+      if (result.success) utils.events.list.setData({ size: 100 }, current => current?.filter(event => event.id !== result.deletedId));
       void events.refetch();
     },
       onError: error => { setPendingDelete(null); setNotice(`Não foi possível remover o evento: ${error.message}`); },

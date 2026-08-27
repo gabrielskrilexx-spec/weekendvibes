@@ -17,7 +17,7 @@ vi.mock("@/lib/trpc", () => ({
       update: { useMutation: () => ({ isPending: false, mutate }) },
     },
     adminRoutine: {
-      runSource: { useMutation: () => ({ isPending: false, mutate: syncStoriesMutate }) },
+      syncStories: { useMutation: () => ({ isPending: false, mutate: syncStoriesMutate }) },
       status: { invalidate },
     },
     useUtils: () => ({ ingestionSources: { list: { invalidate } }, ingestionReports: { mockSettings: { invalidate }, logs: { invalidate } }, adminRoutine: { status: { invalidate } } }),
@@ -58,7 +58,7 @@ describe("AdminSourcesPanel", () => {
     const button = tree!.root.findByProps({ "aria-label": "Sincronizar Stories de Moby House" });
     expect(button).toBeDefined();
     await act(async () => { button?.props.onClick(); });
-    expect(syncStoriesMutate).toHaveBeenCalledWith({ sourceKey: "instagram", dryRun: false, storiesOnly: true });
+    expect(syncStoriesMutate).toHaveBeenCalledWith({});
   });
 
   it("permite pausar uma fonte", async () => {

@@ -1947,3 +1947,10 @@
 - [x] Habilitar mocks apenas no preview sem alterar comportamento produtivo
 - [x] Revalidar miniaturas, tags de origem e sincronização de Stories no Admin
 - [x] Executar testes, TypeScript/build e publicar checkpoint
+
+## Blindagem das mutações administrativas
+- [x] Auditar schemas e retornos tRPC de Sincronizar Stories, colisões e ingestão Instagram
+- [x] Corrigir retorno JSON estrito da sincronização de Stories
+- [x] Corrigir retorno JSON estrito da resolução de colisões
+- [x] Blindar proxy/transport da ingestão Instagram com fallback SANDBOX_RESTRICTED no preview
+- [x] Adicionar testes de serialização, transporte e ações administrativas; validar E2E, TypeScript/build e publicar checkpoint
