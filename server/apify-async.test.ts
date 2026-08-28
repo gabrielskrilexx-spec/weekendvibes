@@ -61,6 +61,17 @@ describe("Apify async Stories", () => {
     expect(mocks.finishIngestionRun).toHaveBeenCalledWith(78, expect.objectContaining({ status: "failed", httpStatus: 502 }));
   });
 
+  it("valida o segredo M2M no endpoint leve sem expô-lo", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: { id: "actor-run-secret", defaultDatasetId: "dataset-secret" } }), { status: 201, headers: { "content-type": "application/json" } })
+    );
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() } as never;
+    await asyncIngestInstagramHandler({ headers: { "x-cron-secret": process.env.INTERNAL_CRON_SECRET } } as never, res);
+    expect((res as any).status).toHaveBeenCalledWith(202);
+    expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ accepted: true, status: "QUEUED" }));
+    fetchMock.mockRestore();
+  });
+
   it("responde HTTP 202 no callback autenticado por M2M", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify({ data: { id: "actor-run-2", defaultDatasetId: "dataset-2" } }), { status: 201, headers: { "content-type": "application/json" } })

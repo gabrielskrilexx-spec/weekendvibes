@@ -51,6 +51,7 @@ async function startServer() {
   app.post("/api/scheduled/ingest-full-agenda", noStoreScheduledResponse, ingestFullAgendaHandler);
   app.post("/api/scheduled/ingest-event-documents", noStoreScheduledResponse, ingestAgentDocumentsHandler);
   app.post("/api/scheduled/ingest-instagram", noStoreScheduledResponse, asyncIngestInstagramHandler);
+  app.post("/api/v2/ingestion/instagram/async", noStoreScheduledResponse, asyncIngestInstagramHandler);
   app.post("/api/scheduled/ingest-instagram-sync", noStoreScheduledResponse, ingestInstagramHandler);
   app.post("/api/webhooks/apify/instagram", noStoreScheduledResponse, apifyInstagramWebhookHandler);
   app.post("/api/scheduled/monitor-heartbeat", noStoreScheduledResponse, heartbeatMonitorHandler);

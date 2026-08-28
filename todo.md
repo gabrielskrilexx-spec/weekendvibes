@@ -2164,4 +2164,4 @@
 - [x] Atualizar status, métricas, OCR e persistência do ingestionRun
 - [x] Integrar estados `queued`/`running` ao painel administrativo
 - [x] Cobrir sucesso de despacho, token inválido, falha do Actor e duplicidade
-- [x] Validar TypeScript e build; execução pública pós-publicação pendente
+- [x] Validar TypeScript e testes focados; build final após a rota pública V2 pendente
