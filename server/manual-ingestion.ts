@@ -6,6 +6,7 @@ import { notifyOwner } from "./_core/notification";
 import { InstagramIntegrationFailure, runInstagramPipeline } from "./instagram-pipeline";
 import { runFullAgendaRoutine, runPublicAgendaStep, runInstagramAgendaStep, type AgendaProgressUpdate } from "./agenda-routine";
 import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
+import { startAsyncApifyStoriesRun } from "./apify-async";
 
 let activeRun: Promise<ManualRoutineResult> | null = null;
 
@@ -143,7 +144,7 @@ export async function runIngestionSourceChunk(input: { sourceKey: string; dryRun
     if (input.dryRun) {
       return { sourceKey, dryRun: true, result: await withChunkTimeout(runInstagramPipeline({ dryRun: true, storiesOnly: input.storiesOnly === true })) };
     }
-    if (input.storiesOnly) return { sourceKey, dryRun: false, result: await withChunkTimeout(runInstagramPipeline({ dryRun: false, storiesOnly: true })) };
+    if (input.storiesOnly) return { sourceKey, dryRun: false, result: await startAsyncApifyStoriesRun({ trigger: "manual" }) };
     return { sourceKey, dryRun: false, result: await withChunkTimeout(runInstagramAgendaStep({ archive: false, trigger: "manual" })) };
   }
   if (!/^public:[a-z0-9_-]+$/.test(sourceKey)) throw new Error("Fonte de ingestão inválida.");
@@ -173,7 +174,7 @@ export function getNextWednesdayExecution(now = new Date()) {
 async function getRecentInstagramRuns() {
   const db = await getDb();
   if (!db) return [];
-  const rows = await db.select({ id: ingestionRuns.id, routine: ingestionRuns.routine, sourceKey: ingestionRuns.sourceKey, status: ingestionRuns.status, startedAt: ingestionRuns.startedAt, finishedAt: ingestionRuns.finishedAt, httpStatus: ingestionRuns.httpStatus, durationMs: ingestionRuns.durationMs, importedCount: ingestionRuns.importedCount, details: ingestionRuns.details }).from(ingestionRuns).where(or(eq(ingestionRuns.sourceKey, "instagram"), eq(ingestionRuns.routine, "manual-agenda"))).orderBy(desc(ingestionRuns.startedAt)).limit(6);
+  const rows = await db.select({ id: ingestionRuns.id, routine: ingestionRuns.routine, sourceKey: ingestionRuns.sourceKey, status: ingestionRuns.status, startedAt: ingestionRuns.startedAt, finishedAt: ingestionRuns.finishedAt, httpStatus: ingestionRuns.httpStatus, durationMs: ingestionRuns.durationMs, importedCount: ingestionRuns.importedCount, details: ingestionRuns.details }).from(ingestionRuns).where(or(eq(ingestionRuns.sourceKey, "instagram"), eq(ingestionRuns.routine, "manual-agenda"), eq(ingestionRuns.routine, "instagram-stories-async"))).orderBy(desc(ingestionRuns.startedAt)).limit(6);
   return rows.map(row => {
     const parsedDetails = typeof row.details === "string" ? (() => { try { return JSON.parse(row.details) as unknown; } catch { return {}; } })() : row.details;
     const details = parsedDetails && typeof parsedDetails === "object" ? parsedDetails as Record<string, unknown> : {};

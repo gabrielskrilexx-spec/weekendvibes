@@ -785,6 +785,27 @@ function normalizeCounts(input: {
   };
 }
 
+export async function setIngestionRunDetails(runId: number, details: Record<string, unknown>) {
+  const db = await getDb();
+  if (!db) return false;
+  await db.update(ingestionRuns).set({ details: JSON.stringify(details).slice(0, 20000) }).where(eq(ingestionRuns.id, runId));
+  return true;
+}
+
+export async function linkIngestionRunToApifyActor(input: { runId: number; actorRunId: string }) {
+  const db = await getDb();
+  if (!db) return false;
+  await db.update(ingestionRuns).set({ sourceKey: `instagram:apify:${input.actorRunId}`.slice(0, 255) }).where(eq(ingestionRuns.id, input.runId));
+  return true;
+}
+
+export async function findIngestionRunByApifyActor(actorRunId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [run] = await db.select().from(ingestionRuns).where(eq(ingestionRuns.sourceKey, `instagram:apify:${actorRunId}`.slice(0, 255))).limit(1);
+  return run;
+}
+
 export async function finishIngestionRun(
   id: number | undefined,
   input: {

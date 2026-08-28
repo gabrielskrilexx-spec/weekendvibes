@@ -184,7 +184,7 @@ const ingestionChunkSuccessOutput = z.object({
   ok: z.literal(true),
   sourceKey: z.string().min(1).max(160),
   dryRun: z.boolean(),
-  status: z.enum(["succeeded", "partial", "SANDBOX_RESTRICTED"]),
+  status: z.enum(["succeeded", "partial", "queued", "SANDBOX_RESTRICTED"]),
   read: z.number().int().nonnegative(),
   added: z.number().int().nonnegative(),
   updated: z.number().int().nonnegative(),
@@ -378,7 +378,8 @@ export const appRouter = router({
           const added = Number(report?.added ?? result.added ?? result.imported ?? 0);
           const updated = Number(report?.updated ?? result.updated ?? 0);
           const ignored = Number(report?.ignored ?? result.ignored ?? result.filtered ?? 0);
-          const status = errors.length > 0 || result.skipped === true ? "partial" : "succeeded";
+          const queued = result.status === "QUEUED";
+          const status = queued ? "queued" : errors.length > 0 || result.skipped === true ? "partial" : "succeeded";
           return { ok: true as const, sourceKey: raw.sourceKey, dryRun: raw.dryRun, status, read: Math.max(0, Math.trunc(read)), added: Math.max(0, Math.trunc(added)), updated: Math.max(0, Math.trunc(updated)), ignored: Math.max(0, Math.trunc(ignored)), errors, durationMs, sandboxRestricted: result.sandboxRestricted === true, previewMock: result.previewMock === true };
         } catch (error) {
           const message = error instanceof Error ? error.message : "Falha interna ao processar a fonte.";

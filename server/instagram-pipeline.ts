@@ -651,7 +651,7 @@ async function extractStructuredEvents(referenceDate: string, approvedPosts: Arr
   }
 }
 
-export type InstagramPipelineOptions = { dryRun?: boolean; storiesOnly?: boolean };
+export type InstagramPipelineOptions = { dryRun?: boolean; storiesOnly?: boolean; postsOverride?: InstagramPost[] };
 
 export async function runInstagramPipeline(options: InstagramPipelineOptions = {}) {
   const pipelineStartedAt = Date.now();
@@ -660,7 +660,11 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   const referenceDate = getInstagramReferenceDate();
   if (!dryRun) await recordReferenceDateClockAlert(referenceDate);
   const activeAliases = await listActiveLocationAliasValues();
-  const fetched = storiesOnly ? await fetchApifyStoriesAndHighlights({ dryRun }) : await fetchInstagramPostsDetailed({ dryRun });
+  const fetched = options.postsOverride
+    ? { posts: options.postsOverride, transportFailures: [] as InstagramTransportFailure[] }
+    : storiesOnly
+      ? await fetchApifyStoriesAndHighlights({ dryRun })
+      : await fetchInstagramPostsDetailed({ dryRun });
   const sandboxRestricted = process.env.NODE_ENV !== "production" && fetched.posts.length === 0 && (fetched.transportFailures.length === 0 && storiesOnly ? !process.env.APIFY_API_TOKEN : fetched.transportFailures.length > 0 && fetched.transportFailures.every(failure => failure.status === 0 || failure.status === 403 || failure.status === 502 || failure.status === 503 || failure.status === 504 || isSandboxRestrictedError(new Error(failure.message))));
   if (sandboxRestricted && shouldUseSandboxMocks()) {
     const durationMs = Math.max(1, Date.now() - pipelineStartedAt);

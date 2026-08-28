@@ -2148,3 +2148,20 @@
 - [x] Exibir mensagem operacional clara e sanitizada no histórico e nos alertas
 - [x] Cobrir quota, 403 genérico, mocks e regressões com Vitest
 - [x] Validar TypeScript, build e publicar checkpoint
+
+## Validação real com nova conta Apify — sessão atual
+- [x] Confirmar que o pipeline consome `APIFY_API_TOKEN` e selecionar uma fonte ativa
+- [x] Atualizar `APIFY_API_TOKEN` no gerenciador seguro sem expor a chave
+- [x] Reiniciar o runtime e confirmar a injeção sem imprimir o segredo
+- [ ] Executar sincronização real de Stories e registrar HTTP, mídias lidas e duração — o despacho agora retorna HTTP 202; conclusão depende do webhook após publicação
+- [ ] Validar o resultado real no painel e cobrir a troca com teste seguro
+- [ ] Publicar checkpoint somente após a prova real e a validação técnica
+
+## Ingestão assíncrona do Apify — sessão atual
+- [x] Auditar endpoints, schema de runs e estratégia compatível com Autoscale
+- [x] Implementar disparo curto do Actor com resposta HTTP 202 e runId
+- [x] Processar o dataset após conclusão via webhook seguro e idempotente
+- [x] Atualizar status, métricas, OCR e persistência do ingestionRun
+- [x] Integrar estados `queued`/`running` ao painel administrativo
+- [x] Cobrir sucesso de despacho, token inválido, falha do Actor e duplicidade
+- [x] Validar TypeScript e build; execução pública pós-publicação pendente

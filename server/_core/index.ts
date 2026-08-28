@@ -9,6 +9,7 @@ import { createContext } from "./context";
 import { ingestEventsHandler, ingestFullAgendaHandler } from "../scheduled";
 import { ingestAgentDocumentsHandler } from "../scheduled-agent";
 import { ingestInstagramHandler } from "../scheduled-instagram";
+import { asyncIngestInstagramHandler, apifyInstagramWebhookHandler } from "../apify-async";
 import { heartbeatMonitorHandler } from "../scheduled-heartbeat-monitor";
 import { serveStatic, setupVite } from "./vite";
 import { applySecurityHeaders, createRateLimit, createStrictCors } from "./security";
@@ -49,7 +50,9 @@ async function startServer() {
   app.post("/api/scheduled/ingest-events", noStoreScheduledResponse, ingestEventsHandler);
   app.post("/api/scheduled/ingest-full-agenda", noStoreScheduledResponse, ingestFullAgendaHandler);
   app.post("/api/scheduled/ingest-event-documents", noStoreScheduledResponse, ingestAgentDocumentsHandler);
-  app.post("/api/scheduled/ingest-instagram", noStoreScheduledResponse, ingestInstagramHandler);
+  app.post("/api/scheduled/ingest-instagram", noStoreScheduledResponse, asyncIngestInstagramHandler);
+  app.post("/api/scheduled/ingest-instagram-sync", noStoreScheduledResponse, ingestInstagramHandler);
+  app.post("/api/webhooks/apify/instagram", noStoreScheduledResponse, apifyInstagramWebhookHandler);
   app.post("/api/scheduled/monitor-heartbeat", noStoreScheduledResponse, heartbeatMonitorHandler);
   // tRPC API
   app.use(
