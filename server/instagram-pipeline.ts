@@ -281,12 +281,27 @@ export type StructuredRejectionReason = "invalid_date" | "past_event" | "outside
 export type StructuredEventRejection = {
   index: number;
   eventKey: string;
+  sourceUrl: string;
   reasons: StructuredRejectionReason[];
   sourceUrlValid: boolean;
   eventDateValid: boolean;
   venueNormalized: string;
   cityNormalized: string;
   eventDateIso: string | null;
+};
+
+export type FilteredInstagramStory = {
+  id: string;
+  username: string;
+  mediaOrigin: "story" | "highlight";
+  imageUrl: string;
+  sourceUrl: string;
+  postedAt: string | null;
+  expiresAt: string | null;
+  ocrText: string;
+  rawText: string;
+  reasons: string[];
+  status: "pending" | "approved";
 };
 
 const ALLOWED_CITIES = new Set(["Santos", "Guarujá"]);
@@ -327,6 +342,7 @@ export function createStructuredEventRejection(event: Partial<StructuredEvent>, 
   return {
     index,
     eventKey: eventDiagnosticKey(event, index),
+    sourceUrl: normalizeDiagnosticText(event.sourceUrl, 1000),
     reasons,
     sourceUrlValid: reasons.includes("invalid_source_url") === false,
     eventDateValid: reasons.includes("invalid_date") === false && reasons.includes("past_event") === false,
@@ -794,6 +810,21 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     imported += 1;
   }
   const rejectionReasons = summarizeStructuredRejections(rejectedEvents);
+  const acceptedSourceUrls = new Set(structuredEvents.filter((event, index) => validateStructuredInstagramEvent(event, activeAliases).length === 0).map(event => event.sourceUrl));
+  const rejectedBySourceUrl = new Map(rejectedEvents.map(rejection => [rejection.sourceUrl, rejection.reasons]));
+  const filteredStories: FilteredInstagramStory[] = ocrAuditCandidates
+    .filter(({ post }) => !acceptedSourceUrls.has(postUrl(post)))
+    .map(({ post, rawText }, index) => {
+      const sourceUrl = postUrl(post);
+      const reasons = rejectedBySourceUrl.get(sourceUrl) ?? (rawText.trim() ? ["Não gerou evento estruturado aprovado"] : ["Sem texto suficiente para extração"]);
+      const username = String(post.ownerUsername ?? post.username ?? "").replace(/^@/, "").trim().slice(0, 160);
+      const imageUrl = String(post.displayUrl ?? post.imageUrl ?? post.media_url ?? "").trim().slice(0, 1000);
+      const postedAt = typeof post.postedAt === "string" ? post.postedAt.slice(0, 40) : null;
+      const expiresAt = typeof post.expiresAt === "string" ? post.expiresAt.slice(0, 40) : null;
+      const mediaOrigin: FilteredInstagramStory["mediaOrigin"] = post.mediaType === "highlight" ? "highlight" : "story";
+      return { id: `${username}:${sourceUrl || imageUrl}:${postedAt ?? index}`.slice(0, 500), username, mediaOrigin, imageUrl, sourceUrl, postedAt, expiresAt, ocrText: String(post.ocrText ?? "").slice(0, 3000), rawText: rawText.slice(0, 5000), reasons: reasons.map(reason => String(reason).slice(0, 160)), status: "pending" as const };
+    })
+    .filter(item => item.imageUrl.startsWith("https://"));
   const sourceReports = [{
     sourceKey: "instagram",
     durationMs: Math.max(0, Date.now() - pipelineStartedAt),
@@ -824,6 +855,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     quotaExceeded: "providerIssue" in fetched && (fetched as { providerIssue?: InstagramProviderIssue }).providerIssue?.code === "APIFY_QUOTA_EXCEEDED",
     transportFailures: fetched.transportFailures,
     ocrAudit: buildOcrAuditEntries(ocrAuditCandidates),
+    filteredStories,
 
     structuredEvents: structuredEvents.length,
     imported,

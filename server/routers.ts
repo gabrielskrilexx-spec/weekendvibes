@@ -43,6 +43,7 @@ import {
   reprocessIngestionSource,
   sanitizeReprocessErrorForTest,
   updateIngestionRunOcrText,
+  approveFilteredInstagramStory,
 } from "./ingestion-reports";
 import {
   createLocationAlias,
@@ -407,6 +408,16 @@ export const appRouter = router({
           return await updateIngestionRunOcrText(input);
         } catch (error) {
           return throwSanitizedAdminMutationError(error, "Não foi possível salvar a revisão do OCR.");
+        }
+      }),
+    approveFilteredStory: adminOnly
+      .input(z.object({ runId: z.number().int().positive(), storyId: z.string().trim().min(1).max(500) }).strict())
+      .output(z.object({ success: z.literal(true), runId: z.number().int().positive(), storyId: z.string(), status: z.literal("approved") }).strict())
+      .mutation(async ({ input }) => {
+        try {
+          return await approveFilteredInstagramStory(input);
+        } catch (error) {
+          return throwSanitizedAdminMutationError(error, "Não foi possível aprovar o Story filtrado.");
         }
       }),
     runNow: adminOnly.output(adminRoutineOutput).mutation(async () => {

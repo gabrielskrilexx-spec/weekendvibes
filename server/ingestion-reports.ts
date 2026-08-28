@@ -645,6 +645,26 @@ function buildWeeklyOperationalSummary(runs: Array<{ details: unknown }>) {
   return summary;
 }
 
+export async function approveFilteredInstagramStory(input: { runId: number; storyId: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+  const [row] = await db.select({ details: ingestionRuns.details }).from(ingestionRuns).where(eq(ingestionRuns.id, input.runId)).limit(1);
+  if (!row) throw new Error("Execução de ingestão não encontrada.");
+  let details: unknown = {};
+  try { details = row.details ? JSON.parse(row.details) : {}; } catch { throw new Error("Detalhes da execução estão inválidos."); }
+  if (!details || typeof details !== "object" || Array.isArray(details)) throw new Error("Detalhes da execução estão inválidos.");
+  const root = details as Record<string, unknown>;
+  const instagram = root.instagram && typeof root.instagram === "object" && !Array.isArray(root.instagram) ? root.instagram as Record<string, unknown> : null;
+  const stories = instagram && Array.isArray(instagram.filteredStories) ? instagram.filteredStories : null;
+  const index = stories?.findIndex(item => item && typeof item === "object" && String((item as Record<string, unknown>).id ?? "") === input.storyId) ?? -1;
+  if (!instagram || !stories || index < 0) throw new Error("Story filtrado não encontrado.");
+  const current = stories[index] as Record<string, unknown>;
+  const nextStories = stories.slice();
+  nextStories[index] = { ...current, status: "approved" };
+  await db.update(ingestionRuns).set({ details: JSON.stringify({ ...root, instagram: { ...instagram, filteredStories: nextStories } }).slice(0, 20000) }).where(eq(ingestionRuns.id, input.runId));
+  return { success: true as const, runId: input.runId, storyId: input.storyId, status: "approved" as const };
+}
+
 export async function updateIngestionRunOcrText(input: { runId: number; entryIndex: number; ocrText: string }) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");

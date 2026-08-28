@@ -117,7 +117,8 @@ type OcrAuditItem = {
   ocrText: string;
   rawText: string;
 };
-type OcrAuditRun = { id: number; routine: string; startedAt: string; ocrAudit?: OcrAuditItem[] };
+type FilteredStory = { id: string; username: string; mediaOrigin: "story" | "highlight"; imageUrl: string; sourceUrl: string; postedAt: string | null; expiresAt: string | null; ocrText: string; rawText: string; reasons: string[]; status: "pending" | "approved" };
+type OcrAuditRun = { id: number; routine: string; startedAt: string; ocrAudit?: OcrAuditItem[]; filteredStories?: FilteredStory[] };
 
 export function buildOcrEditInput(runId: number, entryIndex: number, ocrText: string) {
   return { runId, entryIndex, ocrText: ocrText.trim().slice(0, 5000) };
@@ -151,6 +152,7 @@ export default function AdminRoutinePanel() {
   } | null>(null);
   const [authRecoveryOpen, setAuthRecoveryOpen] = useState(false);
   const [selectedOcrRun, setSelectedOcrRun] = useState<OcrAuditRun | null>(null);
+  const [historyTab, setHistoryTab] = useState<"runs" | "filtered">("runs");
   const [editingOcrIndex, setEditingOcrIndex] = useState<number | null>(null);
   const [ocrDraft, setOcrDraft] = useState("");
   const [rolloverDraft, setRolloverDraft] = useState<string | null>(null);
@@ -207,6 +209,14 @@ export default function AdminRoutinePanel() {
       sonnerToast.error("Não foi possível salvar o OCR", { description: friendlyAdminErrorMessage(error, "Revise o texto e tente novamente.") });
     },
   });
+  const approveFilteredStoryMutation = trpc.adminRoutine.approveFilteredStory.useMutation({
+    onSuccess: result => {
+      setFeedback({ type: "success", text: `Story ${result.storyId} aprovado para revisão.` });
+      sonnerToast.success("Story aprovado", { description: "A entrada foi marcada para processamento manual." });
+      void status.refetch();
+    },
+    onError: error => sonnerToast.error("Não foi possível aprovar o Story", { description: friendlyAdminErrorMessage(error, "Tente novamente em instantes.") }),
+  });
   const startOcrEditing = (index: number, item: OcrAuditItem) => {
     setEditingOcrIndex(index);
     setOcrDraft(item.ocrText);
@@ -230,6 +240,7 @@ export default function AdminRoutinePanel() {
   const parsedRolloverHour = Number(rolloverValue);
   const rolloverIsValid = Number.isInteger(parsedRolloverHour) && parsedRolloverHour >= 0 && parsedRolloverHour <= 23;
   const latestRun = status.data?.recentRuns?.[0];
+  const filteredStories = (status.data?.recentRuns ?? []).flatMap(run => (run as OcrAuditRun).filteredStories ?? []);
   const lastSuccessfulCronRun = status.data?.recentRuns?.find(
     run => run.trigger !== "manual" && run.status === "succeeded"
   );
@@ -671,7 +682,25 @@ export default function AdminRoutinePanel() {
           Histórico das últimas operações manuais e automáticas, com duração e
           resultado.
         </p>
-        {status.data?.recentRuns?.length ? (
+        <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="Histórico de ingestão">
+          <button type="button" role="tab" aria-selected={historyTab === "runs"} onClick={() => setHistoryTab("runs")} className={`rounded-xl px-3 py-2 text-xs font-black ${historyTab === "runs" ? "bg-fuchsia-300 text-zinc-950" : "border border-white/10 text-zinc-400 hover:text-white"}`}>Execuções</button>
+          <button type="button" role="tab" aria-selected={historyTab === "filtered"} onClick={() => setHistoryTab("filtered")} className={`rounded-xl px-3 py-2 text-xs font-black ${historyTab === "filtered" ? "bg-fuchsia-300 text-zinc-950" : "border border-white/10 text-zinc-400 hover:text-white"}`}>Stories filtrados ({filteredStories.filter(story => story.status !== "approved").length})</button>
+        </div>
+        {historyTab === "filtered" ? (
+          filteredStories.length ? <div className="mt-4 grid gap-3 lg:grid-cols-2" data-testid="filtered-stories-list">
+            {filteredStories.map(story => (
+              <article key={story.id} className="grid gap-3 rounded-2xl border border-amber-300/20 bg-amber-300/5 p-3 sm:grid-cols-[96px_1fr]">
+                <img src={story.imageUrl} alt={`Story de @${story.username || "fonte desconhecida"}`} className="h-24 w-full rounded-xl border border-white/10 object-cover" loading="lazy" />
+                <div className="min-w-0 text-xs">
+                  <div className="flex items-start justify-between gap-2"><div><p className="font-black text-zinc-100">@{story.username || "fonte desconhecida"}</p><p className="text-zinc-500">{story.mediaOrigin === "highlight" ? "Destaque" : "Story"} · {story.postedAt ? formatExecution(story.postedAt) : "data não informada"}</p></div><span className={`rounded-full px-2 py-1 font-black uppercase ${story.status === "approved" ? "bg-emerald-300/15 text-emerald-200" : "bg-amber-300/15 text-amber-100"}`}>{story.status === "approved" ? "Aprovado" : "Filtrado"}</span></div>
+                  <p className="mt-2 font-black uppercase tracking-wide text-amber-100">Motivo da rejeição</p><ul className="mt-1 list-disc space-y-1 pl-4 text-zinc-300">{story.reasons.length ? story.reasons.map(reason => <li key={reason}>{reason}</li>) : <li>Não informado</li>}</ul>
+                  <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-zinc-400">{story.ocrText || story.rawText || "Sem texto OCR registrado."}</p>
+                  {story.status !== "approved" && <Button type="button" size="sm" className="mt-3" disabled={approveFilteredStoryMutation.isPending} onClick={() => { const run = status.data?.recentRuns?.find(candidate => (candidate as OcrAuditRun).filteredStories?.some(item => item.id === story.id)); if (run) approveFilteredStoryMutation.mutate({ runId: run.id, storyId: story.id }); }} aria-label={`Aprovar Story de ${story.username || "fonte desconhecida"}`}>{approveFilteredStoryMutation.isPending ? <><Loader2 size={13} className="animate-spin" /> Aprovando…</> : "Aprovar manualmente"}</Button>}
+                </div>
+              </article>
+            ))}
+          </div> : <p className="mt-4 rounded-xl border border-dashed border-white/10 p-5 text-xs text-zinc-500">Nenhum Story filtrado aguardando revisão.</p>
+        ) : status.data?.recentRuns?.length ? (
           <div className="mt-3 space-y-3">
             {status.data.recentRuns.map(run => (
               <div
@@ -779,7 +808,7 @@ export default function AdminRoutinePanel() {
           </DialogHeader>
           <div className="space-y-4">
             {(selectedOcrRun?.ocrAudit ?? []).map((item, index) => (
-              <article key={`${selectedOcrRun?.id}-ocr-${index}`} className="grid gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:grid-cols-[140px_1fr]">
+              <article key={`${selectedOcrRun?.id}-ocr-${index}`} className="grid gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:grid-cols-[minmax(220px,0.9fr)_minmax(0,1.4fr)]">
                 <div>
                   {item.imageUrl ? <img src={item.imageUrl} alt={`Arte da origem ${item.mediaOrigin}`} loading="lazy" className="h-32 w-full rounded-xl border border-white/10 object-cover" /> : <div className="grid h-32 place-items-center rounded-xl border border-dashed border-white/10 text-xs text-zinc-500">Sem imagem</div>}
                   <p className="mt-2 text-[11px] font-black uppercase tracking-wide text-fuchsia-200">{item.mediaOrigin === "highlight" ? "Destaque" : item.mediaOrigin === "story" ? "Story" : "Post"}</p>

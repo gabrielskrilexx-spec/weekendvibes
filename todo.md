@@ -2183,10 +2183,10 @@
 - [x] Confirmar contagens reais no `ingestionRun`, validar testes/build e publicar checkpoint
 
 ## Revisão manual de Stories filtrados — sessão atual
-- [ ] Auditar o histórico de rejeições, motivos e fluxo atual de OCR
-- [ ] Expor Stories filtrados com motivo sanitizado e autorização administrativa
-- [ ] Implementar aprovação manual com atualização otimista e feedback
-- [ ] Reestruturar modal OCR com imagem original e texto lado a lado
-- [ ] Permitir edição manual preservando texto bruto e revisão atual
-- [ ] Cobrir aprovação, erro, permissões, imagem ausente e responsividade
-- [ ] Validar testes, TypeScript, build e publicar checkpoint
+- [x] Auditar o histórico de rejeições, motivos e fluxo atual de OCR
+- [x] Expor Stories filtrados com motivo sanitizado e autorização administrativa
+- [x] Implementar aprovação manual com atualização otimista e feedback
+- [x] Reestruturar modal OCR com imagem original e texto lado a lado
+- [x] Permitir edição manual preservando texto bruto e revisão atual
+- [x] Cobrir aprovação, erro, permissões, imagem ausente e responsividade
+- [x] Validar testes, TypeScript e build; checkpoint pendente

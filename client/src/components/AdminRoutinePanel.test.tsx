@@ -24,6 +24,7 @@ let statusState: {
       persistedEventIds: number[];
       dateFilterValidation: unknown;
       ocrAudit?: Array<{ mediaOrigin: "post" | "story" | "highlight"; imageUrl: string; sourceUrl: string; highlightTitle: string | null; ocrText: string; rawText: string }>;
+      filteredStories?: Array<{ id: string; username: string; mediaOrigin: "story" | "highlight"; imageUrl: string; sourceUrl: string; postedAt: string | null; expiresAt: string | null; ocrText: string; rawText: string; reasons: string[]; status: "pending" | "approved" }>;
     }>;
     progress?: {
       isRunning: boolean;
@@ -89,6 +90,15 @@ vi.mock("@/lib/trpc", () => ({
           mutate: (input: { runId: number; entryIndex: number; ocrText: string }) => {
             mutate(input);
             options.onSuccess?.({ success: true, runId: input.runId, entryIndex: input.entryIndex, ocrText: input.ocrText });
+          },
+        }),
+      },
+      approveFilteredStory: {
+        useMutation: (options: { onSuccess?: (result: { success: true; runId: number; storyId: string; status: "approved" }) => void; onError?: (error: Error) => void }) => ({
+          isPending: mutationState.isPending,
+          mutate: (input: { runId: number; storyId: string }) => {
+            mutate(input);
+            options.onSuccess?.({ success: true, runId: input.runId, storyId: input.storyId, status: "approved" });
           },
         }),
       },
@@ -283,6 +293,16 @@ describe("AdminRoutinePanel", () => {
     const dialog = tree!.root.findByProps({ "data-testid": "ocr-audit-dialog" });
     expect(dialog.props["data-testid"]).toBe("ocr-audit-dialog");
     expect(dialog.props["data-ocr-entry-count"]).toBe(1);
+  });
+
+  it("lista Stories filtrados com motivo e aprovação manual", async () => {
+    statusState = { isLoading: false, isError: false, data: { nextExecutionAt: "2026-08-28T10:00:00.000Z", timezone: "America/Sao_Paulo", runMode: "automatic", isRunning: false, recentRuns: [{ id: 77, routine: "Instagram Stories", trigger: "automatic", status: "partial", startedAt: "2026-08-28T09:00:00.000Z", finishedAt: "2026-08-28T09:01:00.000Z", httpStatus: 200, durationMs: 1000, expurgatedCount: 1, readCount: 2, processedCount: 1, persistedEventIds: [], dateFilterValidation: null, filteredStories: [{ id: "story-1", username: "meulugar.bar", mediaOrigin: "story", imageUrl: "https://example.com/story.jpg", sourceUrl: "https://instagram.com/meulugar.bar", postedAt: null, expiresAt: null, ocrText: "Sexta 22h", rawText: "Sexta 22h", reasons: ["Data não confirmada"], status: "pending" }] }] } };
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminRoutinePanel />); });
+    await act(async () => { const tab = tree!.root.findAll(node => node.type === "button" && node.props.children?.toString().includes("Stories filtrados"))[0]; tab.props.onClick(); });
+    expect(tree!.toJSON()).toBeTruthy();
+    expect(tree!.root.findAll(node => node.props["data-testid"] === "filtered-stories-list").length).toBe(1);
+    expect(tree!.root.findAll(node => node.props["aria-label"] === "Aprovar Story de meulugar.bar").length).toBeGreaterThan(0);
   });
 
   it("exibe a data e o status da última sincronização automática bem-sucedida", async () => {
