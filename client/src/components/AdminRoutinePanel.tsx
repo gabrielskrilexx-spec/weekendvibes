@@ -6,6 +6,7 @@ import {
   Clock3,
   Loader2,
   Play,
+  RefreshCw,
   ShieldAlert,
   Eye,
 } from "lucide-react";
@@ -139,6 +140,15 @@ export default function AdminRoutinePanel() {
   );
   const progress =
     status.data && "progress" in status.data ? status.data.progress : undefined;
+  const refreshStatus = async () => {
+    const result = await status.refetch();
+    if (result.error) {
+      const text = friendlyAdminErrorMessage(result.error, "Não foi possível atualizar o status do cron.");
+      sonnerToast.error("Falha ao atualizar o cron", { description: text });
+      return;
+    }
+    sonnerToast.success("Status do cron atualizado", { description: "Os dados mais recentes foram carregados sem recarregar a página." });
+  };
   const progressPercent = progress
     ? Math.min(
         100,
@@ -290,9 +300,22 @@ export default function AdminRoutinePanel() {
             </>
           )}
         </div>
-        <button
-          type="button"
-          onClick={confirmRun}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => void refreshStatus()}
+            disabled={status.isLoading || status.isFetching}
+            aria-busy={status.isFetching}
+            aria-label="Atualizar status do cron"
+            title="Atualizar status do cron"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.04] px-3 py-3 text-sm font-black text-zinc-200 transition hover:border-cyan-300/50 hover:text-cyan-100 disabled:cursor-wait disabled:opacity-50"
+          >
+            <RefreshCw size={16} className={status.isFetching ? "animate-spin" : ""} />
+            <span className="sr-only">{status.isFetching ? "Atualizando status" : "Atualizar status"}</span>
+          </button>
+          <button
+            type="button"
+            onClick={confirmRun}
           disabled={
             chunkRunning || runSource.isPending || legacyRunNow.isPending || status.data?.isRunning || status.isLoading
           }
@@ -306,7 +329,8 @@ export default function AdminRoutinePanel() {
             <Play size={16} />
           )}{" "}
           {chunkRunning || runSource.isPending || legacyRunNow.isPending ? `Fonte ${chunkIndex + 1}/${chunkSources.data?.sources?.length ?? "…"}` : "Executar ingestão manual"}
-        </button>
+          </button>
+        </div>
       </div>
       <div className="mt-5 flex items-start gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 text-xs text-zinc-400">
         <ShieldAlert size={16} className="mt-0.5 shrink-0 text-yellow-200" />

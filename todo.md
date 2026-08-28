@@ -2087,3 +2087,8 @@
 - [x] Padronizar erros das rotas V2 em notificações visuais amigáveis
 - [x] Cobrir loading, sucesso, erro, polling/status e rotas V2 com Vitest
 - [x] Validar mobile/desktop, TypeScript, build e publicar checkpoint
+
+## Atualização manual do status do cron — sessão atual
+- [x] Adicionar botão ao lado do indicador do cron
+- [x] Refazer apenas a consulta de status com loading e feedback acessível
+- [x] Cobrir o comportamento em teste e validar build antes do checkpoint

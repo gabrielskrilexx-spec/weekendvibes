@@ -136,7 +136,7 @@ describe("AdminRoutinePanel", () => {
     expect(rendered).toContain("18 de agosto de 2026");
     expect(rendered).toContain("America/Sao_Paulo");
     expect(rendered).toContain("full_auto");
-    expect(tree!.root.findByType("button").props.disabled).toBe(true);
+    expect(tree!.root.findByProps({ "aria-label": "Executar ingestão manual agora" }).props.disabled).toBe(true);
     mutationState = { isPending: false };
   });
   it("exibe o progresso por fonte e bloqueia o botão durante a execução", async () => {
@@ -189,7 +189,7 @@ describe("AdminRoutinePanel", () => {
     expect(rendered).toContain("Etapa");
     expect(rendered).toContain('"3"');
     expect(rendered).toContain('"4"');
-    expect(tree!.root.findByType("button").props.disabled).toBe(true);
+    expect(tree!.root.findByProps({ "aria-label": "Executar ingestão manual agora" }).props.disabled).toBe(true);
   });
 
   it("exibe o histórico visual com status, trigger e duração", async () => {
@@ -296,6 +296,31 @@ describe("AdminRoutinePanel", () => {
     expect(rendered).toContain("26 de agosto de 2026");
   });
 
+  it("atualiza o status do cron sem recarregar a página", async () => {
+    statusState = {
+      isLoading: false,
+      isError: false,
+      data: {
+        nextExecutionAt: "2026-08-18T13:00:00.000Z",
+        timezone: "America/Sao_Paulo",
+        runMode: "full_auto",
+        isRunning: false,
+      },
+    };
+    refetch.mockResolvedValue({ error: null });
+    let tree: ReturnType<typeof create>;
+    await act(async () => {
+      tree = create(<AdminRoutinePanel />);
+    });
+    const refreshButton = tree!.root.findByProps({ "aria-label": "Atualizar status do cron" });
+    expect(refreshButton.props.disabled).not.toBe(true);
+    await act(async () => {
+      await refreshButton.props.onClick();
+    });
+    expect(refetch).toHaveBeenCalled();
+    expect(refreshButton.props["aria-busy"]).not.toBe(true);
+  });
+
   it("confirma o disparo manual e exibe sucesso", async () => {
     statusState = {
       isLoading: false,
@@ -316,7 +341,7 @@ describe("AdminRoutinePanel", () => {
       tree = create(<AdminRoutinePanel />);
     });
     await act(async () => {
-      tree!.root.findByType("button").props.onClick();
+      tree!.root.findByProps({ "aria-label": "Executar ingestão manual agora" }).props.onClick();
     });
     expect(confirm).toHaveBeenCalled();
     expect(mutate).toHaveBeenCalledTimes(1);
