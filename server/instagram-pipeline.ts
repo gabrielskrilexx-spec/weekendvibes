@@ -542,14 +542,24 @@ async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId:
   return { posts, transportFailures };
 }
 
-async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean } = {}) {
+export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean } = {}) {
   const token = process.env.APIFY_API_TOKEN?.trim();
   if (!token) return { posts: [] as InstagramPost[], transportFailures: [] as InstagramTransportFailure[] };
   const payload = buildInstagramScraperPayload(INSTAGRAM_TARGETS);
   try {
     const response = await fetchExternal(`https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "WeekendVibes/1.0" }, body: JSON.stringify(payload) }, 8_000, true);
     const body = await readExternalBody(response);
-    if (!response.ok) return { posts: [] as InstagramPost[], transportFailures: [{ username: "apify-instagram", status: response.status, kind: "proxy_or_session" as const, message: `Apify respondeu HTTP ${response.status}.` }] };
+    if (!response.ok) {
+      let providerMessage = "";
+      try {
+        const parsedError = JSON.parse(body) as { error?: { message?: unknown } };
+        providerMessage = typeof parsedError.error?.message === "string" ? parsedError.error.message : "";
+      } catch {
+        providerMessage = "";
+      }
+      const detail = normalizeDiagnosticText(providerMessage).slice(0, 180);
+      return { posts: [] as InstagramPost[], transportFailures: [{ username: "apify-instagram", status: response.status, kind: "proxy_or_session" as const, message: `Apify respondeu HTTP ${response.status}${detail ? `: ${detail}` : "."}` }] };
+    }
     const parsed = JSON.parse(body) as unknown;
     const posts = normalizeInstagramMediaPayload(parsed).filter(post => post.mediaType === "story" || post.mediaType === "highlight");
     if (posts.length === 0) {

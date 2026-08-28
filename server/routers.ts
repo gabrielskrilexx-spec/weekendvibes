@@ -42,6 +42,7 @@ import {
   listIngestionLogs,
   reprocessIngestionSource,
   sanitizeReprocessErrorForTest,
+  updateIngestionRunOcrText,
 } from "./ingestion-reports";
 import {
   createLocationAlias,
@@ -218,6 +219,9 @@ const adminBatchMutationOutput = z
 const aliasRemoveOutput = z
   .object({ success: z.literal(true), deletedId: z.string().min(1).max(32) })
   .strict();
+const ocrEditOutput = z
+  .object({ success: z.literal(true), runId: z.number().int().positive(), entryIndex: z.number().int().nonnegative().max(24), ocrText: z.string().max(5000) })
+  .strict();
 const eventCreateOutput = z
   .object({
     created: z.boolean(),
@@ -393,6 +397,16 @@ export const appRouter = router({
           // O processamento já registra a falha; o acknowledgement permanece serializável.
         }
         return { success: true as const };
+      }),
+    updateOcrText: adminOnly
+      .input(z.object({ runId: z.number().int().positive(), entryIndex: z.number().int().nonnegative().max(24), ocrText: z.string().max(5000) }).strict())
+      .output(ocrEditOutput)
+      .mutation(async ({ input }) => {
+        try {
+          return await updateIngestionRunOcrText(input);
+        } catch (error) {
+          return throwSanitizedAdminMutationError(error, "Não foi possível salvar a revisão do OCR.");
+        }
       }),
     runNow: adminOnly.output(adminRoutineOutput).mutation(async () => {
       try {

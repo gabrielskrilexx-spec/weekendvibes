@@ -99,6 +99,10 @@ type OcrAuditItem = {
 };
 type OcrAuditRun = { id: number; routine: string; startedAt: string; ocrAudit?: OcrAuditItem[] };
 
+export function buildOcrEditInput(runId: number, entryIndex: number, ocrText: string) {
+  return { runId, entryIndex, ocrText: ocrText.trim().slice(0, 5000) };
+}
+
 export function isChunkNetworkError(error: unknown) {
   const message = String(error instanceof Error ? error.message : error ?? "").toLowerCase();
   return /failed to fetch|network|fetch|timeout|timed out|gateway|502|503|504|econn|socket|transport/.test(message);
@@ -127,6 +131,8 @@ export default function AdminRoutinePanel() {
   } | null>(null);
   const [authRecoveryOpen, setAuthRecoveryOpen] = useState(false);
   const [selectedOcrRun, setSelectedOcrRun] = useState<OcrAuditRun | null>(null);
+  const [editingOcrIndex, setEditingOcrIndex] = useState<number | null>(null);
+  const [ocrDraft, setOcrDraft] = useState("");
   const [rolloverDraft, setRolloverDraft] = useState<string | null>(null);
   const status = trpc.adminRoutine.status.useQuery(undefined, {
     refetchInterval: cronRefreshSeconds > 0 ? cronRefreshSeconds * 1_000 : false,
@@ -170,6 +176,25 @@ export default function AdminRoutinePanel() {
       sonnerToast.error("Falha na comunicação", { description: message });
     }
   }, [status.isError, status.error]);
+  const ocrEditMutation = trpc.adminRoutine.updateOcrText.useMutation({
+    onSuccess: result => {
+      setSelectedOcrRun(current => current ? { ...current, ocrAudit: current.ocrAudit?.map((item, index) => index === result.entryIndex ? { ...item, ocrText: result.ocrText } : item) } : current);
+      setEditingOcrIndex(null);
+      sonnerToast.success("Texto OCR atualizado", { description: "A revisão manual foi salva no histórico da execução." });
+      void status.refetch();
+    },
+    onError: error => {
+      sonnerToast.error("Não foi possível salvar o OCR", { description: friendlyAdminErrorMessage(error, "Revise o texto e tente novamente.") });
+    },
+  });
+  const startOcrEditing = (index: number, item: OcrAuditItem) => {
+    setEditingOcrIndex(index);
+    setOcrDraft(item.ocrText);
+  };
+  const saveOcrEdit = () => {
+    if (!selectedOcrRun || editingOcrIndex === null || ocrEditMutation.isPending) return;
+    ocrEditMutation.mutate(buildOcrEditInput(selectedOcrRun.id, editingOcrIndex, ocrDraft));
+  };
   const rolloverHourQuery = trpc.adminRoutine.rolloverHour.useQuery();
   const rolloverMutation = trpc.adminRoutine.setRolloverHour.useMutation({
     onSuccess: result => {
@@ -728,7 +753,7 @@ export default function AdminRoutinePanel() {
           <DialogHeader>
             <DialogTitle>Auditoria OCR · Run #{selectedOcrRun?.id}</DialogTitle>
             <DialogDescription className="text-zinc-400">
-              Dados brutos sanitizados extraídos das artes de Stories e Destaques. O conteúdo é somente leitura.
+              Revise manualmente o texto extraído. O texto bruto original permanece preservado para auditoria.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -739,7 +764,21 @@ export default function AdminRoutinePanel() {
                   <p className="mt-2 text-[11px] font-black uppercase tracking-wide text-fuchsia-200">{item.mediaOrigin === "highlight" ? "Destaque" : item.mediaOrigin === "story" ? "Story" : "Post"}</p>
                 </div>
                 <div className="min-w-0 space-y-3 text-xs">
-                  <div><p className="font-black uppercase tracking-wide text-zinc-500">Texto OCR</p><pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-black/30 p-3 font-sans text-zinc-200">{item.ocrText || "Nenhum texto OCR registrado."}</pre></div>
+                  <div>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-black uppercase tracking-wide text-zinc-500">Texto OCR revisável</p>
+                      {editingOcrIndex === index ? <span className="text-[11px] text-fuchsia-200">Editando</span> : <button type="button" aria-label={`Editar texto OCR ${index + 1}`} className="text-[11px] font-bold text-fuchsia-200 underline underline-offset-4" onClick={() => startOcrEditing(index, item)}>Editar texto</button>}
+                    </div>
+                    {editingOcrIndex === index ? (
+                      <div className="mt-1 space-y-2">
+                        <textarea value={ocrDraft} onChange={event => setOcrDraft(event.target.value)} maxLength={5000} rows={6} aria-label={`Texto OCR editável ${index + 1}`} className="w-full rounded-xl border border-fuchsia-300/30 bg-black/30 p-3 font-sans text-sm text-zinc-100 outline-none focus:border-fuchsia-200 focus:ring-2 focus:ring-fuchsia-200/30" />
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-500">
+                          <span>{ocrDraft.length}/5000 caracteres</span>
+                          <div className="flex gap-2"><Button type="button" variant="outline" size="sm" onClick={() => setEditingOcrIndex(null)} disabled={ocrEditMutation.isPending}>Cancelar</Button><Button type="button" size="sm" aria-label={`Salvar texto OCR ${editingOcrIndex + 1}`} onClick={saveOcrEdit} disabled={ocrEditMutation.isPending}>{ocrEditMutation.isPending ? <><Loader2 size={13} className="animate-spin" /> Salvando…</> : <><Save size={13} /> Salvar texto</>}</Button></div>
+                        </div>
+                      </div>
+                    ) : <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-black/30 p-3 font-sans text-zinc-200">{item.ocrText || "Nenhum texto OCR registrado."}</pre>}
+                  </div>
                   <div><p className="font-black uppercase tracking-wide text-zinc-500">Texto bruto combinado</p><pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-black/30 p-3 font-sans text-zinc-300">{item.rawText || "Nenhum texto bruto registrado."}</pre></div>
                   {item.highlightTitle && <p className="text-zinc-400">Destaque: <strong className="text-zinc-200">{item.highlightTitle}</strong></p>}
                   {item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex text-fuchsia-200 underline underline-offset-4">Abrir origem no Instagram</a>}

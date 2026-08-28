@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import { eq, or } from "drizzle-orm";
 import { ingestionSources } from "../drizzle/schema";
 import { getDb } from "./db";
-import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr } from "./instagram-pipeline";
+import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr } from "./instagram-pipeline";
 
 describe("Instagram weekend pipeline", () => {
   beforeEach(async () => {
@@ -161,6 +161,21 @@ describe("Instagram weekend pipeline", () => {
       await expect(extractOcrText("data:image/png;base64,AA==")).resolves.toContain("Meu Lugar");
       expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("chat/completions"), expect.objectContaining({ method: "POST", body: expect.stringContaining("image_url") }));
     } finally { globalThis.fetch = originalFetch; }
+  });
+
+  it("preserves the sanitized provider message for an Apify quota failure", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalToken = process.env.APIFY_API_TOKEN;
+    process.env.APIFY_API_TOKEN = "production-token-for-test";
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { type: "platform-feature-disabled", message: "Monthly usage hard limit exceeded" } }), { status: 403, headers: { "content-type": "application/json" } })) as typeof fetch;
+    try {
+      const result = await fetchApifyStoriesAndHighlights({ dryRun: true });
+      expect(result.posts).toEqual([]);
+      expect(result.transportFailures).toEqual([expect.objectContaining({ status: 403, message: "Apify respondeu HTTP 403: Monthly usage hard limit exceeded" })]);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalToken === undefined) delete process.env.APIFY_API_TOKEN; else process.env.APIFY_API_TOKEN = originalToken;
+    }
   });
 
   it("returns no remote Stories when the optional Apify token is absent", async () => {

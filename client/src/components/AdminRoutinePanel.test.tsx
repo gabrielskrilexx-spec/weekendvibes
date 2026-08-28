@@ -1,7 +1,7 @@
 import React from "react";
 import { act, create } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import AdminRoutinePanel, { isChunkNetworkError, retryChunkNetwork } from "./AdminRoutinePanel";
+import AdminRoutinePanel, { buildOcrEditInput, isChunkNetworkError, retryChunkNetwork } from "./AdminRoutinePanel";
 
 let statusState: {
   data?: {
@@ -80,6 +80,15 @@ vi.mock("@/lib/trpc", () => ({
           mutate: (input: { rolloverHour: number }) => {
             mutate(input);
             options.onSuccess?.({ success: true, rolloverHour: input.rolloverHour });
+          },
+        }),
+      },
+      updateOcrText: {
+        useMutation: (options: { onSuccess?: (result: { success: true; runId: number; entryIndex: number; ocrText: string }) => void; onError?: (error: Error) => void }) => ({
+          isPending: mutationState.isPending,
+          mutate: (input: { runId: number; entryIndex: number; ocrText: string }) => {
+            mutate(input);
+            options.onSuccess?.({ success: true, runId: input.runId, entryIndex: input.entryIndex, ocrText: input.ocrText });
           },
         }),
       },
@@ -398,6 +407,33 @@ describe("AdminRoutinePanel", () => {
       tree!.root.findByProps({ "aria-label": "Salvar horário de virada do dia" }).props.onClick();
     });
     expect(mutate).toHaveBeenCalledWith({ rolloverHour: 8 });
+  });
+
+  it("monta o payload editável do OCR com trim e limite seguro", () => {
+    const payload = buildOcrEditInput(93, 0, "  Texto revisado manualmente  ");
+    expect(payload).toEqual({ runId: 93, entryIndex: 0, ocrText: "Texto revisado manualmente" });
+    expect(buildOcrEditInput(93, 0, "x".repeat(6000)).ocrText).toHaveLength(5000);
+  });
+
+  it("mantém o contrato de edição OCR no histórico sem alterar o texto bruto", async () => {
+    statusState = {
+      isLoading: false,
+      isError: false,
+      data: {
+        nextExecutionAt: "2026-08-18T13:00:00.000Z",
+        timezone: "America/Sao_Paulo",
+        runMode: "full_auto",
+        isRunning: false,
+        recentRuns: [{ id: 93, routine: "instagram-agenda", trigger: "automatic", status: "succeeded", startedAt: "2026-08-26T12:00:00.000Z", finishedAt: "2026-08-26T12:00:03.000Z", httpStatus: 200, durationMs: 3000, expurgatedCount: 0, readCount: 1, processedCount: 1, persistedEventIds: [3], dateFilterValidation: null, ocrAudit: [{ mediaOrigin: "story", imageUrl: "https://cdn.example.com/story.jpg", sourceUrl: "https://instagram.com/meulugar.bar", highlightTitle: null, ocrText: "Texto original", rawText: "Texto bruto original" }] }],
+      },
+    };
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminRoutinePanel />); });
+    const detailButton = tree!.root.findByProps({ "aria-label": "Auditar OCR da execução 93" });
+    await act(async () => { detailButton.props.onClick(); });
+    const dialog = tree!.root.findByProps({ "data-testid": "ocr-audit-dialog" });
+    expect(dialog.props["data-ocr-entry-count"]).toBe(1);
+    expect(buildOcrEditInput(93, 0, "Texto revisado manualmente")).toEqual({ runId: 93, entryIndex: 0, ocrText: "Texto revisado manualmente" });
   });
 
   it("confirma o disparo manual e exibe sucesso", async () => {

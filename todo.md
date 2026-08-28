@@ -2121,4 +2121,13 @@
 - [x] Preservar auditoria OCR de mídias visuais e registrar falhas por item sem derrubar o lote
 - [x] Adicionar regressões para payload aninhado, origem e regra de OCR
 - [x] Validar smoke dry-run, suíte Vitest, TypeScript e build
-- [ ] Publicar checkpoint com a correção ativa
+- [x] Publicar checkpoint com a correção ativa
+
+## Stories reais e edição manual do OCR — sessão atual
+- [x] Auditar o fluxo de Stories em produção e o modal de detalhes OCR
+- [x] Executar o scraper Apify com o token de produção sem expor credenciais — retorno sanitizado HTTP 403 por limite mensal excedido
+- [ ] Registrar métricas e validar os resultados reais no painel — pendente até a quota do Apify ser liberada
+- [x] Adicionar campo de edição manual do OCR no modal
+- [x] Persistir a revisão manual com autorização administrativa e payload estrito
+- [x] Cobrir edição, salvamento, erro, permissões e extração real com testes
+- [x] Validar TypeScript e build; publicação pendente até resolver a quota externa
