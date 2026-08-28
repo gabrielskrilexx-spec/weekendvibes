@@ -9,6 +9,7 @@ import {
 } from "./instagram-pipeline";
 import {
   findIngestionRunByApifyActor,
+  findIngestionRunById,
   finishIngestionRun,
   linkIngestionRunToApifyActor,
   setIngestionRunDetails,
@@ -146,7 +147,8 @@ export async function apifyInstagramWebhookHandler(req: Request, res: Response) 
   if (!run) return res.status(404).json({ ok: false, error: "APIFY_RUN_NOT_FOUND" });
   let details: Record<string, unknown> = {};
   try { details = run.details ? JSON.parse(run.details) as Record<string, unknown> : {}; } catch { return res.status(500).json({ ok: false, error: "RUN_DETAILS_INVALID" }); }
-  if (!safeTokenEqual(token, details.callbackToken)) return res.status(403).json({ ok: false, error: "WEBHOOK_TOKEN_INVALID" });
+  const authenticatedBySecret = hasValidInternalCronSecret(req);
+  if (!safeTokenEqual(token, details.callbackToken) && !authenticatedBySecret) return res.status(403).json({ ok: false, error: "WEBHOOK_TOKEN_INVALID" });
   if (run.status !== "running") return res.status(200).json({ ok: true, duplicate: true });
 
   const status = resource.status.toUpperCase();
@@ -162,6 +164,28 @@ export async function apifyInstagramWebhookHandler(req: Request, res: Response) 
     await finishIngestionRun(run.id, { status: "failed", failedCount: 1, httpStatus: 500, details: { provider: "apify", actorRunId: resource.id, error: "DATASET_WORKER_FAILED" } });
   });
   return res.status(202).json({ ok: true, accepted: true, status: "PROCESSING" });
+}
+
+export async function reprocessApifyStoriesDatasetHandler(req: Request, res: Response) {
+  if (!hasValidInternalCronSecret(req)) return res.status(403).json({ ok: false, error: "cron-only" });
+  const body = req.body && typeof req.body === "object" ? req.body as Record<string, unknown> : {};
+  const actorRunId = typeof body.actorRunId === "string" ? body.actorRunId.trim() : "";
+  const datasetId = typeof body.datasetId === "string" ? body.datasetId.trim() : "";
+  if (!actorRunId || !datasetId) return res.status(400).json({ ok: false, error: "DATASET_REFERENCE_MISSING" });
+  const token = process.env.APIFY_API_TOKEN?.trim();
+  if (!token) return res.status(503).json({ ok: false, error: "APIFY_TOKEN_MISSING" });
+  const existing = await findIngestionRunByApifyActor(actorRunId);
+  if (existing?.status === "running") return res.status(202).json({ ok: true, accepted: true, duplicate: true, runId: existing.id, status: "PROCESSING" });
+  const runId = await startIngestionRun({ routine: "instagram-stories-reprocess", sourceKey: `instagram:apify:${actorRunId}` });
+  if (!runId) return res.status(500).json({ ok: false, error: "INGESTION_RUN_CREATE_FAILED" });
+  await setIngestionRunDetails(runId, { provider: "apify", actorRunId, datasetId, status: "PROCESSING", trigger: "manual-reprocess" });
+  const run = await findIngestionRunById(runId);
+  if (!run) return res.status(500).json({ ok: false, error: "INGESTION_RUN_LOOKUP_FAILED" });
+  void processDataset(run, datasetId, actorRunId, token).catch(async error => {
+    console.error("[Apify reprocess] dataset worker failed", { runId, actorRunId, error: redactError(error) });
+    await finishIngestionRun(runId, { status: "failed", failedCount: 1, httpStatus: 500, details: { provider: "apify", actorRunId, datasetId, error: "DATASET_WORKER_FAILED" } });
+  });
+  return res.status(202).json({ ok: true, accepted: true, runId, actorRunId, datasetId, status: "PROCESSING" });
 }
 
 export async function asyncIngestInstagramHandler(req: Request, res: Response) {

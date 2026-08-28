@@ -34,6 +34,10 @@ describe("Instagram weekend pipeline", () => {
     expect(hasApprovedAgendaText("Agenda da semana #Sábado #Guarujá")).toBe(true);
   });
 
+  it("accepts an Instagram profile URL as a valid Story source", () => {
+    expect(validateStructuredInstagramEvent({ sourceUrl: "https://www.instagram.com/meulugar.bar/" }, [], new Date("2026-08-28T12:00:00.000Z"))).not.toContain("invalid_source_url");
+  });
+
   it("records specific final validation reasons without exposing raw event content", () => {
     const reasons = validateStructuredInstagramEvent({
       title: "Evento de teste",
@@ -148,6 +152,17 @@ describe("Instagram weekend pipeline", () => {
   it("parses nested Story payloads returned by Apify without losing the media origin", () => {
     const posts = normalizeInstagramMediaPayload({ data: [{ username: "meulugar.bar", stories: [{ id: "story-1", display_url: "https://cdn.example.com/story.jpg", caption: "Hoje no Meu Lugar" }] }] });
     expect(posts).toEqual([expect.objectContaining({ id: "story-1", mediaType: "story", ownerUsername: "meulugar.bar", displayUrl: "https://cdn.example.com/story.jpg" })]);
+  });
+
+  it("maps the real Stories Actor schema and uses thumbnailUrl for video media", () => {
+    const posts = normalizeInstagramMediaPayload([
+      { type: "story", username: "meulugar.bar", mediaUrl: "https://cdn.example.com/story.jpg", postedAt: "2026-08-28T20:00:00-03:00", expiresAt: "2026-08-29T20:00:00-03:00" },
+      { type: "story", isVideo: true, username: "curvaosurfhouse", mediaUrl: "https://cdn.example.com/story.mp4", thumbnailUrl: "https://cdn.example.com/story-thumb.jpg", postedAt: "2026-08-28T21:00:00-03:00", expiresAt: "2026-08-29T21:00:00-03:00" },
+    ]);
+    expect(posts).toEqual([
+      expect.objectContaining({ mediaType: "story", ownerUsername: "meulugar.bar", url: "https://www.instagram.com/meulugar.bar/", displayUrl: "https://cdn.example.com/story.jpg", timestamp: "2026-08-28T20:00:00-03:00", postedAt: "2026-08-28T20:00:00-03:00", expiresAt: "2026-08-29T20:00:00-03:00" }),
+      expect.objectContaining({ mediaType: "story", ownerUsername: "curvaosurfhouse", displayUrl: "https://cdn.example.com/story-thumb.jpg" }),
+    ]);
   });
 
   it("sends Story and Highlight images to OCR even when a caption exists", () => {

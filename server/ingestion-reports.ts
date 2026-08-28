@@ -806,6 +806,13 @@ export async function findIngestionRunByApifyActor(actorRunId: string) {
   return run;
 }
 
+export async function findIngestionRunById(runId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [run] = await db.select().from(ingestionRuns).where(eq(ingestionRuns.id, runId)).limit(1);
+  return run;
+}
+
 export async function finishIngestionRun(
   id: number | undefined,
   input: {

@@ -2173,3 +2173,11 @@
 - [x] Executar nova varredura assíncrona em fonte ativa
 - [x] Validar dataset e ingestionRun com contagens e URLs sanitizadas — dataset real retornou apenas metadados de perfil, sem URLs de Story
 - [x] Cobrir a configuração com testes, build e publicar checkpoint; a ausência de mídia real permanece diagnosticada
+
+## Dataset real de 37 Stories — sessão atual
+- [x] Auditar o schema `type: story` e os campos de mídia/data/fonte
+- [x] Mapear `mediaUrl`/`thumbnailUrl`, `username`, `postedAt` e `expiresAt`
+- [x] Associar Stories às fontes cadastradas sem criar vínculos por aproximação insegura
+- [x] Processar o dataset assíncrono com OCR Vision e persistência normalizada
+- [x] Cobrir vídeo, imagem, datas, expiração, fonte desconhecida e OCR sem texto
+- [x] Confirmar contagens reais no `ingestionRun`, validar testes/build e publicar checkpoint

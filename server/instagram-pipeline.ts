@@ -105,11 +105,14 @@ export type InstagramPost = {
   text?: string;
   timestamp?: string | number;
   takenAt?: string | number;
+  postedAt?: string | number;
+  expiresAt?: string | number;
   displayUrl?: string;
   imageUrl?: string;
   media_url?: string;
   ownerUsername?: string;
   username?: string;
+  sourceKey?: string;
   mediaType?: InstagramMediaOrigin;
   highlightTitle?: string;
   ocrText?: string;
@@ -166,9 +169,13 @@ export function buildInstagramStoriesScraperPayload(targets: ReadonlyArray<{ use
 }
 
 export function normalizeInstagramMediaItem(item: Record<string, unknown>, fallbackUsername = ""): InstagramPost | null {
-  const mediaType = String(item.mediaType ?? item.type ?? item.productType ?? "post").toLowerCase();
+  const rawType = [item.type, item.mediaType, item.productType].find(value => String(value ?? "").toLowerCase().includes("story"))
+    ?? [item.type, item.mediaType, item.productType].find(value => String(value ?? "").toLowerCase().includes("highlight"))
+    ?? item.mediaType ?? item.type ?? item.productType ?? "post";
+  const mediaType = String(rawType).toLowerCase();
   const normalizedType: InstagramMediaOrigin = mediaType.includes("highlight") ? "highlight" : mediaType.includes("story") ? "story" : "post";
-  const imageUrl = String(item.displayUrl ?? item.imageUrl ?? item.media_url ?? item.url ?? "");
+  const isVideo = mediaType.includes("video") || mediaType.includes("reel") || item.isVideo === true;
+  const imageUrl = String(item.displayUrl ?? item.imageUrl ?? (isVideo ? item.thumbnailUrl ?? item.thumbnail_url : item.mediaUrl ?? item.media_url) ?? item.media_url ?? item.thumbnailUrl ?? item.thumbnail_url ?? item.url ?? "");
   const owner = item.owner && typeof item.owner === "object" ? item.owner as Record<string, unknown> : undefined;
   const highlight = item.highlight && typeof item.highlight === "object" ? item.highlight as Record<string, unknown> : undefined;
   const username = String(item.ownerUsername ?? item.username ?? owner?.username ?? fallbackUsername);
@@ -178,16 +185,19 @@ export function normalizeInstagramMediaItem(item: Record<string, unknown>, fallb
   return {
     id: item.id ? String(item.id) : undefined,
     shortCode: item.shortCode ? String(item.shortCode) : undefined,
-    url: item.url ? String(item.url) : undefined,
+    url: item.url ? String(item.url) : username ? `https://www.instagram.com/${username.replace(/^@/, "")}/` : undefined,
     permalink: item.permalink ? String(item.permalink) : undefined,
     caption: item.caption ? String(item.caption) : undefined,
     text: item.text ? String(item.text) : undefined,
-    timestamp: typeof item.timestamp === "number" || typeof item.timestamp === "string" ? item.timestamp : undefined,
+    timestamp: typeof (item.timestamp ?? item.postedAt) === "number" || typeof (item.timestamp ?? item.postedAt) === "string" ? (item.timestamp ?? item.postedAt) as string | number : undefined,
     takenAt: typeof item.takenAt === "number" || typeof item.takenAt === "string" ? item.takenAt : undefined,
+    postedAt: typeof item.postedAt === "number" || typeof item.postedAt === "string" ? item.postedAt : undefined,
+    expiresAt: typeof item.expiresAt === "number" || typeof item.expiresAt === "string" ? item.expiresAt : undefined,
     displayUrl: imageUrl || undefined,
     imageUrl: imageUrl || undefined,
     ownerUsername: username || undefined,
     username: username || undefined,
+    sourceKey: item.sourceKey ? String(item.sourceKey) : undefined,
     mediaType: normalizedType,
     highlightTitle: highlightTitle || undefined,
     ocrText: item.ocrText ? String(item.ocrText) : undefined,
@@ -212,15 +222,22 @@ function collectInstagramMediaCandidates(value: unknown, context: MediaNormaliza
   const highlight = record.highlight && typeof record.highlight === "object" ? record.highlight as Record<string, unknown> : undefined;
   const username = String(record.ownerUsername ?? record.username ?? owner?.username ?? context.username ?? "");
   const highlightTitle = String(record.highlightTitle ?? highlight?.title ?? context.highlightTitle ?? "");
-  const explicitType = String(record.mediaType ?? record.type ?? record.productType ?? "").toLowerCase();
+  const rawExplicitType = [record.type, record.mediaType, record.productType].find(value => String(value ?? "").toLowerCase().includes("story"))
+    ?? [record.type, record.mediaType, record.productType].find(value => String(value ?? "").toLowerCase().includes("highlight"))
+    ?? record.mediaType ?? record.type ?? record.productType ?? "";
+  const explicitType = String(rawExplicitType).toLowerCase();
   const mediaType: InstagramMediaOrigin = explicitType.includes("highlight") ? "highlight" : explicitType.includes("story") ? "story" : context.mediaType ?? "post";
+  const isVideo = explicitType.includes("video") || explicitType.includes("reel") || record.isVideo === true;
+  const preferredMediaUrl = isVideo
+    ? record.thumbnailUrl ?? record.thumbnail_url ?? record.mediaUrl ?? record.media_url
+    : record.mediaUrl ?? record.media_url ?? record.displayUrl ?? record.display_url ?? record.imageUrl ?? record.image_url ?? record.thumbnailUrl ?? record.thumbnail_url;
   const normalizedRecord: Record<string, unknown> = {
     ...record,
     ownerUsername: username || undefined,
     mediaType,
     highlightTitle: highlightTitle || undefined,
-    displayUrl: record.displayUrl ?? record.display_url ?? record.imageUrl ?? record.image_url ?? record.mediaUrl ?? record.media_url ?? record.thumbnailUrl ?? record.thumbnail_url,
-    imageUrl: record.imageUrl ?? record.image_url ?? record.displayUrl ?? record.display_url ?? record.mediaUrl ?? record.media_url ?? record.thumbnailUrl ?? record.thumbnail_url,
+    displayUrl: isVideo ? preferredMediaUrl : record.displayUrl ?? record.display_url ?? record.imageUrl ?? record.image_url ?? preferredMediaUrl,
+    imageUrl: isVideo ? preferredMediaUrl : record.imageUrl ?? record.image_url ?? record.displayUrl ?? record.display_url ?? preferredMediaUrl,
     url: record.url ?? record.permalink ?? record.sourceUrl,
   };
   const direct = normalizeInstagramMediaItem(normalizedRecord, username);
@@ -237,7 +254,8 @@ export function normalizeInstagramMediaPayload(payload: unknown, fallbackUsernam
   const normalized = collectInstagramMediaCandidates(payload, { username: fallbackUsername });
   const seen = new Set<string>();
   return normalized.filter(item => {
-    const key = item.id ?? postUrl(item) ?? `${item.ownerUsername ?? item.username ?? fallbackUsername}|${item.timestamp ?? item.takenAt ?? item.displayUrl ?? item.imageUrl ?? "unknown"}`;
+    const canonicalUrl = postUrl(item);
+    const key = item.id ?? (canonicalUrl || `${item.ownerUsername ?? item.username ?? fallbackUsername}|${item.timestamp ?? item.takenAt ?? item.displayUrl ?? item.imageUrl ?? "unknown"}`);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -327,7 +345,7 @@ export function validateStructuredInstagramEvent(event: Partial<StructuredEvent>
   else if (eventCalendarDate(event.eventDate, parsedDate) < saoPauloCalendarDate(now)) reasons.push("past_event");
   if (!ALLOWED_CITIES.has(String(event.city))) reasons.push("outside_target_venue");
   if (!containsTargetVenue(`${String(event.locationName ?? "")} ${String(event.address ?? "")}`, activeAliases)) reasons.push("outside_target_venue");
-  if (typeof event.sourceUrl !== "string" || !/^https:\/\/www\.instagram\.com\/(p|reel|tv|stories|s)\//i.test(event.sourceUrl)) reasons.push("invalid_source_url");
+  if (typeof event.sourceUrl !== "string" || !isValidInstagramSourceUrl(event.sourceUrl)) reasons.push("invalid_source_url");
   if (!ALLOWED_CATEGORIES.has(String(event.category))) reasons.push("invalid_category");
   if (!ALLOWED_GENRES.has(String(event.genre))) reasons.push("invalid_genre");
   return Array.from(new Set(reasons));
@@ -373,6 +391,11 @@ function normalizeAgendaText(text: string) {
  */
 export function hasApprovedAgendaText(text: string, _username?: string) {
   return normalizeAgendaText(text).trim().length > 0;
+}
+
+function isValidInstagramSourceUrl(value: string) {
+  return /^https:\/\/www\.instagram\.com\/(?:p|reel|tv|stories|s)\/[A-Za-z0-9._-]+\/?$/i.test(value)
+    || /^https:\/\/www\.instagram\.com\/[A-Za-z0-9._]+\/?$/i.test(value);
 }
 
 function postUrl(post: InstagramPost) {
@@ -577,7 +600,16 @@ export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean
       return { posts: [] as InstagramPost[], providerIssue: quotaExceeded ? { code: "APIFY_QUOTA_EXCEEDED" as const, status: 403 as const, message } : undefined, transportFailures: [{ username: "apify-instagram", status: response.status, kind: quotaExceeded ? "quota" as const : "proxy_or_session" as const, message }] };
     }
     const parsed = JSON.parse(body) as unknown;
-    const posts = normalizeInstagramMediaPayload(parsed).filter(post => post.mediaType === "story" || post.mediaType === "highlight");
+    const configuredSources = (await listEnabledInstagramSources()) ?? [];
+    const sourceByHandle = new Map(configuredSources.map(source => [String(source.handle ?? "").replace(/^@/, "").toLowerCase(), source.sourceKey]));
+    const allowedHandles = configuredSources.length > 0 ? sourceByHandle : new Map(INSTAGRAM_TARGETS.map(target => [target.username.toLowerCase(), `instagram:${target.username}`]));
+    const posts = normalizeInstagramMediaPayload(parsed)
+      .filter((post: InstagramPost) => post.mediaType === "story" || post.mediaType === "highlight")
+      .filter((post: InstagramPost) => allowedHandles.has(String(post.ownerUsername ?? post.username ?? "").replace(/^@/, "").toLowerCase()))
+      .map((post: InstagramPost) => ({
+        ...post,
+        sourceKey: allowedHandles.get(String(post.ownerUsername ?? post.username ?? "").replace(/^@/, "").toLowerCase()),
+      }));
     if (posts.length === 0) {
       const diagnostic = "Apify respondeu HTTP 200, mas nenhum Story/Destaque parseável foi encontrado no payload.";
       console.warn("[Instagram Stories]", diagnostic, { topLevelKeys: parsed && typeof parsed === "object" ? Object.keys(parsed as Record<string, unknown>).slice(0, 20) : [] });
