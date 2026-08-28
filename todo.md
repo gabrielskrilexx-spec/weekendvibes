@@ -2131,3 +2131,20 @@
 - [x] Persistir a revisão manual com autorização administrativa e payload estrito
 - [x] Cobrir edição, salvamento, erro, permissões e extração real com testes
 - [x] Validar TypeScript e build; publicação pendente até resolver a quota externa
+
+## Coleta nativa de Stories com browser headless — sessão atual
+- [x] Auditar runtime Autoscale, dependências e pipeline atual de Stories
+- [x] Verificar viabilidade de acesso a perfis públicos sem sessão humana
+- [x] Definir estratégia segura com limites, timeout e fallback explícito
+- [x] Decidir não implementar coleta headless no Autoscale por incompatibilidade operacional e bloqueios do Instagram
+- [x] Manter a integração Apify existente com OCR/Vision e normalização
+- [x] Cobrir e documentar bloqueios, HTML/login, parsing, timeout e regressões do conector atual
+- [x] Validar build/deploy e documentar limites operacionais
+
+## Quota do Apify e feedback operacional — sessão atual
+- [x] Auditar classificação atual de HTTP 403 e apresentação no dashboard
+- [x] Classificar `Monthly usage hard limit exceeded` como quota do provedor
+- [x] Manter fallback/mocks ativos no sandbox sem mascarar a causa do erro
+- [x] Exibir mensagem operacional clara e sanitizada no histórico e nos alertas
+- [x] Cobrir quota, 403 genérico, mocks e regressões com Vitest
+- [x] Validar TypeScript, build e publicar checkpoint

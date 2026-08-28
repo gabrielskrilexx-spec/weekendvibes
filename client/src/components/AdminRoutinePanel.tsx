@@ -65,6 +65,26 @@ const statusTone = (status: string) =>
         ? "bg-orange-300"
         : "bg-red-300";
 
+export function getApifyQuotaNotice(run: unknown) {
+  if (!run || typeof run !== "object") return null;
+  const value = run as { quotaExceeded?: unknown; providerIssue?: { code?: unknown; message?: unknown } };
+  if (value.quotaExceeded !== true && value.providerIssue?.code !== "APIFY_QUOTA_EXCEEDED") return null;
+  return typeof value.providerIssue?.message === "string" && value.providerIssue.message.trim()
+    ? value.providerIssue.message
+    : "Cota mensal do Apify excedida; renove a quota antes de uma nova coleta real.";
+}
+
+function ProviderQuotaNotice({ run }: { run: unknown }) {
+  const message = getApifyQuotaNotice(run);
+  if (!message) return null;
+  return (
+    <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs text-amber-100" role="status" data-testid="apify-quota-notice">
+      <ShieldAlert size={14} className="mt-0.5 shrink-0 text-amber-200" />
+      <span><strong className="font-black">Quota do provedor:</strong> {message} Os mocks do sandbox continuam disponíveis para testes.</span>
+    </div>
+  );
+}
+
 const CRON_REFRESH_STORAGE_KEY = "weekendvibes.admin.cronRefresh";
 const CRON_REFRESH_PRESETS = [
   { value: 0, label: "Desativada" },
@@ -670,6 +690,7 @@ export default function AdminRoutinePanel() {
                           Run #{run.id} · {run.routine} ·{" "}
                           {run.trigger === "manual" ? "manual" : "automático"}
                         </p>
+                        <ProviderQuotaNotice run={run} />
                         <p className="text-zinc-500">
                           {formatExecution(run.finishedAt ?? run.startedAt)} ·
                           HTTP {run.httpStatus ?? "—"} ·{" "}

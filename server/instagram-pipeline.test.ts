@@ -171,7 +171,8 @@ describe("Instagram weekend pipeline", () => {
     try {
       const result = await fetchApifyStoriesAndHighlights({ dryRun: true });
       expect(result.posts).toEqual([]);
-      expect(result.transportFailures).toEqual([expect.objectContaining({ status: 403, message: "Apify respondeu HTTP 403: Monthly usage hard limit exceeded" })]);
+      expect(result.transportFailures).toEqual([expect.objectContaining({ status: 403, kind: "quota", message: "Cota mensal do Apify excedida; renove a quota ou injete um token com limite disponível." })]);
+      expect(result.providerIssue).toEqual({ code: "APIFY_QUOTA_EXCEEDED", status: 403, message: "Cota mensal do Apify excedida; renove a quota ou injete um token com limite disponível." });
     } finally {
       globalThis.fetch = originalFetch;
       if (originalToken === undefined) delete process.env.APIFY_API_TOKEN; else process.env.APIFY_API_TOKEN = originalToken;

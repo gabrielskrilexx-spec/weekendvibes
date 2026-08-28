@@ -466,7 +466,8 @@ function metaPostsFromPayload(payload: unknown, target: (typeof INSTAGRAM_TARGET
   }
 }
 
-type InstagramTransportFailure = { username: string; status: number; kind: "proxy_or_session" | "circuit_open"; message: string };
+type InstagramTransportFailure = { username: string; status: number; kind: "proxy_or_session" | "circuit_open" | "quota"; message: string };
+type InstagramProviderIssue = { code: "APIFY_QUOTA_EXCEEDED"; status: 403; message: string };
 
 function logInstagramResponseDiagnostics(input: { username: string; status: number; contentType: string | null; body: string; parsed: boolean; mediaCount: number; maskedHtml: boolean }) {
   if (process.env.INGESTION_VERBOSE_DRY_RUN !== "1") return;
@@ -558,7 +559,11 @@ export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean
         providerMessage = "";
       }
       const detail = normalizeDiagnosticText(providerMessage).slice(0, 180);
-      return { posts: [] as InstagramPost[], transportFailures: [{ username: "apify-instagram", status: response.status, kind: "proxy_or_session" as const, message: `Apify respondeu HTTP ${response.status}${detail ? `: ${detail}` : "."}` }] };
+      const quotaExceeded = response.status === 403 && /monthly usage hard limit|quota|usage limit|limit exceeded/i.test(detail);
+      const message = quotaExceeded
+        ? "Cota mensal do Apify excedida; renove a quota ou injete um token com limite disponível."
+        : `Apify respondeu HTTP ${response.status}${detail ? `: ${detail}` : "."}`;
+      return { posts: [] as InstagramPost[], providerIssue: quotaExceeded ? { code: "APIFY_QUOTA_EXCEEDED" as const, status: 403 as const, message } : undefined, transportFailures: [{ username: "apify-instagram", status: response.status, kind: quotaExceeded ? "quota" as const : "proxy_or_session" as const, message }] };
     }
     const parsed = JSON.parse(body) as unknown;
     const posts = normalizeInstagramMediaPayload(parsed).filter(post => post.mediaType === "story" || post.mediaType === "highlight");
@@ -666,9 +671,10 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
       { title: "Preview · Sunset Guarujá", eventDate: `${referenceDate}T18:00:00-03:00`, locationName: "Laroc Club Guarujá", city: "Guarujá" },
       { title: "Preview · House Session", eventDate: `${referenceDate}T23:00:00-03:00`, locationName: "Vallum Garden", city: "Santos" },
     ];
+    const providerIssue = "providerIssue" in fetched ? (fetched as { providerIssue?: InstagramProviderIssue }).providerIssue : undefined;
     return {
       dryRun, previewMock: true, sandboxRestricted: true, durationMs, sourceReports: [{ sourceKey: "instagram", durationMs, read: previewMockEvents.length, filtered: 0, persistable: dryRun ? previewMockEvents.length : 0, added: 0, updated: 0, ignored: 0, duplicates: 0, errors: [], rejectionReasons: { fetchFailed: 0, outsideTargetVenue: 0, invalidStructuredEvent: 0, duplicate: 0, pastEvent: 0 } }],
-      previewMockEvents, ocrAudit: previewMockEvents.map(event => ({ mediaOrigin: event.mediaOrigin ?? "story", imageUrl: String(event.imageUrl ?? "").slice(0, 1000), sourceUrl: String(event.source ?? "").slice(0, 1000), highlightTitle: null, ocrText: String(event.ocrText ?? "").slice(0, 3000), rawText: String(event.ocrText ?? "").slice(0, 5000) })).filter(item => item.imageUrl.startsWith("https://")), receivedPosts: previewMockEvents.length, approvedPosts: previewMockEvents.length, degraded: false, transportFailures: [],
+      previewMockEvents, providerIssue, quotaExceeded: providerIssue?.code === "APIFY_QUOTA_EXCEEDED", ocrAudit: previewMockEvents.map(event => ({ mediaOrigin: event.mediaOrigin ?? "story", imageUrl: String(event.imageUrl ?? "").slice(0, 1000), sourceUrl: String(event.source ?? "").slice(0, 1000), highlightTitle: null, ocrText: String(event.ocrText ?? "").slice(0, 3000), rawText: String(event.ocrText ?? "").slice(0, 5000) })).filter(item => item.imageUrl.startsWith("https://")), receivedPosts: previewMockEvents.length, approvedPosts: previewMockEvents.length, degraded: false, transportFailures: [],
       structuredEvents: previewMockEvents.length, imported: 0, persisted: 0, added: 0, updated: 0, ignored: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, rejectedEvents: [], rejectionReasons: {}, persistedEventIds: [], dateFilterValidation: { timezone: "America/Sao_Paulo", today: referenceDate, structuredEvents: previewMockEvents.length, pastEventsRejected: 0, acceptedTodayOrFuture: previewMockEvents.length },
     };
   }
@@ -767,6 +773,8 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     receivedPosts: posts.length,
     approvedPosts: approvedPosts.length,
     degraded: fetched.transportFailures.length > 0,
+    providerIssue: "providerIssue" in fetched ? (fetched as { providerIssue?: InstagramProviderIssue }).providerIssue : undefined,
+    quotaExceeded: "providerIssue" in fetched && (fetched as { providerIssue?: InstagramProviderIssue }).providerIssue?.code === "APIFY_QUOTA_EXCEEDED",
     transportFailures: fetched.transportFailures,
     ocrAudit: buildOcrAuditEntries(ocrAuditCandidates),
 

@@ -180,6 +180,8 @@ async function getRecentInstagramRuns() {
     const persistedEventIds = Array.isArray(details.persistedEventIds) ? details.persistedEventIds.filter((id): id is number => typeof id === "number") : [];
     const dateFilterValidation = details.dateFilterValidation && typeof details.dateFilterValidation === "object" ? details.dateFilterValidation : null;
     const instagramResult = details.instagram && typeof details.instagram === "object" ? details.instagram as Record<string, unknown> : {};
+    const rawProviderIssue = instagramResult.providerIssue && typeof instagramResult.providerIssue === "object" ? instagramResult.providerIssue as Record<string, unknown> : undefined;
+    const providerIssue = rawProviderIssue?.code === "APIFY_QUOTA_EXCEEDED" ? { code: "APIFY_QUOTA_EXCEEDED" as const, status: 403 as const, message: typeof rawProviderIssue.message === "string" ? rawProviderIssue.message.slice(0, 240) : "Cota mensal do Apify excedida." } : undefined;
     const rawAudit = Array.isArray(instagramResult.ocrAudit) ? instagramResult.ocrAudit : [];
     const ocrAudit = rawAudit.slice(0, 25).flatMap(item => {
       if (!item || typeof item !== "object") return [];
@@ -189,7 +191,7 @@ async function getRecentInstagramRuns() {
       const mediaOrigin = value.mediaOrigin === "story" || value.mediaOrigin === "highlight" || value.mediaOrigin === "post" ? value.mediaOrigin : "post";
       return [{ mediaOrigin, imageUrl, sourceUrl, highlightTitle: typeof value.highlightTitle === "string" ? value.highlightTitle.slice(0, 160) : null, ocrText: typeof value.ocrText === "string" ? value.ocrText.slice(0, 3000) : "", rawText: typeof value.rawText === "string" ? value.rawText.slice(0, 5000) : "" }];
     });
-    return { id: row.id, routine: row.routine, sourceKey: row.sourceKey, trigger: details.trigger === "manual" ? "manual" : "automatic", status: row.status, startedAt: new Date(row.startedAt).toISOString(), finishedAt: row.finishedAt ? new Date(row.finishedAt).toISOString() : null, httpStatus: row.httpStatus, durationMs: row.durationMs, importedCount: row.importedCount, expurgatedCount: typeof details.archived === "number" ? details.archived : 0, readCount: typeof details.receivedPosts === "number" ? details.receivedPosts : 0, processedCount: typeof details.structuredEvents === "number" ? details.structuredEvents : 0, persistedEventIds, dateFilterValidation, ocrAudit };
+    return { id: row.id, routine: row.routine, sourceKey: row.sourceKey, trigger: details.trigger === "manual" ? "manual" : "automatic", status: row.status, startedAt: new Date(row.startedAt).toISOString(), finishedAt: row.finishedAt ? new Date(row.finishedAt).toISOString() : null, httpStatus: row.httpStatus, durationMs: row.durationMs, importedCount: row.importedCount, expurgatedCount: typeof details.archived === "number" ? details.archived : 0, readCount: typeof details.receivedPosts === "number" ? details.receivedPosts : 0, processedCount: typeof details.structuredEvents === "number" ? details.structuredEvents : 0, persistedEventIds, dateFilterValidation, ocrAudit, providerIssue, quotaExceeded: providerIssue?.code === "APIFY_QUOTA_EXCEEDED" };
   });
 }
 

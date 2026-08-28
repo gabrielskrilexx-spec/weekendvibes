@@ -1,7 +1,7 @@
 import React from "react";
 import { act, create } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import AdminRoutinePanel, { buildOcrEditInput, isChunkNetworkError, retryChunkNetwork } from "./AdminRoutinePanel";
+import AdminRoutinePanel, { buildOcrEditInput, getApifyQuotaNotice, isChunkNetworkError, retryChunkNetwork } from "./AdminRoutinePanel";
 
 let statusState: {
   data?: {
@@ -136,6 +136,11 @@ describe("chunk network resilience", () => {
 });
 
 describe("AdminRoutinePanel", () => {
+  it("identifica quota excedida como limitação do provedor", () => {
+    expect(getApifyQuotaNotice({ quotaExceeded: true, providerIssue: { code: "APIFY_QUOTA_EXCEEDED", message: "Cota mensal do Apify excedida." } })).toBe("Cota mensal do Apify excedida.");
+    expect(getApifyQuotaNotice({ quotaExceeded: false, providerIssue: { code: "HTTP_403" } })).toBeNull();
+    expect(getApifyQuotaNotice(null)).toBeNull();
+  });
   it("exibe loading e erro da consulta do schedule", async () => {
     statusState = { isLoading: true, isError: false };
     let loadingTree: ReturnType<typeof create>;
