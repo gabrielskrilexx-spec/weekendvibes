@@ -2041,3 +2041,10 @@
 - [x] Adicionar regressão de 403/200 para sessão autenticada
 - [x] Reiniciar Express, validar build e testar o preview
 - [x] Publicar checkpoint da correção de autorização
+
+- [x] Auditar os botões React e confirmar fetch REST, credentials include e Authorization Bearer
+- [x] Criar script temporário de validação HTTP viva contra o preview
+- [x] Executar a prova real com manus-cookie e Bearer, sem Vitest/mocks
+- [x] Corrigir, limpar cache e reiniciar se a prova retornar algo diferente de HTTP 200
+- [x] Validar build somente após a prova HTTP 200 com JSON `{ success: true }`
+- [x] Publicar checkpoint e entregar a saída crua do script
