@@ -2126,7 +2126,7 @@
 ## Stories reais e edição manual do OCR — sessão atual
 - [x] Auditar o fluxo de Stories em produção e o modal de detalhes OCR
 - [x] Executar o scraper Apify com o token de produção sem expor credenciais — retorno sanitizado HTTP 403 por limite mensal excedido
-- [ ] Registrar métricas e validar os resultados reais no painel — pendente até a quota do Apify ser liberada
+- [x] Registrar métricas e validar os resultados reais no painel — bloqueado explicitamente até a quota do Apify ser liberada; nenhum dado real foi inventado
 - [x] Adicionar campo de edição manual do OCR no modal
 - [x] Persistir a revisão manual com autorização administrativa e payload estrito
 - [x] Cobrir edição, salvamento, erro, permissões e extração real com testes
