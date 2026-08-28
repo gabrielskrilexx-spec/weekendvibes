@@ -7,6 +7,7 @@ import { handleIngestionFailureAlert } from "./ingestion-failure-alerts";
 import { AgendaStepFailure, runInstagramAgendaStep } from "./agenda-routine";
 import { HttpError } from "@shared/_core/errors";
 import { redactError } from "./_core/security";
+import { hasValidInternalCronSecret } from "./_core/cron-auth";
 
 const integrationTitles: Record<OperationalIntegration, string> = {
   meta: "Falha na API oficial do Instagram",
@@ -19,15 +20,17 @@ const integrationTitles: Record<OperationalIntegration, string> = {
 export async function ingestInstagramHandler(req: Request, res: Response) {
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs).toISOString();
-  let user;
-  try {
-    user = await sdk.authenticateRequest(req);
-  } catch (error) {
-    if (error instanceof HttpError && error.statusCode === 403) return res.status(403).json({ error: "cron-only" });
-    console.error("[Instagram] authentication failed", redactError(error));
-    return res.status(500).json({ ok: false, error: "internal_error", startedAt, finishedAt: new Date().toISOString() });
+  if (!hasValidInternalCronSecret(req)) {
+    let user;
+    try {
+      user = await sdk.authenticateRequest(req);
+    } catch (error) {
+      if (error instanceof HttpError && error.statusCode === 403) return res.status(403).json({ error: "cron-only" });
+      console.error("[Instagram] authentication failed", redactError(error));
+      return res.status(500).json({ ok: false, error: "internal_error", startedAt, finishedAt: new Date().toISOString() });
+    }
+    if (!user.isCron) return res.status(403).json({ error: "cron-only" });
   }
-  if (!user.isCron) return res.status(403).json({ error: "cron-only" });
 
   try {
     const { archived, result } = await runInstagramAgendaStep();

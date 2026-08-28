@@ -6,6 +6,7 @@ import { sdk } from "./_core/sdk";
 import { HttpError } from "@shared/_core/errors";
 import { evaluateCriticalFreshnessAlerts, finishIngestionRun, startIngestionRun } from "./ingestion-reports";
 import { redactError } from "./_core/security";
+import { hasValidInternalCronSecret } from "./_core/cron-auth";
 
 const MONITORED_ROUTINES = ["full-agenda", "instagram-agenda", "scheduled-instagram"] as const;
 const MAX_HEARTBEAT_AGE_MS = 26 * 60 * 60 * 1000;
@@ -24,15 +25,21 @@ export async function heartbeatMonitorHandler(req: Request, res: Response) {
   const startedAt = new Date().toISOString();
   let monitorRunId: number | undefined;
   try {
-    let user;
-    try {
-      user = await sdk.authenticateRequest(req);
-    } catch (error) {
-      if (error instanceof HttpError && error.statusCode === 403) return res.status(403).json({ error: "cron-only" });
-      console.error("[HeartbeatMonitor] failed", redactError(error));
-      return res.status(500).json(errorPayload(error, startedAt));
+    let taskUid: string;
+    if (hasValidInternalCronSecret(req)) {
+      taskUid = "internal-cron";
+    } else {
+      let user;
+      try {
+        user = await sdk.authenticateRequest(req);
+      } catch (error) {
+        if (error instanceof HttpError && error.statusCode === 403) return res.status(403).json({ error: "cron-only" });
+        console.error("[HeartbeatMonitor] failed", redactError(error));
+        return res.status(500).json(errorPayload(error, startedAt));
+      }
+      if (!user.isCron || !user.taskUid) return res.status(403).json({ error: "cron-only" });
+      taskUid = user.taskUid;
     }
-    if (!user.isCron || !user.taskUid) return res.status(403).json({ error: "cron-only" });
 
     const db = await getDb();
     if (!db) return res.status(503).json({ ok: false, error: "database-unavailable", startedAt, finishedAt: new Date().toISOString() });
@@ -53,7 +60,7 @@ export async function heartbeatMonitorHandler(req: Request, res: Response) {
     const persistedEventCount = Number(persisted?.count ?? 0);
     const healthy = Boolean(latest && latest.status === "succeeded" && isRecent);
     const snapshot = {
-      taskUid: user.taskUid,
+      taskUid,
       healthy,
       latestRun: latest ? { id: latest.id, routine: latest.routine, status: latest.status, importedCount: latest.importedCount, failedCount: latest.failedCount, finishedAt: latest.finishedAt } : null,
       latestRunAgeMs: latestFinishedAt ? Math.max(0, now - latestFinishedAt) : null,

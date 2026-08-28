@@ -14,6 +14,7 @@ import { serveStatic, setupVite } from "./vite";
 import { applySecurityHeaders, createRateLimit, createStrictCors } from "./security";
 import { registerMapsJavascriptRoute } from "../maps-javascript";
 import { registerAdminRestRoutes } from "../admin-rest";
+import { hasValidInternalCronSecret } from "./cron-auth";
 
 async function startServer() {
   const app = express();
@@ -41,6 +42,10 @@ async function startServer() {
     res.setHeader("Expires", "0");
     next();
   };
+  app.post("/api/scheduled/health", noStoreScheduledResponse, (req, res) => {
+    if (!hasValidInternalCronSecret(req)) return res.status(403).json({ ok: false, error: "cron-only" });
+    return res.json({ ok: true });
+  });
   app.post("/api/scheduled/ingest-events", noStoreScheduledResponse, ingestEventsHandler);
   app.post("/api/scheduled/ingest-full-agenda", noStoreScheduledResponse, ingestFullAgendaHandler);
   app.post("/api/scheduled/ingest-event-documents", noStoreScheduledResponse, ingestAgentDocumentsHandler);

@@ -5,6 +5,7 @@ import * as failureAlerts from "./ingestion-failure-alerts";
 import { HttpError } from "@shared/_core/errors";
 import { redactError } from "./_core/security";
 import { notifyOwner } from "./_core/notification";
+import { hasValidInternalCronSecret } from "./_core/cron-auth";
 
 function buildPublicAutomationSummary(result: unknown, startedAt: string, finishedAt: string) {
   const value = result && typeof result === "object" ? result as Record<string, unknown> : {};
@@ -22,17 +23,19 @@ function buildPublicAutomationSummary(result: unknown, startedAt: string, finish
 
 export async function ingestEventsHandler(req: Request, res: Response) {
   const startedAt = new Date().toISOString();
-  let user;
-  try {
-    user = await sdk.authenticateRequest(req);
-  } catch (error) {
-    if (error instanceof HttpError && error.statusCode === 403) {
-      return res.status(403).json({ error: "cron-only" });
+  if (!hasValidInternalCronSecret(req)) {
+    let user;
+    try {
+      user = await sdk.authenticateRequest(req);
+    } catch (error) {
+      if (error instanceof HttpError && error.statusCode === 403) {
+        return res.status(403).json({ error: "cron-only" });
+      }
+      console.error("[Scheduled] authentication failed", redactError(error));
+      return res.status(500).json({ error: "internal_error" });
     }
-    console.error("[Scheduled] authentication failed", redactError(error));
-    return res.status(500).json({ error: "internal_error" });
+    if (!user.isCron) return res.status(403).json({ error: "cron-only" });
   }
-  if (!user.isCron) return res.status(403).json({ error: "cron-only" });
   try {
     const configuredSource = process.env.INGESTION_SOURCE_URL ?? process.env.INGESTION_SOURCE_URLS;
     if (configuredSource !== undefined && configuredSource.trim() === "") {
@@ -76,15 +79,17 @@ export async function ingestEventsHandler(req: Request, res: Response) {
 
 export async function ingestFullAgendaHandler(req: Request, res: Response) {
   const startedAt = new Date().toISOString();
-  let user;
-  try {
-    user = await sdk.authenticateRequest(req);
-  } catch (error) {
-    if (error instanceof HttpError && error.statusCode === 403) return res.status(403).json({ error: "cron-only" });
-    console.error("[Scheduled] routine failed", redactError(error));
-    return res.status(500).json({ ok: false, error: "internal_error", startedAt, finishedAt: new Date().toISOString() });
+  if (!hasValidInternalCronSecret(req)) {
+    let user;
+    try {
+      user = await sdk.authenticateRequest(req);
+    } catch (error) {
+      if (error instanceof HttpError && error.statusCode === 403) return res.status(403).json({ error: "cron-only" });
+      console.error("[Scheduled] routine failed", redactError(error));
+      return res.status(500).json({ ok: false, error: "internal_error", startedAt, finishedAt: new Date().toISOString() });
+    }
+    if (!user.isCron) return res.status(403).json({ error: "cron-only" });
   }
-  if (!user.isCron) return res.status(403).json({ error: "cron-only" });
   try {
     const result = await agendaRoutine.runFullAgendaRoutine({ trigger: "scheduled" });
     const finishedAt = new Date().toISOString();

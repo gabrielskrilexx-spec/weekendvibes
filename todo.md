@@ -2049,16 +2049,33 @@
 - [x] Validar build somente após a prova HTTP 200 com JSON `{ success: true }`
 - [x] Publicar checkpoint e entregar a saída crua do script
 
-- [ ] Auditar URL pública, rotas REST atuais, proxy reverso e CORS
-- [ ] Versionar as cinco rotas administrativas para `/api/v2/admin/...`
-- [ ] Configurar `trust proxy` e revisar CORS com credenciais e origem segura
-- [ ] Atualizar todos os consumidores fetch e a versão visual para `V2-API-LIVE`
-- [ ] Limpar artefatos, recompilar, reiniciar e validar a URL pública
-- [ ] Publicar checkpoint com a validação do caminho público
+- [x] Auditar URL pública, rotas REST atuais, proxy reverso e CORS
+- [x] Versionar as cinco rotas administrativas para `/api/v2/admin/...`
+- [x] Configurar `trust proxy` e revisar CORS com credenciais e origem segura
+- [x] Atualizar todos os consumidores fetch e a versão visual para `V2-API-LIVE`
+- [x] Limpar artefatos, recompilar, reiniciar e validar a URL pública
+- [x] Publicar checkpoint com a validação do caminho público
 
 ## Migração final REST V2 — sessão atual
 - [x] Atualizar todos os consumidores administrativos para `/api/v2/admin/`
 - [x] Atualizar o identificador visual para `V2-API-LIVE`
 - [x] Validar trust proxy, CORS com credenciais e payloads JSON estritos
 - [x] Limpar artefatos, recompilar e reiniciar o runtime Vite/Express
-- [ ] Validar as rotas V2 no preview público e salvar checkpoint publicado
+- [x] Validar as rotas V2 no preview público e salvar checkpoint publicado
+
+## Correção do cron e confirmação REST V2 — sessão atual
+- [x] Auditar a configuração efetiva do Heartbeat e o endpoint base do Express
+- [x] Injetar `SCHEDULED_TASK_ENDPOINT_BASE` no runtime agendado com a URL pública correta
+- [x] Injetar `SCHEDULED_TASK_COOKIE` sem expor o valor em logs ou código
+- [x] Executar o Heartbeat e confirmar HTTP e ausência do erro de variável ausente
+- [x] Confirmar todos os consumidores frontend em `/api/v2/admin/`
+- [x] Confirmar `V2-API-LIVE`, `trust proxy` e compilação do frontend
+- [x] Executar testes/build e publicar checkpoint somente após as validações
+
+## Autenticação M2M do cron e revalidação V2 — sessão atual
+- [x] Auditar os callbacks agendados e confirmar a forma de autenticação suportada
+- [x] Implementar `INTERNAL_CRON_SECRET` via header `x-cron-secret` com comparação segura
+- [x] Configurar o mesmo segredo no runtime que dispara o callback sem expor JWT humano
+- [x] Adicionar testes de autorização M2M, rejeição e não exposição do segredo
+- [x] Confirmar consumidores `/api/v2/admin/`, `V2-API-LIVE` e `trust proxy`
+- [x] Limpar caches, recompilar, executar callback real e publicar checkpoint
