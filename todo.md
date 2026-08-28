@@ -2104,3 +2104,12 @@
 - [x] Remover somente eventos cujo término real já expirou
 - [x] Cobrir sexta à noite, madrugada de sábado, eventos futuros e limites de horário
 - [x] Validar feed, TypeScript, build e publicar checkpoint público
+
+## Rollover configurável pelo admin — sessão atual
+- [x] Auditar tabela de configurações, router administrativo e tela de ingestão
+- [x] Persistir horário de virada com valor padrão 06:00 e validação segura
+- [x] Expor leitura e atualização somente para administradores
+- [x] Aplicar a configuração ao feed público em America/Sao_Paulo
+- [x] Adicionar campo com loading, erro, sucesso e atualização do feed
+- [x] Cobrir limites, permissões, timezone e reatividade com Vitest
+- [x] Validar migração SQL, TypeScript, build e publicar checkpoint

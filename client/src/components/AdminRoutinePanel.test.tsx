@@ -1,6 +1,6 @@
 import React from "react";
 import { act, create } from "react-test-renderer";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import AdminRoutinePanel, { isChunkNetworkError, retryChunkNetwork } from "./AdminRoutinePanel";
 
 let statusState: {
@@ -51,6 +51,16 @@ let mutationState = { isPending: false };
 const mutate = vi.fn();
 const refetch = vi.fn();
 let statusQueryOptions: Record<string, unknown> | undefined;
+let rolloverHourState = { data: { rolloverHour: 6 }, isLoading: false, isError: false, refetch: vi.fn() };
+
+beforeEach(() => {
+  mutate.mockClear();
+  refetch.mockClear();
+  statusQueryOptions = undefined;
+  statusState = { isLoading: true, isError: false };
+  mutationState = { isPending: false };
+  rolloverHourState = { data: { rolloverHour: 6 }, isLoading: false, isError: false, refetch: vi.fn() };
+});
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
@@ -60,6 +70,18 @@ vi.mock("@/lib/trpc", () => ({
           statusQueryOptions = options;
           return { ...statusState, refetch };
         },
+      },
+      rolloverHour: {
+        useQuery: () => rolloverHourState,
+      },
+      setRolloverHour: {
+        useMutation: (options: { onSuccess?: (result: { success: true; rolloverHour: number }) => void; onError?: (error: Error) => void }) => ({
+          isPending: mutationState.isPending,
+          mutate: (input: { rolloverHour: number }) => {
+            mutate(input);
+            options.onSuccess?.({ success: true, rolloverHour: input.rolloverHour });
+          },
+        }),
       },
       runNow: {
         useMutation: (options: {
@@ -357,6 +379,25 @@ describe("AdminRoutinePanel", () => {
       customInput.props.onChange({ currentTarget: { value: "45" } });
     });
     expect(statusQueryOptions?.refetchInterval).toBe(45_000);
+  });
+
+  it("edita e salva o horário de rollover do feed", async () => {
+    statusState = { isLoading: false, isError: false, data: { nextExecutionAt: "2026-08-18T13:00:00.000Z", timezone: "America/Sao_Paulo", runMode: "full_auto", isRunning: false } };
+    rolloverHourState = { data: { rolloverHour: 6 }, isLoading: false, isError: false, refetch: vi.fn() };
+    let tree: ReturnType<typeof create>;
+    await act(async () => {
+      tree = create(<AdminRoutinePanel />);
+    });
+    const input = tree!.root.findByProps({ "aria-label": "Hora de virada do dia em America/Sao_Paulo" });
+    expect(input.props.value).toBe("6");
+    await act(async () => {
+      input.props.onChange({ currentTarget: { value: "8" } });
+    });
+    expect(tree!.root.findByProps({ "aria-label": "Hora de virada do dia em America/Sao_Paulo" }).props.value).toBe("8");
+    await act(async () => {
+      tree!.root.findByProps({ "aria-label": "Salvar horário de virada do dia" }).props.onClick();
+    });
+    expect(mutate).toHaveBeenCalledWith({ rolloverHour: 8 });
   });
 
   it("confirma o disparo manual e exibe sucesso", async () => {

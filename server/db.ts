@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Event, InsertEvent, InsertUser, events, users, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 
@@ -346,15 +346,46 @@ export function saoPauloHour(date = new Date()) {
   return Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", hour: "2-digit", hourCycle: "h23" }).format(date));
 }
 
-export function getTodayEventWindow(now = new Date(), rolloverHour = 6) {
+const PUBLIC_FEED_ROLLOVER_KEY = "public_feed_rollover_hour";
+export const DEFAULT_PUBLIC_FEED_ROLLOVER_HOUR = 6;
+
+export function normalizePublicFeedRolloverHour(value: unknown, fallback = DEFAULT_PUBLIC_FEED_ROLLOVER_HOUR) {
+  const parsed = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 23 ? parsed : fallback;
+}
+
+export async function getPublicFeedRolloverHour() {
+  const db = await getDb();
+  if (!db) return DEFAULT_PUBLIC_FEED_ROLLOVER_HOUR;
+  try {
+    const [setting] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, PUBLIC_FEED_ROLLOVER_KEY)).limit(1);
+    return normalizePublicFeedRolloverHour(setting?.value);
+  } catch (error) {
+    console.warn("[Settings] Failed to read public feed rollover:", error);
+    return DEFAULT_PUBLIC_FEED_ROLLOVER_HOUR;
+  }
+}
+
+export async function setPublicFeedRolloverHour(value: number) {
+  const hour = normalizePublicFeedRolloverHour(value, -1);
+  if (hour < 0) throw new Error("Horário de virada inválido");
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await db.insert(appSettings).values({ key: PUBLIC_FEED_ROLLOVER_KEY, value: String(hour) }).onDuplicateKeyUpdate({ set: { value: String(hour), updatedAt: new Date() } });
+  return hour;
+}
+
+export function getTodayEventWindow(now = new Date(), rolloverHour = DEFAULT_PUBLIC_FEED_ROLLOVER_HOUR) {
+  const safeRolloverHour = normalizePublicFeedRolloverHour(rolloverHour);
   const dayStartUtc = saoPauloDayStartUtc(now);
-  const startsInRollover = saoPauloHour(now) < rolloverHour;
+  const startsInRollover = saoPauloHour(now) < safeRolloverHour;
   const windowStartUtc = startsInRollover ? new Date(dayStartUtc.getTime() - 24 * 60 * 60 * 1000) : dayStartUtc;
-  return { windowStartUtc, windowEndUtc: saoPauloNextDayStartUtc(now), activeAtUtc: now, rolloverHour };
+  return { windowStartUtc, windowEndUtc: saoPauloNextDayStartUtc(now), activeAtUtc: now, rolloverHour: safeRolloverHour };
 }
 
 export async function listTodayEvents(options: { size?: number } = {}) {
-  const window = getTodayEventWindow();
+  const rolloverHour = await getPublicFeedRolloverHour();
+  const window = getTodayEventWindow(new Date(), rolloverHour);
   return listEvents({ size: options.size ?? 12, windowStartUtc: window.windowStartUtc, windowEndUtc: window.windowEndUtc, activeAtUtc: window.activeAtUtc });
 }
 

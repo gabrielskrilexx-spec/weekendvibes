@@ -7,6 +7,7 @@ import {
   Loader2,
   Play,
   RefreshCw,
+  Save,
   ShieldAlert,
   Eye,
 } from "lucide-react";
@@ -126,6 +127,7 @@ export default function AdminRoutinePanel() {
   } | null>(null);
   const [authRecoveryOpen, setAuthRecoveryOpen] = useState(false);
   const [selectedOcrRun, setSelectedOcrRun] = useState<OcrAuditRun | null>(null);
+  const [rolloverDraft, setRolloverDraft] = useState<string | null>(null);
   const status = trpc.adminRoutine.status.useQuery(undefined, {
     refetchInterval: cronRefreshSeconds > 0 ? cronRefreshSeconds * 1_000 : false,
     refetchIntervalInBackground: false,
@@ -168,6 +170,20 @@ export default function AdminRoutinePanel() {
       sonnerToast.error("Falha na comunicação", { description: message });
     }
   }, [status.isError, status.error]);
+  const rolloverHourQuery = trpc.adminRoutine.rolloverHour.useQuery();
+  const rolloverMutation = trpc.adminRoutine.setRolloverHour.useMutation({
+    onSuccess: result => {
+      setRolloverDraft(String(result.rolloverHour));
+      void rolloverHourQuery.refetch();
+      sonnerToast.success("Horário de virada salvo", { description: `O feed público agora considera ${String(result.rolloverHour).padStart(2, "0")}:00 como a virada do dia.` });
+    },
+    onError: error => {
+      sonnerToast.error("Não foi possível salvar", { description: friendlyAdminErrorMessage(error, "O horário de virada não pôde ser atualizado.") });
+    },
+  });
+  const rolloverValue = rolloverDraft ?? String(rolloverHourQuery.data?.rolloverHour ?? 6);
+  const parsedRolloverHour = Number(rolloverValue);
+  const rolloverIsValid = Number.isInteger(parsedRolloverHour) && parsedRolloverHour >= 0 && parsedRolloverHour <= 23;
   const latestRun = status.data?.recentRuns?.[0];
   const lastSuccessfulCronRun = status.data?.recentRuns?.find(
     run => run.trigger !== "manual" && run.status === "succeeded"
@@ -361,6 +377,38 @@ export default function AdminRoutinePanel() {
                       />
                     </label>
                   )}
+                </div>
+              </div>
+              <div className="mt-3 flex flex-col gap-3 rounded-2xl border border-violet-300/20 bg-violet-300/5 px-3 py-3 text-xs sm:flex-row sm:items-end sm:justify-between" data-testid="cron-rollover-settings">
+                <div>
+                  <p className="font-black uppercase tracking-[0.14em] text-violet-100">Virada do dia no feed</p>
+                  <p className="mt-1 max-w-xl text-zinc-500">Eventos da madrugada permanecem em “Hoje” até este horário local.</p>
+                </div>
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="flex min-h-10 flex-col gap-1 text-[11px] font-bold uppercase tracking-wide text-zinc-400">
+                    <span>Hora · America/Sao_Paulo</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={23}
+                      step={1}
+                      value={rolloverValue}
+                      onChange={event => setRolloverDraft(event.currentTarget.value)}
+                      className="min-h-10 w-24 rounded-xl border border-white/15 bg-zinc-900 px-3 py-2 text-sm font-black normal-case tracking-normal text-zinc-100 outline-none focus:border-violet-300/60 focus-visible:ring-2 focus-visible:ring-violet-300/40"
+                      aria-label="Hora de virada do dia em America/Sao_Paulo"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => rolloverMutation.mutate({ rolloverHour: parsedRolloverHour })}
+                    disabled={!rolloverIsValid || rolloverMutation.isPending || rolloverHourQuery.isLoading}
+                    aria-busy={rolloverMutation.isPending}
+                    aria-label="Salvar horário de virada do dia"
+                    className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-violet-300 px-3 py-2 text-sm font-black text-zinc-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {rolloverMutation.isPending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                    {rolloverMutation.isPending ? "Salvando…" : "Salvar horário"}
+                  </button>
                 </div>
               </div>
             </>

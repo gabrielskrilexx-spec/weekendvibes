@@ -26,6 +26,8 @@ import {
   listUserReminders,
   listIngestionSources,
   updateIngestionSource,
+  getPublicFeedRolloverHour,
+  setPublicFeedRolloverHour,
 } from "./db";
 import { invokeLLM } from "./_core/llm";
 import { isSandboxRestrictedError } from "./external-fetch";
@@ -337,6 +339,20 @@ export const appRouter = router({
       }),
   }),
   adminRoutine: router({
+    rolloverHour: adminOnly
+      .output(z.object({ rolloverHour: z.number().int().min(0).max(23) }).strict())
+      .query(async () => ({ rolloverHour: await getPublicFeedRolloverHour() })),
+    setRolloverHour: adminOnly
+      .input(z.object({ rolloverHour: z.number().int().min(0).max(23) }).strict())
+      .output(z.object({ success: z.literal(true), rolloverHour: z.number().int().min(0).max(23) }).strict())
+      .mutation(async ({ input }) => {
+        try {
+          const rolloverHour = await setPublicFeedRolloverHour(input.rolloverHour);
+          return { success: true as const, rolloverHour };
+        } catch (error) {
+          return throwSanitizedAdminMutationError(error, "Não foi possível salvar o horário de virada.");
+        }
+      }),
     status: adminOnly.query(async () =>
       normalizeJsonForTransport(await getWednesdayRoutineStatus())
     ),
