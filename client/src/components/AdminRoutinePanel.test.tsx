@@ -50,11 +50,17 @@ let statusState: {
 let mutationState = { isPending: false };
 const mutate = vi.fn();
 const refetch = vi.fn();
+let statusQueryOptions: Record<string, unknown> | undefined;
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     adminRoutine: {
-      status: { useQuery: () => ({ ...statusState, refetch }) },
+      status: {
+        useQuery: (_input?: unknown, options?: Record<string, unknown>) => {
+          statusQueryOptions = options;
+          return { ...statusState, refetch };
+        },
+      },
       runNow: {
         useMutation: (options: {
           onSuccess?: (result: unknown) => void;
@@ -319,6 +325,38 @@ describe("AdminRoutinePanel", () => {
     });
     expect(refetch).toHaveBeenCalled();
     expect(refreshButton.props["aria-busy"]).not.toBe(true);
+  });
+
+  it("permite configurar presets e intervalo personalizado do polling", async () => {
+    statusState = {
+      isLoading: false,
+      isError: false,
+      data: {
+        nextExecutionAt: "2026-08-18T13:00:00.000Z",
+        timezone: "America/Sao_Paulo",
+        runMode: "full_auto",
+        isRunning: false,
+      },
+    };
+    let tree: ReturnType<typeof create>;
+    await act(async () => {
+      tree = create(<AdminRoutinePanel />);
+    });
+    expect(statusQueryOptions?.refetchInterval).toBe(60_000);
+    const intervalSelect = tree!.root.findByProps({ id: "cron-refresh-interval" });
+    await act(async () => {
+      intervalSelect.props.onChange({ currentTarget: { value: "300" } });
+    });
+    expect(statusQueryOptions?.refetchInterval).toBe(300_000);
+    await act(async () => {
+      tree!.root.findByProps({ id: "cron-refresh-interval" }).props.onChange({ currentTarget: { value: "-1" } });
+    });
+    const customInput = tree!.root.findByProps({ "aria-label": "Intervalo personalizado em segundos" });
+    expect(customInput.props.value).toBe(60);
+    await act(async () => {
+      customInput.props.onChange({ currentTarget: { value: "45" } });
+    });
+    expect(statusQueryOptions?.refetchInterval).toBe(45_000);
   });
 
   it("confirma o disparo manual e exibe sucesso", async () => {

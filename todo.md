@@ -2092,3 +2092,8 @@
 - [x] Adicionar botão ao lado do indicador do cron
 - [x] Refazer apenas a consulta de status com loading e feedback acessível
 - [x] Cobrir o comportamento em teste e validar build antes do checkpoint
+
+## Polling configurável do cron — sessão atual
+- [x] Adicionar presets e intervalo personalizado ao painel
+- [x] Persistir a preferência localmente e aplicar o intervalo ao polling do status
+- [x] Cobrir presets, customização, TypeScript, suíte completa e build

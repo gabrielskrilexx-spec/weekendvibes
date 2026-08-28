@@ -64,6 +64,30 @@ const statusTone = (status: string) =>
         ? "bg-orange-300"
         : "bg-red-300";
 
+const CRON_REFRESH_STORAGE_KEY = "weekendvibes.admin.cronRefresh";
+const CRON_REFRESH_PRESETS = [
+  { value: 0, label: "Desativada" },
+  { value: 30, label: "A cada 30 segundos" },
+  { value: 60, label: "A cada 1 minuto" },
+  { value: 300, label: "A cada 5 minutos" },
+  { value: 900, label: "A cada 15 minutos" },
+  { value: -1, label: "Personalizada" },
+] as const;
+
+function readCronRefreshPreference() {
+  if (typeof window === "undefined") return { mode: 60, customSeconds: 60 };
+  try {
+    const raw = window.localStorage.getItem(CRON_REFRESH_STORAGE_KEY);
+    if (!raw) return { mode: 60, customSeconds: 60 };
+    const parsed = JSON.parse(raw) as { mode?: unknown; customSeconds?: unknown };
+    const mode = typeof parsed.mode === "number" && CRON_REFRESH_PRESETS.some(option => option.value === parsed.mode) ? parsed.mode : 60;
+    const customSeconds = typeof parsed.customSeconds === "number" && Number.isFinite(parsed.customSeconds) ? Math.min(3600, Math.max(15, Math.round(parsed.customSeconds))) : 60;
+    return { mode, customSeconds };
+  } catch {
+    return { mode: 60, customSeconds: 60 };
+  }
+}
+
 type OcrAuditItem = {
   mediaOrigin: "post" | "story" | "highlight";
   imageUrl: string;
@@ -94,6 +118,8 @@ export async function retryChunkNetwork<T>(work: () => Promise<T>, maxRetries = 
 }
 
 export default function AdminRoutinePanel() {
+  const [cronRefreshPreference, setCronRefreshPreference] = useState(readCronRefreshPreference);
+  const cronRefreshSeconds = cronRefreshPreference.mode === -1 ? cronRefreshPreference.customSeconds : cronRefreshPreference.mode;
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
     text: string;
@@ -101,7 +127,8 @@ export default function AdminRoutinePanel() {
   const [authRecoveryOpen, setAuthRecoveryOpen] = useState(false);
   const [selectedOcrRun, setSelectedOcrRun] = useState<OcrAuditRun | null>(null);
   const status = trpc.adminRoutine.status.useQuery(undefined, {
-    refetchInterval: 1_000,
+    refetchInterval: cronRefreshSeconds > 0 ? cronRefreshSeconds * 1_000 : false,
+    refetchIntervalInBackground: false,
   });
   const legacyRunNow = trpc.adminRoutine.runNow.useMutation({
     onSuccess: () => {
@@ -124,6 +151,13 @@ export default function AdminRoutinePanel() {
   const [chunkIndex, setChunkIndex] = useState(0);
   const [activeChunkRetry, setActiveChunkRetry] = useState<number | null>(null);
   const [chunkSummary, setChunkSummary] = useState<{ success: number; failure: number; timeout: number } | null>(null);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CRON_REFRESH_STORAGE_KEY, JSON.stringify(cronRefreshPreference));
+    } catch {
+      // A preferência local indisponível não deve interromper o painel.
+    }
+  }, [cronRefreshPreference]);
   useEffect(() => {
     if (status.isError) {
       const message = friendlyAdminErrorMessage(
@@ -296,6 +330,38 @@ export default function AdminRoutinePanel() {
                 ) : (
                   <p className="mt-1 text-zinc-500">Nenhuma sincronização automática concluída ainda.</p>
                 )}
+              </div>
+              <div className="mt-3 flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/10 px-3 py-3 text-xs sm:flex-row sm:items-center sm:justify-between" data-testid="cron-refresh-settings">
+                <div>
+                  <p className="font-black uppercase tracking-[0.14em] text-zinc-300">Atualização automática</p>
+                  <p className="mt-1 text-zinc-500">Atualiza somente o status do cron, sem recarregar a página.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label htmlFor="cron-refresh-interval" className="sr-only">Intervalo de atualização do cron</label>
+                  <select
+                    id="cron-refresh-interval"
+                    value={cronRefreshPreference.mode}
+                    onChange={event => setCronRefreshPreference(current => ({ ...current, mode: Number(event.currentTarget.value) }))}
+                    className="min-h-10 rounded-xl border border-white/15 bg-zinc-900 px-3 py-2 font-bold text-zinc-100 outline-none focus:border-cyan-300/60 focus-visible:ring-2 focus-visible:ring-cyan-300/40"
+                  >
+                    {CRON_REFRESH_PRESETS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                  {cronRefreshPreference.mode === -1 && (
+                    <label className="flex min-h-10 items-center gap-2 rounded-xl border border-white/15 bg-zinc-900 px-3 py-1 text-zinc-400">
+                      <span>Seg.</span>
+                      <input
+                        type="number"
+                        min={15}
+                        max={3600}
+                        step={15}
+                        value={cronRefreshPreference.customSeconds}
+                        onChange={event => setCronRefreshPreference(current => ({ ...current, customSeconds: Math.min(3600, Math.max(15, Number(event.currentTarget.value) || 15)) }))}
+                        className="w-20 bg-transparent text-right font-bold text-zinc-100 outline-none"
+                        aria-label="Intervalo personalizado em segundos"
+                      />
+                    </label>
+                  )}
+                </div>
               </div>
             </>
           )}
