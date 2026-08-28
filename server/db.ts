@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, gte, inArray, like, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { Event, InsertEvent, InsertUser, events, users, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
@@ -342,15 +342,29 @@ export function saoPauloNextDayStartUtc(date = new Date()) {
   return new Date(saoPauloDayStartUtc(date).getTime() + 24 * 60 * 60 * 1000);
 }
 
-export async function listTodayEvents(options: { size?: number } = {}) {
-  return listEvents({ date: saoPauloDateKey(), size: options.size ?? 12 });
+export function saoPauloHour(date = new Date()) {
+  return Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", hour: "2-digit", hourCycle: "h23" }).format(date));
 }
 
-export async function listEvents(filters: { day?: string; date?: string; startDate?: string; endDate?: string; timeFrom?: string; timeTo?: string; city?: string; category?: string; genre?: string; venue?: string; neighborhood?: string; minPriceCents?: number; maxPriceCents?: number; page?: number; size?: number } = {}) {
+export function getTodayEventWindow(now = new Date(), rolloverHour = 6) {
+  const dayStartUtc = saoPauloDayStartUtc(now);
+  const startsInRollover = saoPauloHour(now) < rolloverHour;
+  const windowStartUtc = startsInRollover ? new Date(dayStartUtc.getTime() - 24 * 60 * 60 * 1000) : dayStartUtc;
+  return { windowStartUtc, windowEndUtc: saoPauloNextDayStartUtc(now), activeAtUtc: now, rolloverHour };
+}
+
+export async function listTodayEvents(options: { size?: number } = {}) {
+  const window = getTodayEventWindow();
+  return listEvents({ size: options.size ?? 12, windowStartUtc: window.windowStartUtc, windowEndUtc: window.windowEndUtc, activeAtUtc: window.activeAtUtc });
+}
+
+export async function listEvents(filters: { day?: string; date?: string; startDate?: string; endDate?: string; timeFrom?: string; timeTo?: string; city?: string; category?: string; genre?: string; venue?: string; neighborhood?: string; minPriceCents?: number; maxPriceCents?: number; page?: number; size?: number; windowStartUtc?: Date; windowEndUtc?: Date; activeAtUtc?: Date } = {}) {
   const db = await getDb();
   if (!db) return [];
-  const dayStartUtc = saoPauloDayStartUtc();
+  const dayStartUtc = filters.windowStartUtc ?? saoPauloDayStartUtc();
   const conditions = [eq(events.isPublished, 1), eq(events.isArchived, 0), gte(events.eventDate, dayStartUtc), sql`${events.city} IN (${sql.join(ALLOWED_CITIES.map(city => sql`${city}`), sql`, `)})`];
+  if (filters.windowEndUtc) conditions.push(lt(events.eventDate, filters.windowEndUtc));
+  if (filters.activeAtUtc) conditions.push(or(isNull(events.endDate), gt(events.endDate, filters.activeAtUtc))!);
   if (filters.city && filters.city !== "Todas" && ALLOWED_CITIES.includes(filters.city as typeof ALLOWED_CITIES[number])) conditions.push(eq(events.city, filters.city));
   if (filters.category && filters.category !== "Todas") conditions.push(eq(events.category, filters.category as Event["category"]));
   if (filters.genre) conditions.push(eq(events.genre, filters.genre));

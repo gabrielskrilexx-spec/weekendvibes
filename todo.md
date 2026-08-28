@@ -2097,3 +2097,10 @@
 - [x] Adicionar presets e intervalo personalizado ao painel
 - [x] Persistir a preferência localmente e aplicar o intervalo ao polling do status
 - [x] Cobrir presets, customização, TypeScript, suíte completa e build
+
+## Rollover noturno no feed público — sessão atual
+- [x] Auditar a query pública de hoje, helpers de timezone e testes de datas
+- [x] Implementar janela de visibilidade até 06:00 em America/Sao_Paulo
+- [x] Remover somente eventos cujo término real já expirou
+- [x] Cobrir sexta à noite, madrugada de sábado, eventos futuros e limites de horário
+- [x] Validar feed, TypeScript, build e publicar checkpoint público
