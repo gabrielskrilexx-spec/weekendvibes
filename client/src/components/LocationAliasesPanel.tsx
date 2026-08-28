@@ -3,6 +3,7 @@ import { Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { postAdminJson } from "@/lib/admin-rest";
+import { friendlyAdminErrorMessage } from "@/lib/adminFeedback";
 
 type City = "Santos" | "Guarujá";
 type AliasForm = { alias: string; canonicalName: string; city: City; isActive: boolean };
@@ -28,7 +29,7 @@ export default function LocationAliasesPanel() {
       sonnerToast.success("Alias removido", { description: "A lista foi atualizada." });
       await utils.locationAliases.list.invalidate();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Tente novamente.";
+      const message = friendlyAdminErrorMessage(error, "Tente novamente.");
       setNotice(message);
       sonnerToast.error("Não foi possível remover o alias", { description: message });
     } finally {

@@ -6,6 +6,13 @@ export type AdminRestAck = {
   [key: string]: unknown;
 };
 
+export class AdminRestError extends Error {
+  constructor(message: string, public readonly status: number, public readonly code?: string) {
+    super(message);
+    this.name = "AdminRestError";
+  }
+}
+
 function getPreviewAuthHeaders(): Record<string, string> {
   try {
     if (typeof sessionStorage === "undefined") return {};
@@ -30,22 +37,24 @@ export async function postAdminJson<T extends AdminRestAck>(path: string, body: 
       body: JSON.stringify(body),
     });
   } catch {
-    throw new Error("Não foi possível comunicar com o servidor. Verifique a conexão e tente novamente.");
+    throw new AdminRestError("network_error", 0, "NETWORK_ERROR");
   }
 
   let payload: unknown;
   try {
     payload = await response.json();
   } catch {
-    throw new Error("O servidor retornou uma resposta inválida. Tente novamente.");
+    throw new AdminRestError("invalid_response", response.status, "INVALID_RESPONSE");
   }
 
   if (!payload || typeof payload !== "object") {
-    throw new Error("O servidor retornou uma resposta inválida. Tente novamente.");
+    throw new AdminRestError("invalid_response", response.status, "INVALID_RESPONSE");
   }
   const result = payload as T;
   if (!response.ok || result.success !== true) {
-    throw new Error(typeof result.message === "string" && result.message.length > 0 ? result.message : "A operação administrativa não foi concluída.");
+    const payloadMessage = typeof result.message === "string" && result.message.length > 0 ? result.message : "A operação administrativa não foi concluída.";
+    const code = typeof result.code === "string" ? result.code : response.status === 401 ? "UNAUTHORIZED" : response.status === 403 ? "FORBIDDEN" : response.status >= 500 ? "SERVER_ERROR" : "ADMIN_OPERATION_FAILED";
+    throw new AdminRestError(payloadMessage, response.status, code);
   }
   return result;
 }

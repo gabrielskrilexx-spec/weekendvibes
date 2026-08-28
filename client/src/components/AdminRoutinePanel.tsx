@@ -134,6 +134,9 @@ export default function AdminRoutinePanel() {
     }
   }, [status.isError, status.error]);
   const latestRun = status.data?.recentRuns?.[0];
+  const lastSuccessfulCronRun = status.data?.recentRuns?.find(
+    run => run.trigger !== "manual" && run.status === "succeeded"
+  );
   const progress =
     status.data && "progress" in status.data ? status.data.progress : undefined;
   const progressPercent = progress
@@ -271,6 +274,19 @@ export default function AdminRoutinePanel() {
                   </strong>
                 </p>
               )}
+              <div className="mt-4 rounded-2xl border border-emerald-300/20 bg-emerald-300/5 px-3 py-3 text-xs" data-testid="last-successful-cron-sync" aria-live="polite">
+                <div className="flex items-center gap-2 text-emerald-200">
+                  <CheckCircle2 size={14} aria-hidden="true" />
+                  <span className="font-black uppercase tracking-[0.16em]">Última sincronização bem-sucedida</span>
+                </div>
+                {lastSuccessfulCronRun ? (
+                  <p className="mt-1 text-zinc-300">
+                    {formatExecution(lastSuccessfulCronRun.finishedAt ?? lastSuccessfulCronRun.startedAt)} · status <strong className="text-emerald-200">Sucesso</strong>
+                  </p>
+                ) : (
+                  <p className="mt-1 text-zinc-500">Nenhuma sincronização automática concluída ainda.</p>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -281,15 +297,15 @@ export default function AdminRoutinePanel() {
             chunkRunning || runSource.isPending || legacyRunNow.isPending || status.data?.isRunning || status.isLoading
           }
           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-400 to-fuchsia-500 px-4 py-3 text-sm font-black text-zinc-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-          aria-label="Executar rotina de quarta-feira agora"
-          title="Executar rotina de quarta-feira agora"
+          aria-label="Executar ingestão manual agora"
+          title="Executar ingestão manual agora"
         >
           {chunkRunning || runSource.isPending || legacyRunNow.isPending ? (
             <Loader2 size={16} className="animate-spin" />
           ) : (
             <Play size={16} />
           )}{" "}
-          {chunkRunning || runSource.isPending || legacyRunNow.isPending ? `Fonte ${chunkIndex + 1}/${chunkSources.data?.sources?.length ?? "…"}` : "Executar agora"}
+          {chunkRunning || runSource.isPending || legacyRunNow.isPending ? `Fonte ${chunkIndex + 1}/${chunkSources.data?.sources?.length ?? "…"}` : "Executar ingestão manual"}
         </button>
       </div>
       <div className="mt-5 flex items-start gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 text-xs text-zinc-400">

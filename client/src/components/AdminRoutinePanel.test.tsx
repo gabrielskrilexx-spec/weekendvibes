@@ -243,6 +243,59 @@ describe("AdminRoutinePanel", () => {
     expect(dialog.props["data-ocr-entry-count"]).toBe(1);
   });
 
+  it("exibe a data e o status da última sincronização automática bem-sucedida", async () => {
+    statusState = {
+      isLoading: false,
+      isError: false,
+      data: {
+        nextExecutionAt: "2026-08-18T13:00:00.000Z",
+        timezone: "America/Sao_Paulo",
+        runMode: "full_auto",
+        isRunning: false,
+        recentRuns: [
+          {
+            id: 92,
+            routine: "manual-agenda",
+            trigger: "manual",
+            status: "partial",
+            startedAt: "2026-08-27T12:00:00.000Z",
+            finishedAt: "2026-08-27T12:00:02.000Z",
+            httpStatus: 200,
+            durationMs: 2000,
+            expurgatedCount: 0,
+            readCount: 1,
+            processedCount: 1,
+            persistedEventIds: [1],
+            dateFilterValidation: null,
+          },
+          {
+            id: 91,
+            routine: "instagram-agenda",
+            trigger: "automatic",
+            status: "succeeded",
+            startedAt: "2026-08-26T12:00:00.000Z",
+            finishedAt: "2026-08-26T12:00:03.000Z",
+            httpStatus: 200,
+            durationMs: 3000,
+            expurgatedCount: 0,
+            readCount: 3,
+            processedCount: 2,
+            persistedEventIds: [2],
+            dateFilterValidation: null,
+          },
+        ],
+      },
+    };
+    let tree: ReturnType<typeof create>;
+    await act(async () => {
+      tree = create(<AdminRoutinePanel />);
+    });
+    const rendered = JSON.stringify(tree!.toJSON());
+    expect(rendered).toContain("Última sincronização bem-sucedida");
+    expect(rendered).toContain("Sucesso");
+    expect(rendered).toContain("26 de agosto de 2026");
+  });
+
   it("confirma o disparo manual e exibe sucesso", async () => {
     statusState = {
       isLoading: false,

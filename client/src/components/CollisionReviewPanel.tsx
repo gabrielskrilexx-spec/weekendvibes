@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { CheckCircle2, GitCompareArrows, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { postAdminJson } from "@/lib/admin-rest";
+import { friendlyAdminErrorMessage } from "@/lib/adminFeedback";
+import { toast as sonnerToast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 const formatDate = (value: Date | string) => new Date(value).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
@@ -52,7 +54,9 @@ export default function CollisionReviewPanel() {
       void utils.events.list.invalidate();
     } catch (error) {
       setPending(null);
-      setNotice(`Não foi possível remover: ${getDeleteCollisionErrorMessage(error)}`);
+      const message = friendlyAdminErrorMessage(error, getDeleteCollisionErrorMessage(error));
+      setNotice(`Não foi possível remover: ${message}`);
+      sonnerToast.error("Falha ao resolver a colisão", { description: message });
     } finally {
       setIsRemovingSingle(false);
     }
@@ -70,7 +74,9 @@ export default function CollisionReviewPanel() {
       await collisions.refetch();
       await utils.events.list.invalidate();
     } catch (error) {
-      setNotice(`Não foi possível resolver as colisões: ${getDeleteCollisionErrorMessage(error)}`);
+      const message = friendlyAdminErrorMessage(error, getDeleteCollisionErrorMessage(error));
+      setNotice(`Não foi possível resolver as colisões: ${message}`);
+      sonnerToast.error("Falha ao resolver as colisões", { description: message });
     } finally {
       setResolveAction(null);
     }

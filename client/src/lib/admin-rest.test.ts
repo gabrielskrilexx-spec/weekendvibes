@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { COOKIE_NAME } from "@shared/const";
-import { postAdminJson } from "./admin-rest";
+import { AdminRestError, postAdminJson } from "./admin-rest";
 
 describe("postAdminJson authentication transport", () => {
   afterEach(() => {
@@ -18,10 +18,10 @@ describe("postAdminJson authentication transport", () => {
       getItem: vi.fn().mockReturnValue(`${COOKIE_NAME}=preview-token-123`),
     });
 
-    await postAdminJson("/api/admin/sync-stories", { sourceKey: "instagram:test" });
+    await postAdminJson("/api/v2/admin/sync-stories", { sourceKey: "instagram:test" });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/admin/sync-stories",
+      "/api/v2/admin/sync-stories",
       expect.objectContaining({
         credentials: "include",
         headers: {
@@ -31,5 +31,19 @@ describe("postAdminJson authentication transport", () => {
         },
       }),
     );
+  });
+
+  it("preserves a 403 REST response as a typed admin error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ success: false, message: "Acesso negado" }),
+    }));
+
+    await expect(postAdminJson("/api/v2/admin/remove-events", { ids: [1] })).rejects.toMatchObject({
+      name: "AdminRestError",
+      status: 403,
+      code: "FORBIDDEN",
+    } satisfies Partial<AdminRestError>);
   });
 });

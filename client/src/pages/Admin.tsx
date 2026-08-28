@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { ArrowLeft, Loader2, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { postAdminJson } from "@/lib/admin-rest";
+import { friendlyAdminErrorMessage } from "@/lib/adminFeedback";
 import AdminRoutinePanel from "@/components/AdminRoutinePanel";
 import AdminLiveLogsPanel from "@/components/AdminLiveLogsPanel";
 import AdminReportsPanel from "@/components/AdminReportsPanel";
@@ -64,7 +65,7 @@ export default function Admin() {
       if (action === "approve") utils.events.list.setData({ size: 100 }, current => current?.map(event => result.ids.includes(String(event.id)) ? { ...event, isPublished: 1 } : event));
       void events.refetch();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Tente novamente.";
+      const message = friendlyAdminErrorMessage(error, "Tente novamente.");
       setNotice(`Não foi possível ${action === "approve" ? "aprovar" : "remover"} os eventos: ${message}`);
       sonnerToast.error(action === "approve" ? "Falha na aprovação em massa" : "Falha na remoção em massa", { description: message });
     } finally {

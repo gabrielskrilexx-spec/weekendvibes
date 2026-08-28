@@ -3,6 +3,7 @@ import { CheckCircle2, Clock3, Loader2, Power, RefreshCw, Save, SlidersHorizonta
 import { toast as sonnerToast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { postAdminJson } from "@/lib/admin-rest";
+import { friendlyAdminErrorMessage } from "@/lib/adminFeedback";
 
 const frequencyOptions = [
   { value: 1440, label: "Diária" },
@@ -27,7 +28,7 @@ export default function AdminSourcesPanel() {
       await utils.ingestionSources.list.invalidate();
       sonnerToast.success("Fonte atualizada", { description: "A configuração foi salva e será usada na próxima execução." });
     },
-    onError: error => sonnerToast.error("Não foi possível salvar a fonte", { description: error.message || "Tente novamente." }),
+    onError: error => sonnerToast.error("Não foi possível salvar a fonte", { description: friendlyAdminErrorMessage(error, "Tente novamente.") }),
     onSettled: () => setPendingSourceId(null),
   });
   const mockSettingsUpdate = trpc.ingestionReports.setMockSettings.useMutation({
@@ -35,7 +36,7 @@ export default function AdminSourcesPanel() {
       await utils.ingestionReports.mockSettings.invalidate();
       sonnerToast.success(result.allowSandboxMocks ? "Mocks de sandbox ativados" : "Mocks de sandbox desativados", { description: result.allowSandboxMocks ? "Falhas externas no preview poderão usar eventos de teste marcados." : "O preview tentará acessar as fontes reais e não usará fallback simulado." });
     },
-    onError: error => sonnerToast.error("Não foi possível atualizar os mocks", { description: error.message || "Tente novamente." }),
+    onError: error => sonnerToast.error("Não foi possível atualizar os mocks", { description: friendlyAdminErrorMessage(error, "Tente novamente.") }),
   });
   const syncStories = async (sourceId: number, sourceKey: string) => {
     if (isSyncingStories) return;
@@ -46,7 +47,7 @@ export default function AdminSourcesPanel() {
       await Promise.all([utils.adminRoutine.status.invalidate(), utils.ingestionReports.logs.invalidate()]);
       sonnerToast.success("Stories sincronizados", { description: "A sincronização foi concluída e o processamento de Vision/OCR foi registrado.", icon: <CheckCircle2 size={16} aria-hidden="true" />, duration: 5000 });
     } catch (error) {
-      sonnerToast.error("Não foi possível sincronizar Stories", { description: error instanceof Error ? error.message : "Tente novamente." });
+      sonnerToast.error("Não foi possível sincronizar Stories", { description: friendlyAdminErrorMessage(error, "Tente novamente.") });
     } finally {
       setPendingStorySourceId(null);
       setIsSyncingStories(false);

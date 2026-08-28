@@ -19,6 +19,11 @@ describe("friendlyAdminErrorMessage", () => {
     ).toContain("bloqueou temporariamente");
   });
 
+  it("maps typed REST authorization failures to friendly messages", () => {
+    expect(friendlyAdminErrorMessage({ status: 401, code: "UNAUTHORIZED", message: "unauthorized" }, "fallback")).toContain("sessão administrativa expirou");
+    expect(friendlyAdminErrorMessage({ status: 403, code: "FORBIDDEN", message: "forbidden" }, "fallback")).toContain("não tem permissão");
+  });
+
   it("does not expose raw upstream details for session or unknown failures", () => {
     expect(
       friendlyAdminErrorMessage(

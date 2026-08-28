@@ -2079,3 +2079,11 @@
 - [x] Adicionar testes de autorização M2M, rejeição e não exposição do segredo
 - [x] Confirmar consumidores `/api/v2/admin/`, `V2-API-LIVE` e `trust proxy`
 - [x] Limpar caches, recompilar, executar callback real e publicar checkpoint
+
+## Disparo manual e status do cron no painel — sessão atual
+- [x] Auditar o painel administrativo, o handler manual e os contratos de status existentes
+- [x] Adicionar botão de execução manual com loading, disabled e feedback acessível
+- [x] Exibir data e status da última sincronização bem-sucedida com atualização dinâmica
+- [x] Padronizar erros das rotas V2 em notificações visuais amigáveis
+- [x] Cobrir loading, sucesso, erro, polling/status e rotas V2 com Vitest
+- [x] Validar mobile/desktop, TypeScript, build e publicar checkpoint
