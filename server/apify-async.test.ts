@@ -38,7 +38,7 @@ describe("Apify async Stories", () => {
 
     expect(result).toEqual({ runId: 42, actorRunId: "actor-run-1", status: "QUEUED" });
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/v2/acts/apify~instagram-scraper/runs?");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/v2/acts/automation-lab~instagram-stories-scraper/runs?");
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("webhooks=");
     expect(mocks.linkIngestionRunToApifyActor).toHaveBeenCalledWith({ runId: 42, actorRunId: "actor-run-1" });
     expect(mocks.setIngestionRunDetails).toHaveBeenCalledWith(42, expect.objectContaining({ actorRunId: "actor-run-1", datasetId: "dataset-1", status: "QUEUED" }));

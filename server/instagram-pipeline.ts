@@ -154,6 +154,17 @@ export function buildInstagramScraperPayload(targets: ReadonlyArray<{ username: 
   } as const;
 }
 
+/** Input contract for the dedicated Stories Actor; kept separate from the profile/posts Actor contract. */
+export function buildInstagramStoriesScraperPayload(targets: ReadonlyArray<{ username: string }>, sessionCookie?: string) {
+  return {
+    usernames: targets.map(target => target.username),
+    ...(sessionCookie ? { sessionCookie } : {}),
+    includeHighlights: true,
+    maxHighlights: 10,
+    includeProfile: false,
+  } as const;
+}
+
 export function normalizeInstagramMediaItem(item: Record<string, unknown>, fallbackUsername = ""): InstagramPost | null {
   const mediaType = String(item.mediaType ?? item.type ?? item.productType ?? "post").toLowerCase();
   const normalizedType: InstagramMediaOrigin = mediaType.includes("highlight") ? "highlight" : mediaType.includes("story") ? "story" : "post";

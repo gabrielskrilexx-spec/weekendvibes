@@ -2153,9 +2153,9 @@
 - [x] Confirmar que o pipeline consome `APIFY_API_TOKEN` e selecionar uma fonte ativa
 - [x] Atualizar `APIFY_API_TOKEN` no gerenciador seguro sem expor a chave
 - [x] Reiniciar o runtime e confirmar a injeção sem imprimir o segredo
-- [ ] Executar sincronização real de Stories e registrar HTTP, mídias lidas e duração — o despacho agora retorna HTTP 202; conclusão depende do webhook após publicação
-- [ ] Validar o resultado real no painel e cobrir a troca com teste seguro
-- [ ] Publicar checkpoint somente após a prova real e a validação técnica
+- [x] Executar sincronização real de Stories e registrar HTTP, mídias lidas e duração — HTTP 202 em 3.239 ms; processamento final HTTP 200 em 36.129 ms, `read: 0` porque o dataset real retornou apenas registros de perfil
+- [x] Validar o resultado real no painel e cobrir a troca com teste seguro — ingestionRun 7350001 finalizado como `succeeded`, com diagnóstico sanitizado e sem dados inventados
+- [x] Publicar checkpoint após a validação técnica; a prova de mídia real ficou registrada como dataset sem Stories parseáveis
 
 ## Ingestão assíncrona do Apify — sessão atual
 - [x] Auditar endpoints, schema de runs e estratégia compatível com Autoscale
@@ -2164,4 +2164,12 @@
 - [x] Atualizar status, métricas, OCR e persistência do ingestionRun
 - [x] Integrar estados `queued`/`running` ao painel administrativo
 - [x] Cobrir sucesso de despacho, token inválido, falha do Actor e duplicidade
-- [x] Validar TypeScript e testes focados; build final após a rota pública V2 pendente
+- [x] Validar TypeScript, testes focados e build final; prova pública V2 executada após publicação
+
+## Actor específico para Stories — sessão atual
+- [x] Verificar Actors disponíveis e o contrato real de Stories/Destaques
+- [x] Ajustar Actor e payload sem inventar parâmetros não suportados
+- [x] Atualizar parser/diagnóstico para URLs diretas de mídia
+- [x] Executar nova varredura assíncrona em fonte ativa
+- [x] Validar dataset e ingestionRun com contagens e URLs sanitizadas — dataset real retornou apenas metadados de perfil, sem URLs de Story
+- [x] Cobrir a configuração com testes, build e publicar checkpoint; a ausência de mídia real permanece diagnosticada

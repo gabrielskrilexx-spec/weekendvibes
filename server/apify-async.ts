@@ -1,7 +1,7 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { Request, Response } from "express";
 import {
-  buildInstagramScraperPayload,
+  buildInstagramStoriesScraperPayload,
   INSTAGRAM_TARGETS,
   normalizeInstagramMediaPayload,
   runInstagramPipeline,
@@ -19,7 +19,7 @@ import { sdk } from "./_core/sdk";
 import { HttpError } from "@shared/_core/errors";
 import { redactError } from "./_core/security";
 
-const ACTOR_ID = "apify~instagram-scraper";
+const ACTOR_ID = process.env.APIFY_STORIES_ACTOR_ID?.trim() || "automation-lab~instagram-stories-scraper";
 const ASYNC_TIMEOUT_MS = 8_000;
 
 function getWebhookBaseUrl() {
@@ -87,7 +87,7 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
   const response = await fetchWithTimeout(`https://api.apify.com/v2/acts/${ACTOR_ID}/runs?${query.toString()}`, {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "WeekendVibes/1.0" },
-    body: JSON.stringify(buildInstagramScraperPayload(INSTAGRAM_TARGETS)),
+    body: JSON.stringify(buildInstagramStoriesScraperPayload(INSTAGRAM_TARGETS, process.env.APIFY_INSTAGRAM_SESSION_COOKIE?.trim())),
   });
   const payload = await readJson(response);
   if (!response.ok) {

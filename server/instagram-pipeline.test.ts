@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import { eq, or } from "drizzle-orm";
 import { ingestionSources } from "../drizzle/schema";
 import { getDb } from "./db";
-import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr } from "./instagram-pipeline";
+import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr } from "./instagram-pipeline";
 
 describe("Instagram weekend pipeline", () => {
   beforeEach(async () => {
@@ -125,6 +125,15 @@ describe("Instagram weekend pipeline", () => {
   it("builds an Apify payload with Stories and Highlights enabled", () => {
     const payload = buildInstagramScraperPayload([{ username: "meulugar.bar", directUrl: "https://www.instagram.com/meulugar.bar/" }]);
     expect(payload).toMatchObject({ stories: true, highlights: true, includeStories: true, includeHighlights: true, usernames: ["meulugar.bar"] });
+  });
+
+  it("builds the dedicated Stories Actor payload with the documented fields", () => {
+    expect(buildInstagramStoriesScraperPayload([{ username: "meulugar.bar" }])).toEqual({
+      usernames: ["meulugar.bar"],
+      includeHighlights: true,
+      maxHighlights: 10,
+      includeProfile: false,
+    });
   });
 
   it("filters Highlights to agenda titles and normalizes Story media", () => {
