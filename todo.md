@@ -2113,3 +2113,12 @@
 - [x] Adicionar campo com loading, erro, sucesso e atualização do feed
 - [x] Cobrir limites, permissões, timezone e reatividade com Vitest
 - [x] Validar migração SQL, TypeScript, build e publicar checkpoint
+
+## Correção da ingestão real de Stories e OCR — sessão atual
+- [x] Auditar o caminho Apify, normalização de mídia e processamento OCR/Vision
+- [x] Aceitar payloads aninhados de Stories/Destaques sem perder origem, URL ou título
+- [x] Processar OCR para Stories/Destaques mesmo quando houver legenda
+- [x] Preservar auditoria OCR de mídias visuais e registrar falhas por item sem derrubar o lote
+- [x] Adicionar regressões para payload aninhado, origem e regra de OCR
+- [x] Validar smoke dry-run, suíte Vitest, TypeScript e build
+- [ ] Publicar checkpoint com a correção ativa

@@ -183,10 +183,54 @@ export function normalizeInstagramMediaItem(item: Record<string, unknown>, fallb
   };
 }
 
+type MediaNormalizationContext = { username?: string; mediaType?: InstagramMediaOrigin; highlightTitle?: string };
+
+function mediaTypeFromKey(key: string): InstagramMediaOrigin | undefined {
+  const normalized = key.toLowerCase();
+  if (normalized.includes("highlight")) return "highlight";
+  if (normalized.includes("stor")) return "story";
+  return undefined;
+}
+
+function collectInstagramMediaCandidates(value: unknown, context: MediaNormalizationContext = {}, depth = 0): InstagramPost[] {
+  if (depth > 8 || value == null) return [];
+  if (Array.isArray(value)) return value.flatMap(item => collectInstagramMediaCandidates(item, context, depth + 1));
+  if (typeof value !== "object") return [];
+  const record = value as Record<string, unknown>;
+  const owner = record.owner && typeof record.owner === "object" ? record.owner as Record<string, unknown> : undefined;
+  const highlight = record.highlight && typeof record.highlight === "object" ? record.highlight as Record<string, unknown> : undefined;
+  const username = String(record.ownerUsername ?? record.username ?? owner?.username ?? context.username ?? "");
+  const highlightTitle = String(record.highlightTitle ?? highlight?.title ?? context.highlightTitle ?? "");
+  const explicitType = String(record.mediaType ?? record.type ?? record.productType ?? "").toLowerCase();
+  const mediaType: InstagramMediaOrigin = explicitType.includes("highlight") ? "highlight" : explicitType.includes("story") ? "story" : context.mediaType ?? "post";
+  const normalizedRecord: Record<string, unknown> = {
+    ...record,
+    ownerUsername: username || undefined,
+    mediaType,
+    highlightTitle: highlightTitle || undefined,
+    displayUrl: record.displayUrl ?? record.display_url ?? record.imageUrl ?? record.image_url ?? record.mediaUrl ?? record.media_url ?? record.thumbnailUrl ?? record.thumbnail_url,
+    imageUrl: record.imageUrl ?? record.image_url ?? record.displayUrl ?? record.display_url ?? record.mediaUrl ?? record.media_url ?? record.thumbnailUrl ?? record.thumbnail_url,
+    url: record.url ?? record.permalink ?? record.sourceUrl,
+  };
+  const direct = normalizeInstagramMediaItem(normalizedRecord, username);
+  const children: InstagramPost[] = [];
+  for (const [key, child] of Object.entries(record)) {
+    if (["owner", "highlight"].includes(key) || child === value) continue;
+    const childType = mediaTypeFromKey(key);
+    children.push(...collectInstagramMediaCandidates(child, { username, mediaType: childType ?? mediaType, highlightTitle: highlightTitle || undefined }, depth + 1));
+  }
+  return [...(direct ? [direct] : []), ...children];
+}
+
 export function normalizeInstagramMediaPayload(payload: unknown, fallbackUsername = ""): InstagramPost[] {
-  const root = payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
-  const candidates = Array.isArray(payload) ? payload : [root.data, root.items, root.posts, root.stories, root.highlights].flatMap(value => Array.isArray(value) ? value : []);
-  return candidates.map(item => item && typeof item === "object" ? normalizeInstagramMediaItem(item as Record<string, unknown>, fallbackUsername) : null).filter((item): item is InstagramPost => Boolean(item));
+  const normalized = collectInstagramMediaCandidates(payload, { username: fallbackUsername });
+  const seen = new Set<string>();
+  return normalized.filter(item => {
+    const key = item.id ?? postUrl(item) ?? `${item.ownerUsername ?? item.username ?? fallbackUsername}|${item.timestamp ?? item.takenAt ?? item.displayUrl ?? item.imageUrl ?? "unknown"}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export type StructuredEvent = {
@@ -367,6 +411,10 @@ export function isRecoverableOcrRateLimit(error: unknown) {
   return message.includes("429") || message.includes("rate_limit_exceeded") || message.includes("Rate limit reached");
 }
 
+export function shouldExtractInstagramMediaOcr(post: InstagramPost, caption: string, imageUrl: string) {
+  return Boolean(imageUrl) && (post.mediaType === "story" || post.mediaType === "highlight" || !caption.trim());
+}
+
 export async function extractOcrText(imageUrl: string) {
   if (!imageUrl) return "";
   let imagePayload = "";
@@ -504,6 +552,11 @@ async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean } = {}
     if (!response.ok) return { posts: [] as InstagramPost[], transportFailures: [{ username: "apify-instagram", status: response.status, kind: "proxy_or_session" as const, message: `Apify respondeu HTTP ${response.status}.` }] };
     const parsed = JSON.parse(body) as unknown;
     const posts = normalizeInstagramMediaPayload(parsed).filter(post => post.mediaType === "story" || post.mediaType === "highlight");
+    if (posts.length === 0) {
+      const diagnostic = "Apify respondeu HTTP 200, mas nenhum Story/Destaque parseável foi encontrado no payload.";
+      console.warn("[Instagram Stories]", diagnostic, { topLevelKeys: parsed && typeof parsed === "object" ? Object.keys(parsed as Record<string, unknown>).slice(0, 20) : [] });
+      return { posts, transportFailures: [{ username: "apify-instagram", status: response.status, kind: "proxy_or_session" as const, message: diagnostic }] };
+    }
     return { posts, transportFailures: [] as InstagramTransportFailure[] };
   } catch (error) {
     const message = normalizeDiagnosticText(error instanceof Error ? error.message : error);
@@ -611,13 +664,30 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   }
   const posts = deduplicateInstagramPosts(fetched.posts);
   const approvedPosts: Array<{ post: InstagramPost; rawText: string }> = [];
+  const ocrAuditCandidates: Array<{ post: InstagramPost; rawText: string }> = [];
   const forceFocusedRun = process.env.INGESTION_FORCE_INSTAGRAM === "1";
   for (const post of posts) {
     if (!forceFocusedRun && !isWithinInstagramLookback(post)) continue;
     const caption = String(post.caption ?? post.text ?? "");
     const postUsername = post.ownerUsername ?? post.username;
-    const ocrText = caption.trim() ? "" : (post.ocrText?.trim() || await extractOcrText(String(post.displayUrl ?? post.imageUrl ?? post.media_url ?? "")));
+    const imageUrl = String(post.displayUrl ?? post.imageUrl ?? post.media_url ?? "");
+    const isVisualMedia = post.mediaType === "story" || post.mediaType === "highlight";
+    let ocrText = post.ocrText?.trim() ?? "";
+    if (shouldExtractInstagramMediaOcr(post, caption, imageUrl) && !ocrText) {
+      try {
+        ocrText = await extractOcrText(imageUrl);
+      } catch (error) {
+        const message = normalizeDiagnosticText(error instanceof Error ? error.message : error, 240);
+        console.warn("[Instagram OCR] Falha por mídia; continuando o processamento do lote", { mediaOrigin: post.mediaType ?? "post", sourceUrl: postUrl(post), message });
+        try {
+          await recordOperationalAlert({ integration: "ocr", title: "Falha ao processar OCR de mídia", message: `Mídia ${post.mediaType ?? "post"} não processada: ${message}` });
+        } catch (alertError) {
+          console.warn("[Instagram OCR] Could not persist media OCR alert:", alertError);
+        }
+      }
+    }
     const rawText = [caption, ocrText].filter(value => value.trim()).join("\n");
+    if (isVisualMedia || ocrText) ocrAuditCandidates.push({ post, rawText });
     const regionalMarker = hasRegionalHashtag(rawText) ? "\nREGIONAL_HASHTAG_MATCH: Santos/Guarujá" : "";
     if (rawText.trim()) approvedPosts.push({ post, rawText: `${rawText}${regionalMarker}` });
   }
@@ -688,7 +758,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     approvedPosts: approvedPosts.length,
     degraded: fetched.transportFailures.length > 0,
     transportFailures: fetched.transportFailures,
-    ocrAudit: buildOcrAuditEntries(approvedPosts),
+    ocrAudit: buildOcrAuditEntries(ocrAuditCandidates),
 
     structuredEvents: structuredEvents.length,
     imported,

@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import { eq, or } from "drizzle-orm";
 import { ingestionSources } from "../drizzle/schema";
 import { getDb } from "./db";
-import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries } from "./instagram-pipeline";
+import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr } from "./instagram-pipeline";
 
 describe("Instagram weekend pipeline", () => {
   beforeEach(async () => {
@@ -134,6 +134,18 @@ describe("Instagram weekend pipeline", () => {
     expect(story).toMatchObject({ id: "1", mediaType: "story", ownerUsername: "meulugar.bar" });
     expect(normalizeInstagramMediaItem({ type: "highlight", title: "Cardápio", imageUrl: "https://img.example/menu.jpg" })).toBeNull();
     expect(normalizeInstagramMediaPayload({ items: [{ type: "highlight", title: "Agenda da semana", imageUrl: "https://img.example/agenda.jpg" }] })).toEqual([expect.objectContaining({ mediaType: "highlight", highlightTitle: "Agenda da semana" })]);
+  });
+
+  it("parses nested Story payloads returned by Apify without losing the media origin", () => {
+    const posts = normalizeInstagramMediaPayload({ data: [{ username: "meulugar.bar", stories: [{ id: "story-1", display_url: "https://cdn.example.com/story.jpg", caption: "Hoje no Meu Lugar" }] }] });
+    expect(posts).toEqual([expect.objectContaining({ id: "story-1", mediaType: "story", ownerUsername: "meulugar.bar", displayUrl: "https://cdn.example.com/story.jpg" })]);
+  });
+
+  it("sends Story and Highlight images to OCR even when a caption exists", () => {
+    expect(shouldExtractInstagramMediaOcr({ mediaType: "story" }, "Legenda curta", "https://cdn.example.com/story.jpg")).toBe(true);
+    expect(shouldExtractInstagramMediaOcr({ mediaType: "highlight" }, "Agenda", "https://cdn.example.com/highlight.jpg")).toBe(true);
+    expect(shouldExtractInstagramMediaOcr({ mediaType: "post" }, "Legenda curta", "https://cdn.example.com/post.jpg")).toBe(false);
+    expect(shouldExtractInstagramMediaOcr({ mediaType: "post" }, "", "https://cdn.example.com/post.jpg")).toBe(true);
   });
 
   it("creates a valid Meu Lugar sandbox Story with OCR text for Vision", () => {
