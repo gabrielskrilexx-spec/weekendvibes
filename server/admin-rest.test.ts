@@ -54,11 +54,11 @@ describe("admin REST actions", () => {
   });
 
   it.each([
-    ["/api/admin/sync-stories", {}, { success: true }],
-    ["/api/admin/remove-alias", { id: 7 }, { success: true, deletedId: "7" }],
-    ["/api/admin/remove-events", { ids: [11, 12] }, { success: true, count: 2, ids: ["11", "12"] }],
-    ["/api/admin/approve-events", { ids: [11, 12] }, { success: true, count: 2, ids: ["11", "12"] }],
-    ["/api/admin/resolve-collision", { ids: [11, 12] }, { success: true, count: 2, ids: ["11", "12"] }],
+    ["/api/v2/admin/sync-stories", {}, { success: true }],
+    ["/api/v2/admin/remove-alias", { id: 7 }, { success: true, deletedId: "7" }],
+    ["/api/v2/admin/remove-events", { ids: [11, 12] }, { success: true, count: 2, ids: ["11", "12"] }],
+    ["/api/v2/admin/approve-events", { ids: [11, 12] }, { success: true, count: 2, ids: ["11", "12"] }],
+    ["/api/v2/admin/resolve-collision", { ids: [11, 12] }, { success: true, count: 2, ids: ["11", "12"] }],
   ])("returns a strict JSON payload for %s", async (path, body, expected) => {
     const result = await post(path, body);
     expect(result.status).toBe(200);
@@ -67,7 +67,7 @@ describe("admin REST actions", () => {
 
   it("rejects REST actions when the authenticated user is not admin", async () => {
     authenticateRequest.mockResolvedValue({ role: "user" });
-    const result = await post("/api/admin/sync-stories", {});
+    const result = await post("/api/v2/admin/sync-stories", {});
     expect(result.status).toBe(403);
     expect(result.json).toEqual({ success: false, message: "Permissão administrativa necessária." });
     expect(runIngestionSourceChunk).not.toHaveBeenCalled();
@@ -75,7 +75,7 @@ describe("admin REST actions", () => {
 
   it("returns a sandbox acknowledgement when Stories processing fails", async () => {
     runIngestionSourceChunk.mockRejectedValueOnce(new Error("ECONNREFUSED"));
-    const result = await post("/api/admin/sync-stories", {});
+    const result = await post("/api/v2/admin/sync-stories", {});
     expect(result.status).toBe(200);
     expect(result.json).toEqual({ success: true, status: "SANDBOX_RESTRICTED" });
   });

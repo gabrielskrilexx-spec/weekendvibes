@@ -32,7 +32,7 @@ export function exportRunsCsvForTest(runs: Array<{ id: number; routine: string; 
 }
 const freshnessCopy = { healthy: { label: "Atualizada", tone: "text-emerald-300", dot: "bg-emerald-300" }, delayed: { label: "Atrasada", tone: "text-yellow-200", dot: "bg-yellow-200" }, critical: { label: "Crítica", tone: "text-red-300", dot: "bg-red-300" }, never: { label: "Nunca sincronizada", tone: "text-zinc-400", dot: "bg-zinc-500" } } as const;
 const severityCopy = { INFO: "border-cyan-300/20 bg-cyan-300/5 text-cyan-100", WARNING: "border-yellow-300/20 bg-yellow-300/5 text-yellow-100", CRITICAL: "border-red-300/30 bg-red-300/10 text-red-100" } as const;
-const adminBuildTag = "CORRECTED-27E8D794";
+const adminBuildTag = "V2-API-LIVE";
 const versionManifestPath = "/__manus__/version.json";
 
 export function isNewVersionAvailable(currentVersion: string | null, latestVersion: unknown) {

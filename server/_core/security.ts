@@ -70,8 +70,8 @@ export function createStrictCors(): RequestHandler {
   return (req, res, next) => {
     const origin = req.headers.origin;
     const forwardedOrigin = getForwardedOrigin(req);
-    const isSamePreviewOrigin = process.env.NODE_ENV !== "production" && forwardedOrigin === origin;
-    if (typeof origin === "string" && (allowedOrigins.has(origin) || isSamePreviewOrigin)) {
+    const isSameSiteOrigin = forwardedOrigin === origin;
+    if (typeof origin === "string" && (allowedOrigins.has(origin) || isSameSiteOrigin)) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Access-Control-Allow-Credentials", "true");
       res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");

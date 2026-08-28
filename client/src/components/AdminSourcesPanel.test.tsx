@@ -59,7 +59,7 @@ describe("AdminSourcesPanel", () => {
     const button = tree!.root.findByProps({ "aria-label": "Sincronizar Stories de Moby House" });
     expect(button).toBeDefined();
     await act(async () => { await button?.props.onClick(); });
-    expect(fetchMock).toHaveBeenCalledWith("/api/admin/sync-stories", expect.objectContaining({ method: "POST", credentials: "include", body: JSON.stringify({ sourceKey: "instagram:mobydicksantos" }) }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/v2/admin/sync-stories", expect.objectContaining({ method: "POST", credentials: "include", body: JSON.stringify({ sourceKey: "instagram:mobydicksantos" }) }));
   });
 
   it("permite pausar uma fonte", async () => {

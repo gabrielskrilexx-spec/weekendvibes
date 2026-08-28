@@ -2048,3 +2048,17 @@
 - [x] Corrigir, limpar cache e reiniciar se a prova retornar algo diferente de HTTP 200
 - [x] Validar build somente após a prova HTTP 200 com JSON `{ success: true }`
 - [x] Publicar checkpoint e entregar a saída crua do script
+
+- [ ] Auditar URL pública, rotas REST atuais, proxy reverso e CORS
+- [ ] Versionar as cinco rotas administrativas para `/api/v2/admin/...`
+- [ ] Configurar `trust proxy` e revisar CORS com credenciais e origem segura
+- [ ] Atualizar todos os consumidores fetch e a versão visual para `V2-API-LIVE`
+- [ ] Limpar artefatos, recompilar, reiniciar e validar a URL pública
+- [ ] Publicar checkpoint com a validação do caminho público
+
+## Migração final REST V2 — sessão atual
+- [x] Atualizar todos os consumidores administrativos para `/api/v2/admin/`
+- [x] Atualizar o identificador visual para `V2-API-LIVE`
+- [x] Validar trust proxy, CORS com credenciais e payloads JSON estritos
+- [x] Limpar artefatos, recompilar e reiniciar o runtime Vite/Express
+- [ ] Validar as rotas V2 no preview público e salvar checkpoint publicado

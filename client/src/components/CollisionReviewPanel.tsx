@@ -40,7 +40,7 @@ export default function CollisionReviewPanel() {
     const deletedIdNumber = Number(deletedId);
     setIsRemovingSingle(true);
     try {
-      await postAdminJson<{ success: true; count: number; ids: string[] }>("/api/admin/resolve-collision", { ids: [pending.id] });
+      await postAdminJson<{ success: true; count: number; ids: string[] }>("/api/v2/admin/resolve-collision", { ids: [pending.id] });
       setPending(null);
       utils.collisionReview.list.setData({ limit: 100 }, current => current ? removeCollisionByDeletedId(current, deletedIdNumber) : current);
       setSelectedCollisionKeys(current => current.filter(key => {
@@ -64,7 +64,7 @@ export default function CollisionReviewPanel() {
     if (!window.confirm(message)) return;
     setResolveAction(action);
     try {
-      const result = await postAdminJson<{ success: true; count: number; ids: string[] }>("/api/admin/resolve-collision", { ids: selectedDuplicateIds });
+      const result = await postAdminJson<{ success: true; count: number; ids: string[] }>("/api/v2/admin/resolve-collision", { ids: selectedDuplicateIds });
       setSelectedCollisionKeys([]);
       setNotice(`${result.count} duplicata(s) resolvida(s) com sucesso.`);
       await collisions.refetch();

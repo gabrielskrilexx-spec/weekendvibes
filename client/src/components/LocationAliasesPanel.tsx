@@ -23,7 +23,7 @@ export default function LocationAliasesPanel() {
     setRemovingId(id);
     setIsRemoving(true);
     try {
-      await postAdminJson("/api/admin/remove-alias", { id });
+      await postAdminJson("/api/v2/admin/remove-alias", { id });
       setNotice("Alias removido.");
       sonnerToast.success("Alias removido", { description: "A lista foi atualizada." });
       await utils.locationAliases.list.invalidate();

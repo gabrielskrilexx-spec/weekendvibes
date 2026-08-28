@@ -42,7 +42,7 @@ export default function AdminSourcesPanel() {
     setPendingStorySourceId(sourceId);
     setIsSyncingStories(true);
     try {
-      await postAdminJson("/api/admin/sync-stories", { sourceKey });
+      await postAdminJson("/api/v2/admin/sync-stories", { sourceKey });
       await Promise.all([utils.adminRoutine.status.invalidate(), utils.ingestionReports.logs.invalidate()]);
       sonnerToast.success("Stories sincronizados", { description: "A sincronização foi concluída e o processamento de Vision/OCR foi registrado.", icon: <CheckCircle2 size={16} aria-hidden="true" />, duration: 5000 });
     } catch (error) {

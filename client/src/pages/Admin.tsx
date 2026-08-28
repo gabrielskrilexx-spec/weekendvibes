@@ -54,7 +54,7 @@ export default function Admin() {
   const runBulkAction = async (action: "approve" | "remove") => {
     if (bulkAction || selectedEventIds.length === 0) return;
     setBulkAction(action);
-    const path = action === "approve" ? "/api/admin/approve-events" : "/api/admin/remove-events";
+    const path = action === "approve" ? "/api/v2/admin/approve-events" : "/api/v2/admin/remove-events";
     try {
       const result = await postAdminJson<{ success: true; count: number; ids: string[] }>(path, { ids: selectedEventIds });
       setNotice(`${result.count} evento(s) ${action === "approve" ? "aprovados" : "removidos"} com sucesso.`);

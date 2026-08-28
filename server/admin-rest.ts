@@ -51,7 +51,7 @@ async function requireAdminMiddleware(req: Request, res: Response, next: NextFun
 }
 
 export function registerAdminRestRoutes(app: Express) {
-  app.post("/api/admin/sync-stories", requireAdminMiddleware, async (req, res) => {
+  app.post("/api/v2/admin/sync-stories", requireAdminMiddleware, async (req, res) => {
     try {
       const input = storiesInput.parse(req.body ?? {});
       try {
@@ -66,7 +66,7 @@ export function registerAdminRestRoutes(app: Express) {
     }
   });
 
-  app.post("/api/admin/remove-alias", requireAdminMiddleware, async (req, res) => {
+  app.post("/api/v2/admin/remove-alias", requireAdminMiddleware, async (req, res) => {
     try {
       const input = aliasInput.parse(req.body ?? {});
       await deleteLocationAlias(input.id);
@@ -76,7 +76,7 @@ export function registerAdminRestRoutes(app: Express) {
     }
   });
 
-  app.post("/api/admin/remove-events", requireAdminMiddleware, async (req, res) => {
+  app.post("/api/v2/admin/remove-events", requireAdminMiddleware, async (req, res) => {
     try {
       const input = idsInput.parse(req.body ?? {});
       const result = await deleteEvents(input.ids);
@@ -86,7 +86,7 @@ export function registerAdminRestRoutes(app: Express) {
     }
   });
 
-  app.post("/api/admin/approve-events", requireAdminMiddleware, async (req, res) => {
+  app.post("/api/v2/admin/approve-events", requireAdminMiddleware, async (req, res) => {
     try {
       const input = idsInput.parse(req.body ?? {});
       const result = await updateEventsPublication(input.ids);
@@ -96,7 +96,7 @@ export function registerAdminRestRoutes(app: Express) {
     }
   });
 
-  app.post("/api/admin/resolve-collision", requireAdminMiddleware, async (req, res) => {
+  app.post("/api/v2/admin/resolve-collision", requireAdminMiddleware, async (req, res) => {
     try {
       const input = idsInput.parse(req.body ?? {});
       const result = await deleteEvents(input.ids);
