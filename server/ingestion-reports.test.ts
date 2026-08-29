@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv, sortFilteredStoriesForTest } from "./ingestion-reports";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
 import { sanitizeAgendaStepErrorForTest } from "./agenda-routine";
+
+describe("filtered stories ordering", () => {
+  const story = (id: string, username: string, status: "pending" | "approved", postedAt: string) => ({ id, runId: 1, username, mediaOrigin: "story" as const, imageUrl: "", sourceUrl: "", postedAt, expiresAt: null, ocrText: "", rawText: "", reasons: [], status, approvedBy: null, approvedAt: null });
+  it("ordena por data, fonte e status em ambas as direções", () => {
+    const stories = [story("a", "zeta", "pending", "2026-08-28T00:00:00.000Z"), story("b", "alpha", "approved", "2026-08-29T00:00:00.000Z")];
+    expect(sortFilteredStoriesForTest(stories, "date", "desc").map(item => item.id)).toEqual(["b", "a"]);
+    expect(sortFilteredStoriesForTest(stories, "source", "asc").map(item => item.id)).toEqual(["b", "a"]);
+    expect(sortFilteredStoriesForTest(stories, "status", "asc").map(item => item.id)).toEqual(["b", "a"]);
+  });
+});
 
 describe("filtered stories CSV", () => {
   it("gera CSV com BOM, cabeçalho e escape RFC 4180", () => {

@@ -2212,3 +2212,13 @@
 - [x] Integrar filtros URL, exportação e detalhe na interface
 - [x] Adicionar cobertura Vitest para CSV, filtros, query params e auditoria
 - [x] Validar suíte completa, TypeScript, build, preview e publicar checkpoint
+
+## Stories filtrados — ordenação, JSON e histórico paginado
+- [x] Auditar contratos e persistência atuais
+- [x] Definir schemas e consultas de ordenação e auditoria
+- [x] Implementar exportação JSON server-side no tRPC
+- [x] Implementar ordenação por data, fonte e status sincronizada na URL
+- [x] Implementar endpoint tRPC paginado para histórico por storyId
+- [x] Integrar ordenação, JSON e histórico paginado no React
+- [x] Adicionar cobertura Vitest para ordenação, JSON e paginação
+- [x] Validar suíte completa, TypeScript, build, preview e publicar checkpoint

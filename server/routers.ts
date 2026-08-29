@@ -48,6 +48,7 @@ import {
   listAllFilteredStories,
   buildFilteredStoriesCsv,
   getFilteredStoryDetail,
+  listFilteredStoryAuditPage,
 } from "./ingestion-reports";
 import {
   createLocationAlias,
@@ -260,6 +261,8 @@ const filteredStoriesFilterInput = z.object({
   status: z.enum(["pending", "approved"]).optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  sortBy: z.enum(["date", "source", "status"]).default("date"),
+  sortDirection: z.enum(["asc", "desc"]).default("desc"),
 }).strict();
 const filteredStoryOutput = z.object({
   id: z.string().min(1).max(500),
@@ -279,6 +282,22 @@ const filteredStoryOutput = z.object({
 }).strict();
 const filteredStoriesPageOutput = z.object({
   items: z.array(filteredStoryOutput),
+  total: z.number().int().nonnegative(),
+  offset: z.number().int().nonnegative(),
+  limit: z.number().int().positive().max(50),
+  nextOffset: z.number().int().nonnegative().nullable(),
+  hasNextPage: z.boolean(),
+}).strict();
+const filteredStoryAuditOutput = z.object({
+  action: z.enum(["ocr_edit", "approval"]),
+  previousText: z.string().nullable(),
+  nextText: z.string().nullable(),
+  status: z.string().nullable(),
+  actorOpenId: z.string().min(1).max(160),
+  createdAt: z.string(),
+}).strict();
+const filteredStoryAuditPageOutput = z.object({
+  items: z.array(filteredStoryAuditOutput).max(50),
   total: z.number().int().nonnegative(),
   offset: z.number().int().nonnegative(),
   limit: z.number().int().positive().max(50),
@@ -408,10 +427,18 @@ export const appRouter = router({
       .input(filteredStoriesFilterInput)
       .output(z.object({ fileName: z.string().min(1).max(180), contentType: z.literal("text/csv;charset=utf-8"), csv: z.string() }).strict())
       .query(async ({ input }) => ({ fileName: `stories-filtrados-${new Date().toISOString().slice(0, 10)}.csv`, contentType: "text/csv;charset=utf-8" as const, csv: buildFilteredStoriesCsv(await listAllFilteredStories(input)) })),
+    filteredStoriesJson: adminOnly
+      .input(filteredStoriesFilterInput)
+      .output(z.object({ fileName: z.string().min(1).max(180), contentType: z.literal("application/json"), json: z.string() }).strict())
+      .query(async ({ input }) => ({ fileName: `stories-filtrados-${new Date().toISOString().slice(0, 10)}.json`, contentType: "application/json" as const, json: JSON.stringify(await listAllFilteredStories(input)) })),
     filteredStoryDetail: adminOnly
       .input(z.object({ storyId: z.string().trim().min(1).max(500) }).strict())
-      .output(z.object({ story: filteredStoryOutput.nullable(), history: z.array(z.object({ action: z.enum(["ocr_edit", "approval"]), previousText: z.string().nullable(), nextText: z.string().nullable(), status: z.string().nullable(), actorOpenId: z.string(), createdAt: z.string() }).strict()).max(100) }).strict())
+      .output(z.object({ story: filteredStoryOutput.nullable(), history: z.array(filteredStoryAuditOutput).max(100) }).strict())
       .query(({ input }) => getFilteredStoryDetail(input.storyId)),
+    filteredStoryAuditHistory: adminOnly
+      .input(z.object({ storyId: z.string().trim().min(1).max(500), offset: z.number().int().nonnegative().default(0), limit: z.number().int().positive().max(50).default(20) }).strict())
+      .output(filteredStoryAuditPageOutput)
+      .query(({ input }) => listFilteredStoryAuditPage(input.storyId, input.offset, input.limit)),
     sources: adminOnly
       .output(z.object({ sources: z.array(z.string().min(1).max(160)).max(80) }).strict())
       .query(() => ({ sources: getIngestionChunkSources() })),

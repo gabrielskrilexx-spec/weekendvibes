@@ -646,6 +646,9 @@ function buildWeeklyOperationalSummary(runs: Array<{ details: unknown }>) {
   return summary;
 }
 
+export type FilteredStoriesSortColumn = "date" | "source" | "status";
+export type FilteredStoriesSortDirection = "asc" | "desc";
+
 export type FilteredStoriesFilter = {
   offset?: number;
   limit?: number;
@@ -654,6 +657,8 @@ export type FilteredStoriesFilter = {
   status?: "pending" | "approved";
   from?: string;
   to?: string;
+  sortBy?: FilteredStoriesSortColumn;
+  sortDirection?: FilteredStoriesSortDirection;
 };
 
 export type FilteredStoryRecord = {
@@ -711,6 +716,15 @@ function normalizeFilteredStory(value: unknown, runId: number): FilteredStoryRec
   };
 }
 
+function compareFilteredStories(a: FilteredStoryRecord, b: FilteredStoryRecord, sortBy: FilteredStoriesSortColumn, direction: FilteredStoriesSortDirection) {
+  const multiplier = direction === "asc" ? 1 : -1;
+  if (sortBy === "source") return a.username.localeCompare(b.username, "pt-BR") * multiplier;
+  if (sortBy === "status") return a.status.localeCompare(b.status, "pt-BR") * multiplier;
+  const aTime = a.postedAt ? new Date(a.postedAt).getTime() : 0;
+  const bTime = b.postedAt ? new Date(b.postedAt).getTime() : 0;
+  return (aTime - bTime) * multiplier;
+}
+
 function matchesFilteredStory(story: FilteredStoryRecord, filters: FilteredStoriesFilter) {
   const reason = filters.reason?.trim().toLowerCase();
   if (reason && !story.reasons.some(candidate => candidate.toLowerCase().includes(reason))) return false;
@@ -723,6 +737,10 @@ function matchesFilteredStory(story: FilteredStoryRecord, filters: FilteredStori
   if (fromTime !== null && (!Number.isFinite(storyDate) || storyDate < fromTime)) return false;
   if (toTime !== null && (!Number.isFinite(storyDate) || storyDate > toTime)) return false;
   return true;
+}
+
+export function sortFilteredStoriesForTest(stories: FilteredStoryRecord[], sortBy: FilteredStoriesSortColumn = "date", sortDirection: FilteredStoriesSortDirection = "desc") {
+  return stories.slice().sort((a, b) => compareFilteredStories(a, b, sortBy, sortDirection));
 }
 
 export async function listAllFilteredStories(filters: FilteredStoriesFilter = {}) {
@@ -740,7 +758,9 @@ export async function listAllFilteredStories(filters: FilteredStoriesFilter = {}
       if (story && matchesFilteredStory(story, filters)) stories.push(story);
     }
   }
-  return stories;
+  const sortBy = filters.sortBy ?? "date";
+  const sortDirection = filters.sortDirection ?? "desc";
+  return sortFilteredStoriesForTest(stories, sortBy, sortDirection);
 }
 
 export async function listFilteredStoriesPage(filters: FilteredStoriesFilter = {}) {
@@ -761,6 +781,19 @@ export function buildFilteredStoriesCsv(stories: FilteredStoryRecord[]) {
   const headers = ["id", "run_id", "username", "media_origin", "image_url", "source_url", "posted_at", "expires_at", "ocr_text", "raw_text", "reasons", "status", "approved_by", "approved_at"];
   const rows = stories.map(story => [story.id, story.runId, story.username, story.mediaOrigin, story.imageUrl, story.sourceUrl, story.postedAt, story.expiresAt, story.ocrText, story.rawText, story.reasons.join(" | "), story.status, story.approvedBy, story.approvedAt].map(csvCell).join(","));
   return `\uFEFF${headers.map(csvCell).join(",")}\n${rows.join("\n")}${rows.length ? "\n" : ""}`;
+}
+
+export async function listFilteredStoryAuditPage(storyId: string, offset = 0, limit = 20) {
+  const db = await getDb();
+  const safeOffset = Math.max(0, Math.trunc(offset));
+  const safeLimit = Math.min(50, Math.max(1, Math.trunc(limit)));
+  if (!db) return { items: [] as FilteredStoryAuditRecord[], total: 0, offset: safeOffset, limit: safeLimit, nextOffset: null as number | null, hasNextPage: false };
+  const rows = await db.select({ action: ingestionStoryAuditLogs.action, previousText: ingestionStoryAuditLogs.previousText, nextText: ingestionStoryAuditLogs.nextText, status: ingestionStoryAuditLogs.status, actorOpenId: ingestionStoryAuditLogs.actorOpenId, createdAt: ingestionStoryAuditLogs.createdAt }).from(ingestionStoryAuditLogs).where(eq(ingestionStoryAuditLogs.storyId, storyId)).orderBy(desc(ingestionStoryAuditLogs.createdAt)).limit(safeLimit).offset(safeOffset);
+  const countRows = await db.select({ count: sql<number>`count(*)` }).from(ingestionStoryAuditLogs).where(eq(ingestionStoryAuditLogs.storyId, storyId));
+  const total = Number(countRows[0]?.count ?? 0) || 0;
+  const items = rows.map(row => ({ action: row.action, previousText: row.previousText ?? null, nextText: row.nextText ?? null, status: row.status ?? null, actorOpenId: String(row.actorOpenId), createdAt: new Date(row.createdAt).toISOString() }));
+  const nextOffset = safeOffset + items.length < total ? safeOffset + items.length : null;
+  return { items, total, offset: safeOffset, limit: safeLimit, nextOffset, hasNextPage: nextOffset !== null };
 }
 
 export async function getFilteredStoryDetail(storyId: string, filters: FilteredStoriesFilter = {}) {

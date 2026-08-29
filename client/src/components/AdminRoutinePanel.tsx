@@ -119,6 +119,8 @@ type OcrAuditItem = {
   rawText: string;
 };
 type FilteredStory = { id: string; runId?: number; username: string; mediaOrigin: "story" | "highlight"; imageUrl: string; sourceUrl: string; postedAt: string | null; expiresAt: string | null; ocrText: string; rawText: string; reasons: string[]; status: "pending" | "approved"; approvedBy?: string | null; approvedAt?: string | null };
+type FilteredSortBy = "date" | "source" | "status";
+type FilteredSortDirection = "asc" | "desc";
 type OcrAuditRun = { id: number; routine: string; startedAt: string; ocrAudit?: OcrAuditItem[]; filteredStories?: FilteredStory[] };
 
 export function buildOcrEditInput(runId: number, entryIndex: number, ocrText: string) {
@@ -167,7 +169,10 @@ export default function AdminRoutinePanel() {
   const [filteredStatus, setFilteredStatus] = useState<"" | "pending" | "approved">(() => { const value = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("filtered_status") ?? ""; return value === "pending" || value === "approved" ? value : ""; });
   const [filteredFrom, setFilteredFrom] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("filtered_from") ?? "");
   const [filteredTo, setFilteredTo] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("filtered_to") ?? "");
+  const [filteredSortBy, setFilteredSortBy] = useState<FilteredSortBy>(() => { const value = typeof window === "undefined" ? "date" : new URLSearchParams(window.location.search).get("filtered_sort") ?? "date"; return value === "source" || value === "status" ? value : "date"; });
+  const [filteredSortDirection, setFilteredSortDirection] = useState<FilteredSortDirection>(() => typeof window === "undefined" ? "desc" : new URLSearchParams(window.location.search).get("filtered_dir") === "asc" ? "asc" : "desc");
   const [filteredPage, setFilteredPage] = useState(0);
+  const [filteredAuditPage, setFilteredAuditPage] = useState(0);
   const [selectedFilteredStoryId, setSelectedFilteredStoryId] = useState<string | null>(null);
   const [editingOcrIndex, setEditingOcrIndex] = useState<number | null>(null);
   const [ocrDraft, setOcrDraft] = useState("");
@@ -259,15 +264,29 @@ export default function AdminRoutinePanel() {
   const latestRun = status.data?.recentRuns?.[0];
   const allFilteredStories = (status.data?.recentRuns ?? []).flatMap(run => (run as OcrAuditRun).filteredStories ?? []);
   const filteredReasonOptions = useMemo(() => Array.from(new Set(allFilteredStories.flatMap(story => story.reasons))).sort((a, b) => a.localeCompare(b, "pt-BR")), [allFilteredStories]);
-  const filteredStoriesProcedure = (trpc.adminRoutine as unknown as { filteredStories?: { useQuery: (input: { offset: number; limit: number; reason?: string }) => unknown } }).filteredStories;
-  const fallbackFilteredPage = filterAndPaginateFilteredStories(allFilteredStories, filteredReason, filteredPage * 12, 12);
-  const storyFilters = { offset: filteredPage * 12, limit: 12, reason: filteredReason || undefined, username: filteredUsername || undefined, status: filteredStatus || undefined, from: filteredFrom || undefined, to: filteredTo || undefined };
+  const filteredStoriesProcedure = (trpc.adminRoutine as unknown as { filteredStories?: { useQuery: (input: typeof storyFilters) => unknown } }).filteredStories;
+  const sortedFallbackStories = allFilteredStories.slice().sort((a, b) => { const multiplier = filteredSortDirection === "asc" ? 1 : -1; if (filteredSortBy === "source") return a.username.localeCompare(b.username, "pt-BR") * multiplier; if (filteredSortBy === "status") return a.status.localeCompare(b.status, "pt-BR") * multiplier; return ((a.postedAt ? new Date(a.postedAt).getTime() : 0) - (b.postedAt ? new Date(b.postedAt).getTime() : 0)) * multiplier; });
+  const fallbackFilteredPage = filterAndPaginateFilteredStories(sortedFallbackStories, filteredReason, filteredPage * 12, 12);
+  const storyFilters = { offset: filteredPage * 12, limit: 12, reason: filteredReason || undefined, username: filteredUsername || undefined, status: filteredStatus || undefined, from: filteredFrom || undefined, to: filteredTo || undefined, sortBy: filteredSortBy, sortDirection: filteredSortDirection };
   const filteredStoriesQuery = (filteredStoriesProcedure ? filteredStoriesProcedure.useQuery(storyFilters) : { data: fallbackFilteredPage, refetch: async () => ({ data: undefined }), isFetching: false }) as { data?: { items: FilteredStory[]; total: number; nextOffset: number | null; hasNextPage: boolean; offset: number; limit: number }; refetch: () => Promise<unknown>; isFetching: boolean };
   const filteredStories = filteredStoriesQuery.data?.items ?? [];
   const filteredStoryDetailProcedure = (trpc.adminRoutine as unknown as { filteredStoryDetail?: { useQuery: (input: { storyId: string }, options?: { enabled?: boolean }) => unknown } }).filteredStoryDetail;
   const filteredStoryDetailQuery = (filteredStoryDetailProcedure ? filteredStoryDetailProcedure.useQuery({ storyId: selectedFilteredStoryId ?? "pending" }, { enabled: Boolean(selectedFilteredStoryId) }) : { data: undefined, isFetching: false }) as { data?: { story: FilteredStory | null; history: Array<{ action: "ocr_edit" | "approval"; previousText: string | null; nextText: string | null; status: string | null; actorOpenId: string; createdAt: string }> }; isFetching: boolean };
+  const filteredStoryAuditProcedure = (trpc.adminRoutine as unknown as { filteredStoryAuditHistory?: { useQuery: (input: { storyId: string; offset: number; limit: number }, options?: { enabled?: boolean }) => unknown } }).filteredStoryAuditHistory;
+  const filteredStoryAuditQuery = (filteredStoryAuditProcedure ? filteredStoryAuditProcedure.useQuery({ storyId: selectedFilteredStoryId ?? "pending", offset: filteredAuditPage * 20, limit: 20 }, { enabled: Boolean(selectedFilteredStoryId) }) : { data: undefined, isFetching: false }) as { data?: { items: Array<{ action: "ocr_edit" | "approval"; previousText: string | null; nextText: string | null; status: string | null; actorOpenId: string; createdAt: string }>; total: number; hasNextPage: boolean; nextOffset: number | null }; isFetching: boolean };
+  const filteredStoryAuditEntries = filteredStoryAuditQuery.data?.items ?? filteredStoryDetailQuery.data?.history ?? [];
   const filteredStoriesCsvProcedure = (trpc.adminRoutine as unknown as { filteredStoriesCsv?: { useQuery: (input: typeof storyFilters, options?: { enabled?: boolean }) => unknown } }).filteredStoriesCsv;
   const filteredStoriesCsvQuery = (filteredStoriesCsvProcedure ? filteredStoriesCsvProcedure.useQuery(storyFilters, { enabled: false }) : { refetch: async () => ({ data: undefined }), isFetching: false }) as { refetch: () => Promise<{ data?: { fileName: string; contentType: string; csv: string } }>; isFetching: boolean };
+  const filteredStoriesJsonProcedure = (trpc.adminRoutine as unknown as { filteredStoriesJson?: { useQuery: (input: typeof storyFilters, options?: { enabled?: boolean }) => unknown } }).filteredStoriesJson;
+  const filteredStoriesJsonQuery = (filteredStoriesJsonProcedure ? filteredStoriesJsonProcedure.useQuery(storyFilters, { enabled: false }) : { refetch: async () => ({ data: undefined }), isFetching: false }) as { refetch: () => Promise<{ data?: { fileName: string; contentType: string; json: string } }>; isFetching: boolean };
+  const changeFilteredSort = (column: FilteredSortBy) => { setFilteredPage(0); if (column === filteredSortBy) setFilteredSortDirection(direction => direction === "asc" ? "desc" : "asc"); else { setFilteredSortBy(column); setFilteredSortDirection("asc"); } };
+  const sortLabel = (column: FilteredSortBy) => filteredSortBy === column ? (filteredSortDirection === "asc" ? " ↑" : " ↓") : "";
+  const downloadFilteredStoriesJson = async () => {
+    const result = await filteredStoriesJsonQuery.refetch();
+    if (!result.data) { sonnerToast.error("Não foi possível exportar os Stories", { description: "O servidor não retornou um JSON válido." }); return; }
+    const blob = new Blob([result.data.json], { type: result.data.contentType }); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = result.data.fileName; anchor.click(); URL.revokeObjectURL(url);
+    sonnerToast.success("JSON pronto", { description: `${filteredStoriesQuery.data?.total ?? 0} Story(ies) exportado(s) com os filtros atuais.` });
+  };
   const downloadFilteredStoriesCsv = async () => {
     const result = await filteredStoriesCsvQuery.refetch();
     if (!result.data) { sonnerToast.error("Não foi possível exportar os Stories", { description: "O servidor não retornou um arquivo CSV válido." }); return; }
@@ -281,9 +300,16 @@ export default function AdminRoutinePanel() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       if (filteredReason) params.set("filtered_reason", filteredReason); else params.delete("filtered_reason");
+      if (filteredUsername) params.set("filtered_user", filteredUsername); else params.delete("filtered_user");
+      if (filteredStatus) params.set("filtered_status", filteredStatus); else params.delete("filtered_status");
+      if (filteredFrom) params.set("filtered_from", filteredFrom); else params.delete("filtered_from");
+      if (filteredTo) params.set("filtered_to", filteredTo); else params.delete("filtered_to");
+      if (filteredSortBy !== "date") params.set("filtered_sort", filteredSortBy); else params.delete("filtered_sort");
+      if (filteredSortDirection !== "desc") params.set("filtered_dir", filteredSortDirection); else params.delete("filtered_dir");
       window.history.replaceState({}, "", `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}${window.location.hash}`);
     }
-  }, [filteredReason, filteredUsername, filteredStatus, filteredFrom, filteredTo]);
+  }, [filteredReason, filteredUsername, filteredStatus, filteredFrom, filteredTo, filteredSortBy, filteredSortDirection]);
+  useEffect(() => { setFilteredAuditPage(0); }, [selectedFilteredStoryId]);
   const lastSuccessfulCronRun = status.data?.recentRuns?.find(
     run => run.trigger !== "manual" && run.status === "succeeded"
   );
@@ -752,8 +778,9 @@ export default function AdminRoutinePanel() {
             <label className="grid gap-1 text-xs font-bold text-zinc-400">Data final
               <input type="date" value={filteredTo} onChange={event => setFilteredTo(event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" aria-label="Filtrar Stories até a data" />
             </label>
-            <div className="flex flex-wrap items-end gap-2"><span className="self-center text-xs text-zinc-500">{filteredStoriesQuery.data?.total ?? 0} resultado(s)</span><Button type="button" variant="outline" size="sm" onClick={() => void downloadFilteredStoriesCsv()} disabled={filteredStoriesCsvQuery.isFetching} aria-busy={filteredStoriesCsvQuery.isFetching}>{filteredStoriesCsvQuery.isFetching ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Exportar CSV</Button></div>
+            <div className="flex flex-wrap items-end gap-2"><span className="self-center text-xs text-zinc-500">{filteredStoriesQuery.data?.total ?? 0} resultado(s)</span><Button type="button" variant="outline" size="sm" onClick={() => void downloadFilteredStoriesCsv()} disabled={filteredStoriesCsvQuery.isFetching} aria-busy={filteredStoriesCsvQuery.isFetching}>{filteredStoriesCsvQuery.isFetching ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Exportar CSV</Button><Button type="button" variant="outline" size="sm" onClick={() => void downloadFilteredStoriesJson()} disabled={filteredStoriesJsonQuery.isFetching} aria-busy={filteredStoriesJsonQuery.isFetching}>{filteredStoriesJsonQuery.isFetching ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Exportar JSON</Button></div>
           </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Ordenar Stories filtrados"><span className="text-xs font-bold uppercase tracking-wide text-zinc-500">Ordenar:</span>{(["date", "source", "status"] as FilteredSortBy[]).map(column => <button key={column} type="button" onClick={() => changeFilteredSort(column)} aria-sort={filteredSortBy === column ? filteredSortDirection === "asc" ? "ascending" : "descending" : "none"} className={`min-h-9 rounded-lg border px-3 py-2 text-xs font-bold ${filteredSortBy === column ? "border-fuchsia-300/40 bg-fuchsia-300/10 text-fuchsia-100" : "border-white/10 text-zinc-400 hover:text-zinc-100"}`}>{column === "date" ? "Data" : column === "source" ? "Fonte" : "Status"}{sortLabel(column)}</button>)}</div>
           {filteredStories.length ? <div className="mt-4 grid gap-3 lg:grid-cols-2" data-testid="filtered-stories-list">
             {filteredStories.map(story => (
               <article key={story.id} className="grid gap-3 rounded-2xl border border-amber-300/20 bg-amber-300/5 p-3 sm:grid-cols-[96px_1fr]">
@@ -875,8 +902,7 @@ export default function AdminRoutinePanel() {
           {filteredStoryDetailQuery.isFetching && <p className="rounded-xl border border-white/10 p-5 text-sm text-zinc-400" role="status">Carregando histórico…</p>}
           {!filteredStoryDetailQuery.isFetching && filteredStoryDetailQuery.data?.story && <div className="grid gap-4 sm:grid-cols-[180px_1fr]">
             <div>{filteredStoryDetailQuery.data.story.imageUrl ? <img src={filteredStoryDetailQuery.data.story.imageUrl} alt={`Arte do Story ${filteredStoryDetailQuery.data.story.id}`} className="h-44 w-full rounded-xl border border-white/10 object-cover" /> : <div className="grid h-44 place-items-center rounded-xl border border-dashed border-white/10 text-xs text-zinc-500">Sem imagem</div>}<p className="mt-2 text-xs text-zinc-400">@{filteredStoryDetailQuery.data.story.username}</p></div>
-            <div className="space-y-3 text-xs"><div><p className="font-black uppercase tracking-wide text-zinc-500">Texto OCR atual</p><pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-black/30 p-3 font-sans text-zinc-200">{filteredStoryDetailQuery.data.story.ocrText || "Nenhum texto OCR registrado."}</pre></div><div><p className="font-black uppercase tracking-wide text-zinc-500">Histórico sequencial</p><div className="mt-2 space-y-2">{filteredStoryDetailQuery.data.history.length ? filteredStoryDetailQuery.data.history.slice().reverse().map((entry, index) => <div key={`${entry.createdAt}-${index}`} className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><p className="font-bold text-fuchsia-200">{entry.action === "ocr_edit" ? "Edição OCR" : "Aprovação"}</p><p className="mt-1 text-zinc-300">{entry.action === "ocr_edit" ? `${entry.previousText || "vazio"} → ${entry.nextText || "vazio"}` : `Status: ${entry.status || "aprovado"}`}</p><p className="mt-1 text-[11px] text-zinc-500">Por <strong className="text-zinc-300">{entry.actorOpenId}</strong> em {formatExecution(entry.createdAt)}</p></div>) : <p className="rounded-xl border border-dashed border-white/10 p-4 text-zinc-500">Nenhuma alteração auditada até o momento.</p>}</div></div></div>
-          </div>}
+            <div className="space-y-3 text-xs"><div><p className="font-black uppercase tracking-wide text-zinc-500">Texto OCR atual</p><pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-black/30 p-3 font-sans text-zinc-200">{filteredStoryDetailQuery.data.story.ocrText || "Nenhum texto OCR registrado."}</pre></div><div><p className="font-black uppercase tracking-wide text-zinc-500">Histórico sequencial</p><div className="mt-2 space-y-2">{filteredStoryAuditEntries.length ? filteredStoryAuditEntries.map((entry, index) => <div key={`${entry.createdAt}-${index}`} className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><p className="font-bold text-fuchsia-200">{entry.action === "ocr_edit" ? "Edição OCR" : "Aprovação"}</p><p className="mt-1 text-zinc-300">{entry.action === "ocr_edit" ? `${entry.previousText || "vazio"} → ${entry.nextText || "vazio"}` : `Status: ${entry.status || "aprovado"}`}</p><p className="mt-1 text-[11px] text-zinc-500">Por <strong className="text-zinc-300">{entry.actorOpenId}</strong> em {formatExecution(entry.createdAt)}</p></div>) : <p className="rounded-xl border border-dashed border-white/10 p-4 text-zinc-500">Nenhuma alteração auditada até o momento.</p>}</div>{(filteredStoryAuditQuery.data?.hasNextPage || filteredAuditPage > 0) && <div className="mt-3 flex items-center justify-between gap-2"><Button type="button" variant="outline" size="sm" onClick={() => setFilteredAuditPage(page => Math.max(0, page - 1))} disabled={filteredAuditPage === 0 || filteredStoryAuditQuery.isFetching}>Anterior</Button><span className="text-[11px] text-zinc-500">Página {filteredAuditPage + 1} · {filteredStoryAuditQuery.data?.total ?? filteredStoryAuditEntries.length} registro(s)</span><Button type="button" variant="outline" size="sm" onClick={() => setFilteredAuditPage(page => page + 1)} disabled={!filteredStoryAuditQuery.data?.hasNextPage || filteredStoryAuditQuery.isFetching}>Próxima</Button></div>}</div></div></div>}
           {!filteredStoryDetailQuery.isFetching && !filteredStoryDetailQuery.data?.story && <p className="rounded-xl border border-dashed border-white/10 p-5 text-sm text-zinc-500">Story não encontrado.</p>}
           <DialogFooter><Button type="button" variant="outline" onClick={() => setSelectedFilteredStoryId(null)}>Fechar</Button></DialogFooter>
         </DialogContent>
