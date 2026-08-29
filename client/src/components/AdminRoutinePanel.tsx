@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   CalendarCheck2,
   CalendarClock,
@@ -117,11 +117,19 @@ type OcrAuditItem = {
   ocrText: string;
   rawText: string;
 };
-type FilteredStory = { id: string; username: string; mediaOrigin: "story" | "highlight"; imageUrl: string; sourceUrl: string; postedAt: string | null; expiresAt: string | null; ocrText: string; rawText: string; reasons: string[]; status: "pending" | "approved" };
+type FilteredStory = { id: string; runId?: number; username: string; mediaOrigin: "story" | "highlight"; imageUrl: string; sourceUrl: string; postedAt: string | null; expiresAt: string | null; ocrText: string; rawText: string; reasons: string[]; status: "pending" | "approved"; approvedBy?: string | null; approvedAt?: string | null };
 type OcrAuditRun = { id: number; routine: string; startedAt: string; ocrAudit?: OcrAuditItem[]; filteredStories?: FilteredStory[] };
 
 export function buildOcrEditInput(runId: number, entryIndex: number, ocrText: string) {
   return { runId, entryIndex, ocrText: ocrText.trim().slice(0, 5000) };
+}
+
+export function filterAndPaginateFilteredStories(stories: FilteredStory[], reason: string, offset: number, limit: number) {
+  const normalizedReason = reason.trim().toLowerCase();
+  const filtered = normalizedReason ? stories.filter(story => story.reasons.some(candidate => candidate.toLowerCase().includes(normalizedReason))) : stories;
+  const items = filtered.slice(offset, offset + limit);
+  const nextOffset = offset + items.length < filtered.length ? offset + items.length : null;
+  return { items, total: filtered.length, offset, limit, nextOffset, hasNextPage: nextOffset !== null };
 }
 
 export function isChunkNetworkError(error: unknown) {
@@ -153,6 +161,8 @@ export default function AdminRoutinePanel() {
   const [authRecoveryOpen, setAuthRecoveryOpen] = useState(false);
   const [selectedOcrRun, setSelectedOcrRun] = useState<OcrAuditRun | null>(null);
   const [historyTab, setHistoryTab] = useState<"runs" | "filtered">("runs");
+  const [filteredReason, setFilteredReason] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("filtered_reason") ?? "");
+  const [filteredPage, setFilteredPage] = useState(0);
   const [editingOcrIndex, setEditingOcrIndex] = useState<number | null>(null);
   const [ocrDraft, setOcrDraft] = useState("");
   const [rolloverDraft, setRolloverDraft] = useState<string | null>(null);
@@ -214,6 +224,7 @@ export default function AdminRoutinePanel() {
       setFeedback({ type: "success", text: `Story ${result.storyId} aprovado para revisão.` });
       sonnerToast.success("Story aprovado", { description: "A entrada foi marcada para processamento manual." });
       void status.refetch();
+      void filteredStoriesQuery.refetch();
     },
     onError: error => sonnerToast.error("Não foi possível aprovar o Story", { description: friendlyAdminErrorMessage(error, "Tente novamente em instantes.") }),
   });
@@ -240,7 +251,20 @@ export default function AdminRoutinePanel() {
   const parsedRolloverHour = Number(rolloverValue);
   const rolloverIsValid = Number.isInteger(parsedRolloverHour) && parsedRolloverHour >= 0 && parsedRolloverHour <= 23;
   const latestRun = status.data?.recentRuns?.[0];
-  const filteredStories = (status.data?.recentRuns ?? []).flatMap(run => (run as OcrAuditRun).filteredStories ?? []);
+  const allFilteredStories = (status.data?.recentRuns ?? []).flatMap(run => (run as OcrAuditRun).filteredStories ?? []);
+  const filteredReasonOptions = useMemo(() => Array.from(new Set(allFilteredStories.flatMap(story => story.reasons))).sort((a, b) => a.localeCompare(b, "pt-BR")), [allFilteredStories]);
+  const filteredStoriesProcedure = (trpc.adminRoutine as unknown as { filteredStories?: { useQuery: (input: { offset: number; limit: number; reason?: string }) => unknown } }).filteredStories;
+  const fallbackFilteredPage = filterAndPaginateFilteredStories(allFilteredStories, filteredReason, filteredPage * 12, 12);
+  const filteredStoriesQuery = (filteredStoriesProcedure ? filteredStoriesProcedure.useQuery({ offset: filteredPage * 12, limit: 12, reason: filteredReason || undefined }) : { data: fallbackFilteredPage, refetch: async () => ({ data: undefined }), isFetching: false }) as { data?: { items: FilteredStory[]; total: number; nextOffset: number | null; hasNextPage: boolean; offset: number; limit: number }; refetch: () => Promise<unknown>; isFetching: boolean };
+  const filteredStories = filteredStoriesQuery.data?.items ?? [];
+  useEffect(() => {
+    setFilteredPage(0);
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (filteredReason) params.set("filtered_reason", filteredReason); else params.delete("filtered_reason");
+      window.history.replaceState({}, "", `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}${window.location.hash}`);
+    }
+  }, [filteredReason]);
   const lastSuccessfulCronRun = status.data?.recentRuns?.find(
     run => run.trigger !== "manual" && run.status === "succeeded"
   );
@@ -684,10 +708,20 @@ export default function AdminRoutinePanel() {
         </p>
         <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="Histórico de ingestão">
           <button type="button" role="tab" aria-selected={historyTab === "runs"} onClick={() => setHistoryTab("runs")} className={`rounded-xl px-3 py-2 text-xs font-black ${historyTab === "runs" ? "bg-fuchsia-300 text-zinc-950" : "border border-white/10 text-zinc-400 hover:text-white"}`}>Execuções</button>
-          <button type="button" role="tab" aria-selected={historyTab === "filtered"} onClick={() => setHistoryTab("filtered")} className={`rounded-xl px-3 py-2 text-xs font-black ${historyTab === "filtered" ? "bg-fuchsia-300 text-zinc-950" : "border border-white/10 text-zinc-400 hover:text-white"}`}>Stories filtrados ({filteredStories.filter(story => story.status !== "approved").length})</button>
+          <button type="button" role="tab" aria-selected={historyTab === "filtered"} onClick={() => setHistoryTab("filtered")} className={`rounded-xl px-3 py-2 text-xs font-black ${historyTab === "filtered" ? "bg-fuchsia-300 text-zinc-950" : "border border-white/10 text-zinc-400 hover:text-white"}`}>Stories filtrados ({filteredStoriesQuery.data?.total ?? 0})</button>
         </div>
         {historyTab === "filtered" ? (
-          filteredStories.length ? <div className="mt-4 grid gap-3 lg:grid-cols-2" data-testid="filtered-stories-list">
+          <>
+          <div className="mt-4 flex flex-wrap items-end gap-3" data-testid="filtered-stories-controls">
+            <label className="grid gap-1 text-xs font-bold text-zinc-400">Motivo da rejeição
+              <select value={filteredReason} onChange={event => setFilteredReason(event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" aria-label="Filtrar Stories por motivo">
+                <option value="">Todos os motivos</option>
+                {filteredReasonOptions.map(reason => <option key={reason} value={reason}>{reason}</option>)}
+              </select>
+            </label>
+            <span className="text-xs text-zinc-500">{filteredStoriesQuery.data?.total ?? 0} resultado(s)</span>
+          </div>
+          {filteredStories.length ? <div className="mt-4 grid gap-3 lg:grid-cols-2" data-testid="filtered-stories-list">
             {filteredStories.map(story => (
               <article key={story.id} className="grid gap-3 rounded-2xl border border-amber-300/20 bg-amber-300/5 p-3 sm:grid-cols-[96px_1fr]">
                 <img src={story.imageUrl} alt={`Story de @${story.username || "fonte desconhecida"}`} className="h-24 w-full rounded-xl border border-white/10 object-cover" loading="lazy" />
@@ -695,11 +729,14 @@ export default function AdminRoutinePanel() {
                   <div className="flex items-start justify-between gap-2"><div><p className="font-black text-zinc-100">@{story.username || "fonte desconhecida"}</p><p className="text-zinc-500">{story.mediaOrigin === "highlight" ? "Destaque" : "Story"} · {story.postedAt ? formatExecution(story.postedAt) : "data não informada"}</p></div><span className={`rounded-full px-2 py-1 font-black uppercase ${story.status === "approved" ? "bg-emerald-300/15 text-emerald-200" : "bg-amber-300/15 text-amber-100"}`}>{story.status === "approved" ? "Aprovado" : "Filtrado"}</span></div>
                   <p className="mt-2 font-black uppercase tracking-wide text-amber-100">Motivo da rejeição</p><ul className="mt-1 list-disc space-y-1 pl-4 text-zinc-300">{story.reasons.length ? story.reasons.map(reason => <li key={reason}>{reason}</li>) : <li>Não informado</li>}</ul>
                   <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-zinc-400">{story.ocrText || story.rawText || "Sem texto OCR registrado."}</p>
-                  {story.status !== "approved" && <Button type="button" size="sm" className="mt-3" disabled={approveFilteredStoryMutation.isPending} onClick={() => { const run = status.data?.recentRuns?.find(candidate => (candidate as OcrAuditRun).filteredStories?.some(item => item.id === story.id)); if (run) approveFilteredStoryMutation.mutate({ runId: run.id, storyId: story.id }); }} aria-label={`Aprovar Story de ${story.username || "fonte desconhecida"}`}>{approveFilteredStoryMutation.isPending ? <><Loader2 size={13} className="animate-spin" /> Aprovando…</> : "Aprovar manualmente"}</Button>}
+                  {story.status === "approved" && <p className="mt-2 text-[11px] text-emerald-200">Aprovado por {story.approvedBy || "administrador"}{story.approvedAt ? ` em ${formatExecution(story.approvedAt)}` : ""}</p>}
+                  {story.status !== "approved" && <Button type="button" size="sm" className="mt-3" disabled={approveFilteredStoryMutation.isPending} onClick={() => { const runId = story.runId ?? status.data?.recentRuns?.find(candidate => (candidate as OcrAuditRun).filteredStories?.some(item => item.id === story.id))?.id; if (runId) approveFilteredStoryMutation.mutate({ runId: Number(runId), storyId: story.id }); }} aria-label={`Aprovar Story de ${story.username || "fonte desconhecida"}`}>{approveFilteredStoryMutation.isPending ? <><Loader2 size={13} className="animate-spin" /> Aprovando…</> : "Aprovar manualmente"}</Button>}
                 </div>
               </article>
             ))}
-          </div> : <p className="mt-4 rounded-xl border border-dashed border-white/10 p-5 text-xs text-zinc-500">Nenhum Story filtrado aguardando revisão.</p>
+          </div> : <p className="mt-4 rounded-xl border border-dashed border-white/10 p-5 text-xs text-zinc-500">Nenhum Story filtrado aguardando revisão.</p>}
+          {(filteredStoriesQuery.data?.hasNextPage || filteredPage > 0) && <div className="mt-4 flex items-center justify-between gap-3"><Button type="button" variant="outline" size="sm" onClick={() => setFilteredPage(page => Math.max(0, page - 1))} disabled={filteredPage === 0 || filteredStoriesQuery.isFetching}>Anterior</Button><span className="text-xs text-zinc-500">Página {filteredPage + 1}</span><Button type="button" variant="outline" size="sm" onClick={() => setFilteredPage(page => page + 1)} disabled={!filteredStoriesQuery.data?.hasNextPage || filteredStoriesQuery.isFetching}>Próxima</Button></div>}
+          </>
         ) : status.data?.recentRuns?.length ? (
           <div className="mt-3 space-y-3">
             {status.data.recentRuns.map(run => (

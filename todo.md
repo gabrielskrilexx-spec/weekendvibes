@@ -2190,3 +2190,16 @@
 - [x] Permitir edição manual preservando texto bruto e revisão atual
 - [x] Cobrir aprovação, erro, permissões, imagem ausente e responsividade
 - [x] Validar testes, TypeScript e build; checkpoint pendente
+
+## Aplicação de pasted_content_2.txt — sessão atual
+- [ ] Ler e classificar o conteúdo anexado
+- [ ] Mapear recomendações aplicáveis ao WeekendVibes
+- [ ] Implementar mudanças compatíveis sem sobrescrever trabalho existente
+- [ ] Adicionar ou atualizar testes necessários
+- [ ] Validar TypeScript, build e publicar checkpoint se houver alteração funcional
+
+## Stories filtrados — paginação e auditoria
+- [x] Implementar consulta administrativa paginada com filtro de motivo sincronizado na URL
+- [x] Exibir metadados de aprovação (approvedBy/approvedAt) na interface
+- [x] Cobrir filtro, paginação e contrato de auditoria com Vitest
+- [x] Validar testes completos, TypeScript, build e checkpoint final

@@ -248,6 +248,30 @@ const reminderOutput = z
   .strict();
 const eventRemoveOutput = z.object({ success: z.literal(true), deletedId: z.string().min(1).max(32) }).strict();
 const storiesSyncOutput = z.object({ success: z.literal(true) }).strict();
+const filteredStoryOutput = z.object({
+  id: z.string().min(1).max(500),
+  runId: z.number().int().positive(),
+  username: z.string().max(160),
+  mediaOrigin: z.enum(["story", "highlight"]),
+  imageUrl: z.string().url().or(z.literal("")),
+  sourceUrl: z.string().url().or(z.literal("")),
+  postedAt: z.string().nullable(),
+  expiresAt: z.string().nullable(),
+  ocrText: z.string().max(5000),
+  rawText: z.string().max(5000),
+  reasons: z.array(z.string().max(240)).max(20),
+  status: z.enum(["pending", "approved"]),
+  approvedBy: z.string().max(160).nullable(),
+  approvedAt: z.string().nullable(),
+}).strict();
+const filteredStoriesPageOutput = z.object({
+  items: z.array(filteredStoryOutput),
+  total: z.number().int().nonnegative(),
+  offset: z.number().int().nonnegative(),
+  limit: z.number().int().positive().max(50),
+  nextOffset: z.number().int().nonnegative().nullable(),
+  hasNextPage: z.boolean(),
+}).strict();
 const dryRunSuccessOutput = z
   .object({
     dryRun: z.literal(true),
@@ -361,6 +385,39 @@ export const appRouter = router({
     status: adminOnly.query(async () =>
       normalizeJsonForTransport(await getWednesdayRoutineStatus())
     ),
+    filteredStories: adminOnly
+      .input(z.object({ offset: z.number().int().nonnegative().default(0), limit: z.number().int().positive().max(50).default(12), reason: z.string().trim().max(120).optional() }).strict())
+      .output(filteredStoriesPageOutput)
+      .query(async ({ input }) => {
+        const snapshot = normalizeJsonForTransport(await getWednesdayRoutineStatus()) as { recentRuns?: Array<Record<string, unknown>> };
+        const allStories = (snapshot.recentRuns ?? []).flatMap(run => {
+          const stories = Array.isArray(run.filteredStories) ? run.filteredStories : [];
+          return stories.map(story => {
+            const item = story as Record<string, unknown>;
+            return {
+              id: String(item.id ?? ""),
+              runId: Number(run.id ?? 0),
+              username: String(item.username ?? ""),
+              mediaOrigin: item.mediaOrigin === "highlight" ? "highlight" as const : "story" as const,
+              imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : "",
+              sourceUrl: typeof item.sourceUrl === "string" ? item.sourceUrl : "",
+              postedAt: item.postedAt == null ? null : String(item.postedAt),
+              expiresAt: item.expiresAt == null ? null : String(item.expiresAt),
+              ocrText: String(item.ocrText ?? "").slice(0, 5000),
+              rawText: String(item.rawText ?? "").slice(0, 5000),
+              reasons: Array.isArray(item.reasons) ? item.reasons.slice(0, 20).map(reason => String(reason).slice(0, 240)) : [],
+              status: item.status === "approved" ? "approved" as const : "pending" as const,
+              approvedBy: item.approvedBy == null ? null : String(item.approvedBy).slice(0, 160),
+              approvedAt: item.approvedAt == null ? null : String(item.approvedAt),
+            };
+          });
+        }).filter(story => story.id && story.runId > 0);
+        const reason = input.reason?.toLowerCase();
+        const filtered = reason ? allStories.filter(story => story.reasons.some(candidate => candidate.toLowerCase().includes(reason))) : allStories;
+        const items = filtered.slice(input.offset, input.offset + input.limit);
+        const nextOffset = input.offset + items.length < filtered.length ? input.offset + items.length : null;
+        return { items, total: filtered.length, offset: input.offset, limit: input.limit, nextOffset, hasNextPage: nextOffset !== null };
+      }),
     sources: adminOnly
       .output(z.object({ sources: z.array(z.string().min(1).max(160)).max(80) }).strict())
       .query(() => ({ sources: getIngestionChunkSources() })),
@@ -412,10 +469,10 @@ export const appRouter = router({
       }),
     approveFilteredStory: adminOnly
       .input(z.object({ runId: z.number().int().positive(), storyId: z.string().trim().min(1).max(500) }).strict())
-      .output(z.object({ success: z.literal(true), runId: z.number().int().positive(), storyId: z.string(), status: z.literal("approved") }).strict())
-      .mutation(async ({ input }) => {
+      .output(z.object({ success: z.literal(true), runId: z.number().int().positive(), storyId: z.string(), status: z.literal("approved"), approvedBy: z.string().min(1).max(160), approvedAt: z.string() }).strict())
+      .mutation(async ({ input, ctx }) => {
         try {
-          return await approveFilteredInstagramStory(input);
+          return await approveFilteredInstagramStory({ runId: input.runId, storyId: input.storyId, approvedBy: String(ctx.user.openId ?? ctx.user.name ?? "admin") });
         } catch (error) {
           return throwSanitizedAdminMutationError(error, "Não foi possível aprovar o Story filtrado.");
         }

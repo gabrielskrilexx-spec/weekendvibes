@@ -645,7 +645,7 @@ function buildWeeklyOperationalSummary(runs: Array<{ details: unknown }>) {
   return summary;
 }
 
-export async function approveFilteredInstagramStory(input: { runId: number; storyId: string }) {
+export async function approveFilteredInstagramStory(input: { runId: number; storyId: string; approvedBy: string; approvedAt?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
   const [row] = await db.select({ details: ingestionRuns.details }).from(ingestionRuns).where(eq(ingestionRuns.id, input.runId)).limit(1);
@@ -660,9 +660,10 @@ export async function approveFilteredInstagramStory(input: { runId: number; stor
   if (!instagram || !stories || index < 0) throw new Error("Story filtrado não encontrado.");
   const current = stories[index] as Record<string, unknown>;
   const nextStories = stories.slice();
-  nextStories[index] = { ...current, status: "approved" };
+  const approvedAt = input.approvedAt ?? new Date().toISOString();
+  nextStories[index] = { ...current, status: "approved", approvedBy: input.approvedBy.slice(0, 160), approvedAt };
   await db.update(ingestionRuns).set({ details: JSON.stringify({ ...root, instagram: { ...instagram, filteredStories: nextStories } }).slice(0, 20000) }).where(eq(ingestionRuns.id, input.runId));
-  return { success: true as const, runId: input.runId, storyId: input.storyId, status: "approved" as const };
+  return { success: true as const, runId: input.runId, storyId: input.storyId, status: "approved" as const, approvedBy: input.approvedBy.slice(0, 160), approvedAt };
 }
 
 export async function updateIngestionRunOcrText(input: { runId: number; entryIndex: number; ocrText: string }) {

@@ -1,7 +1,7 @@
 import React from "react";
 import { act, create } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import AdminRoutinePanel, { buildOcrEditInput, getApifyQuotaNotice, isChunkNetworkError, retryChunkNetwork } from "./AdminRoutinePanel";
+import AdminRoutinePanel, { buildOcrEditInput, filterAndPaginateFilteredStories, getApifyQuotaNotice, isChunkNetworkError, retryChunkNetwork } from "./AdminRoutinePanel";
 
 let statusState: {
   data?: {
@@ -117,6 +117,25 @@ vi.mock("@/lib/trpc", () => ({
     },
   },
 }));
+
+describe("filtered stories pagination", () => {
+  const story = (id: string, reasons: string[]): Parameters<typeof filterAndPaginateFilteredStories>[0][number] => ({ id, username: "meulugar.bar", mediaOrigin: "story", imageUrl: "https://example.com/story.png", sourceUrl: "https://instagram.com/meulugar.bar", postedAt: null, expiresAt: null, ocrText: "", rawText: "", reasons, status: "pending" });
+
+  it("filtra por motivo sem diferenciar maiúsculas e minúsculas", () => {
+    const result = filterAndPaginateFilteredStories([story("1", ["Data expirada"]), story("2", ["Baixa confiança"])], "data EXPIRADA", 0, 12);
+    expect(result.items.map(item => item.id)).toEqual(["1"]);
+    expect(result.total).toBe(1);
+    expect(result.hasNextPage).toBe(false);
+  });
+
+  it("retorna offsets e próxima página de forma determinística", () => {
+    const result = filterAndPaginateFilteredStories(Array.from({ length: 25 }, (_, index) => story(String(index + 1), ["sem data"])), "", 12, 12);
+    expect(result.items).toHaveLength(12);
+    expect(result.items[0]?.id).toBe("13");
+    expect(result.nextOffset).toBe(24);
+    expect(result.hasNextPage).toBe(true);
+  });
+});
 
 describe("chunk network resilience", () => {
   it("classifica falhas de transporte sem tratar erros de domínio como rede", () => {
