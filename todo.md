@@ -2242,3 +2242,23 @@
 - [x] Adicionar controles React de cancelamento e limpeza
 - [x] Adicionar testes de persistência, cancelamento, limpeza e ordenação visual
 - [x] Validar migração, suíte completa, TypeScript, build, preview e publicar checkpoint
+
+## Resiliência e histórico de exportações
+- [ ] Auditar heartbeat, schema de jobs, storage e contratos atuais
+- [ ] Definir recuperação, deleção física e histórico tRPC
+- [ ] Implementar worker de recuperação de jobs órfãos
+- [ ] Implementar deleção física assíncrona e limpeza idempotente
+- [ ] Implementar histórico de exportações filtrável por owner, formato, status e período
+- [ ] Integrar histórico e filtros sincronizados na URL no React
+- [ ] Adicionar testes de worker, storage, queries tRPC e filtros
+- [ ] Validar preview, scheduler, suíte completa, TypeScript, build e publicar checkpoint
+
+## Recuperação e histórico de jobs de exportação
+- [x] Auditar estado atual e contratos persistentes
+- [x] Consolidar schema Drizzle com leases e fileDeletePending
+- [x] Implementar worker Heartbeat de recuperação de jobs órfãos
+- [x] Implementar cancelamento e expiração com marcação fileDeletePending
+- [x] Implementar limpeza lógica e histórico filtrável no tRPC
+- [x] Integrar histórico visual e filtros URL no React
+- [x] Adicionar testes de leases, recuperação e deleção pendente
+- [x] Validar migração, suíte completa, TypeScript, build, preview e publicar checkpoint

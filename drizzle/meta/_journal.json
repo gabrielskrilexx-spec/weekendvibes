@@ -162,6 +162,13 @@
       "when": 1788012082132,
       "tag": "0022_salty_argent",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1788014280433,
+      "tag": "0023_soft_siren",
+      "breakpoints": true
     }
   ]
 }

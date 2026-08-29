@@ -62,7 +62,7 @@ import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
 import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
 import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
-import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs } from "./filtered-story-export-jobs";
+import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory } from "./filtered-story-export-jobs";
 
 const safeFilter = (max = 120) => z.string().trim().max(max).optional();
 const latitudeInput = z
@@ -304,6 +304,8 @@ const filteredStoryAuditPageOutput = z.object({
   nextOffset: z.number().int().nonnegative().nullable(),
   hasNextPage: z.boolean(),
 }).strict();
+const exportHistoryItemOutput = z.object({ jobId: z.string(), status: z.enum(["queued", "processing", "completed", "failed", "cancelled", "expired"]), progress: z.number().int().min(0).max(100), fileName: z.string().nullable(), contentType: z.string().nullable(), error: z.string().nullable(), fileDeletePending: z.boolean(), createdAt: z.string(), updatedAt: z.string(), format: z.enum(["csv", "json"]) }).strict();
+const exportHistoryPageOutput = z.object({ items: z.array(exportHistoryItemOutput).max(50), total: z.number().int().nonnegative(), offset: z.number().int().nonnegative(), limit: z.number().int().positive().max(50), nextOffset: z.number().int().nonnegative().nullable(), hasNextPage: z.boolean() }).strict();
 const dryRunSuccessOutput = z
   .object({
     dryRun: z.literal(true),
@@ -433,7 +435,7 @@ export const appRouter = router({
       .mutation(({ ctx, input }) => createPersistentExportJob({ ...input, createdByOpenId: ctx.user.openId })),
     filteredStoriesExportStatus: adminOnly
       .input(z.object({ jobId: z.string().min(16).max(128) }).strict())
-      .output(z.object({ jobId: z.string(), status: z.enum(["queued", "processing", "completed", "failed", "cancelled", "expired"]), progress: z.number().int().min(0).max(100), fileName: z.string().nullable(), contentType: z.string().nullable(), error: z.string().nullable() }).strict())
+      .output(z.object({ jobId: z.string(), status: z.enum(["queued", "processing", "completed", "failed", "cancelled", "expired"]), progress: z.number().int().min(0).max(100), fileName: z.string().nullable(), contentType: z.string().nullable(), error: z.string().nullable(), fileDeletePending: z.boolean() }).strict())
       .query(({ ctx, input }) => getPersistentExportJobStatus(input.jobId, ctx.user.openId)),
     filteredStoriesExportDownload: adminOnly
       .input(z.object({ jobId: z.string().min(16).max(128) }).strict())
@@ -445,8 +447,16 @@ export const appRouter = router({
       .mutation(({ ctx, input }) => cancelPersistentExportJob(input.jobId, ctx.user.openId)),
     purgeFilteredStoriesExports: adminOnly
       .input(z.object({ before: z.string().datetime().optional() }).strict())
-      .output(z.object({ success: z.literal(true), deletedJobs: z.number().int().nonnegative(), deletedFiles: z.number().int().nonnegative() }).strict())
+      .output(z.object({ success: z.literal(true), deletedJobs: z.number().int().nonnegative(), deletedFiles: z.number().int().nonnegative(), pendingFiles: z.number().int().nonnegative() }).strict())
       .mutation(({ input }) => purgePersistentExportJobs(input.before)),
+    recoverFilteredStoriesExports: adminOnly
+      .input(z.object({ limit: z.number().int().positive().max(20).default(5) }).strict())
+      .output(z.object({ success: z.literal(true), recovered: z.number().int().nonnegative(), skipped: z.number().int().nonnegative() }).strict())
+      .mutation(({ input }) => recoverOrphanedExportJobs(input.limit)),
+    exportHistory: adminOnly
+      .input(z.object({ format: z.enum(["csv", "json"]).optional(), status: z.enum(["queued", "processing", "completed", "failed", "cancelled", "expired"]).optional(), from: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).optional(), to: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).optional(), offset: z.number().int().nonnegative().default(0), limit: z.number().int().positive().max(50).default(20) }).strict())
+      .output(exportHistoryPageOutput)
+      .query(({ ctx, input }) => listExportHistory({ ...input, ownerOpenId: ctx.user.openId })),
     filteredStoriesJson: adminOnly
       .input(filteredStoriesFilterInput)
       .output(z.object({ fileName: z.string().min(1).max(180), contentType: z.literal("application/json"), json: z.string() }).strict())

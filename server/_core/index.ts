@@ -11,6 +11,7 @@ import { ingestAgentDocumentsHandler } from "../scheduled-agent";
 import { ingestInstagramHandler } from "../scheduled-instagram";
 import { asyncIngestInstagramHandler, apifyInstagramWebhookHandler, reprocessApifyStoriesDatasetHandler } from "../apify-async";
 import { heartbeatMonitorHandler } from "../scheduled-heartbeat-monitor";
+import { exportJobsRecoveryHandler } from "../scheduled-export-recovery";
 import { serveStatic, setupVite } from "./vite";
 import { applySecurityHeaders, createRateLimit, createStrictCors } from "./security";
 import { registerMapsJavascriptRoute } from "../maps-javascript";
@@ -56,6 +57,7 @@ async function startServer() {
   app.post("/api/webhooks/apify/instagram", noStoreScheduledResponse, apifyInstagramWebhookHandler);
   app.post("/api/v2/ingestion/instagram/reprocess-dataset", noStoreScheduledResponse, reprocessApifyStoriesDatasetHandler);
   app.post("/api/scheduled/monitor-heartbeat", noStoreScheduledResponse, heartbeatMonitorHandler);
+  app.post("/api/scheduled/export-jobs-recovery", noStoreScheduledResponse, exportJobsRecoveryHandler);
   // tRPC API
   app.use(
     "/api/trpc",

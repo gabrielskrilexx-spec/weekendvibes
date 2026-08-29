@@ -250,10 +250,17 @@ export const filteredStoryExportJobs = mysqlTable("filteredStoryExportJobs", {
   expiresAt: timestamp("expiresAt").notNull(),
   completedAt: timestamp("completedAt"),
   cancelledAt: timestamp("cancelledAt"),
+  leaseOwner: varchar("leaseOwner", { length: 128 }),
+  leaseExpiresAt: timestamp("leaseExpiresAt"),
+  recoveryAttempts: int("recoveryAttempts").default(0).notNull(),
+  lastRecoveredAt: timestamp("lastRecoveredAt"),
+  fileDeletePending: int("fileDeletePending").$type<boolean>().default(false).notNull(),
+  fileDeletedAt: timestamp("fileDeletedAt"),
 }, table => ({
   statusUpdatedIdx: index("filteredStoryExportJobs_status_updated_idx").on(table.status, table.updatedAt),
   expiryIdx: index("filteredStoryExportJobs_expiry_idx").on(table.expiresAt),
   ownerIdx: index("filteredStoryExportJobs_owner_created_idx").on(table.createdByOpenId, table.createdAt),
+  leaseIdx: index("filteredStoryExportJobs_status_lease_idx").on(table.status, table.leaseExpiresAt),
 }));
 export type FilteredStoryExportJob = typeof filteredStoryExportJobs.$inferSelect;
 export type InsertFilteredStoryExportJob = typeof filteredStoryExportJobs.$inferInsert;

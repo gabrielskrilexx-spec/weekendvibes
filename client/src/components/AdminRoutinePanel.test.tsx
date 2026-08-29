@@ -332,6 +332,10 @@ describe("AdminRoutinePanel", () => {
     expect(tree!.root.findAll(node => node.props["aria-label"] === "Filtrar Stories até a data").length).toBe(1);
     expect(tree!.root.findAll(node => node.props["aria-label"] === "Ordenar Stories filtrados").length).toBe(1);
     expect(JSON.stringify(tree!.toJSON())).toContain("Exportar JSON");
+    expect(JSON.stringify(tree!.toJSON())).toContain("Histórico de exportações");
+    expect(tree!.root.findAll(node => node.props["aria-label"] === "Filtrar histórico por formato").length).toBe(1);
+    expect(tree!.root.findAll(node => node.props["aria-label"] === "Filtrar histórico por status").length).toBe(1);
+    expect(tree!.root.findAll(node => node.props["aria-label"] === "Tamanho da página do histórico").length).toBe(1);
     const detailButton = tree!.root.findByProps({ "aria-label": "Ver detalhes do Story story-1" });
     await act(async () => { detailButton.props.onClick(); });
     expect(tree!.root.findAll(node => node.props["data-testid"] === "filtered-story-detail-dialog").length).toBe(1);
