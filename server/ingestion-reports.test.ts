@@ -1,7 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv } from "./ingestion-reports";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
 import { sanitizeAgendaStepErrorForTest } from "./agenda-routine";
+
+describe("filtered stories CSV", () => {
+  it("gera CSV com BOM, cabeçalho e escape RFC 4180", () => {
+    const csv = buildFilteredStoriesCsv([{ id: "story-1", runId: 7, username: "meulugar.bar", mediaOrigin: "story", imageUrl: "https://example.com/flyer.png", sourceUrl: "https://instagram.com/meulugar.bar", postedAt: "2026-08-29T01:00:00.000Z", expiresAt: null, ocrText: 'Evento, "especial"', rawText: "Texto bruto", reasons: ["sem data", "baixa confiança"], status: "approved", approvedBy: "admin-open-id", approvedAt: "2026-08-29T02:00:00.000Z" }]);
+    expect(csv.startsWith("\uFEFF\"id\",\"run_id\"" )).toBe(true);
+    expect(csv).toContain('"Evento, ""especial"""');
+    expect(csv).toContain('"sem data | baixa confiança"');
+    expect(csv.endsWith("\n")).toBe(true);
+  });
+
+  it("retorna somente cabeçalho quando não há resultados", () => {
+    expect(buildFilteredStoriesCsv([])).toBe("\uFEFF\"id\",\"run_id\",\"username\",\"media_origin\",\"image_url\",\"source_url\",\"posted_at\",\"expires_at\",\"ocr_text\",\"raw_text\",\"reasons\",\"status\",\"approved_by\",\"approved_at\"\n");
+  });
+});
 
 describe("manual reprocess error transport", () => {
   it("sanitizes integration failures before tRPC transport", () => {

@@ -4,6 +4,7 @@ import {
   CalendarClock,
   CheckCircle2,
   Clock3,
+  Download,
   Loader2,
   Play,
   RefreshCw,
@@ -162,7 +163,12 @@ export default function AdminRoutinePanel() {
   const [selectedOcrRun, setSelectedOcrRun] = useState<OcrAuditRun | null>(null);
   const [historyTab, setHistoryTab] = useState<"runs" | "filtered">("runs");
   const [filteredReason, setFilteredReason] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("filtered_reason") ?? "");
+  const [filteredUsername, setFilteredUsername] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("filtered_user") ?? "");
+  const [filteredStatus, setFilteredStatus] = useState<"" | "pending" | "approved">(() => { const value = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("filtered_status") ?? ""; return value === "pending" || value === "approved" ? value : ""; });
+  const [filteredFrom, setFilteredFrom] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("filtered_from") ?? "");
+  const [filteredTo, setFilteredTo] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("filtered_to") ?? "");
   const [filteredPage, setFilteredPage] = useState(0);
+  const [selectedFilteredStoryId, setSelectedFilteredStoryId] = useState<string | null>(null);
   const [editingOcrIndex, setEditingOcrIndex] = useState<number | null>(null);
   const [ocrDraft, setOcrDraft] = useState("");
   const [rolloverDraft, setRolloverDraft] = useState<string | null>(null);
@@ -255,8 +261,21 @@ export default function AdminRoutinePanel() {
   const filteredReasonOptions = useMemo(() => Array.from(new Set(allFilteredStories.flatMap(story => story.reasons))).sort((a, b) => a.localeCompare(b, "pt-BR")), [allFilteredStories]);
   const filteredStoriesProcedure = (trpc.adminRoutine as unknown as { filteredStories?: { useQuery: (input: { offset: number; limit: number; reason?: string }) => unknown } }).filteredStories;
   const fallbackFilteredPage = filterAndPaginateFilteredStories(allFilteredStories, filteredReason, filteredPage * 12, 12);
-  const filteredStoriesQuery = (filteredStoriesProcedure ? filteredStoriesProcedure.useQuery({ offset: filteredPage * 12, limit: 12, reason: filteredReason || undefined }) : { data: fallbackFilteredPage, refetch: async () => ({ data: undefined }), isFetching: false }) as { data?: { items: FilteredStory[]; total: number; nextOffset: number | null; hasNextPage: boolean; offset: number; limit: number }; refetch: () => Promise<unknown>; isFetching: boolean };
+  const storyFilters = { offset: filteredPage * 12, limit: 12, reason: filteredReason || undefined, username: filteredUsername || undefined, status: filteredStatus || undefined, from: filteredFrom || undefined, to: filteredTo || undefined };
+  const filteredStoriesQuery = (filteredStoriesProcedure ? filteredStoriesProcedure.useQuery(storyFilters) : { data: fallbackFilteredPage, refetch: async () => ({ data: undefined }), isFetching: false }) as { data?: { items: FilteredStory[]; total: number; nextOffset: number | null; hasNextPage: boolean; offset: number; limit: number }; refetch: () => Promise<unknown>; isFetching: boolean };
   const filteredStories = filteredStoriesQuery.data?.items ?? [];
+  const filteredStoryDetailProcedure = (trpc.adminRoutine as unknown as { filteredStoryDetail?: { useQuery: (input: { storyId: string }, options?: { enabled?: boolean }) => unknown } }).filteredStoryDetail;
+  const filteredStoryDetailQuery = (filteredStoryDetailProcedure ? filteredStoryDetailProcedure.useQuery({ storyId: selectedFilteredStoryId ?? "pending" }, { enabled: Boolean(selectedFilteredStoryId) }) : { data: undefined, isFetching: false }) as { data?: { story: FilteredStory | null; history: Array<{ action: "ocr_edit" | "approval"; previousText: string | null; nextText: string | null; status: string | null; actorOpenId: string; createdAt: string }> }; isFetching: boolean };
+  const filteredStoriesCsvProcedure = (trpc.adminRoutine as unknown as { filteredStoriesCsv?: { useQuery: (input: typeof storyFilters, options?: { enabled?: boolean }) => unknown } }).filteredStoriesCsv;
+  const filteredStoriesCsvQuery = (filteredStoriesCsvProcedure ? filteredStoriesCsvProcedure.useQuery(storyFilters, { enabled: false }) : { refetch: async () => ({ data: undefined }), isFetching: false }) as { refetch: () => Promise<{ data?: { fileName: string; contentType: string; csv: string } }>; isFetching: boolean };
+  const downloadFilteredStoriesCsv = async () => {
+    const result = await filteredStoriesCsvQuery.refetch();
+    if (!result.data) { sonnerToast.error("Não foi possível exportar os Stories", { description: "O servidor não retornou um arquivo CSV válido." }); return; }
+    const blob = new Blob([result.data.csv], { type: result.data.contentType });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a"); anchor.href = url; anchor.download = result.data.fileName; anchor.click(); URL.revokeObjectURL(url);
+    sonnerToast.success("CSV pronto", { description: `${filteredStoriesQuery.data?.total ?? 0} Story(ies) exportado(s) com os filtros atuais.` });
+  };
   useEffect(() => {
     setFilteredPage(0);
     if (typeof window !== "undefined") {
@@ -264,7 +283,7 @@ export default function AdminRoutinePanel() {
       if (filteredReason) params.set("filtered_reason", filteredReason); else params.delete("filtered_reason");
       window.history.replaceState({}, "", `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}${window.location.hash}`);
     }
-  }, [filteredReason]);
+  }, [filteredReason, filteredUsername, filteredStatus, filteredFrom, filteredTo]);
   const lastSuccessfulCronRun = status.data?.recentRuns?.find(
     run => run.trigger !== "manual" && run.status === "succeeded"
   );
@@ -712,14 +731,28 @@ export default function AdminRoutinePanel() {
         </div>
         {historyTab === "filtered" ? (
           <>
-          <div className="mt-4 flex flex-wrap items-end gap-3" data-testid="filtered-stories-controls">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="filtered-stories-controls">
             <label className="grid gap-1 text-xs font-bold text-zinc-400">Motivo da rejeição
               <select value={filteredReason} onChange={event => setFilteredReason(event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" aria-label="Filtrar Stories por motivo">
                 <option value="">Todos os motivos</option>
                 {filteredReasonOptions.map(reason => <option key={reason} value={reason}>{reason}</option>)}
               </select>
             </label>
-            <span className="text-xs text-zinc-500">{filteredStoriesQuery.data?.total ?? 0} resultado(s)</span>
+            <label className="grid gap-1 text-xs font-bold text-zinc-400">Fonte ou usuário
+              <input value={filteredUsername} onChange={event => setFilteredUsername(event.target.value)} placeholder="@meulugar.bar" className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100 placeholder:text-zinc-600" aria-label="Filtrar Stories por fonte ou usuário" />
+            </label>
+            <label className="grid gap-1 text-xs font-bold text-zinc-400">Status de aprovação
+              <select value={filteredStatus} onChange={event => setFilteredStatus(event.target.value as "" | "pending" | "approved")} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" aria-label="Filtrar Stories por status">
+                <option value="">Todos os status</option><option value="pending">Pendentes</option><option value="approved">Aprovados</option>
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-bold text-zinc-400">Data inicial
+              <input type="date" value={filteredFrom} onChange={event => setFilteredFrom(event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" aria-label="Filtrar Stories a partir da data" />
+            </label>
+            <label className="grid gap-1 text-xs font-bold text-zinc-400">Data final
+              <input type="date" value={filteredTo} onChange={event => setFilteredTo(event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" aria-label="Filtrar Stories até a data" />
+            </label>
+            <div className="flex flex-wrap items-end gap-2"><span className="self-center text-xs text-zinc-500">{filteredStoriesQuery.data?.total ?? 0} resultado(s)</span><Button type="button" variant="outline" size="sm" onClick={() => void downloadFilteredStoriesCsv()} disabled={filteredStoriesCsvQuery.isFetching} aria-busy={filteredStoriesCsvQuery.isFetching}>{filteredStoriesCsvQuery.isFetching ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Exportar CSV</Button></div>
           </div>
           {filteredStories.length ? <div className="mt-4 grid gap-3 lg:grid-cols-2" data-testid="filtered-stories-list">
             {filteredStories.map(story => (
@@ -730,6 +763,7 @@ export default function AdminRoutinePanel() {
                   <p className="mt-2 font-black uppercase tracking-wide text-amber-100">Motivo da rejeição</p><ul className="mt-1 list-disc space-y-1 pl-4 text-zinc-300">{story.reasons.length ? story.reasons.map(reason => <li key={reason}>{reason}</li>) : <li>Não informado</li>}</ul>
                   <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-zinc-400">{story.ocrText || story.rawText || "Sem texto OCR registrado."}</p>
                   {story.status === "approved" && <p className="mt-2 text-[11px] text-emerald-200">Aprovado por {story.approvedBy || "administrador"}{story.approvedAt ? ` em ${formatExecution(story.approvedAt)}` : ""}</p>}
+                  <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => setSelectedFilteredStoryId(story.id)} aria-label={`Ver detalhes do Story ${story.id}`}>Ver detalhes</Button>
                   {story.status !== "approved" && <Button type="button" size="sm" className="mt-3" disabled={approveFilteredStoryMutation.isPending} onClick={() => { const runId = story.runId ?? status.data?.recentRuns?.find(candidate => (candidate as OcrAuditRun).filteredStories?.some(item => item.id === story.id))?.id; if (runId) approveFilteredStoryMutation.mutate({ runId: Number(runId), storyId: story.id }); }} aria-label={`Aprovar Story de ${story.username || "fonte desconhecida"}`}>{approveFilteredStoryMutation.isPending ? <><Loader2 size={13} className="animate-spin" /> Aprovando…</> : "Aprovar manualmente"}</Button>}
                 </div>
               </article>
@@ -835,6 +869,18 @@ export default function AdminRoutinePanel() {
           </p>
         )}
       </div>
+      <Dialog open={selectedFilteredStoryId !== null} onOpenChange={open => { if (!open) setSelectedFilteredStoryId(null); }}>
+        <DialogContent data-testid="filtered-story-detail-dialog" className="max-h-[85vh] overflow-y-auto border-amber-300/20 bg-zinc-950 text-zinc-100 sm:max-w-3xl">
+          <DialogHeader><DialogTitle>Detalhes do Story</DialogTitle><DialogDescription className="text-zinc-400">Histórico completo do OCR e trilha de auditoria da aprovação.</DialogDescription></DialogHeader>
+          {filteredStoryDetailQuery.isFetching && <p className="rounded-xl border border-white/10 p-5 text-sm text-zinc-400" role="status">Carregando histórico…</p>}
+          {!filteredStoryDetailQuery.isFetching && filteredStoryDetailQuery.data?.story && <div className="grid gap-4 sm:grid-cols-[180px_1fr]">
+            <div>{filteredStoryDetailQuery.data.story.imageUrl ? <img src={filteredStoryDetailQuery.data.story.imageUrl} alt={`Arte do Story ${filteredStoryDetailQuery.data.story.id}`} className="h-44 w-full rounded-xl border border-white/10 object-cover" /> : <div className="grid h-44 place-items-center rounded-xl border border-dashed border-white/10 text-xs text-zinc-500">Sem imagem</div>}<p className="mt-2 text-xs text-zinc-400">@{filteredStoryDetailQuery.data.story.username}</p></div>
+            <div className="space-y-3 text-xs"><div><p className="font-black uppercase tracking-wide text-zinc-500">Texto OCR atual</p><pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-black/30 p-3 font-sans text-zinc-200">{filteredStoryDetailQuery.data.story.ocrText || "Nenhum texto OCR registrado."}</pre></div><div><p className="font-black uppercase tracking-wide text-zinc-500">Histórico sequencial</p><div className="mt-2 space-y-2">{filteredStoryDetailQuery.data.history.length ? filteredStoryDetailQuery.data.history.slice().reverse().map((entry, index) => <div key={`${entry.createdAt}-${index}`} className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><p className="font-bold text-fuchsia-200">{entry.action === "ocr_edit" ? "Edição OCR" : "Aprovação"}</p><p className="mt-1 text-zinc-300">{entry.action === "ocr_edit" ? `${entry.previousText || "vazio"} → ${entry.nextText || "vazio"}` : `Status: ${entry.status || "aprovado"}`}</p><p className="mt-1 text-[11px] text-zinc-500">Por <strong className="text-zinc-300">{entry.actorOpenId}</strong> em {formatExecution(entry.createdAt)}</p></div>) : <p className="rounded-xl border border-dashed border-white/10 p-4 text-zinc-500">Nenhuma alteração auditada até o momento.</p>}</div></div></div>
+          </div>}
+          {!filteredStoryDetailQuery.isFetching && !filteredStoryDetailQuery.data?.story && <p className="rounded-xl border border-dashed border-white/10 p-5 text-sm text-zinc-500">Story não encontrado.</p>}
+          <DialogFooter><Button type="button" variant="outline" onClick={() => setSelectedFilteredStoryId(null)}>Fechar</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={selectedOcrRun !== null} onOpenChange={open => { if (!open) setSelectedOcrRun(null); }}>
         <DialogContent data-testid="ocr-audit-dialog" data-ocr-entry-count={selectedOcrRun?.ocrAudit?.length ?? 0} className="max-h-[85vh] overflow-y-auto border-fuchsia-300/20 bg-zinc-950 text-zinc-100 sm:max-w-3xl">
           <DialogHeader>

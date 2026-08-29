@@ -132,6 +132,21 @@ export const ingestionRuns = mysqlTable("ingestionRuns", {
 export type IngestionRun = typeof ingestionRuns.$inferSelect;
 export type InsertIngestionRun = typeof ingestionRuns.$inferInsert;
 
+export const ingestionStoryAuditLogs = mysqlTable("ingestionStoryAuditLogs", {
+  id: int("id").autoincrement().primaryKey(),
+  storyId: varchar("storyId", { length: 500 }).notNull(),
+  runId: int("runId").notNull(),
+  action: mysqlEnum("action", ["ocr_edit", "approval"]).notNull(),
+  previousText: text("previousText"),
+  nextText: text("nextText"),
+  status: varchar("status", { length: 32 }),
+  actorOpenId: varchar("actorOpenId", { length: 160 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type IngestionStoryAuditLog = typeof ingestionStoryAuditLogs.$inferSelect;
+export type InsertIngestionStoryAuditLog = typeof ingestionStoryAuditLogs.$inferInsert;
+
 export const ingestionPayloadCache = mysqlTable("ingestionPayloadCache", {
   id: int("id").autoincrement().primaryKey(),
   cacheKey: varchar("cacheKey", { length: 255 }).notNull().unique(),

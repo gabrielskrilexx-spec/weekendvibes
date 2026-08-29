@@ -2203,3 +2203,12 @@
 - [x] Exibir metadados de aprovação (approvedBy/approvedAt) na interface
 - [x] Cobrir filtro, paginação e contrato de auditoria com Vitest
 - [x] Validar testes completos, TypeScript, build e checkpoint final
+
+## Stories filtrados — exportação, filtros e detalhe
+- [x] Auditar contratos, helpers de banco, painel e testes existentes
+- [x] Implementar filtros backend por motivo, fonte, status e período
+- [x] Implementar exportação CSV via endpoint tRPC com geração no servidor
+- [x] Implementar histórico completo de OCR e trilha de aprovação
+- [x] Integrar filtros URL, exportação e detalhe na interface
+- [x] Adicionar cobertura Vitest para CSV, filtros, query params e auditoria
+- [x] Validar suíte completa, TypeScript, build, preview e publicar checkpoint

@@ -148,6 +148,13 @@
       "when": 1787928722749,
       "tag": "0020_stiff_sersi",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1788010053676,
+      "tag": "0021_daily_guardsmen",
+      "breakpoints": true
     }
   ]
 }

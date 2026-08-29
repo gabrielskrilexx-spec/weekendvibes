@@ -44,6 +44,10 @@ import {
   sanitizeReprocessErrorForTest,
   updateIngestionRunOcrText,
   approveFilteredInstagramStory,
+  listFilteredStoriesPage,
+  listAllFilteredStories,
+  buildFilteredStoriesCsv,
+  getFilteredStoryDetail,
 } from "./ingestion-reports";
 import {
   createLocationAlias,
@@ -248,6 +252,15 @@ const reminderOutput = z
   .strict();
 const eventRemoveOutput = z.object({ success: z.literal(true), deletedId: z.string().min(1).max(32) }).strict();
 const storiesSyncOutput = z.object({ success: z.literal(true) }).strict();
+const filteredStoriesFilterInput = z.object({
+  offset: z.number().int().nonnegative().default(0),
+  limit: z.number().int().positive().max(100).default(25),
+  reason: z.string().trim().max(120).optional(),
+  username: z.string().trim().max(160).optional(),
+  status: z.enum(["pending", "approved"]).optional(),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+}).strict();
 const filteredStoryOutput = z.object({
   id: z.string().min(1).max(500),
   runId: z.number().int().positive(),
@@ -386,38 +399,19 @@ export const appRouter = router({
       normalizeJsonForTransport(await getWednesdayRoutineStatus())
     ),
     filteredStories: adminOnly
-      .input(z.object({ offset: z.number().int().nonnegative().default(0), limit: z.number().int().positive().max(50).default(12), reason: z.string().trim().max(120).optional() }).strict())
+      .input(filteredStoriesFilterInput)
       .output(filteredStoriesPageOutput)
       .query(async ({ input }) => {
-        const snapshot = normalizeJsonForTransport(await getWednesdayRoutineStatus()) as { recentRuns?: Array<Record<string, unknown>> };
-        const allStories = (snapshot.recentRuns ?? []).flatMap(run => {
-          const stories = Array.isArray(run.filteredStories) ? run.filteredStories : [];
-          return stories.map(story => {
-            const item = story as Record<string, unknown>;
-            return {
-              id: String(item.id ?? ""),
-              runId: Number(run.id ?? 0),
-              username: String(item.username ?? ""),
-              mediaOrigin: item.mediaOrigin === "highlight" ? "highlight" as const : "story" as const,
-              imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : "",
-              sourceUrl: typeof item.sourceUrl === "string" ? item.sourceUrl : "",
-              postedAt: item.postedAt == null ? null : String(item.postedAt),
-              expiresAt: item.expiresAt == null ? null : String(item.expiresAt),
-              ocrText: String(item.ocrText ?? "").slice(0, 5000),
-              rawText: String(item.rawText ?? "").slice(0, 5000),
-              reasons: Array.isArray(item.reasons) ? item.reasons.slice(0, 20).map(reason => String(reason).slice(0, 240)) : [],
-              status: item.status === "approved" ? "approved" as const : "pending" as const,
-              approvedBy: item.approvedBy == null ? null : String(item.approvedBy).slice(0, 160),
-              approvedAt: item.approvedAt == null ? null : String(item.approvedAt),
-            };
-          });
-        }).filter(story => story.id && story.runId > 0);
-        const reason = input.reason?.toLowerCase();
-        const filtered = reason ? allStories.filter(story => story.reasons.some(candidate => candidate.toLowerCase().includes(reason))) : allStories;
-        const items = filtered.slice(input.offset, input.offset + input.limit);
-        const nextOffset = input.offset + items.length < filtered.length ? input.offset + items.length : null;
-        return { items, total: filtered.length, offset: input.offset, limit: input.limit, nextOffset, hasNextPage: nextOffset !== null };
+        return await listFilteredStoriesPage(input);
       }),
+    filteredStoriesCsv: adminOnly
+      .input(filteredStoriesFilterInput)
+      .output(z.object({ fileName: z.string().min(1).max(180), contentType: z.literal("text/csv;charset=utf-8"), csv: z.string() }).strict())
+      .query(async ({ input }) => ({ fileName: `stories-filtrados-${new Date().toISOString().slice(0, 10)}.csv`, contentType: "text/csv;charset=utf-8" as const, csv: buildFilteredStoriesCsv(await listAllFilteredStories(input)) })),
+    filteredStoryDetail: adminOnly
+      .input(z.object({ storyId: z.string().trim().min(1).max(500) }).strict())
+      .output(z.object({ story: filteredStoryOutput.nullable(), history: z.array(z.object({ action: z.enum(["ocr_edit", "approval"]), previousText: z.string().nullable(), nextText: z.string().nullable(), status: z.string().nullable(), actorOpenId: z.string(), createdAt: z.string() }).strict()).max(100) }).strict())
+      .query(({ input }) => getFilteredStoryDetail(input.storyId)),
     sources: adminOnly
       .output(z.object({ sources: z.array(z.string().min(1).max(160)).max(80) }).strict())
       .query(() => ({ sources: getIngestionChunkSources() })),
@@ -460,9 +454,9 @@ export const appRouter = router({
     updateOcrText: adminOnly
       .input(z.object({ runId: z.number().int().positive(), entryIndex: z.number().int().nonnegative().max(24), ocrText: z.string().max(5000) }).strict())
       .output(ocrEditOutput)
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         try {
-          return await updateIngestionRunOcrText(input);
+          return await updateIngestionRunOcrText({ ...input, changedByOpenId: String(ctx.user.openId ?? ctx.user.name ?? "admin") });
         } catch (error) {
           return throwSanitizedAdminMutationError(error, "Não foi possível salvar a revisão do OCR.");
         }

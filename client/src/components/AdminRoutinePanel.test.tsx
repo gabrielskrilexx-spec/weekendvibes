@@ -322,6 +322,13 @@ describe("AdminRoutinePanel", () => {
     expect(tree!.toJSON()).toBeTruthy();
     expect(tree!.root.findAll(node => node.props["data-testid"] === "filtered-stories-list").length).toBe(1);
     expect(tree!.root.findAll(node => node.props["aria-label"] === "Aprovar Story de meulugar.bar").length).toBeGreaterThan(0);
+    expect(tree!.root.findAll(node => node.props["aria-label"] === "Filtrar Stories por fonte ou usuário").length).toBe(1);
+    expect(tree!.root.findAll(node => node.props["aria-label"] === "Filtrar Stories por status").length).toBe(1);
+    expect(tree!.root.findAll(node => node.props["aria-label"] === "Filtrar Stories a partir da data").length).toBe(1);
+    expect(tree!.root.findAll(node => node.props["aria-label"] === "Filtrar Stories até a data").length).toBe(1);
+    const detailButton = tree!.root.findByProps({ "aria-label": "Ver detalhes do Story story-1" });
+    await act(async () => { detailButton.props.onClick(); });
+    expect(tree!.root.findAll(node => node.props["data-testid"] === "filtered-story-detail-dialog").length).toBe(1);
   });
 
   it("exibe a data e o status da última sincronização automática bem-sucedida", async () => {

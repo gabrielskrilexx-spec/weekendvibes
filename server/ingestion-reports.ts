@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { isGracefullyDegradedMetaFailure } from "./instagram-pipeline";
 import {
   ingestionRuns,
+  ingestionStoryAuditLogs,
   operationalAlerts,
   ingestionSources,
 } from "../drizzle/schema";
@@ -645,6 +646,131 @@ function buildWeeklyOperationalSummary(runs: Array<{ details: unknown }>) {
   return summary;
 }
 
+export type FilteredStoriesFilter = {
+  offset?: number;
+  limit?: number;
+  reason?: string;
+  username?: string;
+  status?: "pending" | "approved";
+  from?: string;
+  to?: string;
+};
+
+export type FilteredStoryRecord = {
+  id: string;
+  runId: number;
+  username: string;
+  mediaOrigin: "story" | "highlight";
+  imageUrl: string;
+  sourceUrl: string;
+  postedAt: string | null;
+  expiresAt: string | null;
+  ocrText: string;
+  rawText: string;
+  reasons: string[];
+  status: "pending" | "approved";
+  approvedBy: string | null;
+  approvedAt: string | null;
+};
+
+export type FilteredStoryAuditRecord = {
+  action: "ocr_edit" | "approval";
+  previousText: string | null;
+  nextText: string | null;
+  status: string | null;
+  actorOpenId: string;
+  createdAt: string;
+};
+
+function safeIsoDate(value: unknown) {
+  if (value == null || value === "") return null;
+  const date = new Date(String(value));
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+function normalizeFilteredStory(value: unknown, runId: number): FilteredStoryRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Record<string, unknown>;
+  const id = String(item.id ?? "").trim();
+  if (!id || !Number.isInteger(runId) || runId <= 0) return null;
+  return {
+    id: id.slice(0, 500),
+    runId,
+    username: String(item.username ?? "").slice(0, 160),
+    mediaOrigin: item.mediaOrigin === "highlight" ? "highlight" : "story",
+    imageUrl: typeof item.imageUrl === "string" ? item.imageUrl.slice(0, 1000) : "",
+    sourceUrl: typeof item.sourceUrl === "string" ? item.sourceUrl.slice(0, 1000) : "",
+    postedAt: safeIsoDate(item.postedAt),
+    expiresAt: safeIsoDate(item.expiresAt),
+    ocrText: String(item.ocrText ?? "").slice(0, 5000),
+    rawText: String(item.rawText ?? "").slice(0, 5000),
+    reasons: Array.isArray(item.reasons) ? item.reasons.slice(0, 20).map(reason => String(reason).slice(0, 240)) : [],
+    status: item.status === "approved" ? "approved" : "pending",
+    approvedBy: item.approvedBy == null ? null : String(item.approvedBy).slice(0, 160),
+    approvedAt: safeIsoDate(item.approvedAt),
+  };
+}
+
+function matchesFilteredStory(story: FilteredStoryRecord, filters: FilteredStoriesFilter) {
+  const reason = filters.reason?.trim().toLowerCase();
+  if (reason && !story.reasons.some(candidate => candidate.toLowerCase().includes(reason))) return false;
+  const username = filters.username?.trim().toLowerCase();
+  if (username && !story.username.toLowerCase().includes(username)) return false;
+  if (filters.status && story.status !== filters.status) return false;
+  const storyDate = story.postedAt ? new Date(story.postedAt).getTime() : NaN;
+  const fromTime = filters.from ? new Date(`${filters.from}T00:00:00.000Z`).getTime() : null;
+  const toTime = filters.to ? new Date(`${filters.to}T23:59:59.999Z`).getTime() : null;
+  if (fromTime !== null && (!Number.isFinite(storyDate) || storyDate < fromTime)) return false;
+  if (toTime !== null && (!Number.isFinite(storyDate) || storyDate > toTime)) return false;
+  return true;
+}
+
+export async function listAllFilteredStories(filters: FilteredStoriesFilter = {}) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({ id: ingestionRuns.id, details: ingestionRuns.details, startedAt: ingestionRuns.startedAt }).from(ingestionRuns).orderBy(desc(ingestionRuns.startedAt)).limit(500);
+  const stories: FilteredStoryRecord[] = [];
+  for (const row of rows) {
+    const parsed = parseDetails(row.details);
+    const root = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+    const instagram = root.instagram && typeof root.instagram === "object" && !Array.isArray(root.instagram) ? root.instagram as Record<string, unknown> : {};
+    const rawStories = Array.isArray(instagram.filteredStories) ? instagram.filteredStories : [];
+    for (const rawStory of rawStories) {
+      const story = normalizeFilteredStory(rawStory, Number(row.id));
+      if (story && matchesFilteredStory(story, filters)) stories.push(story);
+    }
+  }
+  return stories;
+}
+
+export async function listFilteredStoriesPage(filters: FilteredStoriesFilter = {}) {
+  const offset = Math.max(0, Math.trunc(filters.offset ?? 0));
+  const limit = Math.min(100, Math.max(1, Math.trunc(filters.limit ?? 25)));
+  const all = await listAllFilteredStories(filters);
+  const items = all.slice(offset, offset + limit);
+  const nextOffset = offset + items.length < all.length ? offset + items.length : null;
+  return { items, total: all.length, offset, limit, nextOffset, hasNextPage: nextOffset !== null };
+}
+
+function csvCell(value: unknown) {
+  const text = value == null ? "" : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+export function buildFilteredStoriesCsv(stories: FilteredStoryRecord[]) {
+  const headers = ["id", "run_id", "username", "media_origin", "image_url", "source_url", "posted_at", "expires_at", "ocr_text", "raw_text", "reasons", "status", "approved_by", "approved_at"];
+  const rows = stories.map(story => [story.id, story.runId, story.username, story.mediaOrigin, story.imageUrl, story.sourceUrl, story.postedAt, story.expiresAt, story.ocrText, story.rawText, story.reasons.join(" | "), story.status, story.approvedBy, story.approvedAt].map(csvCell).join(","));
+  return `\uFEFF${headers.map(csvCell).join(",")}\n${rows.join("\n")}${rows.length ? "\n" : ""}`;
+}
+
+export async function getFilteredStoryDetail(storyId: string, filters: FilteredStoriesFilter = {}) {
+  const story = (await listAllFilteredStories(filters)).find(item => item.id === storyId) ?? null;
+  const db = await getDb();
+  if (!db) return { story, history: [] as FilteredStoryAuditRecord[] };
+  const rows = await db.select({ action: ingestionStoryAuditLogs.action, previousText: ingestionStoryAuditLogs.previousText, nextText: ingestionStoryAuditLogs.nextText, status: ingestionStoryAuditLogs.status, actorOpenId: ingestionStoryAuditLogs.actorOpenId, createdAt: ingestionStoryAuditLogs.createdAt }).from(ingestionStoryAuditLogs).where(eq(ingestionStoryAuditLogs.storyId, storyId)).orderBy(desc(ingestionStoryAuditLogs.createdAt)).limit(100);
+  return { story, history: rows.map(row => ({ action: row.action, previousText: row.previousText ?? null, nextText: row.nextText ?? null, status: row.status ?? null, actorOpenId: String(row.actorOpenId), createdAt: new Date(row.createdAt).toISOString() })) };
+}
+
 export async function approveFilteredInstagramStory(input: { runId: number; storyId: string; approvedBy: string; approvedAt?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -663,10 +789,11 @@ export async function approveFilteredInstagramStory(input: { runId: number; stor
   const approvedAt = input.approvedAt ?? new Date().toISOString();
   nextStories[index] = { ...current, status: "approved", approvedBy: input.approvedBy.slice(0, 160), approvedAt };
   await db.update(ingestionRuns).set({ details: JSON.stringify({ ...root, instagram: { ...instagram, filteredStories: nextStories } }).slice(0, 20000) }).where(eq(ingestionRuns.id, input.runId));
+  await db.insert(ingestionStoryAuditLogs).values({ storyId: input.storyId.slice(0, 500), runId: input.runId, action: "approval", previousText: null, nextText: null, status: "pending->approved", actorOpenId: input.approvedBy.slice(0, 160) });
   return { success: true as const, runId: input.runId, storyId: input.storyId, status: "approved" as const, approvedBy: input.approvedBy.slice(0, 160), approvedAt };
 }
 
-export async function updateIngestionRunOcrText(input: { runId: number; entryIndex: number; ocrText: string }) {
+export async function updateIngestionRunOcrText(input: { runId: number; entryIndex: number; ocrText: string; changedByOpenId: string }) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
   const [row] = await db.select({ details: ingestionRuns.details }).from(ingestionRuns).where(eq(ingestionRuns.id, input.runId)).limit(1);
@@ -680,10 +807,14 @@ export async function updateIngestionRunOcrText(input: { runId: number; entryInd
   const current = audit?.[input.entryIndex];
   if (!instagram || !audit || !current || typeof current !== "object" || Array.isArray(current)) throw new Error("Entrada OCR não encontrada.");
   const nextAudit = audit.slice();
-  nextAudit[input.entryIndex] = { ...(current as Record<string, unknown>), ocrText: input.ocrText.trim().slice(0, 5000) };
+  const previousText = String((current as Record<string, unknown>).ocrText ?? "").slice(0, 5000);
+  const nextText = input.ocrText.trim().slice(0, 5000);
+  const storyId = String((current as Record<string, unknown>).id ?? `ocr-${input.runId}-${input.entryIndex}`).slice(0, 500);
+  nextAudit[input.entryIndex] = { ...(current as Record<string, unknown>), ocrText: nextText };
   const nextDetails = { ...root, instagram: { ...instagram, ocrAudit: nextAudit } };
   await db.update(ingestionRuns).set({ details: JSON.stringify(nextDetails).slice(0, 20000) }).where(eq(ingestionRuns.id, input.runId));
-  return { success: true as const, runId: input.runId, entryIndex: input.entryIndex, ocrText: input.ocrText.trim().slice(0, 5000) };
+  await db.insert(ingestionStoryAuditLogs).values({ storyId, runId: input.runId, action: "ocr_edit", previousText, nextText, status: null, actorOpenId: input.changedByOpenId.slice(0, 160) });
+  return { success: true as const, runId: input.runId, entryIndex: input.entryIndex, ocrText: nextText };
 }
 
 export async function startIngestionRun(input: {
