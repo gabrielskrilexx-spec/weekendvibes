@@ -3,7 +3,7 @@ import { hasValidInternalCronSecret } from "./_core/cron-auth";
 import { sdk } from "./_core/sdk";
 import { HttpError } from "@shared/_core/errors";
 import { redactError } from "./_core/security";
-import { recoverOrphanedExportJobs, purgePersistentExportJobs } from "./filtered-story-export-jobs";
+import { recoverOrphanedExportJobs, purgePersistentExportJobs, evaluateExportJobsOperationalAlerts, listPendingFileDeleteQueue } from "./filtered-story-export-jobs";
 
 export async function exportJobsRecoveryHandler(req: Request, res: Response) {
   try {
@@ -19,7 +19,9 @@ export async function exportJobsRecoveryHandler(req: Request, res: Response) {
     }
     const recovered = await recoverOrphanedExportJobs(5);
     const purged = await purgePersistentExportJobs();
-    return res.status(200).json({ success: true, recovered: recovered.recovered, skipped: recovered.skipped, purged: { deletedJobs: purged.deletedJobs, pendingFiles: purged.pendingFiles }, checkedAt: new Date().toISOString() });
+    const observability = await evaluateExportJobsOperationalAlerts(24);
+    const pendingDeletion = await listPendingFileDeleteQueue(50);
+    return res.status(200).json({ success: true, recovered: recovered.recovered, skipped: recovered.skipped, purged: { deletedJobs: purged.deletedJobs, pendingFiles: purged.pendingFiles }, pendingDeletion: pendingDeletion.length, metrics: observability.metrics, alerts: observability.alerts, checkedAt: new Date().toISOString() });
   } catch (error) {
     console.error("[ExportRecovery] failed", redactError(error));
     return res.status(500).json({ success: false, error: "export-recovery-failed", message: "A recuperação das exportações falhou; será tentada novamente no próximo Heartbeat." });

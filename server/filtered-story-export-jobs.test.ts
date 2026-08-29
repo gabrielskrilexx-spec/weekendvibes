@@ -8,7 +8,8 @@ const fakeDb = {
   delete: () => ({ where: async () => { records.clear(); } }),
 };
 
-vi.mock("./db", () => ({ getDb: vi.fn(async () => fakeDb) }));
+const { recordOperationalAlertMock } = vi.hoisted(() => ({ recordOperationalAlertMock: vi.fn(async () => undefined) }));
+vi.mock("./db", () => ({ getDb: vi.fn(async () => fakeDb), recordOperationalAlert: recordOperationalAlertMock }));
 vi.mock("./storage", () => ({ storagePut: vi.fn(async (key: string) => ({ key, url: `/manus-storage/${key}` })), storageGet: vi.fn(async (key: string) => ({ key, url: `/manus-storage/${key}` })) }));
 vi.mock("./ingestion-reports", () => ({
   listAllFilteredStories: vi.fn(),
@@ -16,13 +17,14 @@ vi.mock("./ingestion-reports", () => ({
 }));
 
 import { buildFilteredStoriesCsv, listAllFilteredStories } from "./ingestion-reports";
-import { cancelPersistentExportJob, createPersistentExportJob, getPersistentExportDownload, getPersistentExportJobStatus, listExportHistory, purgePersistentExportJobs, recoverOrphanedExportJobs } from "./filtered-story-export-jobs";
+import { cancelPersistentExportJob, createPersistentExportJob, getPersistentExportDownload, getPersistentExportJobStatus, listExportHistory, purgePersistentExportJobs, recoverOrphanedExportJobs, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts } from "./filtered-story-export-jobs";
 
 describe("persistent filtered stories export jobs", () => {
   beforeEach(() => {
     records.clear();
     vi.mocked(listAllFilteredStories).mockReset();
     vi.mocked(buildFilteredStoriesCsv).mockClear();
+    recordOperationalAlertMock.mockClear();
   });
 
   it("persiste filtros, processa o arquivo e expõe somente metadados no status", async () => {
@@ -78,6 +80,39 @@ describe("persistent filtered stories export jobs", () => {
     const result = await purgePersistentExportJobs("2021-01-01T00:00:00.000Z");
     expect(result).toMatchObject({ success: true, deletedJobs: 0, deletedFiles: 0, pendingFiles: 1 });
     expect(records.get(job.jobId)?.fileDeletePending).toBe(true);
+  });
+
+  it("contabiliza fila pendente e métricas de recuperação sem expor chaves do storage", async () => {
+    await createPersistentExportJob({ format: "json", filters: {}, createdByOpenId: "admin-open-id" });
+    const job = await createPersistentExportJob({ format: "csv", filters: {}, createdByOpenId: "admin-open-id" });
+    const record = records.get(job.jobId)!;
+    record.fileDeletePending = true;
+    record.fileKey = "exports/pending.csv";
+    record.status = "processing";
+    record.leaseExpiresAt = new Date("2020-01-01T00:00:00.000Z");
+    record.createdAt = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const queue = await listPendingFileDeleteQueue(20);
+    const metrics = await getExportJobsMetrics(24 * 720);
+    expect(queue).toEqual(expect.arrayContaining([expect.objectContaining({ jobId: job.jobId, hasFile: true })]));
+    expect(metrics.fileDeletePending).toBe(1);
+    expect(metrics.expiredLeases).toBe(1);
+  });
+
+  it("dispara alertas operacionais com mensagens estáveis para deduplicação", async () => {
+    const jobs = await Promise.all(Array.from({ length: 3 }, () => createPersistentExportJob({ format: "json", filters: {}, createdByOpenId: "admin-open-id" })));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    for (const job of jobs) {
+      const record = records.get(job.jobId)!;
+      record.status = "processing";
+      record.createdAt = new Date(Date.now() - 48 * 60 * 60 * 1000);
+      record.leaseExpiresAt = new Date("2020-01-01T00:00:00.000Z");
+      record.recoveryAttempts = 3;
+      record.fileDeletePending = true;
+    }
+    await evaluateExportJobsOperationalAlerts(24 * 720);
+    expect(recordOperationalAlertMock).toHaveBeenCalledWith(expect.objectContaining({ alertType: "export_job_recovery_exhausted", severity: "CRITICAL" }));
+    expect(recordOperationalAlertMock).toHaveBeenCalledWith(expect.objectContaining({ alertType: "export_job_lease_expired" }));
+    expect(recordOperationalAlertMock).toHaveBeenCalledWith(expect.objectContaining({ alertType: "export_file_delete_pending" }));
   });
 
   it("lista jobs com metadados sanitizados para o histórico", async () => {

@@ -2262,3 +2262,13 @@
 - [x] Integrar histórico visual e filtros URL no React
 - [x] Adicionar testes de leases, recuperação e deleção pendente
 - [x] Validar migração, suíte completa, TypeScript, build, preview e publicar checkpoint
+
+## Orquestração e observabilidade de exportações
+- [x] Auditar schedules, Heartbeat, schema e alertas existentes
+- [x] Definir arquitetura de cron, fila fileDeletePending e alertas
+- [x] Configurar schedule do Heartbeat de recuperação em intervalo de 1–5 minutos
+- [x] Implementar fila reprocessável de deleção pendente
+- [x] Implementar métricas de leases, tentativas e jobs órfãos
+- [x] Implementar alertas operacionais com deduplicação/cooldown
+- [x] Adicionar testes de fila, métricas e gatilhos
+- [x] Validar schedule, suíte completa, TypeScript, build, preview e publicar checkpoint

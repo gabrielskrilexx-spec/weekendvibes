@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { filteredStoryExportJobs } from "../drizzle/schema";
-import { getDb } from "./db";
+import { getDb, recordOperationalAlert } from "./db";
 import { storageGet, storagePut } from "./storage";
 import { buildFilteredStoriesCsv, listAllFilteredStories, type FilteredStoriesFilter } from "./ingestion-reports";
 
@@ -139,16 +139,79 @@ export async function recoverOrphanedExportJobs(limit = 5) {
   const db = await getDb();
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
   const now = new Date();
-  const candidates = await db.select({ id: filteredStoryExportJobs.id, ownerOpenId: filteredStoryExportJobs.createdByOpenId, recoveryAttempts: filteredStoryExportJobs.recoveryAttempts }).from(filteredStoryExportJobs).where(or(eq(filteredStoryExportJobs.status, "queued"), and(eq(filteredStoryExportJobs.status, "processing"), staleLeaseCondition(now)))).limit(Math.min(20, Math.max(1, limit)));
+  const candidates = await db.select({ id: filteredStoryExportJobs.id, ownerOpenId: filteredStoryExportJobs.createdByOpenId, recoveryAttempts: filteredStoryExportJobs.recoveryAttempts, fileKey: filteredStoryExportJobs.fileKey }).from(filteredStoryExportJobs).where(or(eq(filteredStoryExportJobs.status, "queued"), and(eq(filteredStoryExportJobs.status, "processing"), staleLeaseCondition(now)))).limit(Math.min(20, Math.max(1, limit)));
   let recovered = 0;
   for (const candidate of candidates) {
     if (Number(candidate.recoveryAttempts ?? 0) >= MAX_RECOVERY_ATTEMPTS) {
-      await db.update(filteredStoryExportJobs).set({ status: "failed", progress: 100, errorMessage: "Job excedeu o limite de tentativas de recuperação.", fileDeletePending: false, leaseOwner: null, leaseExpiresAt: null }).where(eq(filteredStoryExportJobs.id, candidate.id));
+      await db.update(filteredStoryExportJobs).set({ status: "failed", progress: 100, errorMessage: "Job excedeu o limite de tentativas de recuperação.", fileDeletePending: Boolean(candidate.fileKey), leaseOwner: null, leaseExpiresAt: null }).where(eq(filteredStoryExportJobs.id, candidate.id));
       continue;
     }
     if (await processPersistentExportJob(candidate.id, candidate.ownerOpenId, true)) recovered += 1;
   }
   return { success: true as const, recovered, skipped: Math.max(0, candidates.length - recovered) };
+}
+
+export type ExportJobsMetrics = {
+  windowHours: number;
+  total: number;
+  queued: number;
+  processing: number;
+  completed: number;
+  failed: number;
+  cancelled: number;
+  expired: number;
+  expiredLeases: number;
+  recoveryExhausted: number;
+  orphaned: number;
+  fileDeletePending: number;
+};
+
+export async function listPendingFileDeleteQueue(limit = 20) {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  const rows = await db.select({ id: filteredStoryExportJobs.id, fileKey: filteredStoryExportJobs.fileKey, expiresAt: filteredStoryExportJobs.expiresAt }).from(filteredStoryExportJobs).where(eq(filteredStoryExportJobs.fileDeletePending, true)).limit(Math.min(50, Math.max(1, limit)));
+  return rows.map(row => ({ jobId: row.id, hasFile: Boolean(row.fileKey), expiresAt: row.expiresAt.toISOString() }));
+}
+
+export async function getExportJobsMetrics(windowHours = 24): Promise<ExportJobsMetrics> {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  const hours = Math.min(720, Math.max(1, Math.trunc(windowHours)));
+  const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
+  const rows = await db.select({ status: filteredStoryExportJobs.status, leaseExpiresAt: filteredStoryExportJobs.leaseExpiresAt, recoveryAttempts: filteredStoryExportJobs.recoveryAttempts, fileDeletePending: filteredStoryExportJobs.fileDeletePending, createdAt: filteredStoryExportJobs.createdAt }).from(filteredStoryExportJobs).where(sql`${filteredStoryExportJobs.createdAt} >= ${cutoff}`).limit(5000);
+  const now = Date.now();
+  const metrics: ExportJobsMetrics = { windowHours: hours, total: rows.length, queued: 0, processing: 0, completed: 0, failed: 0, cancelled: 0, expired: 0, expiredLeases: 0, recoveryExhausted: 0, orphaned: 0, fileDeletePending: 0 };
+  for (const row of rows) {
+    const status = row.status as PersistentExportStatus;
+    if (status in metrics) metrics[status] += 1;
+    if (row.fileDeletePending) metrics.fileDeletePending += 1;
+    if (status === "processing" && row.leaseExpiresAt && row.leaseExpiresAt.getTime() < now) metrics.expiredLeases += 1;
+    if ((status === "queued" || status === "processing") && row.createdAt.getTime() < now - LEASE_MS * 2) metrics.orphaned += 1;
+    if (Number(row.recoveryAttempts ?? 0) >= MAX_RECOVERY_ATTEMPTS) metrics.recoveryExhausted += 1;
+  }
+  return metrics;
+}
+
+export async function evaluateExportJobsOperationalAlerts(windowHours = 24) {
+  const metrics = await getExportJobsMetrics(windowHours);
+  const alerts: string[] = [];
+  if (metrics.expiredLeases >= 3) {
+    await recordOperationalAlert({ integration: "pipeline", alertType: "export_job_lease_expired", severity: "WARNING", title: "Leases de exportação expiradas", message: "Exportações possuem leases expiradas repetidamente; revisar recuperação do Autoscale." });
+    alerts.push("export_job_lease_expired");
+  }
+  if (metrics.recoveryExhausted > 0) {
+    await recordOperationalAlert({ integration: "pipeline", alertType: "export_job_recovery_exhausted", severity: "CRITICAL", title: "Recuperação de exportação esgotada", message: "Uma ou mais exportações atingiram o limite máximo de tentativas de recuperação." });
+    alerts.push("export_job_recovery_exhausted");
+  }
+  if (metrics.orphaned > 0) {
+    await recordOperationalAlert({ integration: "pipeline", alertType: "export_job_orphaned", severity: "WARNING", title: "Jobs de exportação órfãos", message: "Há exportações presas em fila ou processamento além da validade esperada." });
+    alerts.push("export_job_orphaned");
+  }
+  if (metrics.fileDeletePending > 0) {
+    await recordOperationalAlert({ integration: "pipeline", alertType: "export_file_delete_pending", severity: "INFO", title: "Arquivos aguardando deleção oficial", message: "Existem arquivos de exportação marcados como fileDeletePending aguardando a API oficial do storage." });
+    alerts.push("export_file_delete_pending");
+  }
+  return { metrics, alerts };
 }
 
 export async function listExportHistory(filters: ExportHistoryFilters) {

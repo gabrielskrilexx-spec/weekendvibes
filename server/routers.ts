@@ -62,7 +62,7 @@ import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
 import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
 import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
-import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory } from "./filtered-story-export-jobs";
+import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts } from "./filtered-story-export-jobs";
 
 const safeFilter = (max = 120) => z.string().trim().max(max).optional();
 const latitudeInput = z
@@ -457,6 +457,18 @@ export const appRouter = router({
       .input(z.object({ format: z.enum(["csv", "json"]).optional(), status: z.enum(["queued", "processing", "completed", "failed", "cancelled", "expired"]).optional(), from: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).optional(), to: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).optional(), offset: z.number().int().nonnegative().default(0), limit: z.number().int().positive().max(50).default(20) }).strict())
       .output(exportHistoryPageOutput)
       .query(({ ctx, input }) => listExportHistory({ ...input, ownerOpenId: ctx.user.openId })),
+    exportJobsMetrics: adminOnly
+      .input(z.object({ windowHours: z.number().int().positive().max(720).default(24) }).strict())
+      .output(z.object({ windowHours: z.number().int().positive(), total: z.number().int().nonnegative(), queued: z.number().int().nonnegative(), processing: z.number().int().nonnegative(), completed: z.number().int().nonnegative(), failed: z.number().int().nonnegative(), cancelled: z.number().int().nonnegative(), expired: z.number().int().nonnegative(), expiredLeases: z.number().int().nonnegative(), recoveryExhausted: z.number().int().nonnegative(), orphaned: z.number().int().nonnegative(), fileDeletePending: z.number().int().nonnegative() }).strict())
+      .query(({ input }) => getExportJobsMetrics(input.windowHours)),
+    exportJobsPendingDeletion: adminOnly
+      .input(z.object({ limit: z.number().int().positive().max(50).default(20) }).strict())
+      .output(z.object({ items: z.array(z.object({ jobId: z.string(), hasFile: z.boolean(), expiresAt: z.string() }).strict()).max(50) }).strict())
+      .query(async ({ input }) => ({ items: await listPendingFileDeleteQueue(input.limit) })),
+    evaluateExportJobsAlerts: adminOnly
+      .input(z.object({ windowHours: z.number().int().positive().max(720).default(24) }).strict())
+      .output(z.object({ metrics: z.object({ windowHours: z.number().int().positive(), total: z.number().int().nonnegative(), queued: z.number().int().nonnegative(), processing: z.number().int().nonnegative(), completed: z.number().int().nonnegative(), failed: z.number().int().nonnegative(), cancelled: z.number().int().nonnegative(), expired: z.number().int().nonnegative(), expiredLeases: z.number().int().nonnegative(), recoveryExhausted: z.number().int().nonnegative(), orphaned: z.number().int().nonnegative(), fileDeletePending: z.number().int().nonnegative() }).strict(), alerts: z.array(z.string()).max(10) }).strict())
+      .query(({ input }) => evaluateExportJobsOperationalAlerts(input.windowHours)),
     filteredStoriesJson: adminOnly
       .input(filteredStoriesFilterInput)
       .output(z.object({ fileName: z.string().min(1).max(180), contentType: z.literal("application/json"), json: z.string() }).strict())
