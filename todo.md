@@ -2232,3 +2232,13 @@
 - [x] Integrar polling, progresso e download no React
 - [x] Adicionar cobertura Vitest para ordenação e isolamento dos jobs
 - [x] Validar suíte completa, TypeScript, build, preview e publicar checkpoint
+
+## Jobs de exportação persistentes e ordenação drag-and-drop
+- [x] Auditar schema, storage, heartbeat e contratos existentes
+- [x] Definir schema persistente e contratos tRPC de jobs
+- [x] Implementar persistência de estado/progresso/metadados em banco e storage
+- [x] Implementar cancelamento manual e limpeza/expiração de jobs e arquivos
+- [x] Implementar drag-and-drop da ordenação composta sincronizada na URL
+- [x] Adicionar controles React de cancelamento e limpeza
+- [x] Adicionar testes de persistência, cancelamento, limpeza e ordenação visual
+- [x] Validar migração, suíte completa, TypeScript, build, preview e publicar checkpoint

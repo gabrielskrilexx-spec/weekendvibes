@@ -62,7 +62,7 @@ import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
 import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
 import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
-import { createFilteredStoriesExportJob, getFilteredStoriesExportJobStatus, getFilteredStoriesExportDownload } from "./filtered-story-export-jobs";
+import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs } from "./filtered-story-export-jobs";
 
 const safeFilter = (max = 120) => z.string().trim().max(max).optional();
 const latitudeInput = z
@@ -430,15 +430,23 @@ export const appRouter = router({
     startFilteredStoriesExport: adminOnly
       .input(z.object({ format: z.enum(["csv", "json"]), filters: filteredStoriesFilterInput }).strict())
       .output(z.object({ jobId: z.string().min(16).max(128), status: z.literal("queued"), progress: z.literal(0) }).strict())
-      .mutation(({ input }) => createFilteredStoriesExportJob(input)),
+      .mutation(({ ctx, input }) => createPersistentExportJob({ ...input, createdByOpenId: ctx.user.openId })),
     filteredStoriesExportStatus: adminOnly
       .input(z.object({ jobId: z.string().min(16).max(128) }).strict())
-      .output(z.object({ jobId: z.string(), status: z.enum(["queued", "processing", "completed", "failed"]), progress: z.number().int().min(0).max(100), fileName: z.string().nullable(), contentType: z.string().nullable(), error: z.string().nullable() }).strict())
-      .query(({ input }) => getFilteredStoriesExportJobStatus(input.jobId)),
+      .output(z.object({ jobId: z.string(), status: z.enum(["queued", "processing", "completed", "failed", "cancelled", "expired"]), progress: z.number().int().min(0).max(100), fileName: z.string().nullable(), contentType: z.string().nullable(), error: z.string().nullable() }).strict())
+      .query(({ ctx, input }) => getPersistentExportJobStatus(input.jobId, ctx.user.openId)),
     filteredStoriesExportDownload: adminOnly
       .input(z.object({ jobId: z.string().min(16).max(128) }).strict())
-      .output(z.object({ fileName: z.string(), contentType: z.string(), content: z.string() }).strict())
-      .query(({ input }) => getFilteredStoriesExportDownload(input.jobId)),
+      .output(z.object({ fileName: z.string(), contentType: z.string(), downloadUrl: z.string() }).strict())
+      .query(({ ctx, input }) => getPersistentExportDownload(input.jobId, ctx.user.openId)),
+    cancelFilteredStoriesExport: adminOnly
+      .input(z.object({ jobId: z.string().min(16).max(128) }).strict())
+      .output(z.object({ success: z.literal(true), jobId: z.string(), status: z.literal("cancelled") }).strict())
+      .mutation(({ ctx, input }) => cancelPersistentExportJob(input.jobId, ctx.user.openId)),
+    purgeFilteredStoriesExports: adminOnly
+      .input(z.object({ before: z.string().datetime().optional() }).strict())
+      .output(z.object({ success: z.literal(true), deletedJobs: z.number().int().nonnegative(), deletedFiles: z.number().int().nonnegative() }).strict())
+      .mutation(({ input }) => purgePersistentExportJobs(input.before)),
     filteredStoriesJson: adminOnly
       .input(filteredStoriesFilterInput)
       .output(z.object({ fileName: z.string().min(1).max(180), contentType: z.literal("application/json"), json: z.string() }).strict())

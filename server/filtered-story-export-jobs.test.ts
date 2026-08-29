@@ -1,46 +1,56 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const records = new Map<string, Record<string, unknown>>();
+const fakeDb = {
+  insert: () => ({ values: async (value: Record<string, unknown>) => { records.set(String(value.id), value); } }),
+  select: () => ({ from() { return this; }, where() { return this; }, limit: async () => Array.from(records.values()), then(resolve: (rows: Record<string, unknown>[]) => unknown) { return Promise.resolve(Array.from(records.values())).then(resolve); } }),
+  update: () => ({ set(patch: Record<string, unknown>) { return { where: async () => { for (const [id, row] of records) records.set(id, { ...row, ...patch }); return { affectedRows: 1 }; } }; } }),
+  delete: () => ({ where: async () => { records.clear(); } }),
+};
+
+vi.mock("./db", () => ({ getDb: vi.fn(async () => fakeDb) }));
+vi.mock("./storage", () => ({ storagePut: vi.fn(async (key: string) => ({ key, url: `/manus-storage/${key}` })), storageGet: vi.fn(async (key: string) => ({ key, url: `/manus-storage/${key}` })) }));
 vi.mock("./ingestion-reports", () => ({
   listAllFilteredStories: vi.fn(),
   buildFilteredStoriesCsv: vi.fn((stories: unknown[]) => `csv:${stories.length}`),
 }));
 
 import { buildFilteredStoriesCsv, listAllFilteredStories } from "./ingestion-reports";
-import {
-  createFilteredStoriesExportJob,
-  getFilteredStoriesExportDownload,
-  getFilteredStoriesExportJobStatus,
-  resetFilteredStoriesExportJobsForTest,
-} from "./filtered-story-export-jobs";
+import { cancelPersistentExportJob, createPersistentExportJob, getPersistentExportDownload, getPersistentExportJobStatus, purgePersistentExportJobs } from "./filtered-story-export-jobs";
 
-describe("filtered stories export jobs", () => {
+describe("persistent filtered stories export jobs", () => {
   beforeEach(() => {
-    resetFilteredStoriesExportJobsForTest();
+    records.clear();
     vi.mocked(listAllFilteredStories).mockReset();
     vi.mocked(buildFilteredStoriesCsv).mockClear();
   });
 
-  it("isola filtros e conteúdo entre dois jobs", async () => {
+  it("persiste filtros, processa o arquivo e expõe somente metadados no status", async () => {
     vi.mocked(listAllFilteredStories).mockImplementation(async filters => [{ id: filters.username ?? "sem-fonte" } as never]);
-    const csvJob = createFilteredStoriesExportJob({ format: "csv", filters: { username: "alpha" } });
-    const jsonJob = createFilteredStoriesExportJob({ format: "json", filters: { username: "beta" } });
-    expect(csvJob.jobId).not.toBe(jsonJob.jobId);
-    expect(getFilteredStoriesExportJobStatus(csvJob.jobId).status).toBe("queued");
-    await new Promise(resolve => setTimeout(resolve, 10));
-    const csv = getFilteredStoriesExportDownload(csvJob.jobId);
-    const json = getFilteredStoriesExportDownload(jsonJob.jobId);
-    expect(csv.content).toBe("csv:1");
-    expect(JSON.parse(json.content)).toEqual([{ id: "beta" }]);
+    const job = await createPersistentExportJob({ format: "csv", filters: { username: "alpha", sort: [{ column: "source", direction: "asc" }] }, createdByOpenId: "admin-open-id" });
+    expect(job.status).toBe("queued");
+    expect(JSON.parse(String(records.get(job.jobId)?.filtersJson))).toMatchObject({ username: "alpha" });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const status = await getPersistentExportJobStatus(job.jobId, "admin-open-id");
+    expect(status).toMatchObject({ status: "completed", progress: 100, contentType: "text/csv;charset=utf-8" });
+    expect(getPersistentExportDownload).toBeTypeOf("function");
     expect(vi.mocked(listAllFilteredStories)).toHaveBeenCalledWith(expect.objectContaining({ username: "alpha" }));
-    expect(vi.mocked(listAllFilteredStories)).toHaveBeenCalledWith(expect.objectContaining({ username: "beta" }));
   });
 
-  it("expõe 100% e download somente depois do processamento", async () => {
+  it("cancela um job queued sem expor download", async () => {
     vi.mocked(listAllFilteredStories).mockResolvedValue([]);
-    const job = createFilteredStoriesExportJob({ format: "json", filters: {} });
-    expect(() => getFilteredStoriesExportDownload(job.jobId)).toThrow("ainda não está pronta");
+    const job = await createPersistentExportJob({ format: "json", filters: {}, createdByOpenId: "admin-open-id" });
+    const cancelled = await cancelPersistentExportJob(job.jobId, "admin-open-id");
+    expect(cancelled).toMatchObject({ success: true, status: "cancelled" });
     await new Promise(resolve => setTimeout(resolve, 10));
-    expect(getFilteredStoriesExportJobStatus(job.jobId)).toMatchObject({ status: "completed", progress: 100, contentType: "application/json", fileName: expect.stringMatching(/\.json$/) });
-    expect(getFilteredStoriesExportDownload(job.jobId)).toMatchObject({ contentType: "application/json", content: "[]" });
+    await expect(getPersistentExportDownload(job.jobId, "admin-open-id")).rejects.toThrow("ainda não está pronta");
+  });
+
+  it("remove jobs expirados e contabiliza arquivos referenciados", async () => {
+    const job = await createPersistentExportJob({ format: "json", filters: {}, createdByOpenId: "admin-open-id" });
+    records.get(job.jobId)!.expiresAt = new Date("2020-01-01T00:00:00.000Z");
+    records.get(job.jobId)!.fileKey = "exports/old.json";
+    const result = await purgePersistentExportJobs("2021-01-01T00:00:00.000Z");
+    expect(result).toEqual({ success: true, deletedJobs: 1, deletedFiles: 1 });
   });
 });

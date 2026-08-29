@@ -1,7 +1,7 @@
 import React from "react";
 import { act, create } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import AdminRoutinePanel, { buildOcrEditInput, filterAndPaginateFilteredStories, getApifyQuotaNotice, isChunkNetworkError, retryChunkNetwork } from "./AdminRoutinePanel";
+import AdminRoutinePanel, { buildOcrEditInput, filterAndPaginateFilteredStories, getApifyQuotaNotice, isChunkNetworkError, reorderFilteredSortRules, retryChunkNetwork } from "./AdminRoutinePanel";
 
 let statusState: {
   data?: {
@@ -165,6 +165,10 @@ describe("chunk network resilience", () => {
 });
 
 describe("AdminRoutinePanel", () => {
+  it("reordena as regras compostas sem perder a direção", () => {
+    const rules = [{ column: "source", direction: "asc" }, { column: "date", direction: "desc" }, { column: "status", direction: "asc" }] as const;
+    expect(reorderFilteredSortRules([...rules], "status", "source")).toEqual([{ column: "status", direction: "asc" }, { column: "source", direction: "asc" }, { column: "date", direction: "desc" }]);
+  });
   it("identifica quota excedida como limitação do provedor", () => {
     expect(getApifyQuotaNotice({ quotaExceeded: true, providerIssue: { code: "APIFY_QUOTA_EXCEEDED", message: "Cota mensal do Apify excedida." } })).toBe("Cota mensal do Apify excedida.");
     expect(getApifyQuotaNotice({ quotaExceeded: false, providerIssue: { code: "HTTP_403" } })).toBeNull();

@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, uniqueIndex } from "drizzle-orm/mysql-core";
+import { index, int, mysqlEnum, mysqlTable, text, timestamp, varchar, uniqueIndex } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -233,3 +233,27 @@ export const ingestionSources = mysqlTable("ingestionSources", {
 
 export type IngestionSource = typeof ingestionSources.$inferSelect;
 export type InsertIngestionSource = typeof ingestionSources.$inferInsert;
+
+export const filteredStoryExportJobs = mysqlTable("filteredStoryExportJobs", {
+  id: varchar("id", { length: 128 }).primaryKey(),
+  format: mysqlEnum("format", ["csv", "json"]).notNull(),
+  status: mysqlEnum("status", ["queued", "processing", "completed", "failed", "cancelled", "expired"]).default("queued").notNull(),
+  progress: int("progress").default(0).notNull(),
+  filtersJson: text("filtersJson").notNull(),
+  fileKey: varchar("fileKey", { length: 512 }),
+  fileName: varchar("fileName", { length: 180 }),
+  contentType: varchar("contentType", { length: 120 }),
+  errorMessage: varchar("errorMessage", { length: 500 }),
+  createdByOpenId: varchar("createdByOpenId", { length: 160 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  completedAt: timestamp("completedAt"),
+  cancelledAt: timestamp("cancelledAt"),
+}, table => ({
+  statusUpdatedIdx: index("filteredStoryExportJobs_status_updated_idx").on(table.status, table.updatedAt),
+  expiryIdx: index("filteredStoryExportJobs_expiry_idx").on(table.expiresAt),
+  ownerIdx: index("filteredStoryExportJobs_owner_created_idx").on(table.createdByOpenId, table.createdAt),
+}));
+export type FilteredStoryExportJob = typeof filteredStoryExportJobs.$inferSelect;
+export type InsertFilteredStoryExportJob = typeof filteredStoryExportJobs.$inferInsert;
