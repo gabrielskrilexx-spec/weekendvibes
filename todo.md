@@ -2244,14 +2244,14 @@
 - [x] Validar migração, suíte completa, TypeScript, build, preview e publicar checkpoint
 
 ## Resiliência e histórico de exportações
-- [ ] Auditar heartbeat, schema de jobs, storage e contratos atuais
-- [ ] Definir recuperação, deleção física e histórico tRPC
-- [ ] Implementar worker de recuperação de jobs órfãos
-- [ ] Implementar deleção física assíncrona e limpeza idempotente
-- [ ] Implementar histórico de exportações filtrável por owner, formato, status e período
-- [ ] Integrar histórico e filtros sincronizados na URL no React
-- [ ] Adicionar testes de worker, storage, queries tRPC e filtros
-- [ ] Validar preview, scheduler, suíte completa, TypeScript, build e publicar checkpoint
+- [x] Auditar heartbeat, schema de jobs, storage e contratos atuais
+- [x] Definir recuperação, deleção física e histórico tRPC
+- [x] Implementar worker de recuperação de jobs órfãos
+- [x] Implementar deleção física assíncrona e limpeza idempotente
+- [x] Implementar histórico de exportações filtrável por owner, formato, status e período
+- [x] Integrar histórico e filtros sincronizados na URL no React
+- [x] Adicionar testes de worker, storage, queries tRPC e filtros
+- [x] Validar preview, scheduler, suíte completa, TypeScript, build e publicar checkpoint
 
 ## Recuperação e histórico de jobs de exportação
 - [x] Auditar estado atual e contratos persistentes
