@@ -2222,3 +2222,13 @@
 - [x] Integrar ordenação, JSON e histórico paginado no React
 - [x] Adicionar cobertura Vitest para ordenação, JSON e paginação
 - [x] Validar suíte completa, TypeScript, build, preview e publicar checkpoint
+
+## Stories filtrados — ordenação composta, paginação configurável e jobs assíncronos
+- [x] Auditar contratos, estado do painel e limites do runtime
+- [x] Definir gerenciador de jobs em memória e schemas Zod estritos
+- [x] Implementar ordenação composta no backend e na URL
+- [x] Implementar tamanhos de página para listagem e auditoria
+- [x] Implementar mutation, status e download para exportação assíncrona
+- [x] Integrar polling, progresso e download no React
+- [x] Adicionar cobertura Vitest para ordenação e isolamento dos jobs
+- [x] Validar suíte completa, TypeScript, build, preview e publicar checkpoint

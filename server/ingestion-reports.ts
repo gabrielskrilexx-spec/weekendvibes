@@ -648,6 +648,7 @@ function buildWeeklyOperationalSummary(runs: Array<{ details: unknown }>) {
 
 export type FilteredStoriesSortColumn = "date" | "source" | "status";
 export type FilteredStoriesSortDirection = "asc" | "desc";
+export type FilteredStoriesSortRule = { column: FilteredStoriesSortColumn; direction: FilteredStoriesSortDirection };
 
 export type FilteredStoriesFilter = {
   offset?: number;
@@ -657,8 +658,7 @@ export type FilteredStoriesFilter = {
   status?: "pending" | "approved";
   from?: string;
   to?: string;
-  sortBy?: FilteredStoriesSortColumn;
-  sortDirection?: FilteredStoriesSortDirection;
+  sort?: FilteredStoriesSortRule[];
 };
 
 export type FilteredStoryRecord = {
@@ -739,8 +739,8 @@ function matchesFilteredStory(story: FilteredStoryRecord, filters: FilteredStori
   return true;
 }
 
-export function sortFilteredStoriesForTest(stories: FilteredStoryRecord[], sortBy: FilteredStoriesSortColumn = "date", sortDirection: FilteredStoriesSortDirection = "desc") {
-  return stories.slice().sort((a, b) => compareFilteredStories(a, b, sortBy, sortDirection));
+export function sortFilteredStoriesForTest(stories: FilteredStoryRecord[], sort: FilteredStoriesSortRule[] = [{ column: "date", direction: "desc" }]) {
+  return stories.slice().sort((a, b) => { for (const rule of sort) { const result = compareFilteredStories(a, b, rule.column, rule.direction); if (result !== 0) return result; } return 0; });
 }
 
 export async function listAllFilteredStories(filters: FilteredStoriesFilter = {}) {
@@ -758,9 +758,7 @@ export async function listAllFilteredStories(filters: FilteredStoriesFilter = {}
       if (story && matchesFilteredStory(story, filters)) stories.push(story);
     }
   }
-  const sortBy = filters.sortBy ?? "date";
-  const sortDirection = filters.sortDirection ?? "desc";
-  return sortFilteredStoriesForTest(stories, sortBy, sortDirection);
+  return sortFilteredStoriesForTest(stories, filters.sort?.length ? filters.sort : [{ column: "date", direction: "desc" }]);
 }
 
 export async function listFilteredStoriesPage(filters: FilteredStoriesFilter = {}) {

@@ -62,6 +62,7 @@ import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
 import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
 import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
+import { createFilteredStoriesExportJob, getFilteredStoriesExportJobStatus, getFilteredStoriesExportDownload } from "./filtered-story-export-jobs";
 
 const safeFilter = (max = 120) => z.string().trim().max(max).optional();
 const latitudeInput = z
@@ -261,8 +262,7 @@ const filteredStoriesFilterInput = z.object({
   status: z.enum(["pending", "approved"]).optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  sortBy: z.enum(["date", "source", "status"]).default("date"),
-  sortDirection: z.enum(["asc", "desc"]).default("desc"),
+  sort: z.array(z.object({ column: z.enum(["date", "source", "status"]), direction: z.enum(["asc", "desc"]) }).strict()).min(1).max(3).default([{ column: "date", direction: "desc" }]),
 }).strict();
 const filteredStoryOutput = z.object({
   id: z.string().min(1).max(500),
@@ -427,6 +427,18 @@ export const appRouter = router({
       .input(filteredStoriesFilterInput)
       .output(z.object({ fileName: z.string().min(1).max(180), contentType: z.literal("text/csv;charset=utf-8"), csv: z.string() }).strict())
       .query(async ({ input }) => ({ fileName: `stories-filtrados-${new Date().toISOString().slice(0, 10)}.csv`, contentType: "text/csv;charset=utf-8" as const, csv: buildFilteredStoriesCsv(await listAllFilteredStories(input)) })),
+    startFilteredStoriesExport: adminOnly
+      .input(z.object({ format: z.enum(["csv", "json"]), filters: filteredStoriesFilterInput }).strict())
+      .output(z.object({ jobId: z.string().min(16).max(128), status: z.literal("queued"), progress: z.literal(0) }).strict())
+      .mutation(({ input }) => createFilteredStoriesExportJob(input)),
+    filteredStoriesExportStatus: adminOnly
+      .input(z.object({ jobId: z.string().min(16).max(128) }).strict())
+      .output(z.object({ jobId: z.string(), status: z.enum(["queued", "processing", "completed", "failed"]), progress: z.number().int().min(0).max(100), fileName: z.string().nullable(), contentType: z.string().nullable(), error: z.string().nullable() }).strict())
+      .query(({ input }) => getFilteredStoriesExportJobStatus(input.jobId)),
+    filteredStoriesExportDownload: adminOnly
+      .input(z.object({ jobId: z.string().min(16).max(128) }).strict())
+      .output(z.object({ fileName: z.string(), contentType: z.string(), content: z.string() }).strict())
+      .query(({ input }) => getFilteredStoriesExportDownload(input.jobId)),
     filteredStoriesJson: adminOnly
       .input(filteredStoriesFilterInput)
       .output(z.object({ fileName: z.string().min(1).max(180), contentType: z.literal("application/json"), json: z.string() }).strict())

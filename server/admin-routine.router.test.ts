@@ -47,7 +47,7 @@ describe("adminRoutine tRPC contract", () => {
     const query = (value: unknown) => ({ from() { return this; }, where() { return this; }, orderBy() { return this; }, limit() { return this; }, offset() { return Promise.resolve(value); }, then(resolve: (result: unknown) => unknown) { return Promise.resolve(value).then(resolve); } });
     vi.mocked(getDb).mockResolvedValue({ select: () => { selectCount += 1; return query(selectCount === 2 ? [{ action: "ocr_edit", previousText: "antes", nextText: "depois", status: null, actorOpenId: "admin-open-id", createdAt: new Date("2026-08-29T02:00:00.000Z") }] : selectCount === 3 ? [{ count: 1 }] : []); } } as never);
     const caller = appRouter.createCaller(context("admin")).adminRoutine;
-    const json = await caller.filteredStoriesJson({ offset: 0, limit: 25, sortBy: "source", sortDirection: "asc" });
+    const json = await caller.filteredStoriesJson({ offset: 0, limit: 25, sort: [{ column: "source", direction: "asc" }] });
     expect(json.contentType).toBe("application/json");
     expect(JSON.parse(json.json)).toEqual([]);
     const page = await caller.filteredStoryAuditHistory({ storyId: "story-1", offset: 0, limit: 1 });
