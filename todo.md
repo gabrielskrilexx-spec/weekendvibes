@@ -2192,11 +2192,11 @@
 - [x] Validar testes, TypeScript e build; checkpoint pendente
 
 ## Aplicação de pasted_content_2.txt — sessão atual
-- [ ] Ler e classificar o conteúdo anexado
-- [ ] Mapear recomendações aplicáveis ao WeekendVibes
-- [ ] Implementar mudanças compatíveis sem sobrescrever trabalho existente
-- [ ] Adicionar ou atualizar testes necessários
-- [ ] Validar TypeScript, build e publicar checkpoint se houver alteração funcional
+- [x] Ler e classificar o conteúdo anexado — prompt classificado como proposta de reescrita monorepo em Next.js/FastAPI/PostgreSQL
+- [x] Mapear recomendações aplicáveis ao WeekendVibes — paginação, filtros e fallback de API já estão cobertos pela arquitetura React/Vite + Express/tRPC atual
+- [x] Implementar mudanças compatíveis sem sobrescrever trabalho existente — mantida a stack atual; não aplicada a migração destrutiva para outra arquitetura
+- [x] Adicionar ou atualizar testes necessários — adicionados testes de filtro, paginação, contrato tRPC e auditoria sanitizada
+- [x] Validar TypeScript, build e publicar checkpoint se houver alteração funcional — 409 testes, TypeScript e build aprovados; checkpoint 62d08d36 publicado
 
 ## Stories filtrados — paginação e auditoria
 - [x] Implementar consulta administrativa paginada com filtro de motivo sincronizado na URL
