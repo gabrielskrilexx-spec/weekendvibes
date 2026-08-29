@@ -164,6 +164,8 @@ export type ExportJobsMetrics = {
   recoveryExhausted: number;
   orphaned: number;
   fileDeletePending: number;
+  fileDeletePendingPrevious: number;
+  fileDeletePendingGrowth: number;
 };
 
 export async function listPendingFileDeleteQueue(limit = 20) {
@@ -177,18 +179,26 @@ export async function getExportJobsMetrics(windowHours = 24): Promise<ExportJobs
   const db = await getDb();
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
   const hours = Math.min(720, Math.max(1, Math.trunc(windowHours)));
-  const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
-  const rows = await db.select({ status: filteredStoryExportJobs.status, leaseExpiresAt: filteredStoryExportJobs.leaseExpiresAt, recoveryAttempts: filteredStoryExportJobs.recoveryAttempts, fileDeletePending: filteredStoryExportJobs.fileDeletePending, createdAt: filteredStoryExportJobs.createdAt }).from(filteredStoryExportJobs).where(sql`${filteredStoryExportJobs.createdAt} >= ${cutoff}`).limit(5000);
   const now = Date.now();
-  const metrics: ExportJobsMetrics = { windowHours: hours, total: rows.length, queued: 0, processing: 0, completed: 0, failed: 0, cancelled: 0, expired: 0, expiredLeases: 0, recoveryExhausted: 0, orphaned: 0, fileDeletePending: 0 };
+  const periodStart = now - hours * 60 * 60 * 1000;
+  const extendedCutoff = new Date(periodStart - hours * 60 * 60 * 1000);
+  const rows = await db.select({ status: filteredStoryExportJobs.status, leaseExpiresAt: filteredStoryExportJobs.leaseExpiresAt, recoveryAttempts: filteredStoryExportJobs.recoveryAttempts, fileDeletePending: filteredStoryExportJobs.fileDeletePending, createdAt: filteredStoryExportJobs.createdAt }).from(filteredStoryExportJobs).where(sql`${filteredStoryExportJobs.createdAt} >= ${extendedCutoff}`).limit(5000);
+  const metrics: ExportJobsMetrics = { windowHours: hours, total: 0, queued: 0, processing: 0, completed: 0, failed: 0, cancelled: 0, expired: 0, expiredLeases: 0, recoveryExhausted: 0, orphaned: 0, fileDeletePending: 0, fileDeletePendingPrevious: 0, fileDeletePendingGrowth: 0 };
   for (const row of rows) {
-    const status = row.status as PersistentExportStatus;
-    if (status in metrics) metrics[status] += 1;
-    if (row.fileDeletePending) metrics.fileDeletePending += 1;
-    if (status === "processing" && row.leaseExpiresAt && row.leaseExpiresAt.getTime() < now) metrics.expiredLeases += 1;
-    if ((status === "queued" || status === "processing") && row.createdAt.getTime() < now - LEASE_MS * 2) metrics.orphaned += 1;
-    if (Number(row.recoveryAttempts ?? 0) >= MAX_RECOVERY_ATTEMPTS) metrics.recoveryExhausted += 1;
+    const isCurrentWindow = row.createdAt.getTime() >= periodStart;
+    if (isCurrentWindow) {
+      metrics.total += 1;
+      const status = row.status as PersistentExportStatus;
+      if (status in metrics) metrics[status] += 1;
+      if (row.fileDeletePending) metrics.fileDeletePending += 1;
+      if (status === "processing" && row.leaseExpiresAt && row.leaseExpiresAt.getTime() < now) metrics.expiredLeases += 1;
+      if ((status === "queued" || status === "processing") && row.createdAt.getTime() < now - LEASE_MS * 2) metrics.orphaned += 1;
+      if (Number(row.recoveryAttempts ?? 0) >= MAX_RECOVERY_ATTEMPTS) metrics.recoveryExhausted += 1;
+    } else if (row.fileDeletePending) {
+      metrics.fileDeletePendingPrevious += 1;
+    }
   }
+  metrics.fileDeletePendingGrowth = metrics.fileDeletePending - metrics.fileDeletePendingPrevious;
   return metrics;
 }
 
@@ -210,6 +220,10 @@ export async function evaluateExportJobsOperationalAlerts(windowHours = 24) {
   if (metrics.fileDeletePending > 0) {
     await recordOperationalAlert({ integration: "pipeline", alertType: "export_file_delete_pending", severity: "INFO", title: "Arquivos aguardando deleção oficial", message: "Existem arquivos de exportação marcados como fileDeletePending aguardando a API oficial do storage." });
     alerts.push("export_file_delete_pending");
+  }
+  if (metrics.fileDeletePending >= 5 && metrics.fileDeletePendingGrowth >= Math.max(3, Math.ceil(Math.max(0, metrics.fileDeletePendingPrevious) * 0.5))) {
+    await recordOperationalAlert({ integration: "pipeline", alertType: "export_file_delete_queue_growth", severity: "WARNING", title: "Crescimento anômalo da fila de deleção", message: "A fila fileDeletePending cresceu de forma contínua acima do limite operacional; revisar a integração de deleção do storage." });
+    alerts.push("export_file_delete_queue_growth");
   }
   return { metrics, alerts };
 }

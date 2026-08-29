@@ -115,6 +115,23 @@ describe("persistent filtered stories export jobs", () => {
     expect(recordOperationalAlertMock).toHaveBeenCalledWith(expect.objectContaining({ alertType: "export_file_delete_pending" }));
   });
 
+  it("dispara alerta deduplicável quando a fila pendente cresce acima da janela anterior", async () => {
+    vi.mocked(listAllFilteredStories).mockResolvedValue([]);
+    const jobs = await Promise.all(Array.from({ length: 5 }, () => createPersistentExportJob({ format: "json", filters: {}, createdByOpenId: "admin-open-id" })));
+    for (const job of jobs) {
+      const record = records.get(job.jobId)!;
+      record.status = "completed";
+      record.fileDeletePending = true;
+      record.createdAt = new Date();
+    }
+    const result = await evaluateExportJobsOperationalAlerts(24);
+    expect(result.metrics.fileDeletePending).toBe(5);
+    expect(result.metrics.fileDeletePendingPrevious).toBe(0);
+    expect(result.metrics.fileDeletePendingGrowth).toBe(5);
+    expect(result.alerts).toContain("export_file_delete_queue_growth");
+    expect(recordOperationalAlertMock).toHaveBeenCalledWith(expect.objectContaining({ alertType: "export_file_delete_queue_growth", severity: "WARNING" }));
+  });
+
   it("lista jobs com metadados sanitizados para o histórico", async () => {
     await createPersistentExportJob({ format: "json", filters: {}, createdByOpenId: "admin-open-id" });
     const history = await listExportHistory({ ownerOpenId: "admin-open-id", limit: 20, offset: 0 });

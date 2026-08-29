@@ -2272,3 +2272,11 @@
 - [x] Implementar alertas operacionais com deduplicação/cooldown
 - [x] Adicionar testes de fila, métricas e gatilhos
 - [x] Validar schedule, suíte completa, TypeScript, build, preview e publicar checkpoint
+
+## Dashboard operacional de jobs de exportação
+- [x] Auditar métricas, alertas, schedule e layout administrativo
+- [x] Definir consultas tRPC e regra de crescimento da fila fileDeletePending
+- [x] Implementar alerta deduplicado de crescimento anômalo da fila
+- [x] Construir dashboard com leases, órfãos, tentativas e fila pendente
+- [x] Adicionar testes de métricas, alerta e dashboard
+- [x] Validar TypeScript, suíte completa, preview e publicar checkpoint

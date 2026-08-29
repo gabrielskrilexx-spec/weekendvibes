@@ -53,6 +53,7 @@ const mutate = vi.fn();
 const refetch = vi.fn();
 let statusQueryOptions: Record<string, unknown> | undefined;
 let rolloverHourState = { data: { rolloverHour: 6 }, isLoading: false, isError: false, refetch: vi.fn() };
+let exportMetricsState = { data: undefined as undefined | { windowHours: number; total: number; queued: number; processing: number; completed: number; failed: number; cancelled: number; expired: number; expiredLeases: number; recoveryExhausted: number; orphaned: number; fileDeletePending: number; fileDeletePendingPrevious: number; fileDeletePendingGrowth: number }, isLoading: false, isError: false, isFetching: false, refetch: vi.fn() };
 
 beforeEach(() => {
   mutate.mockClear();
@@ -61,6 +62,7 @@ beforeEach(() => {
   statusState = { isLoading: true, isError: false };
   mutationState = { isPending: false };
   rolloverHourState = { data: { rolloverHour: 6 }, isLoading: false, isError: false, refetch: vi.fn() };
+  exportMetricsState = { data: undefined, isLoading: false, isError: false, isFetching: false, refetch: vi.fn() };
 });
 
 vi.mock("@/lib/trpc", () => ({
@@ -74,6 +76,9 @@ vi.mock("@/lib/trpc", () => ({
       },
       rolloverHour: {
         useQuery: () => rolloverHourState,
+      },
+      exportJobsMetrics: {
+        useQuery: () => exportMetricsState,
       },
       setRolloverHour: {
         useMutation: (options: { onSuccess?: (result: { success: true; rolloverHour: number }) => void; onError?: (error: Error) => void }) => ({
@@ -339,6 +344,22 @@ describe("AdminRoutinePanel", () => {
     const detailButton = tree!.root.findByProps({ "aria-label": "Ver detalhes do Story story-1" });
     await act(async () => { detailButton.props.onClick(); });
     expect(tree!.root.findAll(node => node.props["data-testid"] === "filtered-story-detail-dialog").length).toBe(1);
+  });
+
+  it("exibe o dashboard de métricas e a variação da fila pendente", async () => {
+    statusState = { isLoading: false, isError: false, data: { nextExecutionAt: "2026-08-28T10:00:00.000Z", timezone: "America/Sao_Paulo", runMode: "automatic", isRunning: false } };
+    exportMetricsState = { data: { windowHours: 24, total: 12, queued: 2, processing: 1, completed: 6, failed: 1, cancelled: 1, expired: 1, expiredLeases: 3, recoveryExhausted: 2, orphaned: 1, fileDeletePending: 8, fileDeletePendingPrevious: 3, fileDeletePendingGrowth: 5 }, isLoading: false, isError: false, isFetching: false, refetch: vi.fn() };
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminRoutinePanel />); });
+    const rendered = JSON.stringify(tree!.toJSON());
+    expect(rendered).toContain("Saúde dos jobs no Autoscale");
+    expect(rendered).toContain("Leases expiradas");
+    expect(rendered).toContain("Tentativas esgotadas");
+    expect(rendered).toContain("Crescimento da fila");
+    expect(rendered).toContain('"5"');
+    const windowSelect = tree!.root.findByProps({ "aria-label": "Janela das métricas de exportação" });
+    await act(async () => { windowSelect.props.onChange({ target: { value: "168" } }); });
+    expect(windowSelect.props.value).toBe(168);
   });
 
   it("exibe a data e o status da última sincronização automática bem-sucedida", async () => {

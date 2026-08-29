@@ -459,7 +459,7 @@ export const appRouter = router({
       .query(({ ctx, input }) => listExportHistory({ ...input, ownerOpenId: ctx.user.openId })),
     exportJobsMetrics: adminOnly
       .input(z.object({ windowHours: z.number().int().positive().max(720).default(24) }).strict())
-      .output(z.object({ windowHours: z.number().int().positive(), total: z.number().int().nonnegative(), queued: z.number().int().nonnegative(), processing: z.number().int().nonnegative(), completed: z.number().int().nonnegative(), failed: z.number().int().nonnegative(), cancelled: z.number().int().nonnegative(), expired: z.number().int().nonnegative(), expiredLeases: z.number().int().nonnegative(), recoveryExhausted: z.number().int().nonnegative(), orphaned: z.number().int().nonnegative(), fileDeletePending: z.number().int().nonnegative() }).strict())
+      .output(z.object({ windowHours: z.number().int().positive(), total: z.number().int().nonnegative(), queued: z.number().int().nonnegative(), processing: z.number().int().nonnegative(), completed: z.number().int().nonnegative(), failed: z.number().int().nonnegative(), cancelled: z.number().int().nonnegative(), expired: z.number().int().nonnegative(), expiredLeases: z.number().int().nonnegative(), recoveryExhausted: z.number().int().nonnegative(), orphaned: z.number().int().nonnegative(), fileDeletePending: z.number().int().nonnegative(), fileDeletePendingPrevious: z.number().int(), fileDeletePendingGrowth: z.number() }).strict())
       .query(({ input }) => getExportJobsMetrics(input.windowHours)),
     exportJobsPendingDeletion: adminOnly
       .input(z.object({ limit: z.number().int().positive().max(50).default(20) }).strict())
