@@ -2300,3 +2300,13 @@
 - [x] Exibir taxa de resolução e idade média dos incidentes
 - [x] Adicionar testes de tempo, auditoria e métricas
 - [x] Validar TypeScript, suíte, preview e publicar checkpoint
+
+## Snapshots e exportações de governança
+- [x] Auditar schemas, métricas, alertas e exportações atuais
+- [x] Definir schema append-only de snapshots e contratos tRPC
+- [x] Implementar persistência de snapshots com limiares e decisão calculados
+- [x] Implementar drill-down temporal de eficiência e taxa de resolução
+- [x] Implementar exportação CSV/JSON de timelines e governança
+- [x] Integrar drill-down e exportações no React
+- [x] Adicionar testes de snapshots, recortes e rotas de exportação
+- [x] Validar TypeScript, suíte, preview e publicar checkpoint

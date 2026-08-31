@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { filteredStoryExportJobs, operationalAlerts, appSettings, exportJobsAlertSettingsAudit } from "../drizzle/schema";
+import { filteredStoryExportJobs, operationalAlerts, appSettings, exportJobsAlertSettingsAudit, exportAlertEvaluationSnapshots } from "../drizzle/schema";
 import { getDb, recordOperationalAlert } from "./db";
 import { storageGet, storagePut } from "./storage";
 import { buildFilteredStoriesCsv, listAllFilteredStories, type FilteredStoriesFilter } from "./ingestion-reports";
@@ -353,10 +353,27 @@ export async function evaluateExportJobsOperationalAlerts(windowHours = 24) {
     alerts.push("export_file_delete_pending");
   }
   const settings = await getExportJobsAlertSettings((process.env.NODE_ENV === "production" ? "production" : process.env.NODE_ENV === "preview" ? "preview" : "development"));
-  if (metrics.fileDeletePending >= settings.minimumQueueSize && metrics.fileDeletePendingGrowth >= settings.growthThreshold) {
+  const queueGrowthTriggered = metrics.fileDeletePending >= settings.minimumQueueSize && metrics.fileDeletePendingGrowth >= settings.growthThreshold;
+  if (queueGrowthTriggered) {
     await recordOperationalAlert({ integration: "pipeline", alertType: "export_file_delete_queue_growth", severity: settings.severity, title: "Crescimento anômalo da fila de deleção", message: "A fila fileDeletePending cresceu de forma contínua acima do limite operacional; revisar a integração de deleção do storage." });
     alerts.push("export_file_delete_queue_growth");
   }
+  await recordExportAlertEvaluationSnapshot({
+    environment: process.env.NODE_ENV === "production" ? "production" : process.env.NODE_ENV === "preview" ? "preview" : "development",
+    windowStartedAt: new Date(Date.now() - Math.max(1, Math.trunc(windowHours)) * 60 * 60 * 1000),
+    windowEndedAt: new Date(),
+    queueSize: metrics.fileDeletePending,
+    previousQueueSize: metrics.fileDeletePendingPrevious,
+    queueGrowth: metrics.fileDeletePendingGrowth,
+    expiredLeases: metrics.expiredLeases,
+    orphanedJobs: metrics.orphaned,
+    growthThreshold: settings.growthThreshold,
+    minimumQueueSize: settings.minimumQueueSize,
+    consecutiveWindows: settings.consecutiveWindows,
+    severity: settings.severity,
+    decision: queueGrowthTriggered ? "ALERT_CREATED" : "NO_ALERT",
+    evaluatedByOpenId: "heartbeat-m2m",
+  });
   return { metrics, alerts };
 }
 
@@ -378,3 +395,124 @@ export async function listExportHistory(filters: ExportHistoryFilters) {
 }
 
 export function resetFilteredStoriesExportJobsForTest() {}
+
+export type ExportAlertEvaluationDecision = "NO_ALERT" | "ALERT_CREATED" | "DEDUPLICATED";
+
+export async function recordExportAlertEvaluationSnapshot(input: {
+  environment: ExportAlertEnvironment;
+  windowStartedAt: Date;
+  windowEndedAt: Date;
+  queueSize: number;
+  previousQueueSize: number;
+  queueGrowth: number;
+  expiredLeases: number;
+  orphanedJobs: number;
+  growthThreshold: number;
+  minimumQueueSize: number;
+  consecutiveWindows: number;
+  severity: "INFO" | "WARNING" | "CRITICAL";
+  decision: ExportAlertEvaluationDecision;
+  evaluatedByOpenId: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  const insertResult = await db.insert(exportAlertEvaluationSnapshots).values({
+    environment: input.environment,
+    windowStartedAt: input.windowStartedAt,
+    windowEndedAt: input.windowEndedAt,
+    queueSize: Math.max(0, Math.trunc(input.queueSize)),
+    previousQueueSize: Math.max(0, Math.trunc(input.previousQueueSize)),
+    queueGrowth: Math.trunc(input.queueGrowth),
+    expiredLeases: Math.max(0, Math.trunc(input.expiredLeases)),
+    orphanedJobs: Math.max(0, Math.trunc(input.orphanedJobs)),
+    growthThreshold: Math.max(1, Math.trunc(input.growthThreshold)),
+    minimumQueueSize: Math.max(0, Math.trunc(input.minimumQueueSize)),
+    consecutiveWindows: Math.max(1, Math.trunc(input.consecutiveWindows)),
+    severity: input.severity,
+    decision: input.decision,
+    evaluatedByOpenId: input.evaluatedByOpenId.slice(0, 160),
+    evaluatedAt: new Date(),
+  });
+  const inserted = Array.isArray(insertResult) ? insertResult[0] : insertResult;
+  return { snapshotId: String((inserted as { insertId?: number } | undefined)?.insertId ?? "0") };
+}
+
+export async function listExportAlertEvaluationSnapshots(input: {
+  environment?: ExportAlertEnvironment;
+  from?: string;
+  to?: string;
+  offset?: number;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  const offset = Math.max(0, Math.trunc(input.offset ?? 0));
+  const limit = Math.min(100, Math.max(1, Math.trunc(input.limit ?? 25)));
+  const conditions = [] as ReturnType<typeof eq>[];
+  if (input.environment) conditions.push(eq(exportAlertEvaluationSnapshots.environment, input.environment));
+  if (input.from) conditions.push(gte(exportAlertEvaluationSnapshots.evaluatedAt, new Date(input.from)));
+  if (input.to) conditions.push(lt(exportAlertEvaluationSnapshots.evaluatedAt, new Date(input.to)));
+  const where = conditions.length ? and(...conditions) : undefined;
+  const rows = await db.select().from(exportAlertEvaluationSnapshots).where(where).orderBy(desc(exportAlertEvaluationSnapshots.evaluatedAt)).limit(limit).offset(offset);
+  const items = rows.map(row => ({
+    snapshotId: String(row.id),
+    environment: row.environment as ExportAlertEnvironment,
+    windowStartedAt: row.windowStartedAt.toISOString(),
+    windowEndedAt: row.windowEndedAt.toISOString(),
+    queueSize: Number(row.queueSize),
+    previousQueueSize: Number(row.previousQueueSize),
+    queueGrowth: Number(row.queueGrowth),
+    expiredLeases: Number(row.expiredLeases),
+    orphanedJobs: Number(row.orphanedJobs),
+    growthThreshold: Number(row.growthThreshold),
+    minimumQueueSize: Number(row.minimumQueueSize),
+    consecutiveWindows: Number(row.consecutiveWindows),
+    severity: row.severity,
+    decision: row.decision as ExportAlertEvaluationDecision,
+    evaluatedByOpenId: row.evaluatedByOpenId,
+    evaluatedAt: row.evaluatedAt.toISOString(),
+  }));
+  return { items, offset, limit, hasNextPage: items.length === limit };
+}
+
+export async function getExportJobsEfficiencyBucket(input: { from: string; to: string; ownerOpenId?: string }) {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  const from = new Date(input.from);
+  const to = new Date(input.to);
+  if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from >= to) throw new TRPCError({ code: "BAD_REQUEST", message: "Intervalo temporal inválido." });
+  const alertRows = await db.select({ id: operationalAlerts.id, isResolved: operationalAlerts.isResolved, createdAt: operationalAlerts.createdAt, updatedAt: operationalAlerts.updatedAt }).from(operationalAlerts).where(and(gte(operationalAlerts.createdAt, from), lt(operationalAlerts.createdAt, to))).limit(1000);
+  const total = alertRows.length;
+  const resolved = alertRows.filter(row => row.isResolved === 1).length;
+  const ages = alertRows.map(row => Math.max(0, (row.isResolved === 1 ? row.updatedAt : new Date()).getTime() - row.createdAt.getTime()));
+  const snapshots = await db.select({ id: exportAlertEvaluationSnapshots.id, queueSize: exportAlertEvaluationSnapshots.queueSize, queueGrowth: exportAlertEvaluationSnapshots.queueGrowth, decision: exportAlertEvaluationSnapshots.decision, evaluatedAt: exportAlertEvaluationSnapshots.evaluatedAt }).from(exportAlertEvaluationSnapshots).where(and(gte(exportAlertEvaluationSnapshots.evaluatedAt, from), lt(exportAlertEvaluationSnapshots.evaluatedAt, to))).orderBy(desc(exportAlertEvaluationSnapshots.evaluatedAt)).limit(100);
+  return {
+    from: from.toISOString(),
+    to: to.toISOString(),
+    total,
+    resolved,
+    resolutionRate: total ? resolved / total : 0,
+    averageAgeMs: ages.length ? Math.round(ages.reduce((sum, value) => sum + value, 0) / ages.length) : 0,
+    openCount: total - resolved,
+    snapshots: snapshots.map(row => ({ snapshotId: String(row.id), queueSize: Number(row.queueSize), queueGrowth: Number(row.queueGrowth), decision: row.decision as ExportAlertEvaluationDecision, evaluatedAt: row.evaluatedAt.toISOString() })),
+  };
+}
+
+export async function getExportJobsAlertEfficiencyTrend(windowDays = 30) {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  const days = Math.min(90, Math.max(1, Math.trunc(windowDays)));
+  const now = new Date();
+  const start = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  const rows = await db.select({ isResolved: operationalAlerts.isResolved, createdAt: operationalAlerts.createdAt, updatedAt: operationalAlerts.updatedAt }).from(operationalAlerts).where(gte(operationalAlerts.createdAt, start)).limit(5000);
+  const buckets = new Map<string, { total: number; resolved: number; ageTotal: number }>();
+  for (let index = 0; index < days; index += 1) buckets.set(new Date(start.getTime() + index * 86_400_000).toISOString().slice(0, 10), { total: 0, resolved: 0, ageTotal: 0 });
+  for (const row of rows) {
+    const bucket = buckets.get(row.createdAt.toISOString().slice(0, 10));
+    if (!bucket) continue;
+    bucket.total += 1;
+    if (row.isResolved === 1) bucket.resolved += 1;
+    bucket.ageTotal += Math.max(0, (row.isResolved === 1 ? row.updatedAt : now).getTime() - row.createdAt.getTime());
+  }
+  return { windowDays: days, points: Array.from(buckets.entries()).map(([date, value]) => ({ bucketStart: `${date}T00:00:00.000Z`, total: value.total, resolved: value.resolved, resolutionRate: value.total ? value.resolved / value.total : 0, averageAgeMs: value.total ? Math.round(value.ageTotal / value.total) : 0 })) };
+}

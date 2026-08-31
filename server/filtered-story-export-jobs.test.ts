@@ -17,7 +17,7 @@ vi.mock("./ingestion-reports", () => ({
 }));
 
 import { buildFilteredStoriesCsv, listAllFilteredStories } from "./ingestion-reports";
-import { cancelPersistentExportJob, createPersistentExportJob, getPersistentExportDownload, getPersistentExportJobStatus, listExportHistory, purgePersistentExportJobs, recoverOrphanedExportJobs, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts, getExportJobsMetricsTrend, getExportJobsAlertSettings, updateExportJobsAlertSettings, getExportJobsTrendBucket, getExportJobsAlertEfficiency, listExportJobsAlertSettingsHistory } from "./filtered-story-export-jobs";
+import { cancelPersistentExportJob, createPersistentExportJob, getPersistentExportDownload, getPersistentExportJobStatus, listExportHistory, purgePersistentExportJobs, recoverOrphanedExportJobs, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts, getExportJobsMetricsTrend, getExportJobsAlertSettings, updateExportJobsAlertSettings, getExportJobsTrendBucket, getExportJobsAlertEfficiency, getExportJobsAlertEfficiencyTrend, listExportJobsAlertSettingsHistory } from "./filtered-story-export-jobs";
 
 describe("persistent filtered stories export jobs", () => {
   beforeEach(() => {
@@ -172,6 +172,13 @@ describe("persistent filtered stories export jobs", () => {
   it("calcula taxa de resolução e idade média com saída estável", async () => {
     const efficiency = await getExportJobsAlertEfficiency({ windowDays: 30, ownerOpenId: "admin-open-id" });
     expect(efficiency).toMatchObject({ windowDays: 30, total: 0, resolved: 0, resolutionRate: 0, averageAgeMs: 0, openCount: 0 });
+  });
+
+  it("calcula série diária de eficiência com buckets estáveis para drill-down", async () => {
+    const trend = await getExportJobsAlertEfficiencyTrend(7);
+    expect(trend.windowDays).toBe(7);
+    expect(trend.points).toHaveLength(7);
+    expect(trend.points[0]).toMatchObject({ total: 0, resolved: 0, resolutionRate: 0, averageAgeMs: 0 });
   });
 
   it("registra histórico append-only da alteração de configuração com openId e timestamp ISO", async () => {

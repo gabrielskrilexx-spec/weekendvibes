@@ -63,7 +63,7 @@ import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
 import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
 import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
-import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts, getExportJobsMetricsTrend, getExportJobAlertDetail, getExportJobsAlertSettings, updateExportJobsAlertSettings, getExportJobsTrendBucket, getExportJobsAlertEfficiency, listExportJobsAlertSettingsHistory } from "./filtered-story-export-jobs";
+import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts, getExportJobsMetricsTrend, getExportJobAlertDetail, getExportJobsAlertSettings, updateExportJobsAlertSettings, getExportJobsTrendBucket, getExportJobsAlertEfficiency, listExportJobsAlertSettingsHistory, recordExportAlertEvaluationSnapshot, listExportAlertEvaluationSnapshots, getExportJobsEfficiencyBucket, getExportJobsAlertEfficiencyTrend } from "./filtered-story-export-jobs";
 
 const safeFilter = (max = 120) => z.string().trim().max(max).optional();
 const latitudeInput = z
@@ -486,6 +486,10 @@ export const appRouter = router({
       .input(z.object({ windowDays: z.number().int().min(1).max(90).default(30) }).strict())
       .output(z.object({ windowDays: z.number().int().positive(), total: z.number().int().nonnegative(), resolved: z.number().int().nonnegative(), resolutionRate: z.number().min(0).max(1), averageAgeMs: z.number().nonnegative(), openCount: z.number().int().nonnegative() }).strict())
       .query(({ ctx, input }) => getExportJobsAlertEfficiency({ ...input, ownerOpenId: ctx.user.openId })),
+    exportJobsAlertEfficiencyTrend: adminOnly
+      .input(z.object({ windowDays: z.number().int().min(1).max(90).default(30) }).strict())
+      .output(z.object({ windowDays: z.number().int().positive(), points: z.array(z.object({ bucketStart: z.string().datetime(), total: z.number().int().nonnegative(), resolved: z.number().int().nonnegative(), resolutionRate: z.number().min(0).max(1), averageAgeMs: z.number().nonnegative() }).strict()).max(90) }).strict())
+      .query(({ input }) => getExportJobsAlertEfficiencyTrend(input.windowDays)),
     exportJobsMetrics: adminOnly
       .input(z.object({ windowHours: z.number().int().positive().max(720).default(24) }).strict())
       .output(z.object({ windowHours: z.number().int().positive(), total: z.number().int().nonnegative(), queued: z.number().int().nonnegative(), processing: z.number().int().nonnegative(), completed: z.number().int().nonnegative(), failed: z.number().int().nonnegative(), cancelled: z.number().int().nonnegative(), expired: z.number().int().nonnegative(), expiredLeases: z.number().int().nonnegative(), recoveryExhausted: z.number().int().nonnegative(), orphaned: z.number().int().nonnegative(), fileDeletePending: z.number().int().nonnegative(), fileDeletePendingPrevious: z.number().int(), fileDeletePendingGrowth: z.number() }).strict())
@@ -498,6 +502,31 @@ export const appRouter = router({
       .input(z.object({ windowHours: z.number().int().positive().max(720).default(24) }).strict())
       .output(z.object({ metrics: z.object({ windowHours: z.number().int().positive(), total: z.number().int().nonnegative(), queued: z.number().int().nonnegative(), processing: z.number().int().nonnegative(), completed: z.number().int().nonnegative(), failed: z.number().int().nonnegative(), cancelled: z.number().int().nonnegative(), expired: z.number().int().nonnegative(), expiredLeases: z.number().int().nonnegative(), recoveryExhausted: z.number().int().nonnegative(), orphaned: z.number().int().nonnegative(), fileDeletePending: z.number().int().nonnegative() }).strict(), alerts: z.array(z.string()).max(10) }).strict())
       .query(({ input }) => evaluateExportJobsOperationalAlerts(input.windowHours)),
+    exportJobsEfficiencyBucket: adminOnly
+      .input(z.object({ from: z.string().datetime(), to: z.string().datetime() }).strict())
+      .output(z.object({ from: z.string().datetime(), to: z.string().datetime(), total: z.number().int().nonnegative(), resolved: z.number().int().nonnegative(), resolutionRate: z.number().min(0).max(1), averageAgeMs: z.number().nonnegative(), openCount: z.number().int().nonnegative(), snapshots: z.array(z.object({ snapshotId: z.string(), queueSize: z.number().int().nonnegative(), queueGrowth: z.number().int(), decision: z.enum(["NO_ALERT", "ALERT_CREATED", "DEDUPLICATED"]), evaluatedAt: z.string().datetime() }).strict()).max(100) }).strict())
+      .query(({ ctx, input }) => getExportJobsEfficiencyBucket({ ...input, ownerOpenId: ctx.user.openId })),
+    exportAlertEvaluationSnapshots: adminOnly
+      .input(z.object({ environment: z.enum(["development", "preview", "production"]).optional(), from: z.string().datetime().optional(), to: z.string().datetime().optional(), offset: z.number().int().nonnegative().default(0), limit: z.number().int().positive().max(100).default(25) }).strict())
+      .output(z.object({ items: z.array(z.object({ snapshotId: z.string(), environment: z.enum(["development", "preview", "production"]), windowStartedAt: z.string().datetime(), windowEndedAt: z.string().datetime(), queueSize: z.number().int().nonnegative(), previousQueueSize: z.number().int().nonnegative(), queueGrowth: z.number().int(), expiredLeases: z.number().int().nonnegative(), orphanedJobs: z.number().int().nonnegative(), growthThreshold: z.number().int().positive(), minimumQueueSize: z.number().int().nonnegative(), consecutiveWindows: z.number().int().positive(), severity: z.enum(["INFO", "WARNING", "CRITICAL"]), decision: z.enum(["NO_ALERT", "ALERT_CREATED", "DEDUPLICATED"]), evaluatedByOpenId: z.string(), evaluatedAt: z.string().datetime() }).strict()).max(100), offset: z.number().int().nonnegative(), limit: z.number().int().positive(), hasNextPage: z.boolean() }).strict())
+      .query(({ input }) => listExportAlertEvaluationSnapshots(input)),
+    exportAlertEvaluationSnapshotsExport: adminOnly
+      .input(z.object({ format: z.enum(["csv", "json"]), environment: z.enum(["development", "preview", "production"]).optional(), from: z.string().datetime().optional(), to: z.string().datetime().optional() }).strict())
+      .output(z.object({ fileName: z.string(), contentType: z.string(), content: z.string() }).strict())
+      .query(async ({ input }) => {
+        const page = await listExportAlertEvaluationSnapshots({ ...input, offset: 0, limit: 100 });
+        const rows = page.items;
+        const content = input.format === "json" ? JSON.stringify(rows) : ["snapshotId,environment,windowStartedAt,windowEndedAt,queueSize,queueGrowth,severity,decision,evaluatedByOpenId,evaluatedAt", ...rows.map(row => [row.snapshotId, row.environment, row.windowStartedAt, row.windowEndedAt, row.queueSize, row.queueGrowth, row.severity, row.decision, row.evaluatedByOpenId, row.evaluatedAt].map(value => `"${String(value).replaceAll('"', '""')}"`).join(","))].join("\\r\\n");
+        return { fileName: `export-alert-snapshots-${new Date().toISOString().slice(0, 10)}.${input.format}`, contentType: input.format === "json" ? "application/json" : "text/csv;charset=utf-8", content };
+      }),
+    exportAlertSettingsHistoryExport: adminOnly
+      .input(z.object({ format: z.enum(["csv", "json"]), environment: z.enum(["development", "preview", "production"]) }).strict())
+      .output(z.object({ fileName: z.string(), contentType: z.string(), content: z.string() }).strict())
+      .query(async ({ input, ctx }) => {
+        const page = await listExportJobsAlertSettingsHistory({ environment: input.environment, offset: 0, limit: 50, ownerOpenId: ctx.user.openId });
+        const content = input.format === "json" ? JSON.stringify(page.items) : ["id,environment,previousValue,nextValue,changedByOpenId,changedAt", ...page.items.map(row => [row.id, row.environment, row.previousValue, row.nextValue, row.changedByOpenId, row.changedAt].map(value => `"${String(value).replaceAll('"', '""')}"`).join(","))].join("\\r\\n");
+        return { fileName: `export-alert-settings-${new Date().toISOString().slice(0, 10)}.${input.format}`, contentType: input.format === "json" ? "application/json" : "text/csv;charset=utf-8", content };
+      }),
     filteredStoriesJson: adminOnly
       .input(filteredStoriesFilterInput)
       .output(z.object({ fileName: z.string().min(1).max(180), contentType: z.literal("application/json"), json: z.string() }).strict())

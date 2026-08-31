@@ -35,6 +35,31 @@ export const appSettings = mysqlTable("appSettings", {
 export type AppSetting = typeof appSettings.$inferSelect;
 export type InsertAppSetting = typeof appSettings.$inferInsert;
 
+export const exportAlertEvaluationSnapshots = mysqlTable("exportAlertEvaluationSnapshots", {
+  id: int("id").autoincrement().primaryKey(),
+  environment: mysqlEnum("environment", ["development", "preview", "production"]).notNull(),
+  windowStartedAt: timestamp("windowStartedAt").notNull(),
+  windowEndedAt: timestamp("windowEndedAt").notNull(),
+  queueSize: int("queueSize").notNull(),
+  previousQueueSize: int("previousQueueSize").notNull(),
+  queueGrowth: int("queueGrowth").notNull(),
+  expiredLeases: int("expiredLeases").notNull(),
+  orphanedJobs: int("orphanedJobs").notNull(),
+  growthThreshold: int("growthThreshold").notNull(),
+  minimumQueueSize: int("minimumQueueSize").notNull(),
+  consecutiveWindows: int("consecutiveWindows").notNull(),
+  severity: mysqlEnum("severity", ["INFO", "WARNING", "CRITICAL"]).notNull(),
+  decision: mysqlEnum("decision", ["NO_ALERT", "ALERT_CREATED", "DEDUPLICATED"]).notNull(),
+  evaluatedByOpenId: varchar("evaluatedByOpenId", { length: 160 }).notNull(),
+  evaluatedAt: timestamp("evaluatedAt").defaultNow().notNull(),
+}, table => ({
+  environmentTimeIdx: index("exportAlertEvaluationSnapshots_env_time_idx").on(table.environment, table.evaluatedAt),
+  decisionTimeIdx: index("exportAlertEvaluationSnapshots_decision_time_idx").on(table.decision, table.evaluatedAt),
+}));
+
+export type ExportAlertEvaluationSnapshot = typeof exportAlertEvaluationSnapshots.$inferSelect;
+export type InsertExportAlertEvaluationSnapshot = typeof exportAlertEvaluationSnapshots.$inferInsert;
+
 export const exportJobsAlertSettingsAudit = mysqlTable("exportJobsAlertSettingsAudit", {
   id: int("id").autoincrement().primaryKey(),
   environment: mysqlEnum("environment", ["development", "preview", "production"]).notNull(),

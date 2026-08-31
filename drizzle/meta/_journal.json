@@ -176,6 +176,13 @@
       "when": 1788180793427,
       "tag": "0024_absent_proudstar",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1788181833354,
+      "tag": "0025_yellow_nemesis",
+      "breakpoints": true
     }
   ]
 }
