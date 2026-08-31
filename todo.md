@@ -2396,3 +2396,11 @@
 - [x] Sincronizar filtros de exportação na URL
 - [x] Adicionar testes de limiares, incidentes e exportação filtrada
 - [x] Validar suíte, TypeScript, build, preview e publicar checkpoint
+
+## Correção de overflow visual do painel — sessão atual
+- [x] Auditar gráficos, legendas, tooltips, cards e tabelas afetados
+- [x] Conter legendas com max-height e overflow-y
+- [x] Truncar nomes longos com ellipsis sem quebra desordenada
+- [x] Isolar gráficos e tooltips com position, z-index e min-width adequados
+- [x] Adicionar overflow-x responsivo às tabelas e flex items com min-width: 0
+- [x] Validar visualmente e executar testes/build do Vite

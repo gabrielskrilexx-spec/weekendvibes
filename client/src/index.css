@@ -368,3 +368,63 @@
 .leaflet-container { background: #27272a; font-family: inherit; }
 .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: #18181b; color: #fafafa; }
 .leaflet-control-zoom a { background: #18181b; color: #fed7aa; border-color: rgba(255, 255, 255, 0.14); }
+
+/* Contenção dos gráficos de telemetria do painel administrativo. */
+[data-testid="source-telemetry-history"] {
+  min-width: 0;
+  overflow: hidden;
+}
+
+[data-testid="source-telemetry-history"] > *,
+[data-testid="source-telemetry-history"] .grid,
+[data-testid="source-telemetry-history"] .recharts-responsive-container,
+[data-testid="source-telemetry-history"] .recharts-wrapper {
+  min-width: 0;
+  max-width: 100%;
+}
+
+[data-testid="source-telemetry-history"] .recharts-legend-wrapper {
+  box-sizing: border-box;
+  max-height: 4.5rem !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  padding-right: 0.25rem;
+  white-space: normal !important;
+  z-index: 1;
+}
+
+[data-testid="source-telemetry-history"] .recharts-legend-item {
+  display: inline-flex !important;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: top;
+}
+
+[data-testid="source-telemetry-history"] .recharts-legend-item-text {
+  display: inline-block;
+  min-width: 0;
+  max-width: min(15rem, 70vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+[data-testid="source-telemetry-history"] .recharts-tooltip-wrapper {
+  z-index: 2;
+  max-width: calc(100% - 0.5rem);
+}
+
+[data-testid="daily-ingestion-monitor"] > *,
+[data-testid="performance-alert-history"] > *,
+[data-testid="source-telemetry-history"] > * {
+  min-width: 0;
+}
+
+[data-testid="daily-ingestion-monitor"] .overflow-x-auto,
+[data-testid="performance-alert-history"] .overflow-x-auto,
+[data-testid="source-telemetry-history"] .overflow-x-auto {
+  min-width: 0;
+  max-width: 100%;
+}
