@@ -169,6 +169,13 @@
       "when": 1788014280433,
       "tag": "0023_soft_siren",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1788180793427,
+      "tag": "0024_absent_proudstar",
+      "breakpoints": true
     }
   ]
 }

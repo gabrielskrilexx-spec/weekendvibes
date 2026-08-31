@@ -63,7 +63,7 @@ import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
 import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
 import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
-import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts, getExportJobsMetricsTrend, getExportJobAlertDetail, getExportJobsAlertSettings, updateExportJobsAlertSettings } from "./filtered-story-export-jobs";
+import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts, getExportJobsMetricsTrend, getExportJobAlertDetail, getExportJobsAlertSettings, updateExportJobsAlertSettings, getExportJobsTrendBucket, getExportJobsAlertEfficiency, listExportJobsAlertSettingsHistory } from "./filtered-story-export-jobs";
 
 const safeFilter = (max = 120) => z.string().trim().max(max).optional();
 const latitudeInput = z
@@ -473,7 +473,19 @@ export const appRouter = router({
     updateExportJobsAlertSettings: adminOnly
       .input(z.object({ environment: z.enum(["development", "preview", "production"]), severity: z.enum(["INFO", "WARNING", "CRITICAL"]), growthThreshold: z.number().int().min(1).max(100000), minimumQueueSize: z.number().int().nonnegative().max(100000), consecutiveWindows: z.number().int().min(1).max(10) }).strict())
       .output(z.object({ environment: z.enum(["development", "preview", "production"]), severity: z.enum(["INFO", "WARNING", "CRITICAL"]), growthThreshold: z.number().int().min(1).max(100000), minimumQueueSize: z.number().int().nonnegative().max(100000), consecutiveWindows: z.number().int().min(1).max(10) }).strict())
-      .mutation(({ input }) => updateExportJobsAlertSettings(input)),
+      .mutation(({ ctx, input }) => updateExportJobsAlertSettings({ ...input, changedByOpenId: ctx.user.openId })),
+    exportJobsAlertSettingsHistory: adminOnly
+      .input(z.object({ environment: z.enum(["development", "preview", "production"]), offset: z.number().int().nonnegative().default(0), limit: z.number().int().positive().max(50).default(20) }).strict())
+      .output(z.object({ items: z.array(z.object({ id: z.string(), environment: z.enum(["development", "preview", "production"]), previousValue: z.string(), nextValue: z.string(), changedByOpenId: z.string(), changedAt: z.string().datetime() }).strict()).max(50), offset: z.number().int().nonnegative(), limit: z.number().int().positive(), hasNextPage: z.boolean() }).strict())
+      .query(({ ctx, input }) => listExportJobsAlertSettingsHistory({ ...input, ownerOpenId: ctx.user.openId })),
+    exportJobsMetricsTrendBucket: adminOnly
+      .input(z.object({ from: z.string().datetime(), to: z.string().datetime() }).strict())
+      .output(z.object({ from: z.string().datetime(), to: z.string().datetime(), jobs: z.array(z.object({ jobId: z.string(), status: z.string(), recoveryAttempts: z.number().int().nonnegative(), leaseExpiresAt: z.string().datetime().nullable(), fileDeletePending: z.boolean() }).strict()).max(100), alerts: z.array(z.object({ id: z.string(), alertType: z.string(), severity: z.enum(["INFO", "WARNING", "CRITICAL"]), title: z.string(), message: z.string(), isResolved: z.boolean(), createdAt: z.string().datetime(), updatedAt: z.string().datetime() }).strict()).max(100) }).strict())
+      .query(({ ctx, input }) => getExportJobsTrendBucket({ ...input, ownerOpenId: ctx.user.openId })),
+    exportJobsAlertEfficiency: adminOnly
+      .input(z.object({ windowDays: z.number().int().min(1).max(90).default(30) }).strict())
+      .output(z.object({ windowDays: z.number().int().positive(), total: z.number().int().nonnegative(), resolved: z.number().int().nonnegative(), resolutionRate: z.number().min(0).max(1), averageAgeMs: z.number().nonnegative(), openCount: z.number().int().nonnegative() }).strict())
+      .query(({ ctx, input }) => getExportJobsAlertEfficiency({ ...input, ownerOpenId: ctx.user.openId })),
     exportJobsMetrics: adminOnly
       .input(z.object({ windowHours: z.number().int().positive().max(720).default(24) }).strict())
       .output(z.object({ windowHours: z.number().int().positive(), total: z.number().int().nonnegative(), queued: z.number().int().nonnegative(), processing: z.number().int().nonnegative(), completed: z.number().int().nonnegative(), failed: z.number().int().nonnegative(), cancelled: z.number().int().nonnegative(), expired: z.number().int().nonnegative(), expiredLeases: z.number().int().nonnegative(), recoveryExhausted: z.number().int().nonnegative(), orphaned: z.number().int().nonnegative(), fileDeletePending: z.number().int().nonnegative(), fileDeletePendingPrevious: z.number().int(), fileDeletePendingGrowth: z.number() }).strict())

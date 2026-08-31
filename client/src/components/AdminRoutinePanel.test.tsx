@@ -357,6 +357,9 @@ describe("AdminRoutinePanel", () => {
     expect(rendered).toContain("Tentativas esgotadas");
     expect(rendered).toContain("Crescimento da fila");
     expect(rendered).toContain('"5"');
+    expect(tree!.root.findAll(node => node.props["data-testid"] === "export-alert-efficiency").length).toBe(1);
+    expect(tree!.root.findAll(node => node.props["data-testid"] === "export-jobs-trend").length).toBe(1);
+    expect(tree!.root.findAll(node => node.props["data-testid"] === "export-alert-governance").length).toBe(1);
     const windowSelect = tree!.root.findByProps({ "aria-label": "Janela das métricas de exportação" });
     await act(async () => { windowSelect.props.onChange({ target: { value: "168" } }); });
     expect(windowSelect.props.value).toBe(168);

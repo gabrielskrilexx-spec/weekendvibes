@@ -1,7 +1,7 @@
-import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { filteredStoryExportJobs, operationalAlerts, appSettings } from "../drizzle/schema";
+import { filteredStoryExportJobs, operationalAlerts, appSettings, exportJobsAlertSettingsAudit } from "../drizzle/schema";
 import { getDb, recordOperationalAlert } from "./db";
 import { storageGet, storagePut } from "./storage";
 import { buildFilteredStoriesCsv, listAllFilteredStories, type FilteredStoriesFilter } from "./ingestion-reports";
@@ -240,7 +240,7 @@ export async function getExportJobsAlertSettings(environment: ExportAlertEnviron
   }
 }
 
-export async function updateExportJobsAlertSettings(input: Omit<ExportAlertSettings, "environment"> & { environment: ExportAlertEnvironment }) {
+export async function updateExportJobsAlertSettings(input: Omit<ExportAlertSettings, "environment"> & { environment: ExportAlertEnvironment; changedByOpenId?: string }) {
   const db = await getDb();
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
   const settings = await getExportJobsAlertSettings(input.environment);
@@ -252,7 +252,19 @@ export async function updateExportJobsAlertSettings(input: Omit<ExportAlertSetti
     consecutiveWindows: Math.min(10, Math.max(1, Math.trunc(input.consecutiveWindows))),
   };
   await db.insert(appSettings).values({ key: exportAlertSettingsKey(input.environment), value: JSON.stringify({ ...settings, ...next }) }).onDuplicateKeyUpdate({ set: { value: JSON.stringify(next), updatedAt: new Date() } });
+  await db.insert(exportJobsAlertSettingsAudit).values({ environment: input.environment, previousValue: JSON.stringify(settings), nextValue: JSON.stringify(next), changedByOpenId: (input.changedByOpenId ?? "system").slice(0, 160), changedAt: new Date() });
   return next;
+}
+
+export async function listExportJobsAlertSettingsHistory(input: { environment: ExportAlertEnvironment; offset?: number; limit?: number; ownerOpenId?: string }) {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  const offset = Math.max(0, input.offset ?? 0);
+  const limit = Math.min(50, Math.max(1, input.limit ?? 20));
+  const rows = await db.select().from(exportJobsAlertSettingsAudit).where(eq(exportJobsAlertSettingsAudit.environment, input.environment)).orderBy(desc(exportJobsAlertSettingsAudit.changedAt)).limit(limit).offset(offset);
+  const auditRows = rows.filter(row => row.environment === input.environment && row.changedAt instanceof Date && typeof row.previousValue === "string" && typeof row.nextValue === "string" && typeof row.changedByOpenId === "string");
+  const items = auditRows.map(row => ({ id: String(row.id), environment: row.environment as ExportAlertEnvironment, previousValue: row.previousValue, nextValue: row.nextValue, changedByOpenId: row.changedByOpenId, changedAt: row.changedAt.toISOString() }));
+  return { items, offset, limit, hasNextPage: items.length === limit };
 }
 
 export async function getExportJobsMetricsTrend(windowDays = 30) {
@@ -296,6 +308,29 @@ export async function getExportJobAlertDetail(alertId: string, _ownerOpenId: str
     affectedJobs,
     timeline: [{ event: "created" as const, occurredAt: alert.createdAt.toISOString(), jobId: null, message: alert.title }, ...timeline].slice(0, 200),
   };
+}
+
+export async function getExportJobsTrendBucket(input: { from: string; to: string; ownerOpenId?: string }) {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  const from = new Date(input.from);
+  const to = new Date(input.to);
+  if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from >= to) throw new TRPCError({ code: "BAD_REQUEST", message: "Intervalo temporal inválido." });
+  const jobRows = await db.select({ id: filteredStoryExportJobs.id, status: filteredStoryExportJobs.status, recoveryAttempts: filteredStoryExportJobs.recoveryAttempts, leaseExpiresAt: filteredStoryExportJobs.leaseExpiresAt, fileDeletePending: filteredStoryExportJobs.fileDeletePending, createdAt: filteredStoryExportJobs.createdAt }).from(filteredStoryExportJobs).where(and(gte(filteredStoryExportJobs.createdAt, from), lt(filteredStoryExportJobs.createdAt, to), input.ownerOpenId ? eq(filteredStoryExportJobs.createdByOpenId, input.ownerOpenId) : sql`1=1`)).limit(100);
+  const alertRows = await db.select({ id: operationalAlerts.id, alertType: operationalAlerts.alertType, severity: operationalAlerts.severity, title: operationalAlerts.title, message: operationalAlerts.message, isResolved: operationalAlerts.isResolved, createdAt: operationalAlerts.createdAt, updatedAt: operationalAlerts.updatedAt }).from(operationalAlerts).where(and(gte(operationalAlerts.createdAt, from), lt(operationalAlerts.createdAt, to))).limit(100);
+  return { from: from.toISOString(), to: to.toISOString(), jobs: jobRows.map(row => ({ jobId: row.id, status: String(row.status), recoveryAttempts: Number(row.recoveryAttempts ?? 0), leaseExpiresAt: row.leaseExpiresAt?.toISOString() ?? null, fileDeletePending: Boolean(row.fileDeletePending) })), alerts: alertRows.map(row => ({ id: String(row.id), alertType: row.alertType, severity: row.severity, title: row.title, message: row.message, isResolved: row.isResolved === 1, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() })) };
+}
+
+export async function getExportJobsAlertEfficiency(input: { windowDays?: number; ownerOpenId?: string }) {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  const days = Math.min(90, Math.max(1, Math.trunc(input.windowDays ?? 30)));
+  const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const rows = await db.select({ isResolved: operationalAlerts.isResolved, createdAt: operationalAlerts.createdAt, updatedAt: operationalAlerts.updatedAt }).from(operationalAlerts).where(gte(operationalAlerts.createdAt, start)).limit(5000);
+  const total = rows.length;
+  const resolved = rows.filter(row => row.isResolved === 1).length;
+  const ages = rows.map(row => Math.max(0, (row.isResolved === 1 ? row.updatedAt : new Date()).getTime() - row.createdAt.getTime()));
+  return { windowDays: days, total, resolved, resolutionRate: total ? resolved / total : 0, averageAgeMs: ages.length ? Math.round(ages.reduce((sum, value) => sum + value, 0) / ages.length) : 0, openCount: total - resolved };
 }
 
 export async function evaluateExportJobsOperationalAlerts(windowHours = 24) {

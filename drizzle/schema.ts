@@ -35,6 +35,21 @@ export const appSettings = mysqlTable("appSettings", {
 export type AppSetting = typeof appSettings.$inferSelect;
 export type InsertAppSetting = typeof appSettings.$inferInsert;
 
+export const exportJobsAlertSettingsAudit = mysqlTable("exportJobsAlertSettingsAudit", {
+  id: int("id").autoincrement().primaryKey(),
+  environment: mysqlEnum("environment", ["development", "preview", "production"]).notNull(),
+  previousValue: text("previousValue").notNull(),
+  nextValue: text("nextValue").notNull(),
+  changedByOpenId: varchar("changedByOpenId", { length: 160 }).notNull(),
+  changedAt: timestamp("changedAt").defaultNow().notNull(),
+}, (table) => ({
+  environmentChangedAtIdx: index("export_jobs_alert_settings_audit_env_time_idx").on(table.environment, table.changedAt),
+  changedByIdx: index("export_jobs_alert_settings_audit_actor_idx").on(table.changedByOpenId, table.changedAt),
+}));
+
+export type ExportJobsAlertSettingsAudit = typeof exportJobsAlertSettingsAudit.$inferSelect;
+export type InsertExportJobsAlertSettingsAudit = typeof exportJobsAlertSettingsAudit.$inferInsert;
+
 export const events = mysqlTable("events", {
   id: int("id").autoincrement().primaryKey(),
   title: varchar("title", { length: 255 }).notNull(),

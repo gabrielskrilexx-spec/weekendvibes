@@ -2290,3 +2290,13 @@
 - [x] Construir gráficos, detalhe e controles no React
 - [x] Adicionar testes de métricas, regras, configurações e estados visuais
 - [x] Validar TypeScript, suíte, preview e publicar checkpoint
+
+## Drill-down e governança de alertas
+- [x] Auditar schemas, queries, alertas e dashboard existentes
+- [x] Definir schemas Zod e contratos tRPC de drill-down e auditoria
+- [x] Implementar recortes temporais de jobs/alertas e métricas estatísticas
+- [x] Persistir histórico de alterações das regras com openId e timestamp
+- [x] Integrar drill-down dos gráficos no React
+- [x] Exibir taxa de resolução e idade média dos incidentes
+- [x] Adicionar testes de tempo, auditoria e métricas
+- [x] Validar TypeScript, suíte, preview e publicar checkpoint
