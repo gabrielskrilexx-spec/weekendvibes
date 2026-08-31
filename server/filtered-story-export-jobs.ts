@@ -5,10 +5,11 @@ import { filteredStoryExportJobs, operationalAlerts, appSettings, exportJobsAler
 import { getDb, recordOperationalAlert } from "./db";
 import { storageGet, storagePut } from "./storage";
 import { buildFilteredStoriesCsv, listAllFilteredStories, type FilteredStoriesFilter } from "./ingestion-reports";
+import { listHeartbeatExecutionEventsForExport, type HeartbeatEventType } from "./heartbeat-observability";
 
 type ExportFormat = "csv" | "json";
 type PersistentExportStatus = "queued" | "processing" | "completed" | "failed" | "cancelled" | "expired";
-export type ExportFilters = (FilteredStoriesFilter & { sort?: Array<{ column: "date" | "source" | "status"; direction: "asc" | "desc" }> }) | { kind: "alert-snapshots" | "settings-history"; environment?: ExportAlertEnvironment; from?: string; to?: string };
+export type ExportFilters = (FilteredStoriesFilter & { sort?: Array<{ column: "date" | "source" | "status"; direction: "asc" | "desc" }> }) | { kind: "alert-snapshots" | "settings-history"; environment?: ExportAlertEnvironment; from?: string; to?: string } | { kind: "heartbeat-timeline"; heartbeatExecutionId: string; eventType?: HeartbeatEventType; from?: string; to?: string };
 export type ExportHistoryFilters = { format?: ExportFormat; status?: PersistentExportStatus; from?: string; to?: string; offset?: number; limit?: number; ownerOpenId: string };
 
 const JOB_TTL_MS = 10 * 60 * 1000;
@@ -80,10 +81,12 @@ async function processPersistentExportJob(jobId: string, ownerOpenId: string, re
     if (!active || active.status === "cancelled") return false;
     const filters = JSON.parse(owned.row.filtersJson) as ExportFilters;
     const isAuditExport = "kind" in filters;
-    const exportRows = isAuditExport
+    const exportRows = "kind" in filters
       ? filters.kind === "alert-snapshots"
         ? (await listExportAlertEvaluationSnapshots({ environment: filters.environment, from: filters.from, to: filters.to, offset: 0, limit: 1000 })).items
-        : (await listExportJobsAlertSettingsHistory({ environment: filters.environment ?? "preview", offset: 0, limit: 1000 })).items
+        : filters.kind === "settings-history"
+          ? (await listExportJobsAlertSettingsHistory({ environment: filters.environment ?? "preview", offset: 0, limit: 1000 })).items
+          : await listHeartbeatExecutionEventsForExport(filters as Extract<ExportFilters, { kind: "heartbeat-timeline" }>)
       : await listAllFilteredStories(filters);
     await db.update(filteredStoryExportJobs).set({ progress: 70, leaseExpiresAt: new Date(Date.now() + LEASE_MS) }).where(and(eq(filteredStoryExportJobs.id, jobId), eq(filteredStoryExportJobs.status, "processing"), eq(filteredStoryExportJobs.leaseOwner, leaseOwner)));
     const content = owned.row.format === "csv"

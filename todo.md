@@ -2330,3 +2330,25 @@
 - [x] Integrar histórico, comparação e exportação no React
 - [x] Adicionar testes de deltas e vinculação M2M
 - [x] Validar TypeScript, suíte, preview e publicar checkpoint
+
+## Observabilidade dedicada do Heartbeat
+- [ ] Auditar Heartbeat, snapshots, jobs, alertas e rotas atuais
+- [ ] Definir schemas Zod e contratos tRPC da observabilidade M2M
+- [ ] Implementar timeline completa por heartbeatExecutionId
+- [ ] Implementar exportação assíncrona filtrada por execução
+- [ ] Implementar alertas de falha e duração anormal com cooldown
+- [ ] Construir tela dedicada e controles no React
+- [ ] Adicionar testes de timeline, filtro de exportação e duração
+- [ ] Validar TypeScript, suíte, preview e publicar checkpoint
+
+## Timeline e saúde dedicada do Heartbeat — sessão atual
+- [x] Sincronizar estado compartilhado e auditar arquivos atuais
+- [x] Criar tabela Drizzle heartbeatExecutionEvents e migração segura
+- [x] Definir configurações auditáveis de saúde do Heartbeat
+- [x] Adicionar schemas Zod estritos para timeline, resumo, exportação e limiares
+- [x] Implementar namespace heartbeat no tRPC
+- [x] Estender jobs persistentes com exportação heartbeat-timeline
+- [x] Registrar eventos e avaliar falhas/duração no handler M2M
+- [x] Adicionar testes backend de contratos, paginação, exportação e alertas
+- [x] Construir tela React dedicada com filtros sincronizados na URL
+- [x] Validar suíte, TypeScript, build, preview e publicar checkpoint

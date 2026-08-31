@@ -35,6 +35,24 @@ export const appSettings = mysqlTable("appSettings", {
 export type AppSetting = typeof appSettings.$inferSelect;
 export type InsertAppSetting = typeof appSettings.$inferInsert;
 
+export const heartbeatExecutionEvents = mysqlTable("heartbeatExecutionEvents", {
+  id: varchar("id", { length: 128 }).primaryKey(),
+  heartbeatExecutionId: varchar("heartbeatExecutionId", { length: 160 }).notNull(),
+  eventType: mysqlEnum("eventType", ["started", "step", "log", "alert", "completed", "failed", "timeout"]).notNull(),
+  sequence: int("sequence").notNull(),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  durationMs: int("durationMs"),
+  status: varchar("status", { length: 64 }),
+  message: text("message"),
+  metadataJson: text("metadataJson"),
+}, table => ({
+  executionSequenceIdx: index("heartbeatExecutionEvents_execution_sequence_idx").on(table.heartbeatExecutionId, table.sequence),
+  executionTimestampIdx: index("heartbeatExecutionEvents_execution_timestamp_idx").on(table.heartbeatExecutionId, table.timestamp),
+}));
+
+export type HeartbeatExecutionEvent = typeof heartbeatExecutionEvents.$inferSelect;
+export type InsertHeartbeatExecutionEvent = typeof heartbeatExecutionEvents.$inferInsert;
+
 export const exportAlertEvaluationSnapshots = mysqlTable("exportAlertEvaluationSnapshots", {
   id: int("id").autoincrement().primaryKey(),
   environment: mysqlEnum("environment", ["development", "preview", "production"]).notNull(),
