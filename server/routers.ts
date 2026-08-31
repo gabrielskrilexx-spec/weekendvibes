@@ -28,6 +28,7 @@ import {
   updateIngestionSource,
   getPublicFeedRolloverHour,
   setPublicFeedRolloverHour,
+  listOperationalAlerts,
 } from "./db";
 import { invokeLLM } from "./_core/llm";
 import { isSandboxRestrictedError } from "./external-fetch";
@@ -62,7 +63,7 @@ import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
 import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
 import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
-import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts } from "./filtered-story-export-jobs";
+import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts, getExportJobsMetricsTrend, getExportJobAlertDetail, getExportJobsAlertSettings, updateExportJobsAlertSettings } from "./filtered-story-export-jobs";
 
 const safeFilter = (max = 120) => z.string().trim().max(max).optional();
 const latitudeInput = z
@@ -457,6 +458,22 @@ export const appRouter = router({
       .input(z.object({ format: z.enum(["csv", "json"]).optional(), status: z.enum(["queued", "processing", "completed", "failed", "cancelled", "expired"]).optional(), from: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).optional(), to: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).optional(), offset: z.number().int().nonnegative().default(0), limit: z.number().int().positive().max(50).default(20) }).strict())
       .output(exportHistoryPageOutput)
       .query(({ ctx, input }) => listExportHistory({ ...input, ownerOpenId: ctx.user.openId })),
+    exportJobsMetricsTrend: adminOnly
+      .input(z.object({ windowDays: z.number().int().min(1).max(90).default(30) }).strict())
+      .output(z.object({ windowDays: z.number().int().positive(), points: z.array(z.object({ bucketStart: z.string().datetime(), pendingDelete: z.number().int().nonnegative(), expiredLeases: z.number().int().nonnegative() }).strict()).max(90) }).strict())
+      .query(({ input }) => getExportJobsMetricsTrend(input.windowDays)),
+    exportJobAlertDetail: adminOnly
+      .input(z.object({ alertId: z.string().trim().min(1).max(128) }).strict())
+      .output(z.object({ alert: z.object({ id: z.string(), type: z.string(), severity: z.enum(["INFO", "WARNING", "CRITICAL"]), message: z.string(), createdAt: z.string().datetime(), resolvedAt: z.string().datetime().nullable() }).strict(), affectedJobs: z.array(z.object({ jobId: z.string(), status: z.string(), recoveryAttempts: z.number().int().nonnegative(), leaseExpiresAt: z.string().datetime().nullable(), fileDeletePending: z.boolean() }).strict()).max(100), timeline: z.array(z.object({ event: z.enum(["created", "lease_expired", "recovered", "retry_exhausted", "cancelled", "expired", "file_delete_pending"]), occurredAt: z.string().datetime(), jobId: z.string().nullable(), message: z.string() }).strict()).max(200) }).strict())
+      .query(({ ctx, input }) => getExportJobAlertDetail(input.alertId, ctx.user.openId)),
+    exportJobsAlertSettings: adminOnly
+      .input(z.object({ environment: z.enum(["development", "preview", "production"]) }).strict())
+      .output(z.object({ environment: z.enum(["development", "preview", "production"]), severity: z.enum(["INFO", "WARNING", "CRITICAL"]), growthThreshold: z.number().int().min(1).max(100000), minimumQueueSize: z.number().int().nonnegative().max(100000), consecutiveWindows: z.number().int().min(1).max(10) }).strict())
+      .query(({ input }) => getExportJobsAlertSettings(input.environment)),
+    updateExportJobsAlertSettings: adminOnly
+      .input(z.object({ environment: z.enum(["development", "preview", "production"]), severity: z.enum(["INFO", "WARNING", "CRITICAL"]), growthThreshold: z.number().int().min(1).max(100000), minimumQueueSize: z.number().int().nonnegative().max(100000), consecutiveWindows: z.number().int().min(1).max(10) }).strict())
+      .output(z.object({ environment: z.enum(["development", "preview", "production"]), severity: z.enum(["INFO", "WARNING", "CRITICAL"]), growthThreshold: z.number().int().min(1).max(100000), minimumQueueSize: z.number().int().nonnegative().max(100000), consecutiveWindows: z.number().int().min(1).max(10) }).strict())
+      .mutation(({ input }) => updateExportJobsAlertSettings(input)),
     exportJobsMetrics: adminOnly
       .input(z.object({ windowHours: z.number().int().positive().max(720).default(24) }).strict())
       .output(z.object({ windowHours: z.number().int().positive(), total: z.number().int().nonnegative(), queued: z.number().int().nonnegative(), processing: z.number().int().nonnegative(), completed: z.number().int().nonnegative(), failed: z.number().int().nonnegative(), cancelled: z.number().int().nonnegative(), expired: z.number().int().nonnegative(), expiredLeases: z.number().int().nonnegative(), recoveryExhausted: z.number().int().nonnegative(), orphaned: z.number().int().nonnegative(), fileDeletePending: z.number().int().nonnegative(), fileDeletePendingPrevious: z.number().int(), fileDeletePendingGrowth: z.number() }).strict())
@@ -758,6 +775,10 @@ export const appRouter = router({
       .mutation(() => processPendingGeocoding(10)),
   }),
   operationalAlerts: router({
+    list: adminOnly
+      .input(z.object({ limit: z.number().int().positive().max(100).default(25) }).strict())
+      .output(z.array(z.object({ id: z.number().int().positive(), alertType: z.string(), severity: z.enum(["INFO", "WARNING", "CRITICAL"]), title: z.string(), message: z.string(), isResolved: z.boolean(), createdAt: z.string().datetime(), updatedAt: z.string().datetime() }).strict()).max(100))
+      .query(({ input }) => listOperationalAlerts(input.limit)),
     resolve: adminOnly
       .input(z.object({ id: z.number().int().positive() }))
       .output(

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const records = new Map<string, Record<string, unknown>>();
 const fakeDb = {
-  insert: () => ({ values: async (value: Record<string, unknown>) => { records.set(String(value.id), value); } }),
+  insert: () => ({ values(value: Record<string, unknown>) { records.set(String(value.id ?? value.key), value); return { onDuplicateKeyUpdate: async () => undefined }; } }),
   select: () => ({ from() { return this; }, where() { return this; }, orderBy() { return this; }, offset() { return this; }, limit() { return this; }, then(resolve: (rows: Record<string, unknown>[]) => unknown) { return Promise.resolve(Array.from(records.values())).then(resolve); } }),
   update: () => ({ set(patch: Record<string, unknown>) { return { where: async () => { for (const [id, row] of records) records.set(id, { ...row, ...patch }); return { affectedRows: 1 }; } }; } }),
   delete: () => ({ where: async () => { records.clear(); } }),
@@ -17,7 +17,7 @@ vi.mock("./ingestion-reports", () => ({
 }));
 
 import { buildFilteredStoriesCsv, listAllFilteredStories } from "./ingestion-reports";
-import { cancelPersistentExportJob, createPersistentExportJob, getPersistentExportDownload, getPersistentExportJobStatus, listExportHistory, purgePersistentExportJobs, recoverOrphanedExportJobs, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts } from "./filtered-story-export-jobs";
+import { cancelPersistentExportJob, createPersistentExportJob, getPersistentExportDownload, getPersistentExportJobStatus, listExportHistory, purgePersistentExportJobs, recoverOrphanedExportJobs, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts, getExportJobsMetricsTrend, getExportJobsAlertSettings, updateExportJobsAlertSettings } from "./filtered-story-export-jobs";
 
 describe("persistent filtered stories export jobs", () => {
   beforeEach(() => {
@@ -130,6 +130,25 @@ describe("persistent filtered stories export jobs", () => {
     expect(result.metrics.fileDeletePendingGrowth).toBe(5);
     expect(result.alerts).toContain("export_file_delete_queue_growth");
     expect(recordOperationalAlertMock).toHaveBeenCalledWith(expect.objectContaining({ alertType: "export_file_delete_queue_growth", severity: "WARNING" }));
+  });
+
+  it("calcula pontos diários de fila pendente e leases expiradas", async () => {
+    const job = await createPersistentExportJob({ format: "json", filters: {}, createdByOpenId: "admin-open-id" });
+    const record = records.get(job.jobId)!;
+    record.createdAt = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    record.status = "processing";
+    record.fileDeletePending = true;
+    record.leaseExpiresAt = new Date("2020-01-01T00:00:00.000Z");
+    const trend = await getExportJobsMetricsTrend(7);
+    expect(trend.points).toHaveLength(7);
+    expect(trend.points.some(point => point.pendingDelete === 1 && point.expiredLeases === 1)).toBe(true);
+  });
+
+  it("normaliza e persiste limiares por ambiente sem expor estado complexo", async () => {
+    const defaults = await getExportJobsAlertSettings("preview");
+    expect(defaults).toMatchObject({ environment: "preview", severity: "WARNING", growthThreshold: 3, minimumQueueSize: 5 });
+    const updated = await updateExportJobsAlertSettings({ environment: "preview", severity: "CRITICAL", growthThreshold: 8, minimumQueueSize: 12, consecutiveWindows: 2 });
+    expect(updated).toEqual({ environment: "preview", severity: "CRITICAL", growthThreshold: 8, minimumQueueSize: 12, consecutiveWindows: 2 });
   });
 
   it("lista jobs com metadados sanitizados para o histórico", async () => {

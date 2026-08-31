@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { filteredStoryExportJobs } from "../drizzle/schema";
+import { filteredStoryExportJobs, operationalAlerts, appSettings } from "../drizzle/schema";
 import { getDb, recordOperationalAlert } from "./db";
 import { storageGet, storagePut } from "./storage";
 import { buildFilteredStoriesCsv, listAllFilteredStories, type FilteredStoriesFilter } from "./ingestion-reports";
@@ -202,6 +202,102 @@ export async function getExportJobsMetrics(windowHours = 24): Promise<ExportJobs
   return metrics;
 }
 
+export type ExportAlertEnvironment = "development" | "preview" | "production";
+export type ExportAlertSettings = {
+  environment: ExportAlertEnvironment;
+  severity: "INFO" | "WARNING" | "CRITICAL";
+  growthThreshold: number;
+  minimumQueueSize: number;
+  consecutiveWindows: number;
+};
+
+const DEFAULT_EXPORT_ALERT_SETTINGS: Omit<ExportAlertSettings, "environment"> = {
+  severity: "WARNING",
+  growthThreshold: 3,
+  minimumQueueSize: 5,
+  consecutiveWindows: 1,
+};
+
+function exportAlertSettingsKey(environment: ExportAlertEnvironment) {
+  return `export_jobs_alert_settings_${environment}`;
+}
+
+export async function getExportJobsAlertSettings(environment: ExportAlertEnvironment): Promise<ExportAlertSettings> {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  const [row] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, exportAlertSettingsKey(environment))).limit(1);
+  try {
+    const parsed = row?.value ? JSON.parse(row.value) as Partial<ExportAlertSettings> : {};
+    return {
+      environment,
+      severity: parsed.severity === "INFO" || parsed.severity === "CRITICAL" ? parsed.severity : DEFAULT_EXPORT_ALERT_SETTINGS.severity,
+      growthThreshold: Number.isInteger(parsed.growthThreshold) ? Math.min(100000, Math.max(1, Number(parsed.growthThreshold))) : DEFAULT_EXPORT_ALERT_SETTINGS.growthThreshold,
+      minimumQueueSize: Number.isInteger(parsed.minimumQueueSize) ? Math.min(100000, Math.max(0, Number(parsed.minimumQueueSize))) : DEFAULT_EXPORT_ALERT_SETTINGS.minimumQueueSize,
+      consecutiveWindows: Number.isInteger(parsed.consecutiveWindows) ? Math.min(10, Math.max(1, Number(parsed.consecutiveWindows))) : DEFAULT_EXPORT_ALERT_SETTINGS.consecutiveWindows,
+    };
+  } catch {
+    return { environment, ...DEFAULT_EXPORT_ALERT_SETTINGS };
+  }
+}
+
+export async function updateExportJobsAlertSettings(input: Omit<ExportAlertSettings, "environment"> & { environment: ExportAlertEnvironment }) {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  const settings = await getExportJobsAlertSettings(input.environment);
+  const next: ExportAlertSettings = {
+    environment: input.environment,
+    severity: input.severity,
+    growthThreshold: Math.min(100000, Math.max(1, Math.trunc(input.growthThreshold))),
+    minimumQueueSize: Math.min(100000, Math.max(0, Math.trunc(input.minimumQueueSize))),
+    consecutiveWindows: Math.min(10, Math.max(1, Math.trunc(input.consecutiveWindows))),
+  };
+  await db.insert(appSettings).values({ key: exportAlertSettingsKey(input.environment), value: JSON.stringify({ ...settings, ...next }) }).onDuplicateKeyUpdate({ set: { value: JSON.stringify(next), updatedAt: new Date() } });
+  return next;
+}
+
+export async function getExportJobsMetricsTrend(windowDays = 30) {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  const days = Math.min(90, Math.max(1, Math.trunc(windowDays)));
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  const rows = await db.select({ createdAt: filteredStoryExportJobs.createdAt, leaseExpiresAt: filteredStoryExportJobs.leaseExpiresAt, status: filteredStoryExportJobs.status, fileDeletePending: filteredStoryExportJobs.fileDeletePending }).from(filteredStoryExportJobs).where(sql`${filteredStoryExportJobs.createdAt} >= ${cutoff}`).limit(10000);
+  const buckets = new Map<string, { pendingDelete: number; expiredLeases: number }>();
+  for (let index = 0; index < days; index += 1) {
+    const bucket = new Date(cutoff.getTime() + index * 24 * 60 * 60 * 1000);
+    buckets.set(bucket.toISOString().slice(0, 10), { pendingDelete: 0, expiredLeases: 0 });
+  }
+  for (const row of rows) {
+    const key = row.createdAt.toISOString().slice(0, 10);
+    const bucket = buckets.get(key);
+    if (!bucket) continue;
+    if (row.fileDeletePending) bucket.pendingDelete += 1;
+    if (row.status === "processing" && row.leaseExpiresAt && row.leaseExpiresAt.getTime() < now.getTime()) bucket.expiredLeases += 1;
+  }
+  return { windowDays: days, points: Array.from(buckets.entries()).map(([date, values]) => ({ bucketStart: `${date}T00:00:00.000Z`, ...values })) };
+}
+
+export async function getExportJobAlertDetail(alertId: string, _ownerOpenId: string) {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  const numericId = Number(alertId);
+  if (!Number.isInteger(numericId) || numericId <= 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Alerta inválido." });
+  const [alert] = await db.select().from(operationalAlerts).where(eq(operationalAlerts.id, numericId)).limit(1);
+  if (!alert) throw new TRPCError({ code: "NOT_FOUND", message: "Alerta não encontrado." });
+  const rows = await db.select().from(filteredStoryExportJobs).where(or(eq(filteredStoryExportJobs.fileDeletePending, true), inArray(filteredStoryExportJobs.status, ["queued", "processing", "failed"]))).limit(100);
+  const affectedJobs = rows.map(row => ({ jobId: row.id, status: String(row.status), recoveryAttempts: Number(row.recoveryAttempts ?? 0), leaseExpiresAt: row.leaseExpiresAt?.toISOString() ?? null, fileDeletePending: Boolean(row.fileDeletePending) }));
+  const timeline = rows.flatMap(row => [
+    { event: "created" as const, occurredAt: row.createdAt.toISOString(), jobId: row.id, message: "Job de exportação criado." },
+    ...(row.lastRecoveredAt ? [{ event: "recovered" as const, occurredAt: row.lastRecoveredAt.toISOString(), jobId: row.id, message: "Job recuperado por lease." }] : []),
+    ...(row.fileDeletePending ? [{ event: "file_delete_pending" as const, occurredAt: row.updatedAt.toISOString(), jobId: row.id, message: "Arquivo aguardando deleção oficial." }] : []),
+  ]).sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
+  return {
+    alert: { id: String(alert.id), type: alert.alertType, severity: alert.severity, message: alert.message, createdAt: alert.createdAt.toISOString(), resolvedAt: alert.isResolved ? alert.updatedAt.toISOString() : null },
+    affectedJobs,
+    timeline: [{ event: "created" as const, occurredAt: alert.createdAt.toISOString(), jobId: null, message: alert.title }, ...timeline].slice(0, 200),
+  };
+}
+
 export async function evaluateExportJobsOperationalAlerts(windowHours = 24) {
   const metrics = await getExportJobsMetrics(windowHours);
   const alerts: string[] = [];
@@ -221,8 +317,9 @@ export async function evaluateExportJobsOperationalAlerts(windowHours = 24) {
     await recordOperationalAlert({ integration: "pipeline", alertType: "export_file_delete_pending", severity: "INFO", title: "Arquivos aguardando deleção oficial", message: "Existem arquivos de exportação marcados como fileDeletePending aguardando a API oficial do storage." });
     alerts.push("export_file_delete_pending");
   }
-  if (metrics.fileDeletePending >= 5 && metrics.fileDeletePendingGrowth >= Math.max(3, Math.ceil(Math.max(0, metrics.fileDeletePendingPrevious) * 0.5))) {
-    await recordOperationalAlert({ integration: "pipeline", alertType: "export_file_delete_queue_growth", severity: "WARNING", title: "Crescimento anômalo da fila de deleção", message: "A fila fileDeletePending cresceu de forma contínua acima do limite operacional; revisar a integração de deleção do storage." });
+  const settings = await getExportJobsAlertSettings((process.env.NODE_ENV === "production" ? "production" : process.env.NODE_ENV === "preview" ? "preview" : "development"));
+  if (metrics.fileDeletePending >= settings.minimumQueueSize && metrics.fileDeletePendingGrowth >= settings.growthThreshold) {
+    await recordOperationalAlert({ integration: "pipeline", alertType: "export_file_delete_queue_growth", severity: settings.severity, title: "Crescimento anômalo da fila de deleção", message: "A fila fileDeletePending cresceu de forma contínua acima do limite operacional; revisar a integração de deleção do storage." });
     alerts.push("export_file_delete_queue_growth");
   }
   return { metrics, alerts };

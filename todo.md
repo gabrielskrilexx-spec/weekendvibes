@@ -2280,3 +2280,13 @@
 - [x] Construir dashboard com leases, órfãos, tentativas e fila pendente
 - [x] Adicionar testes de métricas, alerta e dashboard
 - [x] Validar TypeScript, suíte completa, preview e publicar checkpoint
+
+## Observabilidade visual e governança de jobs
+- [x] Auditar métricas, alertas, configurações e layout atuais
+- [x] Definir schemas e contratos tRPC para tendências e governança
+- [x] Implementar séries históricas da fila e leases
+- [x] Implementar detalhe de alerta com jobs afetados e timeline de recuperação
+- [x] Implementar configuração de severidade e limiares por ambiente
+- [x] Construir gráficos, detalhe e controles no React
+- [x] Adicionar testes de métricas, regras, configurações e estados visuais
+- [x] Validar TypeScript, suíte, preview e publicar checkpoint
