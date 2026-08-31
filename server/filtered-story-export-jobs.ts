@@ -9,7 +9,7 @@ import { getHeartbeatStatsExportRows, listHeartbeatExecutionEventsForExport, typ
 
 type ExportFormat = "csv" | "json";
 type PersistentExportStatus = "queued" | "processing" | "completed" | "failed" | "cancelled" | "expired";
-export type ExportFilters = (FilteredStoriesFilter & { sort?: Array<{ column: "date" | "source" | "status"; direction: "asc" | "desc" }> }) | { kind: "alert-snapshots" | "settings-history"; environment?: ExportAlertEnvironment; from?: string; to?: string } | { kind: "heartbeat-timeline"; heartbeatExecutionId: string; eventType?: HeartbeatEventType; from?: string; to?: string } | { kind: "heartbeat-stats-comparison"; first: { from?: string; to?: string }; second: { from?: string; to?: string } };
+export type ExportFilters = (FilteredStoriesFilter & { sort?: Array<{ column: "date" | "source" | "status"; direction: "asc" | "desc" }> }) | { kind: "alert-snapshots" | "settings-history"; environment?: ExportAlertEnvironment; from?: string; to?: string; adminOpenId?: string } | { kind: "heartbeat-timeline"; heartbeatExecutionId: string; eventType?: HeartbeatEventType; from?: string; to?: string; environment?: ExportAlertEnvironment; adminOpenId?: string } | { kind: "heartbeat-stats-comparison"; first: { from?: string; to?: string }; second: { from?: string; to?: string }; environment?: ExportAlertEnvironment; adminOpenId?: string };
 export type ExportHistoryFilters = { format?: ExportFormat; status?: PersistentExportStatus; from?: string; to?: string; offset?: number; limit?: number; ownerOpenId: string };
 
 const JOB_TTL_MS = 10 * 60 * 1000;
@@ -85,7 +85,7 @@ async function processPersistentExportJob(jobId: string, ownerOpenId: string, re
       ? filters.kind === "alert-snapshots"
         ? (await listExportAlertEvaluationSnapshots({ environment: filters.environment, from: filters.from, to: filters.to, offset: 0, limit: 1000 })).items
         : filters.kind === "settings-history"
-          ? (await listExportJobsAlertSettingsHistory({ environment: filters.environment ?? "preview", from: filters.from, to: filters.to, offset: 0, limit: 1000 })).items
+          ? (await listExportJobsAlertSettingsHistory({ environment: filters.environment ?? "preview", from: filters.from, to: filters.to, ownerOpenId: filters.adminOpenId, offset: 0, limit: 1000 })).items
           : filters.kind === "heartbeat-timeline"
             ? await listHeartbeatExecutionEventsForExport(filters)
             : await getHeartbeatStatsExportRows(filters as Extract<ExportFilters, { kind: "heartbeat-stats-comparison" }>)
@@ -284,6 +284,7 @@ export async function listExportJobsAlertSettingsHistory(input: { environment: E
   const conditions = [eq(exportJobsAlertSettingsAudit.environment, input.environment)];
   if (input.from) conditions.push(gte(exportJobsAlertSettingsAudit.changedAt, new Date(input.from)));
   if (input.to) conditions.push(lte(exportJobsAlertSettingsAudit.changedAt, new Date(input.to)));
+  if (input.ownerOpenId) conditions.push(eq(exportJobsAlertSettingsAudit.changedByOpenId, input.ownerOpenId));
   const rows = await db.select().from(exportJobsAlertSettingsAudit).where(and(...conditions)).orderBy(desc(exportJobsAlertSettingsAudit.changedAt)).limit(limit).offset(offset);
   const auditRows = rows.filter(row => row.environment === input.environment && row.changedAt instanceof Date && typeof row.previousValue === "string" && typeof row.nextValue === "string" && typeof row.changedByOpenId === "string");
   const items = auditRows.map(row => ({ id: String(row.id), environment: row.environment as ExportAlertEnvironment, previousValue: row.previousValue, nextValue: row.nextValue, changedByOpenId: row.changedByOpenId, changedAt: row.changedAt.toISOString() }));

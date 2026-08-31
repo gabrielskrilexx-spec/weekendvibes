@@ -10,6 +10,7 @@ vi.mock("./db", () => ({
   recordOperationalAlert: mocks.recordOperationalAlert,
 }));
 
+import { listExportJobsAlertSettingsHistory } from "./filtered-story-export-jobs";
 import {
   calculateP95,
   compareHeartbeatExecutionStats,
@@ -19,6 +20,7 @@ import {
   getHeartbeatStatsExportRows,
   getHeartbeatExecutionSummary,
   listHeartbeatExecutionEvents,
+  listHeartbeatIncidentsByRegression,
   recordHeartbeatExecutionEvent,
 } from "./heartbeat-observability";
 
@@ -113,6 +115,23 @@ describe("Heartbeat observability", () => {
     expect(mocks.recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ alertType: "heartbeat_p95_degraded", severity: "WARNING" }));
   });
 
+  it("returns only paginated causal incidents for a regression execution", async () => {
+    const db = makeDb();
+    mocks.getDb.mockResolvedValue(db);
+    const page = await listHeartbeatIncidentsByRegression({ heartbeatExecutionId: "hb-1", from: "2026-08-31T09:00:00.000Z", to: "2026-08-31T11:00:00.000Z", offset: 0, limit: 10 });
+    expect(page).toMatchObject({ offset: 0, limit: 10, hasNextPage: false });
+    expect(page.items).toHaveLength(3);
+    expect(page.items.every(item => ["alert", "failed", "timeout"].includes(item.eventType) || typeof item.eventType === "string")).toBe(true);
+  });
+
+  it("uses configurable warning and critical regression thresholds", async () => {
+    const db = makeDb();
+    mocks.getDb.mockResolvedValue(db);
+    const result = await evaluateHeartbeatPerformance({ heartbeatExecutionId: "hb-warning-threshold", successRate: 0.7, previousSuccessRate: 0.9, p95DurationMs: 120_000, previousP95DurationMs: 100_000, environment: "preview" });
+    expect(result.alerts).toContain("heartbeat_period_regression");
+    expect(mocks.recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ alertType: "heartbeat_period_regression", severity: "WARNING" }));
+  });
+
   it("raises critical failure and warning duration alerts", async () => {
     const db = makeDb();
     mocks.getDb.mockResolvedValue(db);
@@ -129,6 +148,20 @@ describe("Heartbeat observability", () => {
     expect(result.alerts).toContain("heartbeat_period_regression");
     expect(mocks.recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ alertType: "heartbeat_period_regression", severity: "WARNING", runId: "hb-regression" }));
     expect(db.inserted.some(value => typeof value === "object" && value !== null && "heartbeatExecutionId" in value && (value as { heartbeatExecutionId?: string }).heartbeatExecutionId === "hb-regression")).toBe(true);
+  });
+
+  it("filters governance history by environment and admin openId", async () => {
+    const auditRow = { id: "audit-1", environment: "preview", previousValue: "{\"maxP95DurationMs\":180000}", nextValue: "{\"maxP95DurationMs\":120000}", changedByOpenId: "admin-42", changedAt: new Date("2026-08-31T12:00:00.000Z") };
+    const chain: Record<string, unknown> = {};
+    chain.from = () => chain;
+    chain.where = () => chain;
+    chain.orderBy = () => chain;
+    chain.limit = () => chain;
+    chain.offset = () => chain;
+    chain.then = (resolve: (value: unknown[]) => unknown) => Promise.resolve([auditRow]).then(resolve);
+    mocks.getDb.mockResolvedValue({ select: vi.fn(() => chain) });
+    const page = await listExportJobsAlertSettingsHistory({ environment: "preview", ownerOpenId: "admin-42", offset: 0, limit: 20 });
+    expect(page.items[0]).toMatchObject({ environment: "preview", changedByOpenId: "admin-42", id: "audit-1" });
   });
 
   it("escalates severe regression to CRITICAL using the configured factor", async () => {

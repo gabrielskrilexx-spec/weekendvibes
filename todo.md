@@ -2384,3 +2384,15 @@
 - [x] Adicionar exportação no histórico de governança
 - [x] Adicionar testes de regressão, alertas e exportação
 - [x] Validar suíte, TypeScript, build, preview e publicar checkpoint
+
+## Incidentes e filtros avançados do Heartbeat — sessão atual
+- [x] Auditar contratos atuais de saúde, incidentes e jobs persistentes
+- [x] Apresentar schemas Zod e contratos tRPC antes do React
+- [x] Adicionar warningRegressionPct e criticalRegressionPct aos limiares
+- [x] Implementar heartbeat.incidents.listByRegression paginado
+- [x] Filtrar exports por environment e adminOpenId
+- [x] Construir edição visual de limiares de regressão
+- [x] Exibir incidentes causadores no detalhe de regressão
+- [x] Sincronizar filtros de exportação na URL
+- [x] Adicionar testes de limiares, incidentes e exportação filtrada
+- [x] Validar suíte, TypeScript, build, preview e publicar checkpoint

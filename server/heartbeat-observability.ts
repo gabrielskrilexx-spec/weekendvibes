@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { appSettings, exportJobsAlertSettingsAudit, heartbeatExecutionEvents } from "../drizzle/schema";
 import { getDb, recordOperationalAlert } from "./db";
@@ -25,6 +25,8 @@ export type HeartbeatHealthSettings = {
   maxP95DurationMs: number;
   minRegressionSuccessRateDrop: number;
   maxRegressionP95IncreasePercent: number;
+  warningRegressionPct: number;
+  criticalRegressionPct: number;
 };
 
 const SETTINGS_PREFIX = "heartbeat.health.";
@@ -36,6 +38,8 @@ const DEFAULT_SETTINGS: Omit<HeartbeatHealthSettings, "environment"> = {
   maxP95DurationMs: 180_000,
   minRegressionSuccessRateDrop: 0.1,
   maxRegressionP95IncreasePercent: 25,
+  warningRegressionPct: 10,
+  criticalRegressionPct: 25,
 };
 
 function environment(): HeartbeatHealthEnvironment {
@@ -56,6 +60,8 @@ function clampSettings(input: Partial<HeartbeatHealthSettings>, env: HeartbeatHe
     maxP95DurationMs: Math.min(600_000, Math.max(100, Math.trunc(input.maxP95DurationMs ?? DEFAULT_SETTINGS.maxP95DurationMs))),
     minRegressionSuccessRateDrop: Math.min(1, Math.max(0, Number(input.minRegressionSuccessRateDrop ?? DEFAULT_SETTINGS.minRegressionSuccessRateDrop))),
     maxRegressionP95IncreasePercent: Math.min(500, Math.max(0, Number(input.maxRegressionP95IncreasePercent ?? DEFAULT_SETTINGS.maxRegressionP95IncreasePercent))),
+    warningRegressionPct: Math.min(500, Math.max(0, Number(input.warningRegressionPct ?? DEFAULT_SETTINGS.warningRegressionPct))),
+    criticalRegressionPct: Math.min(1000, Math.max(0, Number(input.criticalRegressionPct ?? DEFAULT_SETTINGS.criticalRegressionPct))),
   };
 }
 
@@ -197,7 +203,7 @@ export async function updateHeartbeatHealthSettings(input: Partial<Omit<Heartbea
   const previous = await getHeartbeatHealthSettings(input.environment);
   const next = clampSettings(input, input.environment);
   const now = new Date();
-  const serialized = JSON.stringify({ maxDurationMs: next.maxDurationMs, failureThreshold: next.failureThreshold, cooldownHours: next.cooldownHours, minSuccessRate: next.minSuccessRate, maxP95DurationMs: next.maxP95DurationMs, minRegressionSuccessRateDrop: next.minRegressionSuccessRateDrop, maxRegressionP95IncreasePercent: next.maxRegressionP95IncreasePercent });
+  const serialized = JSON.stringify({ maxDurationMs: next.maxDurationMs, failureThreshold: next.failureThreshold, cooldownHours: next.cooldownHours, minSuccessRate: next.minSuccessRate, maxP95DurationMs: next.maxP95DurationMs, minRegressionSuccessRateDrop: next.minRegressionSuccessRateDrop, maxRegressionP95IncreasePercent: next.maxRegressionP95IncreasePercent, warningRegressionPct: next.warningRegressionPct, criticalRegressionPct: next.criticalRegressionPct });
   await db.insert(appSettings).values({ key: settingKey(input.environment), value: serialized, createdAt: now, updatedAt: now }).onDuplicateKeyUpdate({ set: { value: serialized, updatedAt: now } });
   await db.insert((await import("../drizzle/schema")).exportJobsAlertSettingsAudit).values({ environment: input.environment, previousValue: JSON.stringify(previous), nextValue: serialized, changedByOpenId: input.changedByOpenId.slice(0, 160), changedAt: now });
   return { ...next, changedByOpenId: input.changedByOpenId.slice(0, 160), changedAt: now.toISOString() };
@@ -285,11 +291,13 @@ export async function evaluateHeartbeatPerformance(input: {
   }
   const successRateDrop = input.previousSuccessRate == null ? 0 : input.previousSuccessRate - input.successRate;
   const p95IncreasePercent = input.previousP95DurationMs && input.previousP95DurationMs > 0 ? ((input.p95DurationMs - input.previousP95DurationMs) / input.previousP95DurationMs) * 100 : 0;
+  const regressionMagnitudePct = Math.max(successRateDrop * 100, p95IncreasePercent);
   const regressionTriggered = successRateDrop >= settings.minRegressionSuccessRateDrop || p95IncreasePercent >= settings.maxRegressionP95IncreasePercent;
+  let regressionSeverity: "WARNING" | "CRITICAL" = "WARNING";
   if (regressionTriggered) {
-    const critical = successRateDrop >= settings.minRegressionSuccessRateDrop * 2 || p95IncreasePercent >= settings.maxRegressionP95IncreasePercent * 2;
+    regressionSeverity = regressionMagnitudePct >= settings.criticalRegressionPct ? "CRITICAL" : "WARNING";
     await recordHeartbeatExecutionEvent({ heartbeatExecutionId: input.heartbeatExecutionId, eventType: "alert", sequence: 999_995, status: "period_regression", message: `Regressão detectada: queda de sucesso ${(successRateDrop * 100).toFixed(1)}pp e aumento de P95 ${p95IncreasePercent.toFixed(1)}%.`, metadata: { successRateDrop, p95IncreasePercent, previousSuccessRate: input.previousSuccessRate ?? null, previousP95DurationMs: input.previousP95DurationMs ?? null } });
-    await recordOperationalAlert({ integration: "pipeline", alertType: "heartbeat_period_regression", severity: critical ? "CRITICAL" : "WARNING", title: "Regressão entre períodos no Heartbeat", message: `A execução ${input.heartbeatExecutionId} apresentou regressão de desempenho entre janelas comparadas.`, runId: input.heartbeatExecutionId, slaMinutes: settings.cooldownHours * 60 });
+    await recordOperationalAlert({ integration: "pipeline", alertType: "heartbeat_period_regression", severity: regressionSeverity, title: "Regressão entre períodos no Heartbeat", message: `A execução ${input.heartbeatExecutionId} apresentou regressão de desempenho entre janelas comparadas.`, runId: input.heartbeatExecutionId, slaMinutes: settings.cooldownHours * 60 });
     alerts.push("heartbeat_period_regression");
   }
   if (input.p95DurationMs > settings.maxP95DurationMs) {
@@ -299,8 +307,21 @@ export async function evaluateHeartbeatPerformance(input: {
   }
   const evaluatedAt = new Date();
   const { recordExportAlertEvaluationSnapshot } = await import("./filtered-story-export-jobs");
-  await recordExportAlertEvaluationSnapshot({ environment: env, windowStartedAt: evaluatedAt, windowEndedAt: evaluatedAt, queueSize: Math.round(input.successRate * 100), previousQueueSize: Math.round(settings.minSuccessRate * 100), queueGrowth: Math.round((input.successRate - settings.minSuccessRate) * 100), expiredLeases: input.p95DurationMs, orphanedJobs: 0, growthThreshold: Math.max(1, Math.round(settings.maxP95DurationMs)), minimumQueueSize: Math.max(0, Math.round(settings.minSuccessRate * 100)), consecutiveWindows: settings.failureThreshold, severity: alerts.length ? "WARNING" : "INFO", decision: alerts.length ? "ALERT_CREATED" : "NO_ALERT", evaluatedByOpenId: "heartbeat-m2m", heartbeatExecutionId: input.heartbeatExecutionId });
+  await recordExportAlertEvaluationSnapshot({ environment: env, windowStartedAt: evaluatedAt, windowEndedAt: evaluatedAt, queueSize: Math.round(input.successRate * 100), previousQueueSize: Math.round(settings.minSuccessRate * 100), queueGrowth: Math.round((input.successRate - settings.minSuccessRate) * 100), expiredLeases: input.p95DurationMs, orphanedJobs: 0, growthThreshold: Math.max(1, Math.round(settings.maxP95DurationMs)), minimumQueueSize: Math.max(0, Math.round(settings.minSuccessRate * 100)), consecutiveWindows: settings.failureThreshold, severity: alerts.includes("heartbeat_period_regression") ? regressionSeverity : alerts.length ? "WARNING" : "INFO", decision: alerts.length ? "ALERT_CREATED" : "NO_ALERT", evaluatedByOpenId: "heartbeat-m2m", heartbeatExecutionId: input.heartbeatExecutionId });
   return { heartbeatExecutionId: input.heartbeatExecutionId, settings, alerts, evaluatedAt: evaluatedAt.toISOString() };
+}
+
+export async function listHeartbeatIncidentsByRegression(input: { heartbeatExecutionId: string; from?: string; to?: string; offset?: number; limit?: number }) {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  const offset = Math.max(0, Math.trunc(input.offset ?? 0));
+  const limit = Math.min(100, Math.max(1, Math.trunc(input.limit ?? 25)));
+  const conditions = [eq(heartbeatExecutionEvents.heartbeatExecutionId, input.heartbeatExecutionId.trim()), inArray(heartbeatExecutionEvents.eventType, ["alert", "failed", "timeout"] as const)];
+  if (input.from) conditions.push(gte(heartbeatExecutionEvents.timestamp, new Date(input.from)));
+  if (input.to) conditions.push(lte(heartbeatExecutionEvents.timestamp, new Date(input.to)));
+  const rows = await db.select().from(heartbeatExecutionEvents).where(and(...conditions)).orderBy(desc(heartbeatExecutionEvents.timestamp), desc(heartbeatExecutionEvents.sequence)).limit(limit + 1).offset(offset);
+  const hasNextPage = rows.length > limit;
+  return { items: rows.slice(0, limit).map(row => ({ id: row.id, heartbeatExecutionId: row.heartbeatExecutionId, eventType: row.eventType as HeartbeatEventType, sequence: row.sequence, timestamp: row.timestamp.toISOString(), durationMs: row.durationMs == null ? null : Number(row.durationMs), status: row.status ?? null, message: row.message ?? null, metadata: parseMetadata(row.metadataJson) })), offset, limit, nextOffset: hasNextPage ? offset + limit : null, hasNextPage };
 }
 
 export async function evaluateHeartbeatHealth(input: {
