@@ -2372,3 +2372,15 @@
 - [x] Construir interface comparativa lado a lado e progresso de exportação
 - [x] Adicionar testes comparativos, exportação e alertas configuráveis
 - [x] Validar suíte, TypeScript, build, preview e publicar checkpoint
+
+## Regressão temporal e governança do Heartbeat — sessão atual
+- [x] Auditar contratos de saúde, comparação, snapshots e jobs atuais
+- [x] Apresentar schemas Zod e contratos tRPC de exportação/regressão
+- [x] Implementar exportação assíncrona do histórico de limiares
+- [x] Implementar regressão percentual e alerta heartbeat_period_regression
+- [x] Persistir snapshot com cooldown e deduplicação da regressão
+- [x] Construir sobreposição gráfica A/B para sucesso e P95
+- [x] Sincronizar estado da sobreposição na URL
+- [x] Adicionar exportação no histórico de governança
+- [x] Adicionar testes de regressão, alertas e exportação
+- [x] Validar suíte, TypeScript, build, preview e publicar checkpoint

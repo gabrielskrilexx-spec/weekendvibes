@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { filteredStoryExportJobs, operationalAlerts, appSettings, exportJobsAlertSettingsAudit, exportAlertEvaluationSnapshots } from "../drizzle/schema";
@@ -85,7 +85,7 @@ async function processPersistentExportJob(jobId: string, ownerOpenId: string, re
       ? filters.kind === "alert-snapshots"
         ? (await listExportAlertEvaluationSnapshots({ environment: filters.environment, from: filters.from, to: filters.to, offset: 0, limit: 1000 })).items
         : filters.kind === "settings-history"
-          ? (await listExportJobsAlertSettingsHistory({ environment: filters.environment ?? "preview", offset: 0, limit: 1000 })).items
+          ? (await listExportJobsAlertSettingsHistory({ environment: filters.environment ?? "preview", from: filters.from, to: filters.to, offset: 0, limit: 1000 })).items
           : filters.kind === "heartbeat-timeline"
             ? await listHeartbeatExecutionEventsForExport(filters)
             : await getHeartbeatStatsExportRows(filters as Extract<ExportFilters, { kind: "heartbeat-stats-comparison" }>)
@@ -276,12 +276,15 @@ export async function updateExportJobsAlertSettings(input: Omit<ExportAlertSetti
   return next;
 }
 
-export async function listExportJobsAlertSettingsHistory(input: { environment: ExportAlertEnvironment; offset?: number; limit?: number; ownerOpenId?: string }) {
+export async function listExportJobsAlertSettingsHistory(input: { environment: ExportAlertEnvironment; offset?: number; limit?: number; from?: string; to?: string; ownerOpenId?: string }) {
   const db = await getDb();
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
   const offset = Math.max(0, input.offset ?? 0);
   const limit = Math.min(50, Math.max(1, input.limit ?? 20));
-  const rows = await db.select().from(exportJobsAlertSettingsAudit).where(eq(exportJobsAlertSettingsAudit.environment, input.environment)).orderBy(desc(exportJobsAlertSettingsAudit.changedAt)).limit(limit).offset(offset);
+  const conditions = [eq(exportJobsAlertSettingsAudit.environment, input.environment)];
+  if (input.from) conditions.push(gte(exportJobsAlertSettingsAudit.changedAt, new Date(input.from)));
+  if (input.to) conditions.push(lte(exportJobsAlertSettingsAudit.changedAt, new Date(input.to)));
+  const rows = await db.select().from(exportJobsAlertSettingsAudit).where(and(...conditions)).orderBy(desc(exportJobsAlertSettingsAudit.changedAt)).limit(limit).offset(offset);
   const auditRows = rows.filter(row => row.environment === input.environment && row.changedAt instanceof Date && typeof row.previousValue === "string" && typeof row.nextValue === "string" && typeof row.changedByOpenId === "string");
   const items = auditRows.map(row => ({ id: String(row.id), environment: row.environment as ExportAlertEnvironment, previousValue: row.previousValue, nextValue: row.nextValue, changedByOpenId: row.changedByOpenId, changedAt: row.changedAt.toISOString() }));
   return { items, offset, limit, hasNextPage: items.length === limit };

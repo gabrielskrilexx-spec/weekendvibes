@@ -23,6 +23,8 @@ export type HeartbeatHealthSettings = {
   cooldownHours: number;
   minSuccessRate: number;
   maxP95DurationMs: number;
+  minRegressionSuccessRateDrop: number;
+  maxRegressionP95IncreasePercent: number;
 };
 
 const SETTINGS_PREFIX = "heartbeat.health.";
@@ -32,6 +34,8 @@ const DEFAULT_SETTINGS: Omit<HeartbeatHealthSettings, "environment"> = {
   cooldownHours: 24,
   minSuccessRate: 0.8,
   maxP95DurationMs: 180_000,
+  minRegressionSuccessRateDrop: 0.1,
+  maxRegressionP95IncreasePercent: 25,
 };
 
 function environment(): HeartbeatHealthEnvironment {
@@ -50,6 +54,8 @@ function clampSettings(input: Partial<HeartbeatHealthSettings>, env: HeartbeatHe
     cooldownHours: Math.min(168, Math.max(1, Math.trunc(input.cooldownHours ?? DEFAULT_SETTINGS.cooldownHours))),
     minSuccessRate: Math.min(1, Math.max(0, Number(input.minSuccessRate ?? DEFAULT_SETTINGS.minSuccessRate))),
     maxP95DurationMs: Math.min(600_000, Math.max(100, Math.trunc(input.maxP95DurationMs ?? DEFAULT_SETTINGS.maxP95DurationMs))),
+    minRegressionSuccessRateDrop: Math.min(1, Math.max(0, Number(input.minRegressionSuccessRateDrop ?? DEFAULT_SETTINGS.minRegressionSuccessRateDrop))),
+    maxRegressionP95IncreasePercent: Math.min(500, Math.max(0, Number(input.maxRegressionP95IncreasePercent ?? DEFAULT_SETTINGS.maxRegressionP95IncreasePercent))),
   };
 }
 
@@ -185,13 +191,13 @@ export async function getHeartbeatHealthSettings(env = environment()): Promise<H
   }
 }
 
-export async function updateHeartbeatHealthSettings(input: HeartbeatHealthSettings & { changedByOpenId: string }) {
+export async function updateHeartbeatHealthSettings(input: Partial<Omit<HeartbeatHealthSettings, "environment">> & { environment: HeartbeatHealthEnvironment; changedByOpenId: string }) {
   const db = await getDb();
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
   const previous = await getHeartbeatHealthSettings(input.environment);
   const next = clampSettings(input, input.environment);
   const now = new Date();
-  const serialized = JSON.stringify({ maxDurationMs: next.maxDurationMs, failureThreshold: next.failureThreshold, cooldownHours: next.cooldownHours, minSuccessRate: next.minSuccessRate, maxP95DurationMs: next.maxP95DurationMs });
+  const serialized = JSON.stringify({ maxDurationMs: next.maxDurationMs, failureThreshold: next.failureThreshold, cooldownHours: next.cooldownHours, minSuccessRate: next.minSuccessRate, maxP95DurationMs: next.maxP95DurationMs, minRegressionSuccessRateDrop: next.minRegressionSuccessRateDrop, maxRegressionP95IncreasePercent: next.maxRegressionP95IncreasePercent });
   await db.insert(appSettings).values({ key: settingKey(input.environment), value: serialized, createdAt: now, updatedAt: now }).onDuplicateKeyUpdate({ set: { value: serialized, updatedAt: now } });
   await db.insert((await import("../drizzle/schema")).exportJobsAlertSettingsAudit).values({ environment: input.environment, previousValue: JSON.stringify(previous), nextValue: serialized, changedByOpenId: input.changedByOpenId.slice(0, 160), changedAt: now });
   return { ...next, changedByOpenId: input.changedByOpenId.slice(0, 160), changedAt: now.toISOString() };
@@ -265,15 +271,26 @@ export async function evaluateHeartbeatPerformance(input: {
   heartbeatExecutionId: string;
   successRate: number;
   p95DurationMs: number;
+  previousSuccessRate?: number;
+  previousP95DurationMs?: number;
   environment?: HeartbeatHealthEnvironment;
 }) {
   const env = input.environment ?? environment();
   const settings = await getHeartbeatHealthSettings(env);
-  const alerts: Array<"heartbeat_success_rate_degraded" | "heartbeat_p95_degraded"> = [];
+  const alerts: Array<"heartbeat_success_rate_degraded" | "heartbeat_p95_degraded" | "heartbeat_period_regression"> = [];
   if (input.successRate < settings.minSuccessRate) {
     await recordHeartbeatExecutionEvent({ heartbeatExecutionId: input.heartbeatExecutionId, eventType: "alert", sequence: 999_997, status: "success_rate_degraded", message: `Taxa de sucesso ${(input.successRate * 100).toFixed(1)}% abaixo do mínimo de ${(settings.minSuccessRate * 100).toFixed(1)}%.` });
     await recordOperationalAlert({ integration: "pipeline", alertType: "heartbeat_success_rate_degraded", severity: "WARNING", title: "Taxa de sucesso degradada no Heartbeat", message: `A execução ${input.heartbeatExecutionId} apresentou taxa de sucesso abaixo do limite configurado.`, runId: input.heartbeatExecutionId, slaMinutes: settings.cooldownHours * 60 });
     alerts.push("heartbeat_success_rate_degraded");
+  }
+  const successRateDrop = input.previousSuccessRate == null ? 0 : input.previousSuccessRate - input.successRate;
+  const p95IncreasePercent = input.previousP95DurationMs && input.previousP95DurationMs > 0 ? ((input.p95DurationMs - input.previousP95DurationMs) / input.previousP95DurationMs) * 100 : 0;
+  const regressionTriggered = successRateDrop >= settings.minRegressionSuccessRateDrop || p95IncreasePercent >= settings.maxRegressionP95IncreasePercent;
+  if (regressionTriggered) {
+    const critical = successRateDrop >= settings.minRegressionSuccessRateDrop * 2 || p95IncreasePercent >= settings.maxRegressionP95IncreasePercent * 2;
+    await recordHeartbeatExecutionEvent({ heartbeatExecutionId: input.heartbeatExecutionId, eventType: "alert", sequence: 999_995, status: "period_regression", message: `Regressão detectada: queda de sucesso ${(successRateDrop * 100).toFixed(1)}pp e aumento de P95 ${p95IncreasePercent.toFixed(1)}%.`, metadata: { successRateDrop, p95IncreasePercent, previousSuccessRate: input.previousSuccessRate ?? null, previousP95DurationMs: input.previousP95DurationMs ?? null } });
+    await recordOperationalAlert({ integration: "pipeline", alertType: "heartbeat_period_regression", severity: critical ? "CRITICAL" : "WARNING", title: "Regressão entre períodos no Heartbeat", message: `A execução ${input.heartbeatExecutionId} apresentou regressão de desempenho entre janelas comparadas.`, runId: input.heartbeatExecutionId, slaMinutes: settings.cooldownHours * 60 });
+    alerts.push("heartbeat_period_regression");
   }
   if (input.p95DurationMs > settings.maxP95DurationMs) {
     await recordHeartbeatExecutionEvent({ heartbeatExecutionId: input.heartbeatExecutionId, eventType: "alert", sequence: 999_996, durationMs: input.p95DurationMs, status: "p95_degraded", message: `P95 ${input.p95DurationMs}ms acima do limite de ${settings.maxP95DurationMs}ms.` });

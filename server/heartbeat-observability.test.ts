@@ -121,4 +121,20 @@ describe("Heartbeat observability", () => {
     expect(mocks.recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ alertType: "heartbeat_execution_failed", severity: "CRITICAL" }));
     expect(mocks.recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ alertType: "heartbeat_duration_anomaly", severity: "WARNING" }));
   });
+
+  it("calculates period regression and records a correlated snapshot", async () => {
+    const db = makeDb();
+    mocks.getDb.mockResolvedValue(db);
+    const result = await evaluateHeartbeatPerformance({ heartbeatExecutionId: "hb-regression", successRate: 0.75, previousSuccessRate: 0.9, p95DurationMs: 110_000, previousP95DurationMs: 100_000, environment: "preview" });
+    expect(result.alerts).toContain("heartbeat_period_regression");
+    expect(mocks.recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ alertType: "heartbeat_period_regression", severity: "WARNING", runId: "hb-regression" }));
+    expect(db.inserted.some(value => typeof value === "object" && value !== null && "heartbeatExecutionId" in value && (value as { heartbeatExecutionId?: string }).heartbeatExecutionId === "hb-regression")).toBe(true);
+  });
+
+  it("escalates severe regression to CRITICAL using the configured factor", async () => {
+    const db = makeDb();
+    mocks.getDb.mockResolvedValue(db);
+    await evaluateHeartbeatPerformance({ heartbeatExecutionId: "hb-critical-regression", successRate: 0.4, previousSuccessRate: 0.9, p95DurationMs: 300_000, previousP95DurationMs: 100_000, environment: "preview" });
+    expect(mocks.recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ alertType: "heartbeat_period_regression", severity: "CRITICAL" }));
+  });
 });
