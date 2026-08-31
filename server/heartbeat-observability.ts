@@ -21,6 +21,8 @@ export type HeartbeatHealthSettings = {
   maxDurationMs: number;
   failureThreshold: number;
   cooldownHours: number;
+  minSuccessRate: number;
+  maxP95DurationMs: number;
 };
 
 const SETTINGS_PREFIX = "heartbeat.health.";
@@ -28,6 +30,8 @@ const DEFAULT_SETTINGS: Omit<HeartbeatHealthSettings, "environment"> = {
   maxDurationMs: 180_000,
   failureThreshold: 1,
   cooldownHours: 24,
+  minSuccessRate: 0.8,
+  maxP95DurationMs: 180_000,
 };
 
 function environment(): HeartbeatHealthEnvironment {
@@ -44,6 +48,8 @@ function clampSettings(input: Partial<HeartbeatHealthSettings>, env: HeartbeatHe
     maxDurationMs: Math.min(600_000, Math.max(100, Math.trunc(input.maxDurationMs ?? DEFAULT_SETTINGS.maxDurationMs))),
     failureThreshold: Math.min(10, Math.max(1, Math.trunc(input.failureThreshold ?? DEFAULT_SETTINGS.failureThreshold))),
     cooldownHours: Math.min(168, Math.max(1, Math.trunc(input.cooldownHours ?? DEFAULT_SETTINGS.cooldownHours))),
+    minSuccessRate: Math.min(1, Math.max(0, Number(input.minSuccessRate ?? DEFAULT_SETTINGS.minSuccessRate))),
+    maxP95DurationMs: Math.min(600_000, Math.max(100, Math.trunc(input.maxP95DurationMs ?? DEFAULT_SETTINGS.maxP95DurationMs))),
   };
 }
 
@@ -185,7 +191,7 @@ export async function updateHeartbeatHealthSettings(input: HeartbeatHealthSettin
   const previous = await getHeartbeatHealthSettings(input.environment);
   const next = clampSettings(input, input.environment);
   const now = new Date();
-  const serialized = JSON.stringify({ maxDurationMs: next.maxDurationMs, failureThreshold: next.failureThreshold, cooldownHours: next.cooldownHours });
+  const serialized = JSON.stringify({ maxDurationMs: next.maxDurationMs, failureThreshold: next.failureThreshold, cooldownHours: next.cooldownHours, minSuccessRate: next.minSuccessRate, maxP95DurationMs: next.maxP95DurationMs });
   await db.insert(appSettings).values({ key: settingKey(input.environment), value: serialized, createdAt: now, updatedAt: now }).onDuplicateKeyUpdate({ set: { value: serialized, updatedAt: now } });
   await db.insert((await import("../drizzle/schema")).exportJobsAlertSettingsAudit).values({ environment: input.environment, previousValue: JSON.stringify(previous), nextValue: serialized, changedByOpenId: input.changedByOpenId.slice(0, 160), changedAt: now });
   return { ...next, changedByOpenId: input.changedByOpenId.slice(0, 160), changedAt: now.toISOString() };
@@ -226,6 +232,58 @@ export async function getHeartbeatExecutionStats(input: { from?: string; to?: st
     points.set(bucket, point);
   }
   return { from: from.toISOString(), to: to.toISOString(), totalExecutions, successfulExecutions, successRate: totalExecutions ? successfulExecutions / totalExecutions : 0, p95DurationMs: calculateP95(durations), incidentCount: values.reduce((sum, value) => sum + value.incidentCount, 0), points: Array.from(points.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([bucketStart, point]) => ({ bucketStart: `${bucketStart}T00:00:00.000Z`, totalExecutions: point.totalExecutions, successfulExecutions: point.successfulExecutions, successRate: point.totalExecutions ? point.successfulExecutions / point.totalExecutions : 0, p95DurationMs: calculateP95(point.durations), incidentCount: point.incidentCount })) };
+}
+
+function metricDelta(current: number, previous: number) {
+  const absolute = current - previous;
+  return { absolute, percent: previous === 0 ? (current === 0 ? 0 : 100) : (absolute / Math.abs(previous)) * 100 };
+}
+
+export async function compareHeartbeatExecutionStats(input: { first: { from?: string; to?: string }; second: { from?: string; to?: string } }) {
+  const [first, second] = await Promise.all([getHeartbeatExecutionStats(input.first), getHeartbeatExecutionStats(input.second)]);
+  return {
+    first,
+    second,
+    deltas: {
+      successRate: metricDelta(second.successRate, first.successRate),
+      p95DurationMs: metricDelta(second.p95DurationMs, first.p95DurationMs),
+      incidentCount: metricDelta(second.incidentCount, first.incidentCount),
+    },
+  };
+}
+
+export async function getHeartbeatStatsExportRows(input: { first: { from?: string; to?: string }; second: { from?: string; to?: string } }) {
+  const comparison = await compareHeartbeatExecutionStats(input);
+  return [
+    { period: "first", totalExecutions: comparison.first.totalExecutions, successfulExecutions: comparison.first.successfulExecutions, successRate: comparison.first.successRate, p95DurationMs: comparison.first.p95DurationMs, incidentCount: comparison.first.incidentCount },
+    { period: "second", totalExecutions: comparison.second.totalExecutions, successfulExecutions: comparison.second.successfulExecutions, successRate: comparison.second.successRate, p95DurationMs: comparison.second.p95DurationMs, incidentCount: comparison.second.incidentCount },
+    { period: "delta", totalExecutions: null, successfulExecutions: null, successRate: comparison.deltas.successRate.absolute, p95DurationMs: comparison.deltas.p95DurationMs.absolute, incidentCount: comparison.deltas.incidentCount.absolute },
+  ];
+}
+
+export async function evaluateHeartbeatPerformance(input: {
+  heartbeatExecutionId: string;
+  successRate: number;
+  p95DurationMs: number;
+  environment?: HeartbeatHealthEnvironment;
+}) {
+  const env = input.environment ?? environment();
+  const settings = await getHeartbeatHealthSettings(env);
+  const alerts: Array<"heartbeat_success_rate_degraded" | "heartbeat_p95_degraded"> = [];
+  if (input.successRate < settings.minSuccessRate) {
+    await recordHeartbeatExecutionEvent({ heartbeatExecutionId: input.heartbeatExecutionId, eventType: "alert", sequence: 999_997, status: "success_rate_degraded", message: `Taxa de sucesso ${(input.successRate * 100).toFixed(1)}% abaixo do mínimo de ${(settings.minSuccessRate * 100).toFixed(1)}%.` });
+    await recordOperationalAlert({ integration: "pipeline", alertType: "heartbeat_success_rate_degraded", severity: "WARNING", title: "Taxa de sucesso degradada no Heartbeat", message: `A execução ${input.heartbeatExecutionId} apresentou taxa de sucesso abaixo do limite configurado.`, runId: input.heartbeatExecutionId, slaMinutes: settings.cooldownHours * 60 });
+    alerts.push("heartbeat_success_rate_degraded");
+  }
+  if (input.p95DurationMs > settings.maxP95DurationMs) {
+    await recordHeartbeatExecutionEvent({ heartbeatExecutionId: input.heartbeatExecutionId, eventType: "alert", sequence: 999_996, durationMs: input.p95DurationMs, status: "p95_degraded", message: `P95 ${input.p95DurationMs}ms acima do limite de ${settings.maxP95DurationMs}ms.` });
+    await recordOperationalAlert({ integration: "pipeline", alertType: "heartbeat_p95_degraded", severity: "WARNING", title: "P95 degradado no Heartbeat", message: `A execução ${input.heartbeatExecutionId} apresentou P95 acima do limite configurado.`, runId: input.heartbeatExecutionId, slaMinutes: settings.cooldownHours * 60 });
+    alerts.push("heartbeat_p95_degraded");
+  }
+  const evaluatedAt = new Date();
+  const { recordExportAlertEvaluationSnapshot } = await import("./filtered-story-export-jobs");
+  await recordExportAlertEvaluationSnapshot({ environment: env, windowStartedAt: evaluatedAt, windowEndedAt: evaluatedAt, queueSize: Math.round(input.successRate * 100), previousQueueSize: Math.round(settings.minSuccessRate * 100), queueGrowth: Math.round((input.successRate - settings.minSuccessRate) * 100), expiredLeases: input.p95DurationMs, orphanedJobs: 0, growthThreshold: Math.max(1, Math.round(settings.maxP95DurationMs)), minimumQueueSize: Math.max(0, Math.round(settings.minSuccessRate * 100)), consecutiveWindows: settings.failureThreshold, severity: alerts.length ? "WARNING" : "INFO", decision: alerts.length ? "ALERT_CREATED" : "NO_ALERT", evaluatedByOpenId: "heartbeat-m2m", heartbeatExecutionId: input.heartbeatExecutionId });
+  return { heartbeatExecutionId: input.heartbeatExecutionId, settings, alerts, evaluatedAt: evaluatedAt.toISOString() };
 }
 
 export async function evaluateHeartbeatHealth(input: {

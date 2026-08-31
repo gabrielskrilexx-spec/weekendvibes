@@ -12,8 +12,11 @@ vi.mock("./db", () => ({
 
 import {
   calculateP95,
+  compareHeartbeatExecutionStats,
   evaluateHeartbeatHealth,
+  evaluateHeartbeatPerformance,
   getHeartbeatExecutionStats,
+  getHeartbeatStatsExportRows,
   getHeartbeatExecutionSummary,
   listHeartbeatExecutionEvents,
   recordHeartbeatExecutionEvent,
@@ -89,6 +92,25 @@ describe("Heartbeat observability", () => {
     const page = await listHeartbeatExecutionEvents({ heartbeatExecutionId: "hb-1", eventType: "step", from: "2026-08-31T10:00:00.000Z", to: "2026-08-31T10:00:02.000Z", offset: 0, limit: 10 });
     expect(page).toMatchObject({ offset: 0, limit: 10, hasNextPage: false });
     expect(page.items.every(item => typeof item.timestamp === "string")).toBe(true);
+  });
+
+  it("compares two periods and produces flat export rows", async () => {
+    const db = makeDb();
+    mocks.getDb.mockResolvedValue(db);
+    const comparison = await compareHeartbeatExecutionStats({ first: { from: "2026-08-31T09:00:00.000Z", to: "2026-08-31T10:00:00.000Z" }, second: { from: "2026-08-31T10:00:00.000Z", to: "2026-08-31T11:00:00.000Z" } });
+    expect(comparison.deltas).toMatchObject({ successRate: { absolute: 0, percent: 0 }, p95DurationMs: { absolute: 0, percent: 0 }, incidentCount: { absolute: 0, percent: 0 } });
+    const rows = await getHeartbeatStatsExportRows({ first: {}, second: {} });
+    expect(rows).toHaveLength(3);
+    expect(rows[2]).toMatchObject({ period: "delta", p95DurationMs: 0 });
+  });
+
+  it("raises configurable performance alerts for low success and high P95", async () => {
+    const db = makeDb();
+    mocks.getDb.mockResolvedValue(db);
+    const result = await evaluateHeartbeatPerformance({ heartbeatExecutionId: "hb-performance", successRate: 0.2, p95DurationMs: 250_000, environment: "preview" });
+    expect(result.alerts).toEqual(["heartbeat_success_rate_degraded", "heartbeat_p95_degraded"]);
+    expect(mocks.recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ alertType: "heartbeat_success_rate_degraded", severity: "WARNING" }));
+    expect(mocks.recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ alertType: "heartbeat_p95_degraded", severity: "WARNING" }));
   });
 
   it("raises critical failure and warning duration alerts", async () => {

@@ -2362,3 +2362,13 @@
 - [x] Construir controles React, cards executivos e gráficos de tendência
 - [x] Adicionar testes de P95, queries agregadas e filtros da timeline
 - [x] Validar suíte, TypeScript, build, preview e publicar checkpoint
+
+## Comparação e degradação estatística do Heartbeat — sessão atual
+- [x] Auditar contratos, helpers e jobs atuais do Heartbeat
+- [x] Definir schemas Zod e contratos tRPC de comparação e exportação
+- [x] Implementar comparação entre dois períodos com deltas absolutos e percentuais
+- [x] Implementar exportação assíncrona CSV/JSON das métricas agregadas
+- [x] Implementar limiares e alertas de queda de sucesso e aumento de P95
+- [x] Construir interface comparativa lado a lado e progresso de exportação
+- [x] Adicionar testes comparativos, exportação e alertas configuráveis
+- [ ] Validar suíte, TypeScript, build, preview e publicar checkpoint
