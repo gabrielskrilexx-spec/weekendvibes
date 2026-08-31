@@ -2371,4 +2371,4 @@
 - [x] Implementar limiares e alertas de queda de sucesso e aumento de P95
 - [x] Construir interface comparativa lado a lado e progresso de exportação
 - [x] Adicionar testes comparativos, exportação e alertas configuráveis
-- [ ] Validar suíte, TypeScript, build, preview e publicar checkpoint
+- [x] Validar suíte, TypeScript, build, preview e publicar checkpoint
