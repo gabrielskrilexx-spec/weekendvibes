@@ -2332,14 +2332,14 @@
 - [x] Validar TypeScript, suíte, preview e publicar checkpoint
 
 ## Observabilidade dedicada do Heartbeat
-- [ ] Auditar Heartbeat, snapshots, jobs, alertas e rotas atuais
-- [ ] Definir schemas Zod e contratos tRPC da observabilidade M2M
-- [ ] Implementar timeline completa por heartbeatExecutionId
-- [ ] Implementar exportação assíncrona filtrada por execução
-- [ ] Implementar alertas de falha e duração anormal com cooldown
-- [ ] Construir tela dedicada e controles no React
-- [ ] Adicionar testes de timeline, filtro de exportação e duração
-- [ ] Validar TypeScript, suíte, preview e publicar checkpoint
+- [x] Auditar Heartbeat, snapshots, jobs, alertas e rotas atuais
+- [x] Definir schemas Zod e contratos tRPC da observabilidade M2M
+- [x] Implementar timeline completa por heartbeatExecutionId
+- [x] Implementar exportação assíncrona filtrada por execução
+- [x] Implementar alertas de falha e duração anormal com cooldown
+- [x] Construir tela dedicada e controles no React
+- [x] Adicionar testes de timeline, filtro de exportação e duração
+- [x] Validar TypeScript, suíte, build, preview e publicar checkpoint
 
 ## Timeline e saúde dedicada do Heartbeat — sessão atual
 - [x] Sincronizar estado compartilhado e auditar arquivos atuais
