@@ -7,10 +7,12 @@ import { recoverOrphanedExportJobs, purgePersistentExportJobs, evaluateExportJob
 
 export async function exportJobsRecoveryHandler(req: Request, res: Response) {
   try {
+    let heartbeatExecutionId = req.header("x-heartbeat-execution-id") ?? req.header("x-task-uid") ?? null;
     if (!hasValidInternalCronSecret(req)) {
       try {
         const user = await sdk.authenticateRequest(req);
         if (!user.isCron) return res.status(403).json({ success: false, error: "cron-only" });
+        heartbeatExecutionId = heartbeatExecutionId ?? user.taskUid ?? null;
       } catch (error) {
         if (error instanceof HttpError && error.statusCode === 403) return res.status(403).json({ success: false, error: "cron-only" });
         console.error("[ExportRecovery] authentication failed", redactError(error));
@@ -19,7 +21,7 @@ export async function exportJobsRecoveryHandler(req: Request, res: Response) {
     }
     const recovered = await recoverOrphanedExportJobs(5);
     const purged = await purgePersistentExportJobs();
-    const observability = await evaluateExportJobsOperationalAlerts(24);
+    const observability = await evaluateExportJobsOperationalAlerts(24, heartbeatExecutionId ?? undefined);
     const pendingDeletion = await listPendingFileDeleteQueue(50);
     return res.status(200).json({ success: true, recovered: recovered.recovered, skipped: recovered.skipped, purged: { deletedJobs: purged.deletedJobs, pendingFiles: purged.pendingFiles }, pendingDeletion: pendingDeletion.length, metrics: observability.metrics, alerts: observability.alerts, checkedAt: new Date().toISOString() });
   } catch (error) {

@@ -1,0 +1,2 @@
+ALTER TABLE `exportAlertEvaluationSnapshots` ADD `heartbeatExecutionId` varchar(160);--> statement-breakpoint
+CREATE INDEX `exportAlertEvaluationSnapshots_heartbeat_time_idx` ON `exportAlertEvaluationSnapshots` (`heartbeatExecutionId`,`evaluatedAt`);

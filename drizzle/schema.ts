@@ -51,10 +51,12 @@ export const exportAlertEvaluationSnapshots = mysqlTable("exportAlertEvaluationS
   severity: mysqlEnum("severity", ["INFO", "WARNING", "CRITICAL"]).notNull(),
   decision: mysqlEnum("decision", ["NO_ALERT", "ALERT_CREATED", "DEDUPLICATED"]).notNull(),
   evaluatedByOpenId: varchar("evaluatedByOpenId", { length: 160 }).notNull(),
+  heartbeatExecutionId: varchar("heartbeatExecutionId", { length: 160 }),
   evaluatedAt: timestamp("evaluatedAt").defaultNow().notNull(),
 }, table => ({
   environmentTimeIdx: index("exportAlertEvaluationSnapshots_env_time_idx").on(table.environment, table.evaluatedAt),
   decisionTimeIdx: index("exportAlertEvaluationSnapshots_decision_time_idx").on(table.decision, table.evaluatedAt),
+  heartbeatTimeIdx: index("exportAlertEvaluationSnapshots_heartbeat_time_idx").on(table.heartbeatExecutionId, table.evaluatedAt),
 }));
 
 export type ExportAlertEvaluationSnapshot = typeof exportAlertEvaluationSnapshots.$inferSelect;

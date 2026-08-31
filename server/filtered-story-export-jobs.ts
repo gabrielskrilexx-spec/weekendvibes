@@ -8,7 +8,7 @@ import { buildFilteredStoriesCsv, listAllFilteredStories, type FilteredStoriesFi
 
 type ExportFormat = "csv" | "json";
 type PersistentExportStatus = "queued" | "processing" | "completed" | "failed" | "cancelled" | "expired";
-export type ExportFilters = FilteredStoriesFilter & { sort?: Array<{ column: "date" | "source" | "status"; direction: "asc" | "desc" }> };
+export type ExportFilters = (FilteredStoriesFilter & { sort?: Array<{ column: "date" | "source" | "status"; direction: "asc" | "desc" }> }) | { kind: "alert-snapshots" | "settings-history"; environment?: ExportAlertEnvironment; from?: string; to?: string };
 export type ExportHistoryFilters = { format?: ExportFormat; status?: PersistentExportStatus; from?: string; to?: string; offset?: number; limit?: number; ownerOpenId: string };
 
 const JOB_TTL_MS = 10 * 60 * 1000;
@@ -51,6 +51,13 @@ function staleLeaseCondition(now: Date) {
   return or(isNull(filteredStoryExportJobs.leaseExpiresAt), lt(filteredStoryExportJobs.leaseExpiresAt, now));
 }
 
+function buildAuditCsv(rows: Array<Record<string, unknown>>) {
+  if (!rows.length) return "";
+  const columns = Object.keys(rows[0]);
+  const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  return [columns.join(","), ...rows.map(row => columns.map(column => escape(row[column])).join(","))].join("\\r\\n");
+}
+
 async function processPersistentExportJob(jobId: string, ownerOpenId: string, recovered = false) {
   let owned: Awaited<ReturnType<typeof getOwnedJob>>;
   try {
@@ -72,11 +79,19 @@ async function processPersistentExportJob(jobId: string, ownerOpenId: string, re
     const [active] = await db.select({ status: filteredStoryExportJobs.status }).from(filteredStoryExportJobs).where(eq(filteredStoryExportJobs.id, jobId)).limit(1);
     if (!active || active.status === "cancelled") return false;
     const filters = JSON.parse(owned.row.filtersJson) as ExportFilters;
-    const stories = await listAllFilteredStories(filters);
+    const isAuditExport = "kind" in filters;
+    const exportRows = isAuditExport
+      ? filters.kind === "alert-snapshots"
+        ? (await listExportAlertEvaluationSnapshots({ environment: filters.environment, from: filters.from, to: filters.to, offset: 0, limit: 1000 })).items
+        : (await listExportJobsAlertSettingsHistory({ environment: filters.environment ?? "preview", offset: 0, limit: 1000 })).items
+      : await listAllFilteredStories(filters);
     await db.update(filteredStoryExportJobs).set({ progress: 70, leaseExpiresAt: new Date(Date.now() + LEASE_MS) }).where(and(eq(filteredStoryExportJobs.id, jobId), eq(filteredStoryExportJobs.status, "processing"), eq(filteredStoryExportJobs.leaseOwner, leaseOwner)));
-    const content = owned.row.format === "csv" ? buildFilteredStoriesCsv(stories) : JSON.stringify(stories);
+    const content = owned.row.format === "csv"
+      ? isAuditExport ? buildAuditCsv(exportRows as Array<Record<string, unknown>>) : buildFilteredStoriesCsv(exportRows as Parameters<typeof buildFilteredStoriesCsv>[0])
+      : JSON.stringify(exportRows);
     const format = owned.row.format as ExportFormat;
-    const fileName = `stories-filtrados-${new Date().toISOString().slice(0, 10)}.${format}`;
+    const filePrefix = isAuditExport ? `export-auditoria-${filters.kind}` : "stories-filtrados";
+    const fileName = `${filePrefix}-${new Date().toISOString().slice(0, 10)}.${format}`;
     const contentType = format === "csv" ? "text/csv;charset=utf-8" : "application/json";
     const [latest] = await db.select({ status: filteredStoryExportJobs.status }).from(filteredStoryExportJobs).where(eq(filteredStoryExportJobs.id, jobId)).limit(1);
     if (latest?.status === "cancelled") return false;
@@ -321,19 +336,47 @@ export async function getExportJobsTrendBucket(input: { from: string; to: string
   return { from: from.toISOString(), to: to.toISOString(), jobs: jobRows.map(row => ({ jobId: row.id, status: String(row.status), recoveryAttempts: Number(row.recoveryAttempts ?? 0), leaseExpiresAt: row.leaseExpiresAt?.toISOString() ?? null, fileDeletePending: Boolean(row.fileDeletePending) })), alerts: alertRows.map(row => ({ id: String(row.id), alertType: row.alertType, severity: row.severity, title: row.title, message: row.message, isResolved: row.isResolved === 1, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() })) };
 }
 
-export async function getExportJobsAlertEfficiency(input: { windowDays?: number; ownerOpenId?: string }) {
+async function getExportJobsAlertEfficiencyForRange(input: { from: string; to: string; ownerOpenId?: string }) {
   const db = await getDb();
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
-  const days = Math.min(90, Math.max(1, Math.trunc(input.windowDays ?? 30)));
-  const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  const rows = await db.select({ isResolved: operationalAlerts.isResolved, createdAt: operationalAlerts.createdAt, updatedAt: operationalAlerts.updatedAt }).from(operationalAlerts).where(gte(operationalAlerts.createdAt, start)).limit(5000);
+  const from = new Date(input.from);
+  const to = new Date(input.to);
+  if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from >= to) throw new TRPCError({ code: "BAD_REQUEST", message: "Intervalo temporal inválido." });
+  const rows = await db.select({ isResolved: operationalAlerts.isResolved, createdAt: operationalAlerts.createdAt, updatedAt: operationalAlerts.updatedAt }).from(operationalAlerts).where(and(gte(operationalAlerts.createdAt, from), lt(operationalAlerts.createdAt, to))).limit(5000);
   const total = rows.length;
   const resolved = rows.filter(row => row.isResolved === 1).length;
   const ages = rows.map(row => Math.max(0, (row.isResolved === 1 ? row.updatedAt : new Date()).getTime() - row.createdAt.getTime()));
-  return { windowDays: days, total, resolved, resolutionRate: total ? resolved / total : 0, averageAgeMs: ages.length ? Math.round(ages.reduce((sum, value) => sum + value, 0) / ages.length) : 0, openCount: total - resolved };
+  return { from: from.toISOString(), to: to.toISOString(), total, resolved, resolutionRate: total ? resolved / total : 0, averageAgeMs: ages.length ? Math.round(ages.reduce((sum, value) => sum + value, 0) / ages.length) : 0, openCount: total - resolved };
 }
 
-export async function evaluateExportJobsOperationalAlerts(windowHours = 24) {
+export async function getExportJobsAlertEfficiency(input: { windowDays?: number; ownerOpenId?: string }) {
+  const days = Math.min(90, Math.max(1, Math.trunc(input.windowDays ?? 30)));
+  const to = new Date();
+  const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
+  const summary = await getExportJobsAlertEfficiencyForRange({ from: from.toISOString(), to: to.toISOString(), ownerOpenId: input.ownerOpenId });
+  return { windowDays: days, total: summary.total, resolved: summary.resolved, resolutionRate: summary.resolutionRate, averageAgeMs: summary.averageAgeMs, openCount: summary.openCount };
+}
+
+export async function compareExportJobsEfficiency(input: { first: { from: string; to: string }; second: { from: string; to: string }; ownerOpenId?: string }) {
+  const [first, second] = await Promise.all([
+    getExportJobsAlertEfficiencyForRange({ ...input.first, ownerOpenId: input.ownerOpenId }),
+    getExportJobsAlertEfficiencyForRange({ ...input.second, ownerOpenId: input.ownerOpenId }),
+  ]);
+  const percentDelta = (before: number, after: number) => before === 0 ? null : (after - before) / before;
+  return {
+    first,
+    second,
+    delta: {
+      total: second.total - first.total,
+      resolved: second.resolved - first.resolved,
+      resolutionRate: percentDelta(first.resolutionRate, second.resolutionRate),
+      averageAgeMs: percentDelta(first.averageAgeMs, second.averageAgeMs),
+      openCount: second.openCount - first.openCount,
+    },
+  };
+}
+
+export async function evaluateExportJobsOperationalAlerts(windowHours = 24, heartbeatExecutionId?: string) {
   const metrics = await getExportJobsMetrics(windowHours);
   const alerts: string[] = [];
   if (metrics.expiredLeases >= 3) {
@@ -373,6 +416,7 @@ export async function evaluateExportJobsOperationalAlerts(windowHours = 24) {
     severity: settings.severity,
     decision: queueGrowthTriggered ? "ALERT_CREATED" : "NO_ALERT",
     evaluatedByOpenId: "heartbeat-m2m",
+    heartbeatExecutionId: heartbeatExecutionId ?? null,
   });
   return { metrics, alerts };
 }
@@ -413,6 +457,7 @@ export async function recordExportAlertEvaluationSnapshot(input: {
   severity: "INFO" | "WARNING" | "CRITICAL";
   decision: ExportAlertEvaluationDecision;
   evaluatedByOpenId: string;
+  heartbeatExecutionId?: string | null;
 }) {
   const db = await getDb();
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
@@ -431,6 +476,7 @@ export async function recordExportAlertEvaluationSnapshot(input: {
     severity: input.severity,
     decision: input.decision,
     evaluatedByOpenId: input.evaluatedByOpenId.slice(0, 160),
+    heartbeatExecutionId: input.heartbeatExecutionId ? input.heartbeatExecutionId.slice(0, 160) : null,
     evaluatedAt: new Date(),
   });
   const inserted = Array.isArray(insertResult) ? insertResult[0] : insertResult;
@@ -470,6 +516,7 @@ export async function listExportAlertEvaluationSnapshots(input: {
     severity: row.severity,
     decision: row.decision as ExportAlertEvaluationDecision,
     evaluatedByOpenId: row.evaluatedByOpenId,
+    heartbeatExecutionId: row.heartbeatExecutionId ?? null,
     evaluatedAt: row.evaluatedAt.toISOString(),
   }));
   return { items, offset, limit, hasNextPage: items.length === limit };

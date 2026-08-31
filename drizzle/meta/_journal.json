@@ -183,6 +183,13 @@
       "when": 1788181833354,
       "tag": "0025_yellow_nemesis",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1788183338015,
+      "tag": "0026_deep_corsair",
+      "breakpoints": true
     }
   ]
 }

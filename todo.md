@@ -2310,3 +2310,13 @@
 - [x] Integrar drill-down e exportações no React
 - [x] Adicionar testes de snapshots, recortes e rotas de exportação
 - [x] Validar TypeScript, suíte, preview e publicar checkpoint
+
+## Exportações grandes, comparação e rastreabilidade M2M
+- [x] Auditar contratos, jobs, métricas, snapshots e Heartbeat
+- [x] Definir schemas Zod e contratos tRPC da extensão
+- [x] Estender exportação assíncrona para timelines de alertas e governança
+- [x] Implementar comparação de dois buckets com deltas percentuais
+- [x] Persistir heartbeatExecutionId em snapshots M2M
+- [x] Integrar comparação e progresso de exportação no React
+- [x] Adicionar testes de buckets, heartbeat e exportação assíncrona
+- [x] Validar TypeScript, suíte, preview e publicar checkpoint
