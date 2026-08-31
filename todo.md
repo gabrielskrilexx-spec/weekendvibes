@@ -2320,3 +2320,13 @@
 - [x] Integrar comparação e progresso de exportação no React
 - [x] Adicionar testes de buckets, heartbeat e exportação assíncrona
 - [x] Validar TypeScript, suíte, preview e publicar checkpoint
+
+## Governança M2M e comparação expandida
+- [x] Auditar snapshots, Heartbeat, comparação, jobs e modal de alertas
+- [x] Definir schemas Zod e endpoints tRPC da nova governança
+- [x] Implementar histórico detalhado das execuções M2M por snapshot
+- [x] Expandir comparação com idade média e leases expiradas
+- [x] Implementar exportação assíncrona contextual de alerta/timeline
+- [x] Integrar histórico, comparação e exportação no React
+- [x] Adicionar testes de deltas e vinculação M2M
+- [x] Validar TypeScript, suíte, preview e publicar checkpoint

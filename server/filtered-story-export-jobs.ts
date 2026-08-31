@@ -343,10 +343,12 @@ async function getExportJobsAlertEfficiencyForRange(input: { from: string; to: s
   const to = new Date(input.to);
   if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from >= to) throw new TRPCError({ code: "BAD_REQUEST", message: "Intervalo temporal inválido." });
   const rows = await db.select({ isResolved: operationalAlerts.isResolved, createdAt: operationalAlerts.createdAt, updatedAt: operationalAlerts.updatedAt }).from(operationalAlerts).where(and(gte(operationalAlerts.createdAt, from), lt(operationalAlerts.createdAt, to))).limit(5000);
+  const leaseRows = await db.select({ status: filteredStoryExportJobs.status, leaseExpiresAt: filteredStoryExportJobs.leaseExpiresAt }).from(filteredStoryExportJobs).where(and(gte(filteredStoryExportJobs.createdAt, from), lt(filteredStoryExportJobs.createdAt, to), eq(filteredStoryExportJobs.status, "processing"))).limit(5000);
   const total = rows.length;
   const resolved = rows.filter(row => row.isResolved === 1).length;
   const ages = rows.map(row => Math.max(0, (row.isResolved === 1 ? row.updatedAt : new Date()).getTime() - row.createdAt.getTime()));
-  return { from: from.toISOString(), to: to.toISOString(), total, resolved, resolutionRate: total ? resolved / total : 0, averageAgeMs: ages.length ? Math.round(ages.reduce((sum, value) => sum + value, 0) / ages.length) : 0, openCount: total - resolved };
+  const expiredLeases = leaseRows.filter(row => row.leaseExpiresAt && row.leaseExpiresAt.getTime() < Date.now()).length;
+  return { from: from.toISOString(), to: to.toISOString(), total, resolved, resolutionRate: total ? resolved / total : 0, averageAgeMs: ages.length ? Math.round(ages.reduce((sum, value) => sum + value, 0) / ages.length) : 0, openCount: total - resolved, expiredLeases };
 }
 
 export async function getExportJobsAlertEfficiency(input: { windowDays?: number; ownerOpenId?: string }) {
@@ -354,7 +356,7 @@ export async function getExportJobsAlertEfficiency(input: { windowDays?: number;
   const to = new Date();
   const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
   const summary = await getExportJobsAlertEfficiencyForRange({ from: from.toISOString(), to: to.toISOString(), ownerOpenId: input.ownerOpenId });
-  return { windowDays: days, total: summary.total, resolved: summary.resolved, resolutionRate: summary.resolutionRate, averageAgeMs: summary.averageAgeMs, openCount: summary.openCount };
+  return { windowDays: days, total: summary.total, resolved: summary.resolved, resolutionRate: summary.resolutionRate, averageAgeMs: summary.averageAgeMs, openCount: summary.openCount, expiredLeases: summary.expiredLeases };
 }
 
 export async function compareExportJobsEfficiency(input: { first: { from: string; to: string }; second: { from: string; to: string }; ownerOpenId?: string }) {
@@ -371,6 +373,7 @@ export async function compareExportJobsEfficiency(input: { first: { from: string
       resolved: second.resolved - first.resolved,
       resolutionRate: percentDelta(first.resolutionRate, second.resolutionRate),
       averageAgeMs: percentDelta(first.averageAgeMs, second.averageAgeMs),
+      expiredLeases: second.expiredLeases - first.expiredLeases,
       openCount: second.openCount - first.openCount,
     },
   };
@@ -563,3 +566,23 @@ export async function getExportJobsAlertEfficiencyTrend(windowDays = 30) {
   }
   return { windowDays: days, points: Array.from(buckets.entries()).map(([date, value]) => ({ bucketStart: `${date}T00:00:00.000Z`, total: value.total, resolved: value.resolved, resolutionRate: value.total ? value.resolved / value.total : 0, averageAgeMs: value.total ? Math.round(value.ageTotal / value.total) : 0 })) };
 }
+
+export async function getSnapshotExecutionHistory(input: { snapshotId: string; ownerOpenId: string }) {
+  const snapshotId = Number.parseInt(input.snapshotId, 10);
+  if (!Number.isSafeInteger(snapshotId) || snapshotId <= 0) {
+    return { snapshotId: input.snapshotId, heartbeatExecutionId: null, triggeredAt: null, durationMs: null, events: [] as Array<{ event: "evaluated"; occurredAt: string; message: string }> };
+  }
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  const [row] = await db.select({ id: exportAlertEvaluationSnapshots.id, heartbeatExecutionId: exportAlertEvaluationSnapshots.heartbeatExecutionId, evaluatedAt: exportAlertEvaluationSnapshots.evaluatedAt }).from(exportAlertEvaluationSnapshots).where(eq(exportAlertEvaluationSnapshots.id, snapshotId)).limit(1);
+  if (!row) return { snapshotId: input.snapshotId, heartbeatExecutionId: null, triggeredAt: null, durationMs: null, events: [] as Array<{ event: "evaluated"; occurredAt: string; message: string }> };
+  const occurredAt = row.evaluatedAt.toISOString();
+  return {
+    snapshotId: String(row.id),
+    heartbeatExecutionId: row.heartbeatExecutionId ?? null,
+    triggeredAt: occurredAt,
+    durationMs: null,
+    events: [{ event: "evaluated" as const, occurredAt, message: row.heartbeatExecutionId ? `Avaliação vinculada à execução ${row.heartbeatExecutionId}` : "Avaliação registrada sem execução M2M associada" }],
+  };
+}
+
