@@ -2352,3 +2352,13 @@
 - [x] Adicionar testes backend de contratos, paginação, exportação e alertas
 - [x] Construir tela React dedicada com filtros sincronizados na URL
 - [x] Validar suíte, TypeScript, build, preview e publicar checkpoint
+
+## Evolução estatística e governança do Heartbeat — sessão atual
+- [x] Auditar timeline, configurações auditáveis e eventos persistidos atuais
+- [x] Definir schemas Zod e contratos tRPC para filtros, governança e estatísticas
+- [x] Implementar filtros eventType/período sincronizados na URL via contrato
+- [x] Expor histórico de alterações dos limiares com openId e timestamp
+- [x] Implementar agregação de sucesso, P95 e incidentes por período
+- [x] Construir controles React, cards executivos e gráficos de tendência
+- [x] Adicionar testes de P95, queries agregadas e filtros da timeline
+- [x] Validar suíte, TypeScript, build, preview e publicar checkpoint

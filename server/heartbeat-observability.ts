@@ -1,13 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { appSettings, heartbeatExecutionEvents } from "../drizzle/schema";
+import { appSettings, exportJobsAlertSettingsAudit, heartbeatExecutionEvents } from "../drizzle/schema";
 import { getDb, recordOperationalAlert } from "./db";
 
 export type HeartbeatEventType = "started" | "step" | "log" | "alert" | "completed" | "failed" | "timeout";
 export type HeartbeatExecutionStatus = "running" | "succeeded" | "failed" | "timeout" | "unknown";
 export type HeartbeatHealthEnvironment = "development" | "preview" | "production";
 export type HeartbeatHealthSeverity = "INFO" | "WARNING" | "CRITICAL";
+
+export function calculateP95(values: number[]) {
+  const sorted = values.filter(value => Number.isFinite(value) && value >= 0).sort((a, b) => a - b);
+  if (sorted.length === 0) return 0;
+  const rank = Math.max(0, Math.ceil(sorted.length * 0.95) - 1);
+  return Math.round(sorted[rank] ?? 0);
+}
 
 export type HeartbeatHealthSettings = {
   environment: HeartbeatHealthEnvironment;
@@ -151,6 +158,16 @@ export async function listHeartbeatExecutionEventsForExport(input: { heartbeatEx
   }));
 }
 
+export async function listHeartbeatHealthSettingsHistory(input: { environment: HeartbeatHealthEnvironment; offset?: number; limit?: number }) {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  const offset = Math.max(0, Math.trunc(input.offset ?? 0));
+  const limit = Math.min(50, Math.max(1, Math.trunc(input.limit ?? 20)));
+  const rows = await db.select().from(exportJobsAlertSettingsAudit).where(eq(exportJobsAlertSettingsAudit.environment, input.environment)).orderBy(desc(exportJobsAlertSettingsAudit.changedAt)).limit(limit + 1).offset(offset);
+  const hasNextPage = rows.length > limit;
+  return { items: rows.slice(0, limit).map(row => ({ id: String(row.id), environment: row.environment as HeartbeatHealthEnvironment, previousValue: row.previousValue, nextValue: row.nextValue, changedByOpenId: row.changedByOpenId, changedAt: row.changedAt.toISOString() })), offset, limit, nextOffset: hasNextPage ? offset + limit : null, hasNextPage };
+}
+
 export async function getHeartbeatHealthSettings(env = environment()): Promise<HeartbeatHealthSettings> {
   const db = await getDb();
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
@@ -172,6 +189,43 @@ export async function updateHeartbeatHealthSettings(input: HeartbeatHealthSettin
   await db.insert(appSettings).values({ key: settingKey(input.environment), value: serialized, createdAt: now, updatedAt: now }).onDuplicateKeyUpdate({ set: { value: serialized, updatedAt: now } });
   await db.insert((await import("../drizzle/schema")).exportJobsAlertSettingsAudit).values({ environment: input.environment, previousValue: JSON.stringify(previous), nextValue: serialized, changedByOpenId: input.changedByOpenId.slice(0, 160), changedAt: now });
   return { ...next, changedByOpenId: input.changedByOpenId.slice(0, 160), changedAt: now.toISOString() };
+}
+
+export async function getHeartbeatExecutionStats(input: { from?: string; to?: string; environment?: HeartbeatHealthEnvironment }) {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  const to = input.to ? new Date(input.to) : new Date();
+  const from = input.from ? new Date(input.from) : new Date(to.getTime() - 24 * 60 * 60 * 1000);
+  const rows = await db.select().from(heartbeatExecutionEvents).where(and(gte(heartbeatExecutionEvents.timestamp, from), lte(heartbeatExecutionEvents.timestamp, to))).orderBy(asc(heartbeatExecutionEvents.timestamp), asc(heartbeatExecutionEvents.sequence));
+  const executions = new Map<string, { startedAt: Date | null; terminalAt: Date | null; status: HeartbeatExecutionStatus; durationMs: number | null; incidentCount: number }>();
+  for (const row of rows) {
+    const current = executions.get(row.heartbeatExecutionId) ?? { startedAt: null, terminalAt: null, status: "unknown" as HeartbeatExecutionStatus, durationMs: null, incidentCount: 0 };
+    if (row.eventType === "started" && !current.startedAt) current.startedAt = row.timestamp;
+    if (row.eventType === "alert" || row.eventType === "failed" || row.eventType === "timeout") current.incidentCount += 1;
+    if (row.eventType === "completed" || row.eventType === "failed" || row.eventType === "timeout") {
+      current.terminalAt = row.timestamp;
+      current.status = row.eventType === "completed" ? "succeeded" : row.eventType;
+      current.durationMs = row.durationMs ?? (current.startedAt ? Math.max(0, row.timestamp.getTime() - current.startedAt.getTime()) : null);
+    }
+    executions.set(row.heartbeatExecutionId, current);
+  }
+  const values = Array.from(executions.values());
+  const durations = values.map(value => value.durationMs).filter((value): value is number => value != null);
+  const totalExecutions = values.length;
+  const successfulExecutions = values.filter(value => value.status === "succeeded").length;
+  const points = new Map<string, { totalExecutions: number; successfulExecutions: number; durations: number[]; incidentCount: number }>();
+  for (const value of values) {
+    const date = value.startedAt ?? value.terminalAt;
+    if (!date) continue;
+    const bucket = date.toISOString().slice(0, 10);
+    const point = points.get(bucket) ?? { totalExecutions: 0, successfulExecutions: 0, durations: [], incidentCount: 0 };
+    point.totalExecutions += 1;
+    if (value.status === "succeeded") point.successfulExecutions += 1;
+    if (value.durationMs != null) point.durations.push(value.durationMs);
+    point.incidentCount += value.incidentCount;
+    points.set(bucket, point);
+  }
+  return { from: from.toISOString(), to: to.toISOString(), totalExecutions, successfulExecutions, successRate: totalExecutions ? successfulExecutions / totalExecutions : 0, p95DurationMs: calculateP95(durations), incidentCount: values.reduce((sum, value) => sum + value.incidentCount, 0), points: Array.from(points.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([bucketStart, point]) => ({ bucketStart: `${bucketStart}T00:00:00.000Z`, totalExecutions: point.totalExecutions, successfulExecutions: point.successfulExecutions, successRate: point.totalExecutions ? point.successfulExecutions / point.totalExecutions : 0, p95DurationMs: calculateP95(point.durations), incidentCount: point.incidentCount })) };
 }
 
 export async function evaluateHeartbeatHealth(input: {

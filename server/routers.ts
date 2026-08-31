@@ -64,7 +64,7 @@ import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
 import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts, getExportJobsMetricsTrend, getExportJobAlertDetail, getExportJobsAlertSettings, updateExportJobsAlertSettings, getExportJobsTrendBucket, getExportJobsAlertEfficiency, compareExportJobsEfficiency, listExportJobsAlertSettingsHistory, recordExportAlertEvaluationSnapshot, listExportAlertEvaluationSnapshots, getExportJobsEfficiencyBucket, getExportJobsAlertEfficiencyTrend } from "./filtered-story-export-jobs";
-import { evaluateHeartbeatHealth, getHeartbeatHealthSettings, getHeartbeatExecutionSummary, listHeartbeatExecutionEvents, recordHeartbeatExecutionEvent, updateHeartbeatHealthSettings, type HeartbeatEventType, type HeartbeatHealthEnvironment } from "./heartbeat-observability";
+import { evaluateHeartbeatHealth, getHeartbeatExecutionStats, getHeartbeatHealthSettings, getHeartbeatExecutionSummary, listHeartbeatExecutionEvents, listHeartbeatHealthSettingsHistory, recordHeartbeatExecutionEvent, updateHeartbeatHealthSettings, type HeartbeatEventType, type HeartbeatHealthEnvironment } from "./heartbeat-observability";
 
 const safeFilter = (max = 120) => z.string().trim().max(max).optional();
 const latitudeInput = z
@@ -317,6 +317,9 @@ const heartbeatTimelinePageOutput = z.object({ items: z.array(heartbeatTimelineE
 const heartbeatSummaryOutput = z.object({ heartbeatExecutionId: z.string(), startedAt: z.string().datetime().nullable(), finishedAt: z.string().datetime().nullable(), durationMs: z.number().int().nonnegative().nullable(), status: z.enum(["running", "succeeded", "failed", "timeout", "unknown"]), eventCount: z.number().int().nonnegative(), alertCount: z.number().int().nonnegative() }).strict();
 const heartbeatHealthSettingsOutput = z.object({ environment: heartbeatEnvironmentInput, maxDurationMs: z.number().int().min(100).max(600000), failureThreshold: z.number().int().min(1).max(10), cooldownHours: z.number().int().min(1).max(168) }).strict();
 const heartbeatHealthUpdateOutput = heartbeatHealthSettingsOutput.extend({ changedByOpenId: z.string().min(1).max(160), changedAt: z.string().datetime() }).strict();
+const heartbeatHealthHistoryOutput = z.object({ items: z.array(z.object({ id: z.string(), environment: heartbeatEnvironmentInput, previousValue: z.string(), nextValue: z.string(), changedByOpenId: z.string(), changedAt: z.string().datetime() }).strict()).max(50), offset: z.number().int().nonnegative(), limit: z.number().int().positive().max(50), nextOffset: z.number().int().nonnegative().nullable(), hasNextPage: z.boolean() }).strict();
+const heartbeatStatsPointOutput = z.object({ bucketStart: z.string().datetime(), totalExecutions: z.number().int().nonnegative(), successfulExecutions: z.number().int().nonnegative(), successRate: z.number().min(0).max(1), p95DurationMs: z.number().int().nonnegative(), incidentCount: z.number().int().nonnegative() }).strict();
+const heartbeatStatsOutput = z.object({ from: z.string().datetime(), to: z.string().datetime(), totalExecutions: z.number().int().nonnegative(), successfulExecutions: z.number().int().nonnegative(), successRate: z.number().min(0).max(1), p95DurationMs: z.number().int().nonnegative(), incidentCount: z.number().int().nonnegative(), points: z.array(heartbeatStatsPointOutput).max(366) }).strict();
 const dryRunSuccessOutput = z
   .object({
     dryRun: z.literal(true),
@@ -437,6 +440,14 @@ export const appRouter = router({
       .input(z.object({ heartbeatExecutionId: z.string().trim().min(1).max(160), status: z.enum(["running", "succeeded", "failed", "timeout", "unknown"]), durationMs: z.number().int().nonnegative().nullable(), errorMessage: z.string().max(5000).nullable().optional(), environment: heartbeatEnvironmentInput.optional() }).strict())
       .output(z.object({ heartbeatExecutionId: z.string(), settings: heartbeatHealthSettingsOutput, alerts: z.array(z.enum(["heartbeat_execution_failed", "heartbeat_duration_anomaly"])).max(2), evaluatedAt: z.string().datetime() }).strict())
       .mutation(({ input }) => evaluateHeartbeatHealth(input)),
+    healthSettingsHistory: adminOnly
+      .input(z.object({ environment: heartbeatEnvironmentInput, offset: z.number().int().nonnegative().default(0), limit: z.number().int().positive().max(50).default(20) }).strict())
+      .output(heartbeatHealthHistoryOutput)
+      .query(({ input }) => listHeartbeatHealthSettingsHistory(input)),
+    executionStats: adminOnly
+      .input(z.object({ from: z.string().datetime().optional(), to: z.string().datetime().optional(), environment: heartbeatEnvironmentInput.optional() }).strict())
+      .output(heartbeatStatsOutput)
+      .query(({ input }) => getHeartbeatExecutionStats(input)),
     startTimelineExport: adminOnly
       .input(z.object({ format: z.enum(["csv", "json"]), heartbeatExecutionId: z.string().trim().min(1).max(160), eventType: heartbeatEventTypeInput.optional(), from: z.string().datetime().optional(), to: z.string().datetime().optional() }).strict())
       .output(z.object({ jobId: z.string().min(16).max(128), status: z.literal("queued"), progress: z.literal(0) }).strict())

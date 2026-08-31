@@ -11,7 +11,9 @@ vi.mock("./db", () => ({
 }));
 
 import {
+  calculateP95,
   evaluateHeartbeatHealth,
+  getHeartbeatExecutionStats,
   getHeartbeatExecutionSummary,
   listHeartbeatExecutionEvents,
   recordHeartbeatExecutionEvent,
@@ -65,6 +67,28 @@ describe("Heartbeat observability", () => {
     expect(page.items[1].metadata).toEqual({ recovered: 2 });
     const summary = await getHeartbeatExecutionSummary("hb-1");
     expect(summary).toMatchObject({ heartbeatExecutionId: "hb-1", status: "succeeded", durationMs: 3000, eventCount: 3, alertCount: 0 });
+  });
+
+  it("calculates deterministic P95 values", () => {
+    expect(calculateP95([])).toBe(0);
+    expect(calculateP95([300, 100, 200, 400, 500])).toBe(500);
+    expect(calculateP95([10, 20, 30, 40])).toBe(40);
+  });
+
+  it("aggregates execution success, P95 and incidents within the selected period", async () => {
+    const db = makeDb();
+    mocks.getDb.mockResolvedValue(db);
+    const stats = await getHeartbeatExecutionStats({ from: "2026-08-31T09:00:00.000Z", to: "2026-08-31T11:00:00.000Z" });
+    expect(stats).toMatchObject({ totalExecutions: 1, successfulExecutions: 1, successRate: 1, p95DurationMs: 3000, incidentCount: 0 });
+    expect(stats.points[0]).toMatchObject({ totalExecutions: 1, successfulExecutions: 1, p95DurationMs: 3000 });
+  });
+
+  it("accepts eventType and temporal filters while preserving pagination", async () => {
+    const db = makeDb();
+    mocks.getDb.mockResolvedValue(db);
+    const page = await listHeartbeatExecutionEvents({ heartbeatExecutionId: "hb-1", eventType: "step", from: "2026-08-31T10:00:00.000Z", to: "2026-08-31T10:00:02.000Z", offset: 0, limit: 10 });
+    expect(page).toMatchObject({ offset: 0, limit: 10, hasNextPage: false });
+    expect(page.items.every(item => typeof item.timestamp === "string")).toBe(true);
   });
 
   it("raises critical failure and warning duration alerts", async () => {
