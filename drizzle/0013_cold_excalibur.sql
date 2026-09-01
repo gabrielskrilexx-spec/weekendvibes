@@ -1,1 +1,0 @@
-ALTER TABLE `events` ADD `locationPrecision` varchar(24) DEFAULT 'exact' NOT NULL;

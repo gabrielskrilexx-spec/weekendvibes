@@ -92,7 +92,10 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
     const raw = normalizeTrackedStepResultForTest(result);
     const imported = Number(raw.imported ?? 0);
     const read = Number(raw.read ?? raw.receivedPosts ?? raw.discovered ?? 0);
-    const filtered = Number(raw.filtered ?? Math.max(0, read - Number(raw.approvedPosts ?? raw.matchedSources ?? 0)));
+    const rejectionReasons = collectRejectionReasons(raw);
+    const filtered = Object.keys(rejectionReasons).length > 0
+      ? Object.values(rejectionReasons).reduce((sum, count) => sum + count, 0)
+      : Number(raw.filtered ?? Math.max(0, read - Number(raw.approvedPosts ?? raw.matchedSources ?? 0)));
     const sourceErrorCount = Array.isArray(raw.sourceReports) ? raw.sourceReports.reduce((sum, source) => {
       if (!source || typeof source !== "object") return sum;
       const errors = (source as { errors?: unknown }).errors;
@@ -109,11 +112,12 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
       degraded: raw.degraded === true || hasPartialFailure,
       retries: Number(raw.retries ?? 0),
       fallbackList: Number(raw.fallbackList ?? 0),
+      skippedByReason: rejectionReasons,
     });
     const pipelineRetries = Number(raw.retries ?? 0);
     const pipelineHistory = Array.isArray(raw.retryHistory) ? raw.retryHistory : [];
     const retryHistory = [...pipelineHistory, ...retryState.history];
-    await finishIngestionRun(runId, { status: hasPartialFailure ? "partial" : "succeeded", importedCount: Number(raw.persisted ?? imported), counts: reconciliation.counts, details: { ...raw, reconciliation, trigger, retries: pipelineRetries + retryState.history.length, retryHistory }, routine, sourceKey });
+    await finishIngestionRun(runId, { status: hasPartialFailure ? "partial" : "succeeded", importedCount: Number(raw.persisted ?? imported), counts: reconciliation.counts, details: { ...raw, rejectionReasons, reconciliation, trigger, retries: pipelineRetries + retryState.history.length, retryHistory }, routine, sourceKey });
     return result;
   } catch (error) {
     const safeErrorText = error instanceof Error ? error.message : String(error);
@@ -232,6 +236,36 @@ function automationErrorStatus(error: unknown) {
   return Number.isInteger(status) && status > 0 ? status : null;
 }
 
+function normalizeRejectionReasonKey(reason: string) {
+  return reason.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`).replace(/^_/, "");
+}
+
+function sumRejectionReasons(candidate: unknown) {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return 0;
+  return Object.values(candidate as Record<string, unknown>).reduce<number>((sum, value) => sum + safeAutomationNumber(value), 0);
+}
+
+function collectRejectionReasons(result: Record<string, unknown>) {
+  const totals: Record<string, number> = {};
+  const add = (candidate: unknown) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return;
+    for (const [rawReason, rawCount] of Object.entries(candidate)) {
+      const count = safeAutomationNumber(rawCount);
+      if (count <= 0) continue;
+      const reason = normalizeRejectionReasonKey(rawReason).slice(0, 80);
+      totals[reason] = (totals[reason] ?? 0) + count;
+    }
+  };
+  add(result.rejectionReasons);
+  add(result.filteredByReason);
+  if (Array.isArray(result.sourceReports)) {
+    for (const report of result.sourceReports) {
+      if (report && typeof report === "object") add((report as Record<string, unknown>).rejectionReasons);
+    }
+  }
+  return totals;
+}
+
 function sourceReportsFromResult(sourceKey: string, result: unknown): AutomationSourceSummary[] {
   const value = result && typeof result === "object" ? result as Record<string, unknown> : {};
   const provided = Array.isArray(value.sourceReports) ? value.sourceReports.filter(item => item && typeof item === "object") as Array<Record<string, unknown>> : [];
@@ -241,7 +275,8 @@ function sourceReportsFromResult(sourceKey: string, result: unknown): Automation
     if (value.skipped === true && typeof value.reason === "string") errors.push({ status: null, message: safeAutomationError(value.reason) });
     const filteredByReason = value.filteredByReason && typeof value.filteredByReason === "object" ? value.filteredByReason as Record<string, unknown> : {};
     if (Number(filteredByReason.fetchFailed ?? 0) > 0 && errors.length === 0) errors.push({ status: null, message: `${Number(filteredByReason.fetchFailed)} fonte(s) não puderam ser coletadas.` });
-    return [{ sourceKey, read: safeAutomationNumber(value.read ?? value.receivedPosts ?? value.discovered), added: safeAutomationNumber(value.added ?? persisted), updated: safeAutomationNumber(value.updated), ignored: safeAutomationNumber(value.ignored ?? value.filtered) + safeAutomationNumber(value.duplicates), errors }];
+    const knownSkipped = sumRejectionReasons(value.rejectionReasons) + (Object.keys(value.rejectionReasons && typeof value.rejectionReasons === "object" ? value.rejectionReasons as object : {}).length === 0 ? sumRejectionReasons(filteredByReason) : 0);
+    return [{ sourceKey, read: safeAutomationNumber(value.read ?? value.receivedPosts ?? value.discovered), added: safeAutomationNumber(value.added ?? persisted), updated: safeAutomationNumber(value.updated), ignored: knownSkipped > 0 ? knownSkipped : safeAutomationNumber(value.ignored ?? value.filtered) + safeAutomationNumber(value.duplicates), errors }];
   }
   return provided.map(report => {
     const persisted = safeAutomationNumber(report.persistable ?? report.persisted ?? report.imported);
@@ -249,12 +284,13 @@ function sourceReportsFromResult(sourceKey: string, result: unknown): Automation
       const item = error && typeof error === "object" ? error as Record<string, unknown> : {};
       return { status: automationErrorStatus(item), message: safeAutomationError(item.message) };
     }) : [];
+    const reportKnownSkipped = sumRejectionReasons(report.rejectionReasons);
     return {
       sourceKey: String(report.sourceKey ?? sourceKey).slice(0, 160),
       read: safeAutomationNumber(report.read),
       added: safeAutomationNumber(report.added ?? persisted),
       updated: safeAutomationNumber(report.updated),
-      ignored: safeAutomationNumber(report.ignored ?? report.filtered) + safeAutomationNumber(report.duplicates),
+      ignored: reportKnownSkipped > 0 ? reportKnownSkipped : safeAutomationNumber(report.ignored ?? report.filtered) + safeAutomationNumber(report.duplicates),
       errors,
     };
   });

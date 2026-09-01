@@ -32,4 +32,28 @@ describe("automatic operational alert rules", () => {
   it("creates a critical alert for persisted counts that exceed read counts", () => {
     expect(buildReconciliationDivergenceAlert({ sourceKey: "instagram", runId: 42, consistent: false, issues: ["persisted_exceeds_read"], persisted: 4, read: 1, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0 })).toMatchObject({ alertType: "reconciliation_divergence", severity: "CRITICAL", slaMinutes: 60 });
   });
+
+  it("absorbs legitimate past_event discards when the reconciliation gap is zero", () => {
+    expect(buildReconciliationDivergenceAlert({
+      sourceKey: "public",
+      consistent: true,
+      issues: [],
+      persisted: 0,
+      read: 109,
+      duplicates: 6,
+      missingCoordinates: 0,
+      outOfBoundsCoordinates: 0,
+      allKnownSkipped: 109,
+      reconciliationGap: 0,
+    })).toBeNull();
+  });
+
+  it("keeps the routine name explicit in structured persistence alerts", () => {
+    expect(buildStructuredPersistenceMismatchAlert({
+      sourceKey: "instagram",
+      routineName: "instagram-agenda",
+      structured: 3,
+      persisted: 0,
+    })?.message).toContain("instagram-agenda");
+  });
 });

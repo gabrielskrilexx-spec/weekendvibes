@@ -37,6 +37,7 @@ export function buildFreshnessCriticalAlert(input: FreshnessAlertInput): Automat
 
 export type StructuredPersistenceMismatchInput = {
   sourceKey: string;
+  routineName?: string;
   runId?: number | string;
   structured: number;
   persisted: number;
@@ -53,7 +54,7 @@ export function buildStructuredPersistenceMismatchAlert(input: StructuredPersist
   return {
     integration: "pipeline",
     title: `Eventos estruturados não persistidos: ${input.sourceKey}`,
-    message: `A rotina ${input.sourceKey} estruturou ${input.structured} evento(s), mas persistiu ${input.persisted}. ${reasons ? `Motivos registrados: ${reasons}. ` : ""}Revise a validação final dos dados antes de repetir a ingestão.`,
+    message: `A rotina ${input.routineName ?? input.sourceKey} (fonte ${input.sourceKey}) estruturou ${input.structured} evento(s), mas persistiu ${input.persisted}. ${reasons ? `Motivos registrados: ${reasons}. ` : ""}Revise a validação final dos dados antes de repetir a ingestão.`,
     severity: "WARNING",
     alertType: "structured_not_persisted",
     slaMinutes: 240,
@@ -70,10 +71,14 @@ export type ReconciliationAlertInput = {
   duplicates: number;
   missingCoordinates: number;
   outOfBoundsCoordinates: number;
+  allKnownSkipped?: number;
+  reconciliationGap?: number;
 };
 
 export function buildReconciliationDivergenceAlert(input: ReconciliationAlertInput): AutomaticAlert | null {
   const issues = Array.from(new Set(input.issues.filter(Boolean))).sort();
+  const gap = Number.isFinite(input.reconciliationGap) ? Number(input.reconciliationGap) : null;
+  if (gap === 0 && issues.every(issue => issue !== "reconciliation_gap")) return null;
   if (input.consistent && issues.length === 0) return null;
   const critical = issues.some(issue => ["persisted_exceeds_read", "duplicates_exceeds_persisted", "degraded_run_persisted_events"].includes(issue));
   return {

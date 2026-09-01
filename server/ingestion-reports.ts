@@ -1078,13 +1078,17 @@ export async function finishIngestionRun(
                 duplicates?: number;
                 missingCoordinates?: number;
                 outOfBoundsCoordinates?: number;
+                allKnownSkipped?: number;
+                reconciliationGap?: number;
+                skippedByReason?: Record<string, number>;
                 issues?: string[];
               };
             }
           ).reconciliation
         : undefined;
     const structuredPersistenceAlert = buildStructuredPersistenceMismatchAlert({
-      sourceKey: input.sourceKey ?? input.routine ?? "unknown",
+      sourceKey: input.sourceKey ?? input.routine ?? "pipeline",
+      routineName: input.routine ?? undefined,
       runId: id,
       structured: counts.structured,
       persisted: counts.persisted,
@@ -1099,9 +1103,11 @@ export async function finishIngestionRun(
     }
     if (reconciliation) {
       const reconciliationAlert = buildReconciliationDivergenceAlert({
-        sourceKey: input.sourceKey ?? input.routine ?? "unknown",
+        sourceKey: input.sourceKey ?? input.routine ?? "pipeline",
         runId: id,
         consistent: reconciliation.consistent !== false,
+        allKnownSkipped: typeof reconciliation.allKnownSkipped === "number" ? reconciliation.allKnownSkipped : undefined,
+        reconciliationGap: typeof reconciliation.reconciliationGap === "number" ? reconciliation.reconciliationGap : undefined,
         issues: reconciliation.issues ?? [],
         read: Number(reconciliation.read ?? counts.read),
         persisted: Number(reconciliation.persisted ?? counts.persisted),

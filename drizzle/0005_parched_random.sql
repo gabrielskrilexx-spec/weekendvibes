@@ -1,1 +1,0 @@
-ALTER TABLE `events` ADD `ticketStatus` enum('available','sold_out','unknown') DEFAULT 'unknown' NOT NULL;

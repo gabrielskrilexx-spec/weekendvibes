@@ -12,6 +12,7 @@ export type ReconciliationInput = {
   duplicates?: number;
   missingCoordinates?: number;
   outOfBoundsCoordinates?: number;
+  skippedByReason?: Record<string, number>;
   degraded?: boolean;
   retries?: number;
   fallbackList?: number;
@@ -22,6 +23,9 @@ export type ReconciliationResult = {
   duplicates: number;
   missingCoordinates: number;
   outOfBoundsCoordinates: number;
+  skippedByReason: Record<string, number>;
+  allKnownSkipped: number;
+  reconciliationGap: number;
   degraded: boolean;
   retries: number;
   fallbackList: number;
@@ -30,6 +34,15 @@ export type ReconciliationResult = {
 };
 
 const safeCount = (value: unknown) => Number.isFinite(Number(value)) ? Math.max(0, Math.floor(Number(value))) : 0;
+
+function normalizeSkipReasons(input: Record<string, number> | undefined) {
+  const normalized: Record<string, number> = {};
+  for (const [reason, value] of Object.entries(input ?? {})) {
+    const count = safeCount(value);
+    if (count > 0) normalized[String(reason).trim().slice(0, 80)] = count;
+  }
+  return normalized;
+}
 
 export function isRegionalCoordinate(latitude: unknown, longitude: unknown) {
   const lat = Number(latitude);
@@ -41,20 +54,27 @@ export function isRegionalCoordinate(latitude: unknown, longitude: unknown) {
 
 export function reconcileIngestionResult(input: ReconciliationInput): ReconciliationResult {
   const read = safeCount(input.read);
-  const filtered = safeCount(input.filtered);
   const persisted = safeCount(input.persisted);
+  const suppliedReasons = normalizeSkipReasons(input.skippedByReason);
+  const hasReasonBreakdown = Object.keys(suppliedReasons).length > 0;
+  const legacyFiltered = safeCount(input.filtered);
+  const filtered = hasReasonBreakdown ? Object.values(suppliedReasons).reduce((sum, count) => sum + count, 0) : legacyFiltered;
   const duplicates = safeCount(input.duplicates);
   const missingCoordinates = safeCount(input.missingCoordinates);
   const outOfBoundsCoordinates = safeCount(input.outOfBoundsCoordinates);
   const retries = safeCount(input.retries);
   const fallbackList = safeCount(input.fallbackList);
+  const skippedByReason = hasReasonBreakdown ? suppliedReasons : (filtered > 0 ? { filtered: filtered } : {});
+  const allKnownSkipped = Object.values(skippedByReason).reduce((sum, count) => sum + count, 0);
+  const reconciliationGap = read - persisted - allKnownSkipped;
   const issues: string[] = [];
 
   if (filtered > read) issues.push("filtered_exceeds_read");
   if (persisted > read) issues.push("persisted_exceeds_read");
-  if (duplicates > persisted) issues.push("duplicates_exceeds_persisted");
-  if (missingCoordinates > persisted) issues.push("missing_coordinates_exceeds_persisted");
-  if (outOfBoundsCoordinates > persisted) issues.push("out_of_bounds_exceeds_persisted");
+  if (duplicates > persisted && !hasReasonBreakdown) issues.push("duplicates_exceeds_persisted");
+  if (missingCoordinates > persisted && !hasReasonBreakdown) issues.push("missing_coordinates_exceeds_persisted");
+  if (outOfBoundsCoordinates > persisted && !hasReasonBreakdown) issues.push("out_of_bounds_exceeds_persisted");
+  if (reconciliationGap !== 0) issues.push("reconciliation_gap");
   if (input.degraded === true && persisted > 0) issues.push("degraded_run_persisted_events");
 
   return {
@@ -62,6 +82,9 @@ export function reconcileIngestionResult(input: ReconciliationInput): Reconcilia
     duplicates,
     missingCoordinates,
     outOfBoundsCoordinates,
+    skippedByReason,
+    allKnownSkipped,
+    reconciliationGap,
     degraded: input.degraded === true,
     retries,
     fallbackList,

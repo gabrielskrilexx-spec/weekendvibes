@@ -15,7 +15,7 @@ vi.mock("./instagram-pipeline", () => ({ runInstagramPipeline: mocks.runInstagra
 vi.mock("./ingestion-reports", () => ({ startIngestionRun: mocks.startIngestionRun, finishIngestionRun: mocks.finishIngestionRun }));
 vi.mock("./geocoding", () => ({ processPendingGeocoding: mocks.processPendingGeocoding }));
 
-import { AGENDA_ROUTINE_COMPOSITION, normalizeTrackedStepResultForTest, runFullAgendaRoutine, runInstagramAgendaStep, runPublicAgendaStep, runScheduledWithRetriesForTest, isRetryableAgendaErrorForTest } from "./agenda-routine";
+import { AGENDA_ROUTINE_COMPOSITION, buildAutomationSourceSummariesForTest, normalizeTrackedStepResultForTest, runFullAgendaRoutine, runInstagramAgendaStep, runPublicAgendaStep, runScheduledWithRetriesForTest, isRetryableAgendaErrorForTest } from "./agenda-routine";
 
 describe("agenda routine composition", () => {
   beforeEach(() => { vi.clearAllMocks(); vi.stubEnv("CRITICAL_ALERT_WEBHOOK_URL", ""); });
@@ -24,6 +24,17 @@ describe("agenda routine composition", () => {
   it("normaliza o resultado aninhado da fonte pública para persistência operacional", () => {
     expect(normalizeTrackedStepResultForTest({ archived: 0, result: { read: 60, filtered: 58, persisted: 1, duplicates: 1 } })).toEqual({ read: 60, filtered: 58, persisted: 1, duplicates: 1 });
     expect(normalizeTrackedStepResultForTest({ read: 3, filtered: 2, persisted: 1 })).toEqual({ read: 3, filtered: 2, persisted: 1 });
+  });
+
+  it("soma todos os motivos de rejeição no resumo da fonte", () => {
+    expect(buildAutomationSourceSummariesForTest([{
+      sourceKey: "public",
+      result: {
+        read: 109,
+        persisted: 0,
+        sourceReports: [{ sourceKey: "public", read: 109, persistable: 0, rejectionReasons: { past_event: 103, duplicate: 6 } }],
+      },
+    }])).toEqual([{ sourceKey: "public", read: 109, added: 0, updated: 0, ignored: 109, errors: [] }]);
   });
 
   it("compõe o fluxo completo manual com arquivamento único e as duas fontes", async () => {

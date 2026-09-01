@@ -2404,3 +2404,12 @@
 - [x] Isolar gráficos e tooltips com position, z-index e min-width adequados
 - [x] Adicionar overflow-x responsivo às tabelas e flex items com min-width: 0
 - [x] Validar visualmente e executar testes/build do Vite
+
+## Saneamento de ingestão e reconciliação — sessão atual
+- [x] Auditar worker/orquestrador, métricas, alertas e testes afetados
+- [x] Propagar routineName/source correto em alertas de persistência
+- [x] Mapear todos os motivos conhecidos de descarte na reconciliação
+- [x] Garantir a equação read = persisted + all_known_skipped
+- [x] Ignorar past_event legítimo no alerta de divergência
+- [x] Atualizar testes Vitest de reconciliação e alertas
+- [x] Validar backend, suíte Vitest, TypeScript e build

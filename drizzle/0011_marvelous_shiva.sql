@@ -1,1 +1,0 @@
-ALTER TABLE `operationalAlerts` MODIFY COLUMN `integration` enum('meta','public','ocr','openai','pipeline') NOT NULL;
