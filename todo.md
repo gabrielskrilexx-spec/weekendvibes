@@ -2418,3 +2418,9 @@
 - [x] Auditar o JSX aplicado em Home.tsx
 - [x] Garantir Weekend e ibes em branco, com W e V preservados na cor de destaque
 - [x] Validar preview e criar checkpoint
+
+## Consistência do logotipo no rodapé — sessão atual
+- [x] Auditar SiteFooter e tokens de tema
+- [x] Aplicar Weekend/ibes em branco no tema escuro e escuros no tema claro, preservando W/V em destaque
+- [x] Adicionar transição sutil de hover com foco acessível
+- [x] Validar temas, responsividade e publicar checkpoint
