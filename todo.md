@@ -2413,3 +2413,8 @@
 - [x] Ignorar past_event legítimo no alerta de divergência
 - [x] Atualizar testes Vitest de reconciliação e alertas
 - [x] Validar backend, suíte Vitest, TypeScript e build
+
+## Edição visual do logotipo — sessão atual
+- [x] Auditar o JSX aplicado em Home.tsx
+- [x] Garantir Weekend e ibes em branco, com W e V preservados na cor de destaque
+- [x] Validar preview e criar checkpoint
