@@ -2429,3 +2429,8 @@
 - [x] Auditar Home.tsx, ThemeContext e tokens de tema
 - [x] Corrigir contraste e acabamento visual da aba clara
 - [x] Validar tema claro, build e publicar checkpoint
+
+## Contraste adaptativo de TodayEvents e EventCard — sessão atual
+- [x] Auditar TodayEvents, EventCard e tokens de tema
+- [x] Aplicar variantes claras a textos, cards, badges e estados vazios
+- [x] Validar testes, build, preview e publicar checkpoint
