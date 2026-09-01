@@ -2424,3 +2424,8 @@
 - [x] Aplicar Weekend/ibes em branco no tema escuro e escuros no tema claro, preservando W/V em destaque
 - [x] Adicionar transição sutil de hover com foco acessível
 - [x] Validar temas, responsividade e publicar checkpoint
+
+## Ajuste manual do tema claro — sessão atual
+- [x] Auditar Home.tsx, ThemeContext e tokens de tema
+- [x] Corrigir contraste e acabamento visual da aba clara
+- [x] Validar tema claro, build e publicar checkpoint
