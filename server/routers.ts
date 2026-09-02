@@ -25,6 +25,7 @@ import {
   setEventReminder,
   listUserReminders,
   listIngestionSources,
+  createIngestionSource,
   updateIngestionSource,
   getPublicFeedRolloverHour,
   setPublicFeedRolloverHour,
@@ -960,6 +961,33 @@ export const appRouter = router({
     list: adminOnly.query(async () =>
       normalizeJsonForTransport(await listIngestionSources())
     ),
+    create: adminOnly
+      .input(
+        z
+          .object({
+            name: z.string().trim().min(2).max(180),
+            kind: z.enum(["instagram", "public"]),
+            handle: z.string().trim().max(180).optional(),
+            url: z.string().trim().url().refine(value => /^https:\/\//i.test(value), "A fonte deve usar HTTPS").optional(),
+          })
+          .strict()
+          .refine(input => Boolean(input.handle?.replace(/^@+/, "").trim() || input.url), {
+            message: "Informe um handle ou uma URL válida",
+            path: ["handle"],
+          })
+      )
+      .output(z.object({ ok: z.literal(true), id: z.number().int().positive(), sourceKey: z.string().min(1).max(120) }).strict())
+      .mutation(async ({ input }) => {
+        const normalizedHandle = input.handle?.trim().replace(/^@+/, "").replace(/\/$/, "") || undefined;
+        const url = input.url ?? (normalizedHandle ? `https://www.instagram.com/${normalizedHandle}/` : undefined);
+        if (!url) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe um handle ou uma URL válida" });
+        try {
+          const created = await createIngestionSource({ name: input.name, kind: input.kind, handle: normalizedHandle, url });
+          return { ok: true as const, id: created.id, sourceKey: created.sourceKey };
+        } catch (error) {
+          throwSanitizedAdminMutationError(error, "Não foi possível cadastrar a fonte. Verifique se ela já existe.");
+        }
+      }),
     update: adminOnly
       .input(
         z.object({

@@ -3,7 +3,7 @@ import { act, create } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 import AdminSourcesPanel from "./AdminSourcesPanel";
 
-const { refetch, invalidate, mutate, mockSettingsMutate, fetchMock } = vi.hoisted(() => ({ refetch: vi.fn(), invalidate: vi.fn(), mutate: vi.fn(), mockSettingsMutate: vi.fn(), fetchMock: vi.fn() }));
+const { refetch, invalidate, mutate, createMutate, mockSettingsMutate, fetchMock } = vi.hoisted(() => ({ refetch: vi.fn(), invalidate: vi.fn(), mutate: vi.fn(), createMutate: vi.fn(), mockSettingsMutate: vi.fn(), fetchMock: vi.fn() }));
 const source = { id: 1, sourceKey: "instagram:mobydicksantos", name: "Moby House", kind: "instagram", handle: "mobydicksantos", url: "https://www.instagram.com/mobydicksantos/", isEnabled: 1, priority: 10, frequencyMinutes: 10080, p95LatencyThresholdMs: 3000, lastSuccessAt: new Date("2026-08-15T12:00:00Z"), lastStatus: "succeeded" };
 vi.stubGlobal("fetch", fetchMock);
 
@@ -15,6 +15,7 @@ vi.mock("@/lib/trpc", () => ({
     },
     ingestionSources: {
       list: { useQuery: () => ({ data: [source], isLoading: false, isError: false, isFetching: false, refetch }) },
+      create: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { createMutate(input); options?.onSuccess?.(); } }) },
       update: { useMutation: () => ({ isPending: false, mutate }) },
     },
     adminRoutine: {
@@ -60,6 +61,22 @@ describe("AdminSourcesPanel", () => {
     expect(button).toBeDefined();
     await act(async () => { await button?.props.onClick(); });
     expect(fetchMock).toHaveBeenCalledWith("/api/v2/admin/sync-stories", expect.objectContaining({ method: "POST", credentials: "include", body: JSON.stringify({ sourceKey: "instagram:mobydicksantos" }) }));
+  });
+
+  it("cadastra uma nova fonte pelo formulário", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const addButton = tree!.root.findByProps({ children: "Nova Fonte" });
+    await act(async () => { addButton.props.onClick(); });
+    const nameInput = tree!.root.findByProps({ placeholder: "Ex.: Bar da Praia" });
+    const handleInput = tree!.root.findByProps({ placeholder: "@nomedobar (opcional se usar URL)" });
+    await act(async () => {
+      nameInput.props.onChange({ target: { value: "Bar Novo" } });
+      handleInput.props.onChange({ target: { value: "@bar_novo" } });
+    });
+    const form = tree!.root.findByType("form");
+    await act(async () => { form.props.onSubmit({ preventDefault: vi.fn() }); });
+    expect(createMutate).toHaveBeenCalledWith({ name: "Bar Novo", kind: "instagram", handle: "bar_novo", url: undefined });
   });
 
   it("permite pausar uma fonte", async () => {

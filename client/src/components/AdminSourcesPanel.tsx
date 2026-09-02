@@ -23,6 +23,23 @@ export default function AdminSourcesPanel() {
   const [pendingSourceId, setPendingSourceId] = useState<number | null>(null);
   const [pendingStorySourceId, setPendingStorySourceId] = useState<number | null>(null);
   const [isSyncingStories, setIsSyncingStories] = useState(false);
+  const [newSourceOpen, setNewSourceOpen] = useState(false);
+  const [newSourceName, setNewSourceName] = useState("");
+  const [newSourceKind, setNewSourceKind] = useState<"instagram" | "public">("instagram");
+  const [newSourceHandle, setNewSourceHandle] = useState("");
+  const [newSourceUrl, setNewSourceUrl] = useState("");
+  const createSource = trpc.ingestionSources.create.useMutation({
+    onSuccess: async () => {
+      await utils.ingestionSources.list.invalidate();
+      setNewSourceOpen(false);
+      setNewSourceName("");
+      setNewSourceKind("instagram");
+      setNewSourceHandle("");
+      setNewSourceUrl("");
+      sonnerToast.success("Fonte cadastrada", { description: "A nova fonte foi adicionada à lista de monitoramento." });
+    },
+    onError: error => sonnerToast.error("Não foi possível cadastrar a fonte", { description: friendlyAdminErrorMessage(error, "Verifique os dados e tente novamente.") }),
+  });
   const update = trpc.ingestionSources.update.useMutation({
     onSuccess: async () => {
       await utils.ingestionSources.list.invalidate();
@@ -58,6 +75,18 @@ export default function AdminSourcesPanel() {
     setPendingSourceId(sourceId);
     update.mutate({ id: sourceId, ...input });
   };
+  const submitNewSource = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (createSource.isPending) return;
+    const name = newSourceName.trim();
+    const handle = newSourceHandle.trim().replace(/^@+/, "");
+    const url = newSourceUrl.trim();
+    if (name.length < 2 || (!handle && !url)) {
+      sonnerToast.error("Revise os dados da fonte", { description: "Informe o nome e um handle ou URL válida." });
+      return;
+    }
+    createSource.mutate({ name, kind: newSourceKind, handle: handle || undefined, url: url || undefined });
+  };
 
   return (
     <section className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-5 sm:p-7" aria-labelledby="sources-heading">
@@ -67,8 +96,23 @@ export default function AdminSourcesPanel() {
           <h2 id="sources-heading" className="mt-2 text-xl font-black">Fontes monitoradas</h2>
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-zinc-400">Ative ou pause perfis, ajuste a prioridade e defina a cadência desejada. A rotina existente continua sendo a responsável pelo disparo, evitando schedules duplicados.</p>
         </div>
-        <button type="button" onClick={() => void sources.refetch()} disabled={sources.isFetching} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-zinc-300 hover:border-orange-300/50 hover:text-orange-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:cursor-wait disabled:opacity-50" aria-label="Atualizar fontes" aria-busy={sources.isFetching}><RefreshCw size={14} className={sources.isFetching ? "animate-spin" : ""} /> {sources.isFetching ? "Atualizando..." : "Atualizar"}</button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => void sources.refetch()} disabled={sources.isFetching} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-zinc-300 hover:border-orange-300/50 hover:text-orange-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:cursor-wait disabled:opacity-50" aria-label="Atualizar fontes" aria-busy={sources.isFetching}><RefreshCw size={14} className={sources.isFetching ? "animate-spin" : ""} /> {sources.isFetching ? "Atualizando..." : "Atualizar"}</button>
+          <button type="button" onClick={() => setNewSourceOpen(true)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-orange-300 px-3 py-2 text-xs font-black text-zinc-950 hover:bg-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">Nova Fonte</button>
+        </div>
       </div>
+      {newSourceOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 p-4" role="dialog" aria-modal="true" aria-labelledby="new-source-title">
+        <form onSubmit={submitNewSource} className="w-full max-w-lg rounded-2xl border border-white/10 bg-zinc-900 p-5 shadow-2xl sm:p-6">
+          <div className="flex items-start justify-between gap-4"><div><h3 id="new-source-title" className="text-lg font-black text-white">Nova Fonte</h3><p className="mt-1 text-sm text-zinc-400">Cadastre um local para monitoramento automático.</p></div><button type="button" onClick={() => setNewSourceOpen(false)} className="rounded-lg px-2 py-1 text-zinc-400 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300" aria-label="Fechar cadastro de fonte">×</button></div>
+          <div className="mt-5 grid gap-4">
+            <label className="grid gap-1 text-xs font-black uppercase tracking-wider text-zinc-400">Nome do local<input value={newSourceName} onChange={event => setNewSourceName(event.target.value)} autoFocus required minLength={2} maxLength={180} placeholder="Ex.: Bar da Praia" className="min-h-11 rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm font-bold normal-case tracking-normal text-white outline-none focus:border-orange-300/60" /></label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-wider text-zinc-400">Plataforma/Tipo<select value={newSourceKind} onChange={event => setNewSourceKind(event.target.value as "instagram" | "public")} className="min-h-11 rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm font-bold normal-case tracking-normal text-white outline-none focus:border-orange-300/60"><option value="instagram">Instagram</option><option value="public">Fonte pública</option></select></label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-wider text-zinc-400">Handle<input value={newSourceHandle} onChange={event => setNewSourceHandle(event.target.value)} maxLength={180} placeholder="@nomedobar (opcional se usar URL)" className="min-h-11 rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm font-bold normal-case tracking-normal text-white outline-none focus:border-orange-300/60" /></label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-wider text-zinc-400">URL<input value={newSourceUrl} onChange={event => setNewSourceUrl(event.target.value)} type="url" placeholder="https://... (opcional se usar handle)" className="min-h-11 rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm font-bold normal-case tracking-normal text-white outline-none focus:border-orange-300/60" /></label>
+          </div>
+          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setNewSourceOpen(false)} disabled={createSource.isPending} className="min-h-11 rounded-xl border border-white/10 px-4 text-xs font-black text-zinc-300 hover:border-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:opacity-50">Cancelar</button><button type="submit" disabled={createSource.isPending} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-orange-300 px-4 text-xs font-black text-zinc-950 hover:bg-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:cursor-wait disabled:opacity-50">{createSource.isPending && <Loader2 size={14} className="animate-spin" />} {createSource.isPending ? "Salvando..." : "Salvar fonte"}</button></div>
+        </form>
+      </div>}
       {sources.isLoading && <p className="mt-5 rounded-2xl border border-white/10 p-5 text-sm text-zinc-400">Carregando fontes...</p>}
       {sources.isError && <p role="alert" className="mt-5 rounded-2xl border border-rose-300/20 bg-rose-400/10 p-5 text-sm text-rose-100">Não foi possível carregar as fontes. Tente atualizar novamente.</p>}
       <div className="mt-5 rounded-2xl border border-violet-300/20 bg-violet-300/5 p-4" data-testid="sandbox-mock-settings"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-black text-violet-100">Permitir Mocks no Sandbox</p><p className="mt-1 text-xs leading-relaxed text-zinc-400">Quando ativo, falhas de rede no preview podem usar eventos simulados marcados. Em produção, esta opção permanece sempre desativada.</p></div><button type="button" role="switch" aria-checked={mockSettings.data?.allowSandboxMocks === true} aria-busy={mockSettingsUpdate.isPending} disabled={mockSettings.isLoading || mockSettingsUpdate.isPending || mockSettings.data?.environment === "production"} onClick={() => mockSettingsUpdate.mutate({ allowSandboxMocks: !(mockSettings.data?.allowSandboxMocks === true) })} className={`inline-flex min-h-11 items-center justify-center rounded-xl border px-4 py-2 text-xs font-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200 disabled:cursor-wait disabled:opacity-50 ${mockSettings.data?.allowSandboxMocks ? "border-violet-200/50 bg-violet-300 text-zinc-950" : "border-white/10 text-zinc-300"}`}>{mockSettingsUpdate.isPending ? <><Loader2 size={14} className="mr-2 animate-spin" /> Salvando...</> : mockSettings.data?.allowSandboxMocks ? "Ativado" : "Desativado"}</button></div></div>

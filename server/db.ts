@@ -248,6 +248,28 @@ export async function listEnabledInstagramSources(dbOverride?: Awaited<ReturnTyp
   return rows.filter(source => source.kind === "instagram" && source.isEnabled === 1);
 }
 
+export async function createIngestionSource(input: { name: string; kind: "instagram" | "public"; handle?: string | null; url: string }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const normalizedHandle = input.handle?.trim().replace(/^@+/, "").replace(/\/$/, "") || null;
+  const seed = normalizedHandle || input.url.replace(/^https?:\/\//i, "").split(/[/?#]/)[0] || input.name;
+  const sourceKey = `${input.kind}:${seed.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 100)}`;
+  await db.insert(ingestionSources).values({
+    sourceKey,
+    name: input.name.trim(),
+    kind: input.kind,
+    handle: normalizedHandle,
+    url: input.url.trim(),
+    isEnabled: 1,
+    priority: 50,
+    frequencyMinutes: 10080,
+    p95LatencyThresholdMs: 3000,
+  });
+  const [created] = await db.select({ id: ingestionSources.id, sourceKey: ingestionSources.sourceKey }).from(ingestionSources).where(eq(ingestionSources.sourceKey, sourceKey)).limit(1);
+  if (!created) throw new Error("Source creation failed");
+  return { id: created.id, sourceKey: created.sourceKey };
+}
+
 export async function updateIngestionSource(id: number, input: { isEnabled: boolean; priority: number; frequencyMinutes: number; p95LatencyThresholdMs?: number }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) throw new Error("Database unavailable");

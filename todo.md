@@ -2470,3 +2470,10 @@
 - [x] Criar README.md completo na raiz do projeto
 - [x] Exibir thumbnailUrl no modal de auditoria OCR quando disponível
 - [x] Rodar Vitest e build do frontend, confirmar ausência de regressões e publicar checkpoint
+
+## Cadastro de novas fontes — sessão atual
+- [x] Auditar seção Governança da Ingestão, schema e procedure de fontes
+- [x] Adicionar botão e formulário/modal de Nova Fonte
+- [x] Persistir nova fonte pela rota/procedure existente ou nova
+- [x] Atualizar lista e exibir toast após sucesso
+- [x] Validar fluxo, suíte Vitest, TypeScript e build; publicar checkpoint
