@@ -2466,7 +2466,7 @@
 - [x] Validar suíte Vitest existente (450 testes), TypeScript, build e preview
 
 ## README e thumbnail no modal OCR — sessão atual
-- [ ] Auditar README existente e modal de auditoria OCR
-- [ ] Criar README.md completo na raiz do projeto
-- [ ] Exibir thumbnailUrl no modal de auditoria OCR quando disponível
-- [ ] Rodar Vitest e build do frontend, confirmar ausência de regressões e publicar checkpoint
+- [x] Auditar README existente e modal de auditoria OCR
+- [x] Criar README.md completo na raiz do projeto
+- [x] Exibir thumbnailUrl no modal de auditoria OCR quando disponível
+- [x] Rodar Vitest e build do frontend, confirmar ausência de regressões e publicar checkpoint

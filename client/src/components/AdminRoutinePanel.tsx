@@ -113,6 +113,7 @@ function readCronRefreshPreference() {
 type OcrAuditItem = {
   mediaOrigin: "post" | "story" | "highlight";
   imageUrl: string;
+  thumbnailUrl?: string;
   sourceUrl: string;
   highlightTitle: string | null;
   ocrText: string;
@@ -1072,7 +1073,7 @@ export default function AdminRoutinePanel() {
             {(selectedOcrRun?.ocrAudit ?? []).map((item, index) => (
               <article key={`${selectedOcrRun?.id}-ocr-${index}`} className="grid gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:grid-cols-[minmax(220px,0.9fr)_minmax(0,1.4fr)]">
                 <div>
-                  {item.imageUrl ? <img src={item.imageUrl} alt={`Arte da origem ${item.mediaOrigin}`} loading="lazy" className="h-32 w-full rounded-xl border border-white/10 object-cover" /> : <div className="grid h-32 place-items-center rounded-xl border border-dashed border-white/10 text-xs text-zinc-500">Sem imagem</div>}
+                  {(item.imageUrl || item.thumbnailUrl) ? <img src={item.imageUrl || item.thumbnailUrl} alt={`Arte da origem ${item.mediaOrigin}`} loading="lazy" className="h-32 w-full rounded-xl border border-white/10 object-cover" /> : <div className="grid h-32 place-items-center rounded-xl border border-dashed border-white/10 text-xs text-zinc-500">Sem imagem</div>}
                   <p className="mt-2 text-[11px] font-black uppercase tracking-wide text-fuchsia-200">{item.mediaOrigin === "highlight" ? "Destaque" : item.mediaOrigin === "story" ? "Story" : "Post"}</p>
                 </div>
                 <div className="min-w-0 space-y-3 text-xs">
