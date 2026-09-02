@@ -44,6 +44,7 @@ import {
   reprocessIngestionSource,
   sanitizeReprocessErrorForTest,
   updateIngestionRunOcrText,
+  reprocessIngestionRunOcr,
   approveFilteredInstagramStory,
   listFilteredStoriesPage,
   listAllFilteredStories,
@@ -693,6 +694,16 @@ export const appRouter = router({
           return await updateIngestionRunOcrText({ ...input, changedByOpenId: String(ctx.user.openId ?? ctx.user.name ?? "admin") });
         } catch (error) {
           return throwSanitizedAdminMutationError(error, "Não foi possível salvar a revisão do OCR.");
+        }
+      }),
+    reprocessOcr: adminOnly
+      .input(z.object({ runId: z.number().int().positive(), entryIndex: z.number().int().nonnegative().max(24) }).strict())
+      .output(ocrEditOutput)
+      .mutation(async ({ input, ctx }) => {
+        try {
+          return await reprocessIngestionRunOcr({ ...input, changedByOpenId: String(ctx.user.openId ?? ctx.user.name ?? "admin") });
+        } catch (error) {
+          return throwSanitizedAdminMutationError(error, "Não foi possível reprocessar o OCR.");
         }
       }),
     approveFilteredStory: adminOnly

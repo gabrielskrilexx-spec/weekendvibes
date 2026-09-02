@@ -2457,3 +2457,16 @@
 - [x] Usar thumbnailUrl como fallback visual para Stories em vídeo
 - [x] Garantir injeção da thumbnail no pipeline Vision
 - [x] Atualizar testes e validar TypeScript, suíte e build backend
+
+## Reprocessamento OCR no detalhe — sessão atual
+- [x] Auditar modal, contratos OCR e auditoria persistente
+- [x] Implementar mutation tRPC de reprocessamento com retorno estrito
+- [x] Persistir o novo resultado e registrar auditoria
+- [x] Adicionar botão, loading, feedback e atualização no modal
+- [x] Validar suíte Vitest existente (450 testes), TypeScript, build e preview
+
+## README e thumbnail no modal OCR — sessão atual
+- [ ] Auditar README existente e modal de auditoria OCR
+- [ ] Criar README.md completo na raiz do projeto
+- [ ] Exibir thumbnailUrl no modal de auditoria OCR quando disponível
+- [ ] Rodar Vitest e build do frontend, confirmar ausência de regressões e publicar checkpoint

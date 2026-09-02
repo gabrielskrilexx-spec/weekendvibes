@@ -294,6 +294,15 @@ export default function AdminRoutinePanel() {
       sonnerToast.error("Não foi possível salvar o OCR", { description: friendlyAdminErrorMessage(error, "Revise o texto e tente novamente.") });
     },
   });
+  const ocrReprocessProcedure = (trpc.adminRoutine as unknown as { reprocessOcr?: { useMutation: (options: { onSuccess?: (result: { entryIndex: number; ocrText: string }) => void; onError?: (error: Error) => void }) => { isPending: boolean; mutate: (input: { runId: number; entryIndex: number }) => void } } }).reprocessOcr;
+  const ocrReprocessMutation = ocrReprocessProcedure ? ocrReprocessProcedure.useMutation({
+    onSuccess: result => {
+      setSelectedOcrRun(current => current ? { ...current, ocrAudit: current.ocrAudit?.map((item, index) => index === result.entryIndex ? { ...item, ocrText: result.ocrText } : item) } : current);
+      sonnerToast.success("OCR reprocessado", { description: result.ocrText ? "Um novo texto foi extraído da mídia." : "O processamento terminou sem texto legível; revise a imagem ou edite manualmente." });
+      void status.refetch();
+    },
+    onError: error => sonnerToast.error("Não foi possível reprocessar o OCR", { description: friendlyAdminErrorMessage(error, "Tente novamente em instantes.") }),
+  }) : { isPending: false, mutate: (_input: { runId: number; entryIndex: number }) => undefined };
   const approveFilteredStoryMutation = trpc.adminRoutine.approveFilteredStory.useMutation({
     onSuccess: result => {
       setFeedback({ type: "success", text: `Story ${result.storyId} aprovado para revisão.` });
@@ -310,6 +319,10 @@ export default function AdminRoutinePanel() {
   const saveOcrEdit = () => {
     if (!selectedOcrRun || editingOcrIndex === null || ocrEditMutation.isPending) return;
     ocrEditMutation.mutate(buildOcrEditInput(selectedOcrRun.id, editingOcrIndex, ocrDraft));
+  };
+  const reprocessOcr = (entryIndex: number) => {
+    if (!selectedOcrRun || ocrReprocessMutation.isPending) return;
+    ocrReprocessMutation.mutate({ runId: selectedOcrRun.id, entryIndex });
   };
   const rolloverHourQuery = trpc.adminRoutine.rolloverHour.useQuery();
   const rolloverMutation = trpc.adminRoutine.setRolloverHour.useMutation({
@@ -1066,7 +1079,7 @@ export default function AdminRoutinePanel() {
                   <div>
                     <div className="flex items-center justify-between gap-3">
                       <p className="font-black uppercase tracking-wide text-zinc-500">Texto OCR revisável</p>
-                      {editingOcrIndex === index ? <span className="text-[11px] text-fuchsia-200">Editando</span> : <button type="button" aria-label={`Editar texto OCR ${index + 1}`} className="text-[11px] font-bold text-fuchsia-200 underline underline-offset-4" onClick={() => startOcrEditing(index, item)}>Editar texto</button>}
+                      <div className="flex flex-wrap items-center justify-end gap-3">{editingOcrIndex === index && <span className="text-[11px] text-fuchsia-200">Editando</span>}<button type="button" aria-label={`Reprocessar OCR ${index + 1}`} className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-200 underline underline-offset-4 disabled:cursor-wait disabled:opacity-50" onClick={() => reprocessOcr(index)} disabled={!item.imageUrl || ocrReprocessMutation.isPending} aria-busy={ocrReprocessMutation.isPending}>{ocrReprocessMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : null}{ocrReprocessMutation.isPending ? "Reprocessando…" : "Reprocessar OCR"}</button>{editingOcrIndex !== index && <button type="button" aria-label={`Editar texto OCR ${index + 1}`} className="text-[11px] font-bold text-fuchsia-200 underline underline-offset-4" onClick={() => startOcrEditing(index, item)}>Editar texto</button>}</div>
                     </div>
                     {editingOcrIndex === index ? (
                       <div className="mt-1 space-y-2">

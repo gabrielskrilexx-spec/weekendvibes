@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { isGracefullyDegradedMetaFailure } from "./instagram-pipeline";
+import { extractOcrText, isGracefullyDegradedMetaFailure } from "./instagram-pipeline";
 import {
   ingestionRuns,
   ingestionStoryAuditLogs,
@@ -845,6 +845,32 @@ export async function updateIngestionRunOcrText(input: { runId: number; entryInd
   const nextDetails = { ...root, instagram: { ...instagram, ocrAudit: nextAudit } };
   await db.update(ingestionRuns).set({ details: JSON.stringify(nextDetails).slice(0, 20000) }).where(eq(ingestionRuns.id, input.runId));
   await db.insert(ingestionStoryAuditLogs).values({ storyId, runId: input.runId, action: "ocr_edit", previousText, nextText, status: null, actorOpenId: input.changedByOpenId.slice(0, 160) });
+  return { success: true as const, runId: input.runId, entryIndex: input.entryIndex, ocrText: nextText };
+}
+
+export async function reprocessIngestionRunOcr(input: { runId: number; entryIndex: number; changedByOpenId: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+  const [row] = await db.select({ details: ingestionRuns.details }).from(ingestionRuns).where(eq(ingestionRuns.id, input.runId)).limit(1);
+  if (!row) throw new Error("Execução de ingestão não encontrada.");
+  let details: unknown = {};
+  try { details = row.details ? JSON.parse(row.details) : {}; } catch { throw new Error("Detalhes da execução estão inválidos."); }
+  if (!details || typeof details !== "object" || Array.isArray(details)) throw new Error("Detalhes da execução estão inválidos.");
+  const root = details as Record<string, unknown>;
+  const instagram = root.instagram && typeof root.instagram === "object" && !Array.isArray(root.instagram) ? root.instagram as Record<string, unknown> : null;
+  const audit = instagram && Array.isArray(instagram.ocrAudit) ? instagram.ocrAudit : null;
+  const current = audit?.[input.entryIndex];
+  if (!instagram || !audit || !current || typeof current !== "object" || Array.isArray(current)) throw new Error("Entrada OCR não encontrada.");
+  const currentRecord = current as Record<string, unknown>;
+  const imageUrl = String(currentRecord.imageUrl ?? currentRecord.thumbnailUrl ?? "").trim();
+  if (!imageUrl.startsWith("https://")) throw new Error("A entrada OCR não possui uma imagem ou thumbnail válida.");
+  const previousText = String(currentRecord.ocrText ?? "").slice(0, 5000);
+  const nextText = (await extractOcrText(imageUrl)).trim().slice(0, 5000);
+  const nextAudit = audit.slice();
+  nextAudit[input.entryIndex] = { ...currentRecord, ocrText: nextText };
+  await db.update(ingestionRuns).set({ details: JSON.stringify({ ...root, instagram: { ...instagram, ocrAudit: nextAudit } }).slice(0, 20000) }).where(eq(ingestionRuns.id, input.runId));
+  const storyId = String(currentRecord.id ?? `ocr-${input.runId}-${input.entryIndex}`).slice(0, 500);
+  await db.insert(ingestionStoryAuditLogs).values({ storyId, runId: input.runId, action: "ocr_edit", previousText, nextText, status: "ocr_reprocessed", actorOpenId: input.changedByOpenId.slice(0, 160) });
   return { success: true as const, runId: input.runId, entryIndex: input.entryIndex, ocrText: nextText };
 }
 
