@@ -110,6 +110,9 @@ export type InstagramPost = {
   displayUrl?: string;
   imageUrl?: string;
   media_url?: string;
+  thumbnailUrl?: string;
+  thumbnail_url?: string;
+  isVideo?: boolean;
   ownerUsername?: string;
   username?: string;
   sourceKey?: string;
@@ -175,7 +178,9 @@ export function normalizeInstagramMediaItem(item: Record<string, unknown>, fallb
   const mediaType = String(rawType).toLowerCase();
   const normalizedType: InstagramMediaOrigin = mediaType.includes("highlight") ? "highlight" : mediaType.includes("story") ? "story" : "post";
   const isVideo = mediaType.includes("video") || mediaType.includes("reel") || item.isVideo === true;
-  const imageUrl = String(item.displayUrl ?? item.imageUrl ?? (isVideo ? item.thumbnailUrl ?? item.thumbnail_url : item.mediaUrl ?? item.media_url) ?? item.media_url ?? item.thumbnailUrl ?? item.thumbnail_url ?? item.url ?? "");
+  const mediaUrl = String(item.mediaUrl ?? item.media_url ?? item.displayUrl ?? item.imageUrl ?? item.url ?? "");
+  const thumbnailUrl = String(item.thumbnailUrl ?? item.thumbnail_url ?? "");
+  const imageUrl = isVideo ? (thumbnailUrl || mediaUrl) : mediaUrl;
   const owner = item.owner && typeof item.owner === "object" ? item.owner as Record<string, unknown> : undefined;
   const highlight = item.highlight && typeof item.highlight === "object" ? item.highlight as Record<string, unknown> : undefined;
   const username = String(item.ownerUsername ?? item.username ?? owner?.username ?? fallbackUsername);
@@ -195,6 +200,9 @@ export function normalizeInstagramMediaItem(item: Record<string, unknown>, fallb
     expiresAt: typeof item.expiresAt === "number" || typeof item.expiresAt === "string" ? item.expiresAt : undefined,
     displayUrl: imageUrl || undefined,
     imageUrl: imageUrl || undefined,
+    thumbnailUrl: thumbnailUrl || undefined,
+    thumbnail_url: thumbnailUrl || undefined,
+    isVideo,
     ownerUsername: username || undefined,
     username: username || undefined,
     sourceKey: item.sourceKey ? String(item.sourceKey) : undefined,
@@ -465,6 +473,12 @@ export function shouldExtractInstagramMediaOcr(post: InstagramPost, caption: str
   return Boolean(imageUrl) && (post.mediaType === "story" || post.mediaType === "highlight" || !caption.trim());
 }
 
+export function resolveInstagramVisualUrl(post: InstagramPost) {
+  const thumbnailUrl = String(post.thumbnailUrl ?? post.thumbnail_url ?? "").trim();
+  if (post.isVideo && (post.mediaType === "story" || post.mediaType === "highlight") && thumbnailUrl.startsWith("https://")) return thumbnailUrl;
+  return String(post.displayUrl ?? post.imageUrl ?? post.media_url ?? "").trim();
+}
+
 export async function extractOcrText(imageUrl: string) {
   if (!imageUrl) return "";
   let imagePayload = "";
@@ -516,7 +530,7 @@ function metaPostsFromPayload(payload: unknown, target: (typeof INSTAGRAM_TARGET
   }
 }
 
-type InstagramTransportFailure = { username: string; status: number; kind: "proxy_or_session" | "circuit_open" | "quota"; message: string };
+type InstagramTransportFailure = { username: string; status: number; kind: "proxy_or_session" | "circuit_open" | "quota" | "actor_timeout"; message: string };
 type InstagramProviderIssue = { code: "APIFY_QUOTA_EXCEEDED"; status: 403; message: string };
 
 function logInstagramResponseDiagnostics(input: { username: string; status: number; contentType: string | null; body: string; parsed: boolean; mediaCount: number; maskedHtml: boolean }) {
@@ -593,12 +607,25 @@ async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId:
   return { posts, transportFailures };
 }
 
+export const DEFAULT_APIFY_SYNC_TIMEOUT_MS = 20_000;
+
+export function getApifySyncTimeoutMs() {
+  const configured = Number.parseInt(process.env.APIFY_SYNC_TIMEOUT_MS ?? "", 10);
+  if (!Number.isFinite(configured)) return DEFAULT_APIFY_SYNC_TIMEOUT_MS;
+  return Math.min(30_000, Math.max(15_000, configured));
+}
+
+function isAbortTimeout(error: unknown) {
+  return error instanceof Error && (error.name === "AbortError" || /aborted|timeout|timed out|tempo limite/i.test(error.message));
+}
+
 export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean } = {}) {
   const token = process.env.APIFY_API_TOKEN?.trim();
   if (!token) return { posts: [] as InstagramPost[], transportFailures: [] as InstagramTransportFailure[] };
   const payload = buildInstagramScraperPayload(INSTAGRAM_TARGETS);
   try {
-    const response = await fetchExternal(`https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "WeekendVibes/1.0" }, body: JSON.stringify(payload) }, 8_000, true);
+    const timeoutMs = getApifySyncTimeoutMs();
+    const response = await fetchExternal(`https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "WeekendVibes/1.0" }, body: JSON.stringify(payload) }, timeoutMs, true);
     const body = await readExternalBody(response);
     if (!response.ok) {
       let providerMessage = "";
@@ -610,10 +637,13 @@ export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean
       }
       const detail = normalizeDiagnosticText(providerMessage).slice(0, 180);
       const quotaExceeded = response.status === 403 && /monthly usage hard limit|quota|usage limit|limit exceeded/i.test(detail);
+      const actorTimedOut = [408, 504].includes(response.status) || /timeout|timed out|tempo limite/i.test(detail);
       const message = quotaExceeded
         ? "Cota mensal do Apify excedida; renove a quota ou injete um token com limite disponível."
-        : `Apify respondeu HTTP ${response.status}${detail ? `: ${detail}` : "."}`;
-      return { posts: [] as InstagramPost[], providerIssue: quotaExceeded ? { code: "APIFY_QUOTA_EXCEEDED" as const, status: 403 as const, message } : undefined, transportFailures: [{ username: "apify-instagram", status: response.status, kind: quotaExceeded ? "quota" as const : "proxy_or_session" as const, message }] };
+        : actorTimedOut
+          ? `Timeout de conexão com o coletor Apify (HTTP ${response.status}) após ${getApifySyncTimeoutMs()} ms.`
+          : `Apify respondeu HTTP ${response.status}${detail ? `: ${detail}` : "."}`;
+      return { posts: [] as InstagramPost[], providerIssue: quotaExceeded ? { code: "APIFY_QUOTA_EXCEEDED" as const, status: 403 as const, message } : undefined, transportFailures: [{ username: "apify-collector", status: response.status, kind: quotaExceeded ? "quota" as const : actorTimedOut ? "actor_timeout" as const : "proxy_or_session" as const, message }] };
     }
     const parsed = JSON.parse(body) as unknown;
     const configuredSources = (await listEnabledInstagramSources()) ?? [];
@@ -633,8 +663,11 @@ export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean
     }
     return { posts, transportFailures: [] as InstagramTransportFailure[] };
   } catch (error) {
-    const message = normalizeDiagnosticText(error instanceof Error ? error.message : error);
-    return { posts: [] as InstagramPost[], transportFailures: [{ username: "apify-instagram", status: 0, kind: "proxy_or_session" as const, message: message || "Falha ao consultar o scraper de Stories." }] };
+    const timedOut = isAbortTimeout(error);
+    const message = timedOut
+      ? `Timeout de conexão com o coletor Apify após ${getApifySyncTimeoutMs()} ms.`
+      : normalizeDiagnosticText(error instanceof Error ? error.message : error) || "Falha ao consultar o scraper de Stories.";
+    return { posts: [] as InstagramPost[], transportFailures: [{ username: "apify-collector", status: 0, kind: timedOut ? "actor_timeout" as const : "proxy_or_session" as const, message }] };
   }
 }
 
@@ -749,7 +782,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     if (!forceFocusedRun && !isWithinInstagramLookback(post)) continue;
     const caption = String(post.caption ?? post.text ?? "");
     const postUsername = post.ownerUsername ?? post.username;
-    const imageUrl = String(post.displayUrl ?? post.imageUrl ?? post.media_url ?? "");
+    const imageUrl = resolveInstagramVisualUrl(post);
     const isVisualMedia = post.mediaType === "story" || post.mediaType === "highlight";
     let ocrText = post.ocrText?.trim() ?? "";
     if (shouldExtractInstagramMediaOcr(post, caption, imageUrl) && !ocrText) {

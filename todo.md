@@ -2434,3 +2434,26 @@
 - [x] Auditar TodayEvents, EventCard e tokens de tema
 - [x] Aplicar variantes claras a textos, cards, badges e estados vazios
 - [x] Validar testes, build, preview e publicar checkpoint
+
+## Investigação de ingestão parcial do Instagram — sessão atual
+- [x] Revisar orientações operacionais e o estado restaurado
+- [x] Inspecionar logs, runs e registros recentes da ingestão
+- [x] Identificar fonte, rejectionReason e erro exato do Apify/backend
+- [x] Correlacionar a falha com a configuração da fonte
+- [x] Entregar diagnóstico e recomendação sem alterar a interface
+
+## Resiliência do Apify e fallback Vision — sessão atual
+- [x] Auditar timeout, classificação de erros, normalização e testes atuais
+- [x] Parametrizar timeout seguro do dispatch do Apify
+- [x] Diferenciar actor_timeout de falha individual de perfil
+- [x] Usar thumbnailUrl como fallback visual para Stories em vídeo
+- [x] Garantir injeção da thumbnail no pipeline Vision
+- [x] Atualizar testes e validar TypeScript, suíte e build backend
+
+## Resiliência do Apify e fallback Vision — sessão atual
+- [x] Auditar timeout, classificação de erros, normalização e testes atuais
+- [x] Parametrizar timeout seguro do dispatch do Apify
+- [x] Diferenciar actor_timeout de falha individual de perfil
+- [x] Usar thumbnailUrl como fallback visual para Stories em vídeo
+- [x] Garantir injeção da thumbnail no pipeline Vision
+- [x] Atualizar testes e validar TypeScript, suíte e build backend

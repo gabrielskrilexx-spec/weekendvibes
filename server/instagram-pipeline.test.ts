@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import { eq, or } from "drizzle-orm";
 import { ingestionSources } from "../drizzle/schema";
 import { getDb } from "./db";
-import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr } from "./instagram-pipeline";
+import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl } from "./instagram-pipeline";
 
 describe("Instagram weekend pipeline", () => {
   beforeEach(async () => {
@@ -154,6 +154,17 @@ describe("Instagram weekend pipeline", () => {
     expect(posts).toEqual([expect.objectContaining({ id: "story-1", mediaType: "story", ownerUsername: "meulugar.bar", displayUrl: "https://cdn.example.com/story.jpg" })]);
   });
 
+  it("clamps the Apify sync timeout to a safe configurable range", () => {
+    const original = process.env.APIFY_SYNC_TIMEOUT_MS;
+    process.env.APIFY_SYNC_TIMEOUT_MS = "12000";
+    expect(getApifySyncTimeoutMs()).toBe(15000);
+    process.env.APIFY_SYNC_TIMEOUT_MS = "45000";
+    expect(getApifySyncTimeoutMs()).toBe(30000);
+    process.env.APIFY_SYNC_TIMEOUT_MS = "25000";
+    expect(getApifySyncTimeoutMs()).toBe(25000);
+    if (original === undefined) delete process.env.APIFY_SYNC_TIMEOUT_MS; else process.env.APIFY_SYNC_TIMEOUT_MS = original;
+  });
+
   it("maps the real Stories Actor schema and uses thumbnailUrl for video media", () => {
     const posts = normalizeInstagramMediaPayload([
       { type: "story", username: "meulugar.bar", mediaUrl: "https://cdn.example.com/story.jpg", postedAt: "2026-08-28T20:00:00-03:00", expiresAt: "2026-08-29T20:00:00-03:00" },
@@ -161,8 +172,9 @@ describe("Instagram weekend pipeline", () => {
     ]);
     expect(posts).toEqual([
       expect.objectContaining({ mediaType: "story", ownerUsername: "meulugar.bar", url: "https://www.instagram.com/meulugar.bar/", displayUrl: "https://cdn.example.com/story.jpg", timestamp: "2026-08-28T20:00:00-03:00", postedAt: "2026-08-28T20:00:00-03:00", expiresAt: "2026-08-29T20:00:00-03:00" }),
-      expect.objectContaining({ mediaType: "story", ownerUsername: "curvaosurfhouse", displayUrl: "https://cdn.example.com/story-thumb.jpg" }),
+      expect.objectContaining({ mediaType: "story", ownerUsername: "curvaosurfhouse", displayUrl: "https://cdn.example.com/story-thumb.jpg", thumbnailUrl: "https://cdn.example.com/story-thumb.jpg", isVideo: true }),
     ]);
+    expect(resolveInstagramVisualUrl(posts[1]!)).toBe("https://cdn.example.com/story-thumb.jpg");
   });
 
   it("sends Story and Highlight images to OCR even when a caption exists", () => {
@@ -185,6 +197,22 @@ describe("Instagram weekend pipeline", () => {
       await expect(extractOcrText("data:image/png;base64,AA==")).resolves.toContain("Meu Lugar");
       expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("chat/completions"), expect.objectContaining({ method: "POST", body: expect.stringContaining("image_url") }));
     } finally { globalThis.fetch = originalFetch; }
+  });
+
+  it("classifies a global Apify timeout separately from a profile failure", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalToken = process.env.APIFY_API_TOKEN;
+    process.env.APIFY_API_TOKEN = "production-token-for-test";
+    process.env.APIFY_SYNC_TIMEOUT_MS = "20000";
+    globalThis.fetch = vi.fn().mockRejectedValue(Object.assign(new Error("The operation was aborted"), { name: "AbortError" })) as typeof fetch;
+    try {
+      const result = await fetchApifyStoriesAndHighlights({ dryRun: true });
+      expect(result.transportFailures).toEqual([expect.objectContaining({ username: "apify-collector", status: 0, kind: "actor_timeout", message: "Timeout de conexão com o coletor Apify após 20000 ms." })]);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalToken === undefined) delete process.env.APIFY_API_TOKEN; else process.env.APIFY_API_TOKEN = originalToken;
+      delete process.env.APIFY_SYNC_TIMEOUT_MS;
+    }
   });
 
   it("preserves the sanitized provider message for an Apify quota failure", async () => {

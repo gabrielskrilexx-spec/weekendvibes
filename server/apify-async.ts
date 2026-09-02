@@ -4,6 +4,7 @@ import {
   buildInstagramStoriesScraperPayload,
   INSTAGRAM_TARGETS,
   normalizeInstagramMediaPayload,
+  getApifySyncTimeoutMs,
   runInstagramPipeline,
   type InstagramPost,
 } from "./instagram-pipeline";
@@ -21,7 +22,7 @@ import { HttpError } from "@shared/_core/errors";
 import { redactError } from "./_core/security";
 
 const ACTOR_ID = process.env.APIFY_STORIES_ACTOR_ID?.trim() || "automation-lab~instagram-stories-scraper";
-const ASYNC_TIMEOUT_MS = 8_000;
+const DATASET_TIMEOUT_MS = 30_000;
 
 function getWebhookBaseUrl() {
   return process.env.SCHEDULED_TASK_ENDPOINT_BASE?.trim().replace(/\/$/, "") ?? "";
@@ -37,7 +38,7 @@ function encodeWebhooks(webhookUrl: string) {
   ])).toString("base64url");
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = ASYNC_TIMEOUT_MS) {
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = getApifySyncTimeoutMs()) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -63,6 +64,10 @@ function safeTokenEqual(actual: unknown, expected: unknown) {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
+function isApifyTimeoutError(error: unknown) {
+  return error instanceof Error && (error.name === "AbortError" || /aborted|timeout|timed out|tempo limite/i.test(error.message));
+}
+
 function readResource(body: unknown) {
   const root = body && typeof body === "object" ? body as Record<string, unknown> : {};
   const resource = root.resource && typeof root.resource === "object" ? root.resource as Record<string, unknown> : root;
@@ -85,11 +90,28 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
   const callbackToken = randomUUID();
   const webhookUrl = `${baseUrl}/api/webhooks/apify/instagram?token=${encodeURIComponent(callbackToken)}`;
   const query = new URLSearchParams({ token, webhooks: encodeWebhooks(webhookUrl) });
-  const response = await fetchWithTimeout(`https://api.apify.com/v2/acts/${ACTOR_ID}/runs?${query.toString()}`, {
-    method: "POST",
-    headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "WeekendVibes/1.0" },
-    body: JSON.stringify(buildInstagramStoriesScraperPayload(INSTAGRAM_TARGETS, process.env.APIFY_INSTAGRAM_SESSION_COOKIE?.trim())),
-  });
+  let response: globalThis.Response;
+  try {
+    response = await fetchWithTimeout(`https://api.apify.com/v2/acts/${ACTOR_ID}/runs?${query.toString()}`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "WeekendVibes/1.0" },
+      body: JSON.stringify(buildInstagramStoriesScraperPayload(INSTAGRAM_TARGETS, process.env.APIFY_INSTAGRAM_SESSION_COOKIE?.trim())),
+    });
+  } catch (error) {
+    const actorTimedOut = isApifyTimeoutError(error);
+    await finishIngestionRun(runId, {
+      status: "failed",
+      failedCount: 1,
+      httpStatus: 0,
+      details: {
+        provider: "apify",
+        error: actorTimedOut ? "ACTOR_TIMEOUT" : "ACTOR_START_TRANSPORT_FAILED",
+        kind: actorTimedOut ? "actor_timeout" : "collector_transport",
+        message: actorTimedOut ? `Timeout de conexão com o coletor Apify após ${getApifySyncTimeoutMs()} ms.` : "Falha de transporte ao iniciar o coletor Apify.",
+      },
+    });
+    throw new Error(actorTimedOut ? "Timeout de conexão com o coletor Apify." : "Falha de transporte ao iniciar o coletor Apify.", { cause: error });
+  }
   const payload = await readJson(response);
   if (!response.ok) {
     await finishIngestionRun(runId, { status: "failed", failedCount: 1, httpStatus: response.status, details: { provider: "apify", error: "ACTOR_START_FAILED", status: response.status } });
@@ -111,7 +133,7 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
 
 async function processDataset(run: Awaited<ReturnType<typeof findIngestionRunByApifyActor>>, datasetId: string, actorRunId: string, token: string) {
   if (!run) return;
-  const response = await fetchWithTimeout(`https://api.apify.com/v2/datasets/${encodeURIComponent(datasetId)}/items?token=${encodeURIComponent(token)}&clean=true`, { headers: { Accept: "application/json", "User-Agent": "WeekendVibes/1.0" } }, 30_000);
+  const response = await fetchWithTimeout(`https://api.apify.com/v2/datasets/${encodeURIComponent(datasetId)}/items?token=${encodeURIComponent(token)}&clean=true`, { headers: { Accept: "application/json", "User-Agent": "WeekendVibes/1.0" } }, DATASET_TIMEOUT_MS);
   const payload = await readJson(response);
   if (!response.ok || !Array.isArray(payload)) {
     await finishIngestionRun(run.id, { status: "failed", failedCount: 1, httpStatus: response.status || 502, details: { provider: "apify", actorRunId, error: "DATASET_READ_FAILED", status: response.status || 502 } });
@@ -153,8 +175,9 @@ export async function apifyInstagramWebhookHandler(req: Request, res: Response) 
 
   const status = resource.status.toUpperCase();
   if (status !== "SUCCEEDED") {
-    await finishIngestionRun(run.id, { status: "failed", failedCount: 1, httpStatus: 502, details: { provider: "apify", actorRunId: resource.id, status: status || "FAILED", error: "ACTOR_NOT_SUCCEEDED" } });
-    return res.status(202).json({ ok: true, accepted: true, status: "FAILED" });
+    const actorTimedOut = status === "TIMED_OUT";
+    await finishIngestionRun(run.id, { status: "failed", failedCount: 1, httpStatus: actorTimedOut ? 504 : 502, details: { provider: "apify", actorRunId: resource.id, status: status || "FAILED", error: actorTimedOut ? "ACTOR_TIMEOUT" : "ACTOR_NOT_SUCCEEDED", kind: actorTimedOut ? "actor_timeout" : "actor_failed" } });
+    return res.status(202).json({ ok: true, accepted: true, status: actorTimedOut ? "TIMEOUT" : "FAILED" });
   }
   const tokenValue = process.env.APIFY_API_TOKEN?.trim();
   const datasetId = resource.defaultDatasetId || String(details.datasetId ?? "");
