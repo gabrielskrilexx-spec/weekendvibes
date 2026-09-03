@@ -62,6 +62,7 @@ describe("Apify async Stories", () => {
   });
 
   it("valida o segredo M2M no endpoint leve sem expô-lo", async () => {
+    const authLog = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify({ data: { id: "actor-run-secret", defaultDatasetId: "dataset-secret" } }), { status: 201, headers: { "content-type": "application/json" } })
     );
@@ -69,7 +70,10 @@ describe("Apify async Stories", () => {
     await asyncIngestInstagramHandler({ headers: { "x-cron-secret": process.env.INTERNAL_CRON_SECRET } } as never, res);
     expect((res as any).status).toHaveBeenCalledWith(202);
     expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ accepted: true, status: "QUEUED" }));
+    expect(authLog).toHaveBeenCalledWith("[Instagram async] cron authentication accepted", { mode: "header" });
+    expect(authLog.mock.calls.flat()).not.toContain(process.env.INTERNAL_CRON_SECRET);
     fetchMock.mockRestore();
+    authLog.mockRestore();
   });
 
   it("responde HTTP 202 no callback autenticado por M2M", async () => {

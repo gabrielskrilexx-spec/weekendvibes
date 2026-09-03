@@ -2484,3 +2484,8 @@
 - [x] Atualizar o script de disparo M2M com cookie quando disponível
 - [x] Adicionar testes de header válido, inválido e cookie legado
 - [x] Rodar Vitest, TypeScript e build; publicar checkpoint
+
+## Validação M2M publicada — sessão atual
+- [x] Adicionar log sanitizado distinguindo autenticação por header e cookie
+- [ ] Validar chamada M2M real no endpoint publicado com HTTP 202
+- [x] Atualizar testes; publicar checkpoint após validação real

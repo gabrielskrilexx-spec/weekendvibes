@@ -213,10 +213,14 @@ export async function reprocessApifyStoriesDatasetHandler(req: Request, res: Res
 
 export async function asyncIngestInstagramHandler(req: Request, res: Response) {
   const authenticatedBySecret = hasValidInternalCronSecret(req);
+  if (authenticatedBySecret) {
+    console.info("[Instagram async] cron authentication accepted", { mode: "header" });
+  }
   if (!authenticatedBySecret) {
     try {
       const user = await sdk.authenticateRequest(req);
       if (!user.isCron) return res.status(403).json({ error: "cron-only" });
+      console.info("[Instagram async] cron authentication accepted", { mode: "cookie" });
     } catch (error) {
       if (error instanceof HttpError && error.statusCode === 403) return res.status(403).json({ error: "cron-only" });
       return res.status(500).json({ ok: false, error: "internal_error" });
