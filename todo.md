@@ -2487,5 +2487,10 @@
 
 ## Validação M2M publicada — sessão atual
 - [x] Adicionar log sanitizado distinguindo autenticação por header e cookie
-- [ ] Validar chamada M2M real no endpoint publicado com HTTP 202
+- [x] Validar chamada M2M real: alias `/api/scheduled/ingest-instagram` retornou 403, enquanto `/api/v2/ingestion/instagram/async` retornou HTTP 202
 - [x] Atualizar testes; publicar checkpoint após validação real
+
+## Execução M2M pela rota v2 — sessão atual
+- [x] Atualizar o script sanitizado para `/api/v2/ingestion/instagram/async`
+- [x] Validar presença dos segredos sem expor valores
+- [x] Executar POST M2M e capturar status, duração e contagens sanitizadas

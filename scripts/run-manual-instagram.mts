@@ -37,7 +37,7 @@ if (scheduledTaskCookie) headers.Cookie = `app_session_id=${scheduledTaskCookie}
 
 const startedAt = performance.now();
 try {
-  const response = await fetch(`${endpointBase}/api/scheduled/ingest-instagram`, {
+  const response = await fetch(`${endpointBase}/api/v2/ingestion/instagram/async`, {
     method: "POST",
     headers,
     body: "{}",
