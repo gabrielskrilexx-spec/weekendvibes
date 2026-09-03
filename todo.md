@@ -2477,3 +2477,10 @@
 - [x] Persistir nova fonte pela rota/procedure existente ou nova
 - [x] Atualizar lista e exibir toast após sucesso
 - [x] Validar fluxo, suíte Vitest, TypeScript e build; publicar checkpoint
+
+## Autenticação M2M da ingestão Instagram — sessão atual
+- [x] Auditar middleware de cron e handler `/api/scheduled/ingest-instagram`
+- [x] Aceitar `x-cron-secret` válido como autenticação alternativa ao cookie
+- [x] Atualizar o script de disparo M2M com cookie quando disponível
+- [x] Adicionar testes de header válido, inválido e cookie legado
+- [x] Rodar Vitest, TypeScript e build; publicar checkpoint
