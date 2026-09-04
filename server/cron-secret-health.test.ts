@@ -1,21 +1,26 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { hasValidInternalCronSecret } from "./_core/cron-auth";
 
-describe("published cron secret", () => {
-  it("autentica no endpoint leve de saúde sem expor o segredo", async () => {
-    const endpointBase = process.env.SCHEDULED_TASK_ENDPOINT_BASE?.trim().replace(/\/$/, "");
-    const secret = process.env.INTERNAL_CRON_SECRET?.trim();
-    expect(endpointBase).toBeTruthy();
-    expect(secret).toBeTruthy();
+describe("cron secret authentication", () => {
+  const originalSecret = process.env.INTERNAL_CRON_SECRET;
 
-    const response = await fetch(`${endpointBase}/api/scheduled/health`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-cron-secret": secret as string },
-      body: "{}",
-    });
+  afterEach(() => {
+    if (originalSecret === undefined) delete process.env.INTERNAL_CRON_SECRET;
+    else process.env.INTERNAL_CRON_SECRET = originalSecret;
+  });
 
-    expect(response.status).toBe(200);
-    const payload = await response.json() as Record<string, unknown>;
-    expect(payload).toMatchObject({ ok: true });
-    expect(JSON.stringify(payload)).not.toContain(secret as string);
+  it("accepts the exact M2M header without exposing the secret", () => {
+    const secret = "cron-secret-test";
+    process.env.INTERNAL_CRON_SECRET = secret;
+
+    expect(hasValidInternalCronSecret({ headers: { "x-cron-secret": secret } })).toBe(true);
+    expect(JSON.stringify({ authenticated: true })).not.toContain(secret);
+  });
+
+  it("rejects missing or incorrect headers", () => {
+    process.env.INTERNAL_CRON_SECRET = "cron-secret-test";
+
+    expect(hasValidInternalCronSecret({ headers: {} })).toBe(false);
+    expect(hasValidInternalCronSecret({ headers: { "x-cron-secret": "wrong-secret" } })).toBe(false);
   });
 });

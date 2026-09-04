@@ -2494,3 +2494,17 @@
 - [x] Atualizar o script sanitizado para `/api/v2/ingestion/instagram/async`
 - [x] Validar presença dos segredos sem expor valores
 - [x] Executar POST M2M e capturar status, duração e contagens sanitizadas
+
+## Atualização automática do painel de ingestão — sessão atual
+- [ ] Auditar polling de jobs e queries de eventos do painel
+- [ ] Atualizar automaticamente as queries após conclusão do job assíncrono
+- [ ] Evitar timers duplicados e preservar estados de loading/erro
+- [ ] Adicionar testes e validar TypeScript, build e preview
+
+## Saneamento Articket e reconciliação — sessão atual
+- [x] Auditar scraper public:articket, reconciliação, métricas P95 e testes
+- [x] Separar timeout/falha de transporte de itens filtrados
+- [x] Corrigir a equação de reconciliação para Articket
+- [x] Tratar timeout e latência específica sem mascarar métricas
+- [x] Atualizar testes do pipeline e alertas
+- [x] Validar Vitest, TypeScript, build e publicar checkpoint

@@ -443,6 +443,10 @@ async function guardedFetchPublicPage(url: string, options: { dryRun?: boolean }
 }
 
 const PUBLIC_FETCH_TIMEOUT_MS = 12_000;
+export const ARTICKET_FETCH_TIMEOUT_MS = 30_000;
+function publicFetchTimeoutMs(url: string) {
+  return publicSourceKey(url) === "public:articket" ? ARTICKET_FETCH_TIMEOUT_MS : PUBLIC_FETCH_TIMEOUT_MS;
+}
 export const MR_INGRESSOS_RETRY_ATTEMPTS = 3;
 export const MR_INGRESSOS_RETRY_BASE_DELAY_MS = 250;
 
@@ -519,11 +523,11 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
         "user-agent": "WeekendVibesBot/1.0 (+public-event-ingestion)",
         accept: "text/html,application/xhtml+xml",
       },
-      signal: AbortSignal.timeout(isMrIngressosEventUrl(url) ? MR_INGRESSOS_FETCH_TIMEOUT_MS : PUBLIC_FETCH_TIMEOUT_MS),
+      signal: AbortSignal.timeout(isMrIngressosEventUrl(url) ? MR_INGRESSOS_FETCH_TIMEOUT_MS : publicFetchTimeoutMs(url)),
     };
     const response = isMrIngressosEventUrl(url)
       ? await fetchMrIngressosWithRetry(url, requestInit, (targetUrl: string | URL | Request, targetInit?: RequestInit) => fetchExternal(targetUrl instanceof Request ? targetUrl.url : String(targetUrl), targetInit ?? {}, MR_INGRESSOS_FETCH_TIMEOUT_MS))
-      : await fetchExternal(url, requestInit, PUBLIC_FETCH_TIMEOUT_MS);
+      : await fetchExternal(url, requestInit, publicFetchTimeoutMs(url));
     const html = await readExternalBody(response);
     const imageMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
     const text = html
@@ -641,7 +645,6 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
     report.read += 1;
     const page = input.pages[index];
     if (!page || page.status === "rejected") {
-      report.filtered += 1;
       report.rejectionReasons.fetchFailed += 1;
       if (page?.status === "rejected") {
         const failure = sanitizeFetchFailure(page.reason);
@@ -657,7 +660,6 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
     report.durationMs += durationMs;
     report.latencySamples.push(durationMs);
     if (page.value.circuitOpen) {
-      report.filtered += 1;
       report.rejectionReasons.fetchFailed += 1;
       report.errors.push({ sourceUrl: url, status: null, message: "Fonte pausada pelo Circuit Breaker durante o cooldown." });
     } else if (input.matchesTargetVenue && !input.matchesTargetVenue(page.value.text)) {
@@ -732,7 +734,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
         dryRun
       );
     }
-    return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: candidateUrls.length, filtered: candidateUrls.length, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: false, discovered: candidateUrls.length, matchedSources: 0, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, reason: "Nenhum evento dos locais-alvo encontrado nas fontes públicas", sourceReports: buildPublicSourceReports({ candidateUrls, pages, matchesTargetVenue }) };
+    return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: false, discovered: candidateUrls.length, matchedSources: 0, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, reason: "Nenhum evento dos locais-alvo encontrado nas fontes públicas", sourceReports: buildPublicSourceReports({ candidateUrls, pages, matchesTargetVenue }) };
   }
 
   const apiStructuredEvents = sourcePages
@@ -814,6 +816,9 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
     imported += 1;
   }
   const sourceReports = buildPublicSourceReports({ candidateUrls, pages, payloadEvents: payload.events, acceptedEvents, rejectedEvents, duplicateSourceKeys, sourceOutcomes, matchesTargetVenue });
-  const ignored = sourceReports.reduce((sum, report) => sum + report.ignored, 0);
-  return { imported, persisted: simulation ? 0 : added + updated, added: simulation ? 0 : added, updated: simulation ? 0 : updated, ignored, dryRun: simulation, dryRunAcceptedEvents, read: candidateUrls.length, filtered: Math.max(0, candidateUrls.length - sourcePages.length), duplicates, missingCoordinates, outOfBoundsCoordinates, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, sourceReports };
+  const persistedCount = simulation ? 0 : added + updated;
+  const contentFiltered = filteredByReason.invalidStructuredEvent + filteredByReason.pastEvent;
+  const read = simulation ? 0 : persistedCount + contentFiltered + duplicates;
+  const ignored = contentFiltered + duplicates;
+  return { imported, persisted: persistedCount, added: simulation ? 0 : added, updated: simulation ? 0 : updated, ignored, dryRun: simulation, dryRunAcceptedEvents, read, filtered: contentFiltered, duplicates, missingCoordinates, outOfBoundsCoordinates, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, sourceReports };
 }
