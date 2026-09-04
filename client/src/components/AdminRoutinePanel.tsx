@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarCheck2,
   CalendarClock,
@@ -419,6 +419,21 @@ export default function AdminRoutinePanel() {
   const lastSuccessfulCronRun = status.data?.recentRuns?.find(
     run => run.trigger !== "manual" && run.status === "succeeded"
   );
+  const lastObservedIngestionRunId = useRef<number | null>(null);
+  const latestTerminalIngestionRun = status.data?.recentRuns?.find(
+    run => run.trigger !== "manual" && ["succeeded", "partial"].includes(run.status)
+  );
+  useEffect(() => {
+    const runId = latestTerminalIngestionRun?.id;
+    if (!runId) return;
+    const previousRunId = lastObservedIngestionRunId.current;
+    lastObservedIngestionRunId.current = runId;
+    if (previousRunId === null || previousRunId === runId) return;
+    sonnerToast.success("Novos eventos disponíveis", {
+      description: "A ingestão assíncrona terminou e os dados mais recentes foram carregados.",
+    });
+    void status.refetch();
+  }, [latestTerminalIngestionRun?.id, latestTerminalIngestionRun?.status]);
   const progress =
     status.data && "progress" in status.data ? status.data.progress : undefined;
   const refreshStatus = async () => {
