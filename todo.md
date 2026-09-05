@@ -2508,3 +2508,16 @@
 - [x] Tratar timeout e latência específica sem mascarar métricas
 - [x] Atualizar testes do pipeline e alertas
 - [x] Validar Vitest, TypeScript, build e publicar checkpoint
+
+## Verificação de atualização automática — sessão atual
+- [ ] Auditar o polling e a atualização dos eventos após job assíncrono
+- [ ] Corrigir eventual lacuna sem duplicar timers
+- [ ] Validar o fluxo e entregar o resultado
+
+## Extração flexível e revisão manual — sessão atual
+- [x] Auditar prompt, triagem, modelos de pendência e testes
+- [x] Ajustar prompt para datas relativas e contexto de perfil
+- [x] Preservar eventos com título, data e local em revisão manual
+- [x] Atualizar tipagens e fluxo de pendências sem alterar reconciliação central
+- [x] Adicionar testes de extração flexível e classificação manual
+- [x] Validar Vitest, TypeScript, build e publicar checkpoint

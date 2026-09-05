@@ -9,7 +9,7 @@ vi.mock("./db", async () => {
 });
 vi.mock("./_core/llm", () => ({ invokeLLM: invokeLLMMock }));
 
-import { ingestAgentDocuments } from "./agent-ingestion";
+import { buildAgentExtractionPrompt, ingestAgentDocuments } from "./agent-ingestion";
 
 describe("agent ingestion persistence identity", () => {
   beforeEach(() => {
@@ -18,6 +18,23 @@ describe("agent ingestion persistence identity", () => {
     invokeLLMMock
       .mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "Festa do Branco", summary: "Noite musical", eventDate: "2026-09-22T20:00:00-03:00", locationName: "Curvão Surf House", address: "Guarujá", city: "Guarujá", category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: "https://zig.tickets/eventos/festa-do-branco-22-09", imageUrl: "", latitude: "", longitude: "" }] }) } }] })
       .mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "FESTA DO BRANCO 22-08", summary: "Noite musical atualizada", eventDate: "2026-09-22T20:00:00-03:00", locationName: "CURVAO SURF HOUSE", address: "Guarujá", city: "Guarujá", category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: "https://zig.tickets/eventos/festa-do-branco-22-09", imageUrl: "", latitude: "", longitude: "" }] }) } }] });
+  });
+
+  it("instructs the extractor to resolve relative dates and preserve partial events for review", () => {
+    const prompt = buildAgentExtractionPrompt(new Date("2026-09-04T12:00:00.000Z"));
+    expect(prompt).toContain("neste sábado");
+    expect(prompt).toContain("America/Sao_Paulo");
+    expect(prompt).toContain("revisão manual");
+    expect(prompt).toContain("SOURCE_URL");
+  });
+
+  it("keeps an event with title, date and venue in manual review when other fields are incomplete", async () => {
+    invokeLLMMock.mockReset();
+    saveEventMock.mockReset();
+    invokeLLMMock.mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "Sábado no Bar", summary: "", eventDate: "2026-12-12T22:00:00-03:00", locationName: "Casa Musical", address: "", city: "", category: "", genre: "", priceCents: 0, sourceUrl: "", imageUrl: "", latitude: "", longitude: "" }] }) } }] });
+    const result = await ingestAgentDocuments([{ sourceUrl: "https://www.ingresse.com/casa-musical/", text: "Sábado no Bar" }]);
+    expect(saveEventMock).not.toHaveBeenCalled();
+    expect(result.pendingReview).toEqual([expect.objectContaining({ title: "Sábado no Bar", locationName: "Casa Musical", reason: "revisao_manual_campos_parciais" })]);
   });
 
   it("accepts the new Ingresse sources and includes their venues in the enrichment policy", async () => {
