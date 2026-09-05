@@ -2510,9 +2510,9 @@
 - [x] Validar Vitest, TypeScript, build e publicar checkpoint
 
 ## Verificação de atualização automática — sessão atual
-- [ ] Auditar o polling e a atualização dos eventos após job assíncrono
-- [ ] Corrigir eventual lacuna sem duplicar timers
-- [ ] Validar o fluxo e entregar o resultado
+- [x] Auditar o polling e a atualização dos eventos após job assíncrono
+- [x] Corrigir eventual lacuna sem duplicar timers
+- [x] Validar o fluxo e entregar o resultado
 
 ## Extração flexível e revisão manual — sessão atual
 - [x] Auditar prompt, triagem, modelos de pendência e testes
