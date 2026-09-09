@@ -2523,12 +2523,12 @@
 - [x] Validar Vitest, TypeScript, build e publicar checkpoint
 
 ## Fila de revisão manual — sessão atual
-- [ ] Auditar modelo, routers, painel e métricas existentes
-- [ ] Implementar query e mutation para listar/editar/aprovar pendências
-- [ ] Construir fila e edição assistida no painel React
-- [ ] Separar cards de eventos publicados e aguardando revisão
-- [ ] Adicionar testes de contratos, formulário e aprovação
-- [ ] Validar Vitest, TypeScript, build e publicar checkpoint
+- [x] Auditar modelo, routers, painel e métricas existentes
+- [x] Implementar query e mutation para listar/editar/aprovar pendências
+- [x] Construir fila e edição assistida no painel React
+- [x] Separar cards de eventos publicados e aguardando revisão
+- [x] Adicionar testes de contratos, formulário e aprovação
+- [x] Validar Vitest, TypeScript, build e publicar checkpoint
 
 ## Fila de revisão manual — sessão atual
 - [x] Expor no Admin a fila de eventos com status manual review/pending
