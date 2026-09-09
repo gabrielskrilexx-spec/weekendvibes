@@ -8,6 +8,10 @@ vi.mock("./db", async () => {
   return { ...actual, saveEvent: saveEventMock };
 });
 vi.mock("./_core/llm", () => ({ invokeLLM: invokeLLMMock }));
+vi.mock("./manual-review", () => ({
+  buildManualReviewInputFromAgentEvent: (item: unknown) => item,
+  persistManualReviewEvents: vi.fn().mockResolvedValue({ inserted: 0 }),
+}));
 
 import { buildAgentExtractionPrompt, ingestAgentDocuments } from "./agent-ingestion";
 

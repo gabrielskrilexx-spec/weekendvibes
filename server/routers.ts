@@ -62,6 +62,7 @@ import {
   listCircuitBreakerStatuses,
 } from "./db";
 import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
+import { approveManualReviewEvent, getManualReviewMetrics, listManualReviewEvents, rejectManualReviewEvent, updateManualReviewEvent, type ManualReviewEventInput } from "./manual-review";
 import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
 import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
@@ -77,6 +78,72 @@ const longitudeInput = z
   .string()
   .regex(/^-?(?:180(?:\.0+)?|1[0-7]\d(?:\.\d+)?|\d{1,2}(?:\.\d+)?)$/)
   .optional();
+
+const manualReviewStatusInput = z.enum(["pending", "approved", "rejected"]);
+const manualReviewFiltersInput = z.object({
+  status: manualReviewStatusInput.optional(),
+  sourceType: z.string().trim().max(64).optional(),
+  from: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).optional(),
+  to: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).optional(),
+  offset: z.number().int().nonnegative().default(0),
+  limit: z.number().int().positive().max(100).default(25),
+}).strict();
+const manualReviewEventInput = z.object({
+  id: z.number().int().positive().optional(),
+  title: z.string().trim().min(3).max(255),
+  eventDate: z.coerce.date().nullable().optional(),
+  endDate: z.coerce.date().nullable().optional(),
+  locationName: z.string().trim().max(255).nullable().optional(),
+  address: z.string().trim().max(500).nullable().optional(),
+  city: z.enum(["Santos", "Guarujá"]).nullable().optional(),
+  category: z.enum(["show", "balada", "evento_musical"]).nullable().optional(),
+  genre: z.string().trim().max(80).nullable().optional(),
+  summary: z.string().max(5000).nullable().optional(),
+  priceCents: z.number().int().nonnegative().nullable().optional(),
+  sourceUrl: z.string().trim().max(1000).nullable().optional(),
+  sourceType: z.string().trim().max(64).nullable().optional(),
+  imageUrl: z.string().trim().max(1000).nullable().optional(),
+  rawText: z.string().max(16000).nullable().optional(),
+  reason: z.string().trim().min(1).max(160),
+}).strict();
+const manualReviewEventOutput = z.object({
+  id: z.number().int().positive(),
+  sourceUrl: z.string().nullable(),
+  sourceType: z.string().nullable(),
+  title: z.string(),
+  summary: z.string().nullable(),
+  eventDate: z.string().datetime().nullable(),
+  endDate: z.string().datetime().nullable(),
+  locationName: z.string().nullable(),
+  address: z.string().nullable(),
+  city: z.string().nullable(),
+  category: z.enum(["show", "balada", "evento_musical"]).nullable(),
+  genre: z.string().nullable(),
+  priceCents: z.number().int().nullable(),
+  imageUrl: z.string().nullable(),
+  rawText: z.string().nullable(),
+  reason: z.string(),
+  status: manualReviewStatusInput,
+  reviewedBy: z.string().nullable(),
+  reviewedAt: z.string().datetime().nullable(),
+  publishedEventId: z.number().int().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+}).strict();
+const manualReviewPageOutput = z.object({
+  items: z.array(manualReviewEventOutput).max(100),
+  total: z.number().int().nonnegative(),
+  offset: z.number().int().nonnegative(),
+  limit: z.number().int().positive().max(100),
+  nextOffset: z.number().int().nonnegative().nullable(),
+  hasNextPage: z.boolean(),
+}).strict();
+const manualReviewMetricsOutput = z.object({
+  published: z.number().int().nonnegative(),
+  awaitingReview: z.number().int().nonnegative(),
+  rejected: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+}).strict();
 
 function throwSanitizedAdminMutationError(
   error: unknown,
@@ -517,6 +584,39 @@ export const appRouter = router({
     status: adminOnly.query(async () =>
       normalizeJsonForTransport(await getWednesdayRoutineStatus())
     ),
+    manualReview: router({
+      list: adminOnly
+        .input(manualReviewFiltersInput)
+        .output(manualReviewPageOutput)
+        .query(({ input }) => listManualReviewEvents(input)),
+      metrics: adminOnly
+        .output(manualReviewMetricsOutput)
+        .query(() => getManualReviewMetrics()),
+      update: adminOnly
+        .input(manualReviewEventInput.extend({ id: z.number().int().positive() }).strict())
+        .output(manualReviewEventOutput)
+        .mutation(async ({ input }) => {
+          const result = await updateManualReviewEvent(input as ManualReviewEventInput & { id: number });
+          if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Evento pendente não encontrado." });
+          return result;
+        }),
+      approve: adminOnly
+        .input(z.object({ id: z.number().int().positive() }).strict())
+        .output(manualReviewEventOutput)
+        .mutation(async ({ ctx, input }) => {
+          const result = await approveManualReviewEvent(input.id, ctx.user.openId);
+          if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Evento pendente não encontrado." });
+          return result;
+        }),
+      reject: adminOnly
+        .input(z.object({ id: z.number().int().positive() }).strict())
+        .output(manualReviewEventOutput)
+        .mutation(async ({ ctx, input }) => {
+          const result = await rejectManualReviewEvent(input.id, ctx.user.openId);
+          if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Evento pendente não encontrado." });
+          return result;
+        }),
+    }),
     filteredStories: adminOnly
       .input(filteredStoriesFilterInput)
       .output(filteredStoriesPageOutput)

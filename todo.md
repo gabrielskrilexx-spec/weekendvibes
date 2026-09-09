@@ -2521,3 +2521,19 @@
 - [x] Atualizar tipagens e fluxo de pendências sem alterar reconciliação central
 - [x] Adicionar testes de extração flexível e classificação manual
 - [x] Validar Vitest, TypeScript, build e publicar checkpoint
+
+## Fila de revisão manual — sessão atual
+- [ ] Auditar modelo, routers, painel e métricas existentes
+- [ ] Implementar query e mutation para listar/editar/aprovar pendências
+- [ ] Construir fila e edição assistida no painel React
+- [ ] Separar cards de eventos publicados e aguardando revisão
+- [ ] Adicionar testes de contratos, formulário e aprovação
+- [ ] Validar Vitest, TypeScript, build e publicar checkpoint
+
+## Fila de revisão manual — sessão atual
+- [x] Expor no Admin a fila de eventos com status manual review/pending
+- [x] Implementar edição assistida dos campos incompletos e aprovação/publicação
+- [x] Exibir métricas separadas de eventos publicados e aguardando revisão
+- [x] Sincronizar filtros da fila com parâmetros da URL
+- [x] Adicionar testes Vitest do contrato e da interação da fila de revisão manual
+- [x] Validar TypeScript, build, suíte Vitest e preview antes do checkpoint

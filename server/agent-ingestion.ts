@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { invokeLLM } from "./_core/llm";
 import { assertEventDateIsCurrentOrFuture, saveEvent } from "./db";
 import { containsTargetVenue } from "./ingestion";
+import { buildManualReviewInputFromAgentEvent, persistManualReviewEvents } from "./manual-review";
 
 export type AgentEventDocument = { sourceUrl: string; text: string; imageUrl?: string };
 
@@ -94,5 +95,6 @@ export async function ingestAgentDocuments(documents: AgentEventDocument[]): Pro
     await saveEvent({ title, slug: `${normalizeSlug(title)}-${date.getTime()}`, description: String(event.summary ?? ""), eventDate: date, locationName, address: String(event.address ?? ""), city, category: category as "show" | "balada" | "evento_musical", genre, priceCents: Number(event.priceCents) || 0, sourceUrl, imageUrl: String(event.imageUrl || ""), latitude: String(event.latitude || ""), longitude: String(event.longitude || ""), sourceHash, isPublished: 1 });
     imported += 1;
   }
+  await persistManualReviewEvents(pendingReview.map(item => buildManualReviewInputFromAgentEvent(item)));
   return { imported, received: documents.length, acceptedDocuments: safeDocuments.length, pendingReview };
 }

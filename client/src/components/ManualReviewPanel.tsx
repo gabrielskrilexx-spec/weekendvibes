@@ -1,0 +1,263 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { CheckCircle2, Clock3, Edit3, Loader2, RefreshCw, XCircle } from "lucide-react";
+import { toast as sonnerToast } from "sonner";
+import { trpc } from "@/lib/trpc";
+import { friendlyAdminErrorMessage } from "@/lib/adminFeedback";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+
+type ManualReviewStatus = "pending" | "approved" | "rejected";
+type ManualReviewCategory = "show" | "balada" | "evento_musical";
+
+type ManualReviewEvent = {
+  id: number;
+  sourceUrl: string | null;
+  sourceType: string | null;
+  title: string;
+  summary: string | null;
+  eventDate: string | null;
+  endDate: string | null;
+  locationName: string | null;
+  address: string | null;
+  city: string | null;
+  category: ManualReviewCategory | null;
+  genre: string | null;
+  priceCents: number | null;
+  imageUrl: string | null;
+  rawText: string | null;
+  reason: string;
+  status: ManualReviewStatus;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  publishedEventId: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ManualReviewDraft = {
+  title: string;
+  eventDate: string;
+  endDate: string;
+  locationName: string;
+  address: string;
+  city: "" | "Santos" | "Guarujá";
+  category: "" | ManualReviewCategory;
+  genre: string;
+  summary: string;
+  priceCents: string;
+  sourceUrl: string;
+  sourceType: string;
+  imageUrl: string;
+  rawText: string;
+  reason: string;
+};
+
+const PAGE_SIZES = [10, 25, 50] as const;
+
+function readUrlValue(key: string) {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get(key) ?? "";
+}
+
+function validStatus(value: string): value is ManualReviewStatus {
+  return value === "pending" || value === "approved" || value === "rejected";
+}
+
+export function toDateTimeLocal(value: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date).reduce<Record<string, string>>((result, part) => {
+    if (part.type !== "literal") result[part.type] = part.value;
+    return result;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+
+export function localDateTimeToIso(value: string) {
+  if (!value) return null;
+  const date = new Date(`${value}:00-03:00`);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+function formatDate(value: string | null) {
+  if (!value) return "Data não informada";
+  const date = new Date(value);
+  return Number.isFinite(date.getTime())
+    ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(date)
+    : "Data inválida";
+}
+
+function sourceLabel(sourceType: string | null) {
+  if (!sourceType) return "Origem não informada";
+  return sourceType === "instagram" ? "Instagram" : sourceType === "public" ? "Agenda pública" : sourceType;
+}
+
+function statusLabel(status: ManualReviewStatus) {
+  return status === "pending" ? "Aguardando revisão" : status === "approved" ? "Publicado" : "Rejeitado";
+}
+
+function statusClass(status: ManualReviewStatus) {
+  return status === "pending" ? "bg-amber-300/15 text-amber-100" : status === "approved" ? "bg-emerald-300/15 text-emerald-100" : "bg-red-300/15 text-red-100";
+}
+
+export function draftFromEvent(event: ManualReviewEvent): ManualReviewDraft {
+  return {
+    title: event.title,
+    eventDate: toDateTimeLocal(event.eventDate),
+    endDate: toDateTimeLocal(event.endDate),
+    locationName: event.locationName ?? "",
+    address: event.address ?? "",
+    city: event.city === "Santos" || event.city === "Guarujá" ? event.city : "",
+    category: event.category ?? "",
+    genre: event.genre ?? "",
+    summary: event.summary ?? "",
+    priceCents: event.priceCents == null ? "" : String(event.priceCents),
+    sourceUrl: event.sourceUrl ?? "",
+    sourceType: event.sourceType ?? "",
+    imageUrl: event.imageUrl ?? "",
+    rawText: event.rawText ?? "",
+    reason: event.reason,
+  };
+}
+
+export default function ManualReviewPanel() {
+  const [status, setStatus] = useState<"" | ManualReviewStatus>(() => { const value = readUrlValue("manual_review_status"); return validStatus(value) ? value : ""; });
+  const [sourceType, setSourceType] = useState(() => readUrlValue("manual_review_source"));
+  const [from, setFrom] = useState(() => readUrlValue("manual_review_from"));
+  const [to, setTo] = useState(() => readUrlValue("manual_review_to"));
+  const [pageSize, setPageSize] = useState(() => { const value = Number(readUrlValue("manual_review_page_size")); return PAGE_SIZES.includes(value as typeof PAGE_SIZES[number]) ? value : 25; });
+  const [page, setPage] = useState(0);
+  const [selectedEvent, setSelectedEvent] = useState<ManualReviewEvent | null>(null);
+  const [draft, setDraft] = useState<ManualReviewDraft | null>(null);
+
+  const listInput = useMemo(() => ({ status: status || undefined, sourceType: sourceType.trim() || undefined, from: from || undefined, to: to || undefined, offset: page * pageSize, limit: pageSize }), [status, sourceType, from, to, page, pageSize]);
+  const queueQuery = trpc.adminRoutine.manualReview.list.useQuery(listInput, { refetchInterval: 30_000 });
+  const metricsQuery = trpc.adminRoutine.manualReview.metrics.useQuery(undefined, { refetchInterval: 30_000 });
+  const updateMutation = trpc.adminRoutine.manualReview.update.useMutation({
+    onSuccess: updated => {
+      setSelectedEvent(updated);
+      setDraft(draftFromEvent(updated));
+      sonnerToast.success("Revisão salva", { description: "Os dados assistidos foram atualizados." });
+      void queueQuery.refetch();
+      void metricsQuery.refetch();
+    },
+    onError: error => sonnerToast.error("Não foi possível salvar a revisão", { description: friendlyAdminErrorMessage(error, "Revise os campos e tente novamente.") }),
+  });
+  const approveMutation = trpc.adminRoutine.manualReview.approve.useMutation({
+    onSuccess: approved => {
+      setSelectedEvent(approved);
+      setDraft(draftFromEvent(approved));
+      sonnerToast.success("Evento publicado", { description: "O evento revisado já está disponível na agenda pública." });
+      void queueQuery.refetch();
+      void metricsQuery.refetch();
+    },
+    onError: error => sonnerToast.error("Não foi possível publicar", { description: friendlyAdminErrorMessage(error, "Preencha data, local, cidade e categoria antes de aprovar.") }),
+  });
+  const rejectMutation = trpc.adminRoutine.manualReview.reject.useMutation({
+    onSuccess: rejected => {
+      setSelectedEvent(rejected);
+      setDraft(draftFromEvent(rejected));
+      sonnerToast.success("Evento rejeitado", { description: "A entrada foi retirada da fila de revisão." });
+      void queueQuery.refetch();
+      void metricsQuery.refetch();
+    },
+    onError: error => sonnerToast.error("Não foi possível rejeitar", { description: friendlyAdminErrorMessage(error, "Tente novamente em instantes.") }),
+  });
+
+  useEffect(() => {
+    setPage(0);
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (status) params.set("manual_review_status", status); else params.delete("manual_review_status");
+    if (sourceType.trim()) params.set("manual_review_source", sourceType.trim()); else params.delete("manual_review_source");
+    if (from) params.set("manual_review_from", from); else params.delete("manual_review_from");
+    if (to) params.set("manual_review_to", to); else params.delete("manual_review_to");
+    params.set("manual_review_page_size", String(pageSize));
+    window.history.replaceState({}, "", `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}${window.location.hash}`);
+  }, [status, sourceType, from, to, pageSize]);
+
+  useEffect(() => { setPage(0); }, [status, sourceType, from, to, pageSize]);
+
+  const selectEvent = (event: ManualReviewEvent) => {
+    setSelectedEvent(event);
+    setDraft(draftFromEvent(event));
+  };
+  const setDraftField = <K extends keyof ManualReviewDraft>(key: K, value: ManualReviewDraft[K]) => setDraft(current => current ? { ...current, [key]: value } : current);
+  const saveDraft = () => {
+    if (!selectedEvent || !draft || updateMutation.isPending) return;
+    updateMutation.mutate({
+      id: selectedEvent.id,
+      title: draft.title,
+      eventDate: localDateTimeToIso(draft.eventDate),
+      endDate: localDateTimeToIso(draft.endDate),
+      locationName: draft.locationName || null,
+      address: draft.address || null,
+      city: draft.city || null,
+      category: draft.category || null,
+      genre: draft.genre || null,
+      summary: draft.summary || null,
+      priceCents: draft.priceCents ? Number(draft.priceCents) : null,
+      sourceUrl: draft.sourceUrl || null,
+      sourceType: draft.sourceType || null,
+      imageUrl: draft.imageUrl || null,
+      rawText: draft.rawText || null,
+      reason: draft.reason,
+    });
+  };
+  const approveSelected = () => {
+    if (!selectedEvent || approveMutation.isPending) return;
+    approveMutation.mutate({ id: selectedEvent.id });
+  };
+  const rejectSelected = () => {
+    if (!selectedEvent || rejectMutation.isPending) return;
+    rejectMutation.mutate({ id: selectedEvent.id });
+  };
+  const isSaving = updateMutation.isPending || approveMutation.isPending || rejectMutation.isPending;
+
+  return (
+    <section className="mt-8 rounded-3xl border border-amber-300/20 bg-amber-300/[0.04] p-5 sm:p-7" data-testid="manual-review-panel" aria-labelledby="manual-review-title">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex items-center gap-2"><Clock3 size={18} className="text-amber-200" /><p className="text-xs font-black uppercase tracking-[0.18em] text-amber-200">Governança de eventos</p></div>
+          <h2 id="manual-review-title" className="mt-2 text-2xl font-black text-zinc-100">Fila de Revisão Manual</h2>
+          <p className="mt-1 max-w-2xl text-sm text-zinc-400">Eventos parcialmente estruturados pela IA permanecem aqui para completar os dados com segurança antes da publicação.</p>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={() => { void queueQuery.refetch(); void metricsQuery.refetch(); }} disabled={queueQuery.isFetching || metricsQuery.isFetching} aria-label="Atualizar fila de revisão manual"><RefreshCw size={14} className={queueQuery.isFetching ? "animate-spin" : ""} /> Atualizar</Button>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2" data-testid="manual-review-metrics">
+        <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.06] p-4"><p className="text-xs font-bold uppercase tracking-wide text-emerald-200">Eventos publicados</p><p className="mt-2 text-3xl font-black text-emerald-50">{metricsQuery.data?.published ?? "—"}</p><p className="mt-1 text-xs text-zinc-500">Eventos ativos na agenda pública</p></div>
+        <div className="rounded-2xl border border-amber-300/20 bg-amber-300/[0.06] p-4"><p className="text-xs font-bold uppercase tracking-wide text-amber-200">Aguardando revisão</p><p className="mt-2 text-3xl font-black text-amber-50">{metricsQuery.data?.awaitingReview ?? "—"}</p><p className="mt-1 text-xs text-zinc-500">Entradas incompletas preservadas pela IA</p></div>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5" data-testid="manual-review-filters">
+        <label className="grid gap-1 text-xs font-bold text-zinc-400">Status<select value={status} onChange={event => setStatus(event.target.value as "" | ManualReviewStatus)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" aria-label="Filtrar fila manual por status"><option value="">Todos</option><option value="pending">Aguardando revisão</option><option value="approved">Publicados</option><option value="rejected">Rejeitados</option></select></label>
+        <label className="grid gap-1 text-xs font-bold text-zinc-400">Fonte/tipo<input value={sourceType} onChange={event => setSourceType(event.target.value)} placeholder="instagram ou public" className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100 placeholder:text-zinc-600" aria-label="Filtrar fila manual por fonte" /></label>
+        <label className="grid gap-1 text-xs font-bold text-zinc-400">Data inicial<input type="date" value={from} onChange={event => setFrom(event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" aria-label="Filtrar fila manual a partir da data" /></label>
+        <label className="grid gap-1 text-xs font-bold text-zinc-400">Data final<input type="date" value={to} onChange={event => setTo(event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" aria-label="Filtrar fila manual até a data" /></label>
+        <label className="grid gap-1 text-xs font-bold text-zinc-400">Por página<select value={pageSize} onChange={event => setPageSize(Number(event.target.value))} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" aria-label="Tamanho da página da fila manual">{PAGE_SIZES.map(size => <option key={size} value={size}>{size}</option>)}</select></label>
+      </div>
+
+      <div className="mt-4 flex items-center justify-between text-xs text-zinc-500"><span>{queueQuery.data?.total ?? 0} entrada(s) para os filtros atuais</span>{queueQuery.isFetching && <span role="status">Atualizando…</span>}</div>
+      {queueQuery.isError ? <div className="mt-4 rounded-2xl border border-red-300/20 bg-red-300/[0.06] p-4 text-sm text-red-100">Não foi possível carregar a fila. <Button type="button" variant="outline" size="sm" className="ml-2" onClick={() => void queueQuery.refetch()}>Tentar novamente</Button></div> : queueQuery.data?.items.length ? <div className="mt-4 grid gap-3 lg:grid-cols-2" data-testid="manual-review-list">{queueQuery.data.items.map(event => <article key={event.id} className="grid gap-3 rounded-2xl border border-white/10 bg-zinc-950/40 p-3 sm:grid-cols-[96px_1fr]"><div>{event.imageUrl ? <img src={event.imageUrl} alt={`Imagem de ${event.title}`} loading="lazy" className="h-24 w-full rounded-xl border border-white/10 object-cover" /> : <div className="grid h-24 place-items-center rounded-xl border border-dashed border-white/10 text-center text-[11px] text-zinc-600">Sem imagem</div>}</div><div className="min-w-0"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="truncate font-black text-zinc-100">{event.title}</h3><p className="mt-1 text-xs text-zinc-500">{sourceLabel(event.sourceType)} · {formatDate(event.eventDate)}</p></div><span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-black ${statusClass(event.status)}`}>{statusLabel(event.status)}</span></div><p className="mt-2 text-xs text-amber-100">Motivo: {event.reason}</p><p className="mt-2 line-clamp-2 text-xs text-zinc-400">{event.summary || event.rawText || "Sem texto complementar registrado."}</p><Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => selectEvent(event)}><Edit3 size={13} /> {event.status === "pending" ? "Completar e revisar" : "Ver detalhes"}</Button></div></article>)}</div> : <div className="mt-4 rounded-2xl border border-dashed border-white/10 p-6 text-center text-sm text-zinc-500">Nenhum evento encontrado para os filtros atuais.</div>}
+      {(queueQuery.data?.hasNextPage || page > 0) && <div className="mt-5 flex items-center justify-between gap-3"><Button type="button" variant="outline" size="sm" onClick={() => setPage(current => Math.max(0, current - 1))} disabled={page === 0 || queueQuery.isFetching}>Anterior</Button><span className="text-xs text-zinc-500">Página {page + 1}</span><Button type="button" variant="outline" size="sm" onClick={() => setPage(current => current + 1)} disabled={!queueQuery.data?.hasNextPage || queueQuery.isFetching}>Próxima</Button></div>}
+
+      <Dialog open={selectedEvent !== null} onOpenChange={open => { if (!open && !isSaving) { setSelectedEvent(null); setDraft(null); } }}>
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto bg-zinc-950 text-zinc-100">
+          <DialogHeader><DialogTitle>Revisão assistida do evento</DialogTitle><DialogDescription className="text-zinc-400">Complete os campos faltantes, salve a revisão e publique somente quando os dados essenciais estiverem conferidos.</DialogDescription></DialogHeader>
+          {selectedEvent && draft && <div className="grid gap-4 py-3"><div className="grid gap-4 lg:grid-cols-[180px_1fr]">{draft.imageUrl ? <img src={draft.imageUrl} alt={`Imagem original de ${draft.title}`} className="h-44 w-full rounded-2xl border border-white/10 object-cover" /> : <div className="grid h-44 place-items-center rounded-2xl border border-dashed border-white/10 text-sm text-zinc-600">Sem imagem original</div>}<div className="grid gap-3"><label className="grid gap-1 text-xs font-bold text-zinc-400">Título<input value={draft.title} onChange={event => setDraftField("title", event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Motivo da revisão<input value={draft.reason} onChange={event => setDraftField("reason", event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label></div></div><div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1 text-xs font-bold text-zinc-400">Data e hora<input type="datetime-local" value={draft.eventDate} onChange={event => setDraftField("eventDate", event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Fim (opcional)<input type="datetime-local" value={draft.endDate} onChange={event => setDraftField("endDate", event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Local<input value={draft.locationName} onChange={event => setDraftField("locationName", event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Cidade<select value={draft.city} onChange={event => setDraftField("city", event.target.value as ManualReviewDraft["city"])} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100"><option value="">Selecionar cidade</option><option value="Santos">Santos</option><option value="Guarujá">Guarujá</option></select></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Categoria<select value={draft.category} onChange={event => setDraftField("category", event.target.value as ManualReviewDraft["category"])} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100"><option value="">Selecionar categoria</option><option value="show">Show</option><option value="balada">Balada</option><option value="evento_musical">Evento musical</option></select></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Gênero<input value={draft.genre} onChange={event => setDraftField("genre", event.target.value)} placeholder="funk, house/eletrônica..." className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label></div><label className="grid gap-1 text-xs font-bold text-zinc-400">Endereço<input value={draft.address} onChange={event => setDraftField("address", event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Resumo<textarea value={draft.summary} onChange={event => setDraftField("summary", event.target.value)} className="min-h-24 rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-zinc-100" /></label><details className="rounded-xl border border-white/10 p-3"><summary className="cursor-pointer text-xs font-bold text-zinc-400">Texto bruto extraído</summary><pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-xs text-zinc-500">{draft.rawText || "Sem texto bruto."}</pre></details></div>}
+          <DialogFooter className="gap-2 sm:justify-between"><div className="flex flex-wrap gap-2">{selectedEvent?.status === "pending" && <Button type="button" variant="outline" onClick={rejectSelected} disabled={isSaving} className="text-red-100"><XCircle size={14} /> Rejeitar</Button>}{selectedEvent?.status === "pending" && <Button type="button" onClick={approveSelected} disabled={isSaving} className="bg-emerald-300 text-zinc-950 hover:bg-emerald-200"><CheckCircle2 size={14} /> {approveMutation.isPending ? "Publicando…" : "Aprovar e publicar"}</Button>}</div><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => { if (!isSaving) { setSelectedEvent(null); setDraft(null); } }} disabled={isSaving}>Fechar</Button>{selectedEvent?.status === "pending" && <Button type="button" onClick={saveDraft} disabled={isSaving || !draft?.title.trim()}>{updateMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Edit3 size={14} />} Salvar revisão</Button>}</div></DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </section>
+  );
+}

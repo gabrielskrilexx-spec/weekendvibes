@@ -128,6 +128,38 @@ export const events = mysqlTable("events", {
 export type Event = typeof events.$inferSelect;
 export type InsertEvent = typeof events.$inferInsert;
 
+export const manualReviewEvents = mysqlTable("manualReviewEvents", {
+  id: int("id").autoincrement().primaryKey(),
+  sourceUrl: varchar("sourceUrl", { length: 1000 }),
+  sourceType: varchar("sourceType", { length: 64 }),
+  title: varchar("title", { length: 255 }).notNull(),
+  summary: text("summary"),
+  eventDate: timestamp("eventDate"),
+  endDate: timestamp("endDate"),
+  locationName: varchar("locationName", { length: 255 }),
+  address: varchar("address", { length: 500 }),
+  city: varchar("city", { length: 100 }),
+  category: mysqlEnum("category", ["show", "balada", "evento_musical"]),
+  genre: varchar("genre", { length: 80 }),
+  priceCents: int("priceCents"),
+  imageUrl: varchar("imageUrl", { length: 1000 }),
+  rawText: text("rawText"),
+  reason: varchar("reason", { length: 160 }).notNull(),
+  status: mysqlEnum("status", ["pending", "approved", "rejected"]).default("pending").notNull(),
+  reviewedBy: varchar("reviewedBy", { length: 160 }),
+  reviewedAt: timestamp("reviewedAt"),
+  publishedEventId: int("publishedEventId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => ({
+  statusCreatedIdx: index("manualReviewEvents_status_created_idx").on(table.status, table.createdAt),
+  sourceStatusIdx: index("manualReviewEvents_source_status_idx").on(table.sourceType, table.status),
+  eventDateIdx: index("manualReviewEvents_event_date_idx").on(table.eventDate),
+}));
+
+export type ManualReviewEvent = typeof manualReviewEvents.$inferSelect;
+export type InsertManualReviewEvent = typeof manualReviewEvents.$inferInsert;
+
 export const operationalAlerts = mysqlTable("operationalAlerts", {
   id: int("id").autoincrement().primaryKey(),
   integration: mysqlEnum("integration", ["meta", "public", "ocr", "openai", "pipeline"]).notNull(),
