@@ -62,7 +62,7 @@ import {
   listCircuitBreakerStatuses,
 } from "./db";
 import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
-import { approveManualReviewEvent, getManualReviewMetrics, listManualReviewEvents, rejectManualReviewEvent, updateManualReviewEvent, type ManualReviewEventInput } from "./manual-review";
+import { approveManualReviewEvent, approveManualReviewEvents, getManualReviewMetrics, listManualReviewEvents, rejectManualReviewEvent, rejectManualReviewEvents, updateManualReviewEvent, type ManualReviewEventInput } from "./manual-review";
 import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
 import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
@@ -144,6 +144,8 @@ const manualReviewMetricsOutput = z.object({
   rejected: z.number().int().nonnegative(),
   total: z.number().int().nonnegative(),
 }).strict();
+const manualReviewBulkInput = z.object({ ids: z.array(z.number().int().positive()).min(1).max(100) }).strict();
+const manualReviewBulkOutput = z.object({ success: z.literal(true), count: z.number().int().nonnegative(), ids: z.array(z.number().int().positive()).max(100) }).strict();
 
 function throwSanitizedAdminMutationError(
   error: unknown,
@@ -608,6 +610,10 @@ export const appRouter = router({
           if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Evento pendente não encontrado." });
           return result;
         }),
+      approveMany: adminOnly
+        .input(manualReviewBulkInput)
+        .output(manualReviewBulkOutput)
+        .mutation(({ ctx, input }) => approveManualReviewEvents(input.ids, ctx.user.openId)),
       reject: adminOnly
         .input(z.object({ id: z.number().int().positive() }).strict())
         .output(manualReviewEventOutput)
@@ -616,6 +622,10 @@ export const appRouter = router({
           if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Evento pendente não encontrado." });
           return result;
         }),
+      rejectMany: adminOnly
+        .input(manualReviewBulkInput)
+        .output(manualReviewBulkOutput)
+        .mutation(({ ctx, input }) => rejectManualReviewEvents(input.ids, ctx.user.openId)),
     }),
     filteredStories: adminOnly
       .input(filteredStoriesFilterInput)

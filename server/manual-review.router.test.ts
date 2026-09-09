@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
-const { listManualReviewEventsMock, getManualReviewMetricsMock, updateManualReviewEventMock, approveManualReviewEventMock, rejectManualReviewEventMock } = vi.hoisted(() => ({
+const { listManualReviewEventsMock, getManualReviewMetricsMock, updateManualReviewEventMock, approveManualReviewEventMock, rejectManualReviewEventMock, approveManualReviewEventsMock, rejectManualReviewEventsMock } = vi.hoisted(() => ({
   listManualReviewEventsMock: vi.fn(),
   getManualReviewMetricsMock: vi.fn(),
   updateManualReviewEventMock: vi.fn(),
   approveManualReviewEventMock: vi.fn(),
   rejectManualReviewEventMock: vi.fn(),
+  approveManualReviewEventsMock: vi.fn(),
+  rejectManualReviewEventsMock: vi.fn(),
 }));
 
 vi.mock("./manual-review", () => ({
@@ -14,6 +16,8 @@ vi.mock("./manual-review", () => ({
   updateManualReviewEvent: updateManualReviewEventMock,
   approveManualReviewEvent: approveManualReviewEventMock,
   rejectManualReviewEvent: rejectManualReviewEventMock,
+  approveManualReviewEvents: approveManualReviewEventsMock,
+  rejectManualReviewEvents: rejectManualReviewEventsMock,
 }));
 
 import { appRouter } from "./routers";
@@ -68,6 +72,20 @@ describe("adminRoutine.manualReview", () => {
     expect(updateManualReviewEventMock).toHaveBeenCalledWith(expect.objectContaining({ id: 7, locationName: "Meu Lugar Santos" }));
     await caller.adminRoutine.manualReview.approve({ id: 7 });
     expect(approveManualReviewEventMock).toHaveBeenCalledWith(7, "admin-open-id");
+  });
+
+  it("encaminha ações em lote com contrato primitivo e IDs deduplicados", async () => {
+    approveManualReviewEventsMock.mockResolvedValueOnce({ success: true, count: 2, ids: [7, 8] });
+    rejectManualReviewEventsMock.mockResolvedValueOnce({ success: true, count: 1, ids: [9] });
+    const caller = appRouter.createCaller(ctx());
+    await expect(caller.adminRoutine.manualReview.approveMany({ ids: [7, 7, 8] })).resolves.toEqual({ success: true, count: 2, ids: [7, 8] });
+    await expect(caller.adminRoutine.manualReview.rejectMany({ ids: [9] })).resolves.toEqual({ success: true, count: 1, ids: [9] });
+    expect(approveManualReviewEventsMock).toHaveBeenCalledWith([7, 7, 8], "admin-open-id");
+    expect(rejectManualReviewEventsMock).toHaveBeenCalledWith([9], "admin-open-id");
+  });
+
+  it("bloqueia usuários comuns também nas ações em lote", async () => {
+    await expect(appRouter.createCaller(ctx("user")).adminRoutine.manualReview.approveMany({ ids: [7] })).rejects.toThrow();
   });
 
   it("bloqueia usuários comuns", async () => {

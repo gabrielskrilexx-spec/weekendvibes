@@ -137,6 +137,7 @@ export default function ManualReviewPanel() {
   const [pageSize, setPageSize] = useState(() => { const value = Number(readUrlValue("manual_review_page_size")); return PAGE_SIZES.includes(value as typeof PAGE_SIZES[number]) ? value : 25; });
   const [page, setPage] = useState(0);
   const [selectedEvent, setSelectedEvent] = useState<ManualReviewEvent | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [draft, setDraft] = useState<ManualReviewDraft | null>(null);
 
   const listInput = useMemo(() => ({ status: status || undefined, sourceType: sourceType.trim() || undefined, from: from || undefined, to: to || undefined, offset: page * pageSize, limit: pageSize }), [status, sourceType, from, to, page, pageSize]);
@@ -162,6 +163,24 @@ export default function ManualReviewPanel() {
     },
     onError: error => sonnerToast.error("Não foi possível publicar", { description: friendlyAdminErrorMessage(error, "Preencha data, local, cidade e categoria antes de aprovar.") }),
   });
+  const approveManyMutation = trpc.adminRoutine.manualReview.approveMany.useMutation({
+    onSuccess: result => {
+      setSelectedIds(current => current.filter(id => !result.ids.includes(id)));
+      sonnerToast.success("Eventos publicados", { description: `${result.count} evento(s) foram aprovados e publicados.` });
+      void queueQuery.refetch();
+      void metricsQuery.refetch();
+    },
+    onError: error => sonnerToast.error("Não foi possível aprovar em massa", { description: friendlyAdminErrorMessage(error, "Complete os campos obrigatórios dos eventos selecionados.") }),
+  });
+  const rejectManyMutation = trpc.adminRoutine.manualReview.rejectMany.useMutation({
+    onSuccess: result => {
+      setSelectedIds(current => current.filter(id => !result.ids.includes(id)));
+      sonnerToast.success("Eventos rejeitados", { description: `${result.count} evento(s) foram removidos da fila de revisão.` });
+      void queueQuery.refetch();
+      void metricsQuery.refetch();
+    },
+    onError: error => sonnerToast.error("Não foi possível rejeitar em massa", { description: friendlyAdminErrorMessage(error, "Tente novamente em instantes.") }),
+  });
   const rejectMutation = trpc.adminRoutine.manualReview.reject.useMutation({
     onSuccess: rejected => {
       setSelectedEvent(rejected);
@@ -186,6 +205,15 @@ export default function ManualReviewPanel() {
   }, [status, sourceType, from, to, pageSize]);
 
   useEffect(() => { setPage(0); }, [status, sourceType, from, to, pageSize]);
+  const pendingVisibleIds = useMemo(() => (queueQuery.data?.items ?? []).filter(event => event.status === "pending").map(event => event.id), [queueQuery.data?.items]);
+  const pendingVisibleKey = pendingVisibleIds.join(",");
+  useEffect(() => { setSelectedIds(current => current.filter(id => pendingVisibleIds.includes(id))); }, [pendingVisibleKey]);
+  const allPendingSelected = pendingVisibleIds.length > 0 && pendingVisibleIds.every(id => selectedIds.includes(id));
+  const bulkPending = approveManyMutation.isPending || rejectManyMutation.isPending;
+  const toggleSelected = (id: number) => setSelectedIds(current => current.includes(id) ? current.filter(selectedId => selectedId !== id) : [...current, id]);
+  const toggleAllPending = () => setSelectedIds(current => allPendingSelected ? current.filter(id => !pendingVisibleIds.includes(id)) : Array.from(new Set([...current, ...pendingVisibleIds])));
+  const approveSelectedMany = () => { if (!bulkPending && selectedIds.length > 0) approveManyMutation.mutate({ ids: Array.from(new Set(selectedIds)) }); };
+  const rejectSelectedMany = () => { if (!bulkPending && selectedIds.length > 0 && window.confirm(`Rejeitar ${selectedIds.length} evento(s) selecionado(s)? Eles sairão da fila de revisão.`)) rejectManyMutation.mutate({ ids: Array.from(new Set(selectedIds)) }); };
 
   const selectEvent = (event: ManualReviewEvent) => {
     setSelectedEvent(event);
@@ -221,7 +249,7 @@ export default function ManualReviewPanel() {
     if (!selectedEvent || rejectMutation.isPending) return;
     rejectMutation.mutate({ id: selectedEvent.id });
   };
-  const isSaving = updateMutation.isPending || approveMutation.isPending || rejectMutation.isPending;
+  const isSaving = updateMutation.isPending || approveMutation.isPending || rejectMutation.isPending || bulkPending;
 
   return (
     <section className="mt-8 rounded-3xl border border-amber-300/20 bg-amber-300/[0.04] p-5 sm:p-7" data-testid="manual-review-panel" aria-labelledby="manual-review-title">
@@ -248,7 +276,8 @@ export default function ManualReviewPanel() {
       </div>
 
       <div className="mt-4 flex items-center justify-between text-xs text-zinc-500"><span>{queueQuery.data?.total ?? 0} entrada(s) para os filtros atuais</span>{queueQuery.isFetching && <span role="status">Atualizando…</span>}</div>
-      {queueQuery.isError ? <div className="mt-4 rounded-2xl border border-red-300/20 bg-red-300/[0.06] p-4 text-sm text-red-100">Não foi possível carregar a fila. <Button type="button" variant="outline" size="sm" className="ml-2" onClick={() => void queueQuery.refetch()}>Tentar novamente</Button></div> : queueQuery.data?.items.length ? <div className="mt-4 grid gap-3 lg:grid-cols-2" data-testid="manual-review-list">{queueQuery.data.items.map(event => <article key={event.id} className="grid gap-3 rounded-2xl border border-white/10 bg-zinc-950/40 p-3 sm:grid-cols-[96px_1fr]"><div>{event.imageUrl ? <img src={event.imageUrl} alt={`Imagem de ${event.title}`} loading="lazy" className="h-24 w-full rounded-xl border border-white/10 object-cover" /> : <div className="grid h-24 place-items-center rounded-xl border border-dashed border-white/10 text-center text-[11px] text-zinc-600">Sem imagem</div>}</div><div className="min-w-0"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="truncate font-black text-zinc-100">{event.title}</h3><p className="mt-1 text-xs text-zinc-500">{sourceLabel(event.sourceType)} · {formatDate(event.eventDate)}</p></div><span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-black ${statusClass(event.status)}`}>{statusLabel(event.status)}</span></div><p className="mt-2 text-xs text-amber-100">Motivo: {event.reason}</p><p className="mt-2 line-clamp-2 text-xs text-zinc-400">{event.summary || event.rawText || "Sem texto complementar registrado."}</p><Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => selectEvent(event)}><Edit3 size={13} /> {event.status === "pending" ? "Completar e revisar" : "Ver detalhes"}</Button></div></article>)}</div> : <div className="mt-4 rounded-2xl border border-dashed border-white/10 p-6 text-center text-sm text-zinc-500">Nenhum evento encontrado para os filtros atuais.</div>}
+      {pendingVisibleIds.length > 0 && <div className="mt-3 flex flex-col gap-3 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-300/[0.05] p-3 sm:flex-row sm:items-center sm:justify-between" data-testid="manual-review-bulk-actions"><label className="inline-flex min-h-11 items-center gap-2 text-xs font-bold text-zinc-200"><input type="checkbox" checked={allPendingSelected} onChange={toggleAllPending} disabled={bulkPending} aria-label="Selecionar todos os eventos pendentes visíveis" className="h-5 w-5 accent-fuchsia-400" /> Selecionar pendentes visíveis <span className="text-zinc-500">({pendingVisibleIds.length})</span></label>{selectedIds.length > 0 && <div className="flex flex-wrap items-center gap-2"><span className="text-xs font-black text-fuchsia-100">{selectedIds.length} selecionado(s)</span><Button type="button" size="sm" data-testid="manual-review-approve-many" onClick={approveSelectedMany} disabled={bulkPending} aria-busy={approveManyMutation.isPending} className="bg-emerald-300 text-zinc-950 hover:bg-emerald-200">{approveManyMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} {approveManyMutation.isPending ? "Publicando…" : "Aprovar selecionados"}</Button><Button type="button" variant="outline" size="sm" data-testid="manual-review-reject-many" onClick={rejectSelectedMany} disabled={bulkPending} aria-busy={rejectManyMutation.isPending} className="text-red-100">{rejectManyMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} />} {rejectManyMutation.isPending ? "Rejeitando…" : "Rejeitar selecionados"}</Button></div>}</div>}
+      {queueQuery.isError ? <div className="mt-4 rounded-2xl border border-red-300/20 bg-red-300/[0.06] p-4 text-sm text-red-100">Não foi possível carregar a fila. <Button type="button" variant="outline" size="sm" className="ml-2" onClick={() => void queueQuery.refetch()}>Tentar novamente</Button></div> : queueQuery.data?.items.length ? <div className="mt-4 grid gap-3 lg:grid-cols-2" data-testid="manual-review-list">{queueQuery.data.items.map(event => <article key={event.id} className="grid gap-3 rounded-2xl border border-white/10 bg-zinc-950/40 p-3 sm:grid-cols-[96px_1fr]"><div>{event.imageUrl ? <img src={event.imageUrl} alt={`Imagem de ${event.title}`} loading="lazy" className="h-24 w-full rounded-xl border border-white/10 object-cover" /> : <div className="grid h-24 place-items-center rounded-xl border border-dashed border-white/10 text-center text-[11px] text-zinc-600">Sem imagem</div>}</div><div className="min-w-0"><div className="flex items-start justify-between gap-2"><div className="flex min-w-0 items-start gap-2">{event.status === "pending" && <input type="checkbox" checked={selectedIds.includes(event.id)} onChange={() => toggleSelected(event.id)} disabled={bulkPending} aria-label={`Selecionar ${event.title}`} className="mt-1 h-5 w-5 shrink-0 accent-fuchsia-400" />}<div className="min-w-0"><h3 className="truncate font-black text-zinc-100">{event.title}</h3><p className="mt-1 text-xs text-zinc-500">{sourceLabel(event.sourceType)} · {formatDate(event.eventDate)}</p></div></div><span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-black ${statusClass(event.status)}`}>{statusLabel(event.status)}</span></div><p className="mt-2 text-xs text-amber-100">Motivo: {event.reason}</p><p className="mt-2 line-clamp-2 text-xs text-zinc-400">{event.summary || event.rawText || "Sem texto complementar registrado."}</p><Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => selectEvent(event)}><Edit3 size={13} /> {event.status === "pending" ? "Completar e revisar" : "Ver detalhes"}</Button></div></article>)}</div> : <div className="mt-4 rounded-2xl border border-dashed border-white/10 p-6 text-center text-sm text-zinc-500">Nenhum evento encontrado para os filtros atuais.</div>}
       {(queueQuery.data?.hasNextPage || page > 0) && <div className="mt-5 flex items-center justify-between gap-3"><Button type="button" variant="outline" size="sm" onClick={() => setPage(current => Math.max(0, current - 1))} disabled={page === 0 || queueQuery.isFetching}>Anterior</Button><span className="text-xs text-zinc-500">Página {page + 1}</span><Button type="button" variant="outline" size="sm" onClick={() => setPage(current => current + 1)} disabled={!queueQuery.data?.hasNextPage || queueQuery.isFetching}>Próxima</Button></div>}
 
       <Dialog open={selectedEvent !== null} onOpenChange={open => { if (!open && !isSaving) { setSelectedEvent(null); setDraft(null); } }}>

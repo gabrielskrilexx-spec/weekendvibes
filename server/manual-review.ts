@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { events, manualReviewEvents } from "../drizzle/schema";
 import { getDb, saveEvent } from "./db";
 
@@ -222,6 +222,40 @@ export async function approveManualReviewEvent(id: number, reviewedBy: string) {
   await db.update(manualReviewEvents).set({ status: "approved", reviewedBy: reviewedBy.slice(0, 160), reviewedAt: new Date(), publishedEventId, updatedAt: new Date() }).where(eq(manualReviewEvents.id, id));
   const [updated] = await db.select().from(manualReviewEvents).where(eq(manualReviewEvents.id, id)).limit(1);
   return updated ? toPublicReview(updated) : null;
+}
+
+function normalizeReviewIds(ids: number[]) {
+  return Array.from(new Set(ids.filter(id => Number.isInteger(id) && id > 0))).slice(0, 100);
+}
+
+export async function approveManualReviewEvents(ids: number[], reviewedBy: string) {
+  const normalizedIds = normalizeReviewIds(ids);
+  if (normalizedIds.length === 0) return { success: true as const, count: 0, ids: [] as number[] };
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const rows = await db.select().from(manualReviewEvents).where(and(inArray(manualReviewEvents.id, normalizedIds), eq(manualReviewEvents.status, "pending")));
+  if (rows.length !== normalizedIds.length) throw new Error("Selecione apenas entradas que ainda aguardam revisão.");
+  const incomplete = rows.filter(row => !row.eventDate || !row.locationName || !row.city || !row.category);
+  if (incomplete.length > 0) throw new Error("Preencha data, local, cidade e categoria em todas as entradas selecionadas antes de aprovar.");
+  const approvedIds: number[] = [];
+  for (const row of rows) {
+    const result = await approveManualReviewEvent(row.id, reviewedBy);
+    if (result?.status === "approved") approvedIds.push(row.id);
+  }
+  return { success: true as const, count: approvedIds.length, ids: approvedIds };
+}
+
+export async function rejectManualReviewEvents(ids: number[], reviewedBy: string) {
+  const normalizedIds = normalizeReviewIds(ids);
+  if (normalizedIds.length === 0) return { success: true as const, count: 0, ids: [] as number[] };
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const pendingRows = await db.select({ id: manualReviewEvents.id }).from(manualReviewEvents).where(and(inArray(manualReviewEvents.id, normalizedIds), eq(manualReviewEvents.status, "pending")));
+  const affectedIds = pendingRows.map(row => Number(row.id));
+  if (affectedIds.length > 0) {
+    await db.update(manualReviewEvents).set({ status: "rejected", reviewedBy: reviewedBy.slice(0, 160), reviewedAt: new Date(), updatedAt: new Date() }).where(inArray(manualReviewEvents.id, affectedIds));
+  }
+  return { success: true as const, count: affectedIds.length, ids: affectedIds };
 }
 
 export async function rejectManualReviewEvent(id: number, reviewedBy: string) {

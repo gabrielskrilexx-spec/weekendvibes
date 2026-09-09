@@ -2537,3 +2537,10 @@
 - [x] Sincronizar filtros da fila com parâmetros da URL
 - [x] Adicionar testes Vitest do contrato e da interação da fila de revisão manual
 - [x] Validar TypeScript, build, suíte Vitest e preview antes do checkpoint
+
+## Seleção em massa da fila manual — sessão atual
+- [x] Adicionar mutations tRPC e helpers de banco para aprovar/rejeitar IDs em lote
+- [x] Implementar checkbox individual, selecionar todos e barra de ações em massa
+- [x] Adicionar confirmação, loading, feedback e revalidação para as ações em lote
+- [x] Cobrir contratos e interação da seleção em massa com Vitest
+- [x] Validar TypeScript, build, suíte e responsividade antes do checkpoint
