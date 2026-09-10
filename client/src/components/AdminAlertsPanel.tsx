@@ -15,6 +15,7 @@ export default function AdminAlertsPanel() {
   const [status, setStatus] = useState<"all" | "open" | "resolved">("open");
   const [integration, setIntegration] = useState("all");
   const [resolvingId, setResolvingId] = useState<number | null>(null);
+  const [archiveBefore, setArchiveBefore] = useState("");
   const report = trpc.ingestionReports.summary.useQuery(undefined, { refetchInterval: 30_000 });
   const resolveAll = trpc.operationalAlerts.resolveAll.useMutation({
     onSuccess: async result => {
@@ -22,6 +23,14 @@ export default function AdminAlertsPanel() {
       sonnerToast.success("Pendências arquivadas", { description: `${result.resolvedCount} alerta(s) antigo(s) foram marcados como resolvidos.` });
     },
     onError: error => sonnerToast.error("Não foi possível limpar as pendências", { description: error.message || "Tente novamente." }),
+  });
+  const archiveBeforeMutation = trpc.operationalAlerts.archiveBefore.useMutation({
+    onSuccess: async result => {
+      await report.refetch();
+      setArchiveBefore("");
+      sonnerToast.success("Alertas históricos arquivados", { description: `${result.resolvedCount} alerta(s) anteriores ao corte foram marcados como resolvidos.` });
+    },
+    onError: error => sonnerToast.error("Não foi possível arquivar os alertas históricos", { description: error.message || "Tente novamente." }),
   });
   const resolve = trpc.operationalAlerts.resolve.useMutation({
     onSuccess: async () => {
@@ -59,7 +68,10 @@ export default function AdminAlertsPanel() {
       <div className="rounded-2xl border border-yellow-300/20 bg-yellow-300/10 p-4"><AlertTriangle size={17} className="text-yellow-200" /><p className="mt-3 text-2xl font-black">{report.data?.criticalAlerts.length ?? 0}</p><p className="text-xs text-zinc-400">Críticos identificados</p></div>
     </div>
 
-    <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+          <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-yellow-300/20 bg-yellow-300/[0.05] p-4 sm:flex-row sm:items-end sm:justify-between" data-testid="obsolete-alert-cleanup"><label className="grid flex-1 gap-1 text-xs font-bold text-yellow-100">Arquivar alertas anteriores a<input type="datetime-local" value={archiveBefore} onChange={event => setArchiveBefore(event.target.value)} className="mt-1 min-h-11 rounded-xl border border-white/10 bg-zinc-900 px-3 text-sm text-white" aria-label="Data limite para arquivar alertas obsoletos" /></label><button type="button" onClick={() => { if (!archiveBefore || archiveBeforeMutation.isPending) return; if (window.confirm("Arquivar os alertas de governança e reconciliação anteriores a esta data? O histórico será preservado como resolvido.")) archiveBeforeMutation.mutate({ before: new Date(`${archiveBefore}:00-03:00`).toISOString(), alertTypes: ["reconciliation_divergence", "freshness_critical", "structured_not_persisted", "circuit_opened", "source_http_403_blocked"] }); }} disabled={!archiveBefore || archiveBeforeMutation.isPending || report.isFetching} aria-busy={archiveBeforeMutation.isPending} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-yellow-300/30 px-4 text-xs font-black text-yellow-100 hover:bg-yellow-300/10 disabled:cursor-not-allowed disabled:opacity-50">{archiveBeforeMutation.isPending ? <><Loader2 size={15} className="animate-spin" /> Arquivando...</> : "Arquivar obsoletos"}</button></div>
+
+      <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+
       <label className="flex-1 text-xs font-bold text-zinc-400">Status<select value={status} onChange={event => setStatus(event.target.value as typeof status)} className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-white"><option value="open">Em aberto</option><option value="resolved">Resolvidos</option><option value="all">Todos</option></select></label>
       <label className="flex-1 text-xs font-bold text-zinc-400">Integração<select value={integration} onChange={event => setIntegration(event.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-white"><option value="all">Todas</option>{Object.entries(integrationLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     </div>

@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const maintenanceMocks = vi.hoisted(() => ({
+  resolveOperationalAlertsBefore: vi.fn().mockResolvedValue({ resolvedCount: 3, before: "2026-08-20T15:00:00.000Z" }),
+  resetActiveIngestionSourceCircuitBreakers: vi.fn().mockResolvedValue({ resetCount: 2, sourceKeys: ["instagram:bar", "public:agenda"] }),
+}));
+
 vi.mock("./db", () => ({
   listEvents: vi
     .fn()
@@ -54,6 +59,8 @@ vi.mock("./db", () => ({
   deleteLocationAlias: vi.fn(),
   updateIngestionSource: vi.fn(),
   resolveOperationalAlert: vi.fn(),
+  resolveOperationalAlertsBefore: maintenanceMocks.resolveOperationalAlertsBefore,
+  resetActiveIngestionSourceCircuitBreakers: maintenanceMocks.resetActiveIngestionSourceCircuitBreakers,
   deleteEvent: vi.fn(),
   deleteEvents: vi.fn(),
   updateEventsPublication: vi.fn(),
@@ -120,6 +127,20 @@ const adminContext = {
 
 describe("admin transport contracts", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("encaminha o saneamento temporal e o reset do Circuit Breaker com ACKs JSON", async () => {
+    const caller = appRouter.createCaller(adminContext);
+    await expect(caller.operationalAlerts.archiveBefore({ before: "2026-08-20T15:00:00.000Z", alertTypes: ["reconciliation_divergence"] })).resolves.toEqual({ ok: true, resolvedCount: 3, before: "2026-08-20T15:00:00.000Z" });
+    await expect(caller.circuitBreaker.resetActive()).resolves.toEqual({ success: true, resetCount: 2, sourceKeys: ["instagram:bar", "public:agenda"] });
+    expect(maintenanceMocks.resolveOperationalAlertsBefore).toHaveBeenCalledWith({ before: new Date("2026-08-20T15:00:00.000Z"), alertTypes: ["reconciliation_divergence"] });
+    expect(maintenanceMocks.resetActiveIngestionSourceCircuitBreakers).toHaveBeenCalledWith();
+  });
+
+  it("returns forbidden for maintenance mutations outside admin context", async () => {
+    const userContext = { ...adminContext, user: { ...adminContext.user, role: "user" as const } };
+    await expect(appRouter.createCaller(userContext).circuitBreaker.resetActive()).rejects.toThrow();
+    await expect(appRouter.createCaller(userContext).operationalAlerts.archiveBefore({ before: "2026-08-20T15:00:00.000Z" })).rejects.toThrow();
+  });
 
   it("returns the strict sandbox acknowledgement when Instagram reprocess throws", async () => {
     vi.mocked(reprocessIngestionSource).mockRejectedValueOnce(new Error("502 proxy html"));

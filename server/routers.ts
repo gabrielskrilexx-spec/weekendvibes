@@ -17,6 +17,8 @@ import {
   listTodayEvents,
   resolveOperationalAlert,
   resolveAllOperationalAlerts,
+  resolveOperationalAlertsBefore,
+  resetActiveIngestionSourceCircuitBreakers,
   saveEvent,
   updateEvent,
   updateEventsPublication,
@@ -898,6 +900,16 @@ export const appRouter = router({
     statuses: adminOnly.query(async () =>
       normalizeJsonForTransport(await listCircuitBreakerStatuses())
     ),
+    resetActive: adminOnly
+      .output(z.object({ success: z.literal(true), resetCount: z.number().int().nonnegative(), sourceKeys: z.array(z.string().min(1).max(120)).max(100) }).strict())
+      .mutation(async () => {
+        try {
+          const result = await resetActiveIngestionSourceCircuitBreakers();
+          return { success: true as const, resetCount: result.resetCount, sourceKeys: result.sourceKeys };
+        } catch (error) {
+          return throwSanitizedAdminMutationError(error, "Não foi possível resetar o Circuit Breaker das fontes ativas.");
+        }
+      }),
   }),
   collisionReview: router({
     list: adminOnly
@@ -1065,6 +1077,17 @@ export const appRouter = router({
       .mutation(async () => {
         const result = await resolveAllOperationalAlerts();
         return { ok: true as const, resolvedCount: result.resolvedCount };
+      }),
+    archiveBefore: adminOnly
+      .input(z.object({ before: z.string().datetime(), alertTypes: z.array(z.string().trim().min(1).max(80)).max(20).optional() }).strict())
+      .output(z.object({ ok: z.literal(true), resolvedCount: z.number().int().nonnegative(), before: z.string().datetime() }).strict())
+      .mutation(async ({ input }) => {
+        try {
+          const result = await resolveOperationalAlertsBefore({ before: new Date(input.before), alertTypes: input.alertTypes });
+          return { ok: true as const, resolvedCount: result.resolvedCount, before: result.before };
+        } catch (error) {
+          return throwSanitizedAdminMutationError(error, "Não foi possível arquivar os alertas obsoletos.");
+        }
       }),
   }),
   ingestionSources: router({

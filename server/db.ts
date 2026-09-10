@@ -157,6 +157,17 @@ export async function resolveAllOperationalAlerts(dbOverride?: Awaited<ReturnTyp
   return { resolvedCount: openAlerts.length };
 }
 
+export async function resolveOperationalAlertsBefore(input: { before: Date; alertTypes?: string[]; dbOverride?: Awaited<ReturnType<typeof getDb>> }) {
+  const db = input.dbOverride ?? await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const conditions = [eq(operationalAlerts.isResolved, 0), lt(operationalAlerts.createdAt, input.before)];
+  if (input.alertTypes?.length) conditions.push(inArray(operationalAlerts.alertType, input.alertTypes));
+  const predicate = and(...conditions);
+  const openAlerts = await db.select({ id: operationalAlerts.id }).from(operationalAlerts).where(predicate);
+  if (openAlerts.length > 0) await db.update(operationalAlerts).set({ isResolved: 1, updatedAt: new Date() }).where(predicate);
+  return { resolvedCount: openAlerts.length, before: input.before.toISOString() };
+}
+
 export async function purgeResolvedOperationalAlerts(retentionDays = 30, now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -324,6 +335,16 @@ export async function recordCircuitSuccess(sourceKey: string, now = new Date(), 
   const db = dbOverride ?? await getDb();
   if (!db) return;
   await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, lastStatus: "succeeded", lastSuccessAt: now, updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
+}
+
+export async function resetActiveIngestionSourceCircuitBreakers(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const activeSources = await db.select({ sourceKey: ingestionSources.sourceKey }).from(ingestionSources).where(eq(ingestionSources.isEnabled, 1));
+  if (activeSources.length > 0) {
+    await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, updatedAt: new Date() }).where(eq(ingestionSources.isEnabled, 1));
+  }
+  return { resetCount: activeSources.length, sourceKeys: activeSources.map(source => source.sourceKey) };
 }
 
 export async function markIngestionSourceResult(sourceKey: string, result: { status: "succeeded" | "failed" | "skipped"; message?: string }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {

@@ -7,11 +7,12 @@ let reportState = { isLoading: false, isError: false, data: { alerts: [{ id: 1, 
 const refetch = vi.fn();
 const mutate = vi.fn();
 const mutateAll = vi.fn();
+const mutateArchiveBefore = vi.fn();
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     ingestionReports: { summary: { useQuery: () => ({ ...reportState, refetch }) } },
-    operationalAlerts: { resolve: { useMutation: () => ({ isPending: false, mutate }) }, resolveAll: { useMutation: () => ({ isPending: false, mutate: mutateAll }) } },
+    operationalAlerts: { resolve: { useMutation: () => ({ isPending: false, mutate }) }, resolveAll: { useMutation: () => ({ isPending: false, mutate: mutateAll }) }, archiveBefore: { useMutation: () => ({ isPending: false, mutate: mutateArchiveBefore }) } },
   },
 }));
 
@@ -35,6 +36,20 @@ describe("AdminAlertsPanel", () => {
     await act(async () => { archiveButton.props.onClick(); });
     expect(confirmSpy).toHaveBeenCalledWith("Arquivar 1 alerta(s) em aberto? O histórico será preservado.");
     expect(mutateAll).toHaveBeenCalledWith();
+    vi.unstubAllGlobals();
+  });
+
+  it("arquiva apenas os tipos operacionais anteriores ao corte informado", async () => {
+    const confirmSpy = vi.fn().mockReturnValue(true);
+    vi.stubGlobal("window", { confirm: confirmSpy });
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminAlertsPanel />); });
+    const input = tree!.root.findByProps({ "aria-label": "Data limite para arquivar alertas obsoletos" });
+    await act(async () => { input.props.onChange({ target: { value: "2026-08-20T12:00" } }); });
+    const button = tree!.root.findByProps({ children: "Arquivar obsoletos" });
+    await act(async () => { button.props.onClick(); });
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(mutateArchiveBefore).toHaveBeenCalledWith(expect.objectContaining({ before: "2026-08-20T15:00:00.000Z", alertTypes: expect.arrayContaining(["reconciliation_divergence", "freshness_critical"]) }));
     vi.unstubAllGlobals();
   });
 

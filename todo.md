@@ -2544,3 +2544,11 @@
 - [x] Adicionar confirmação, loading, feedback e revalidação para as ações em lote
 - [x] Cobrir contratos e interação da seleção em massa com Vitest
 - [x] Validar TypeScript, build, suíte e responsividade antes do checkpoint
+
+## Saneamento operacional de alertas e fontes — sessão atual
+- [x] Auditar contratos e persistência de alertas, fontes e Circuit Breaker
+- [x] Implementar mutation segura para resolver/arquivar alertas obsoletos por corte temporal
+- [x] Implementar reset administrativo do Circuit Breaker e freshness das fontes ativas
+- [x] Integrar controles no painel com confirmação, loading, feedback e revalidação
+- [x] Adicionar testes de autorização, saneamento, reset e atualização de freshness/reconciliação
+- [x] Validar TypeScript, Vitest, build e preview antes do checkpoint
