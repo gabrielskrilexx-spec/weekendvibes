@@ -2552,3 +2552,7 @@
 - [x] Integrar controles no painel com confirmação, loading, feedback e revalidação
 - [x] Adicionar testes de autorização, saneamento, reset e atualização de freshness/reconciliação
 - [x] Validar TypeScript, Vitest, build e preview antes do checkpoint
+
+## Verificação da Fila de Revisão Manual — sessão atual
+- [x] Confirmar integração da fila, edição assistida, aprovação e métricas separadas no Admin
+- [x] Validar TypeScript, Vitest, build e publicar checkpoint da versão verificada
