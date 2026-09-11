@@ -45,6 +45,18 @@ describe("Apify async Stories", () => {
     fetchMock.mockRestore();
   });
 
+  it("classifica HTTP 403 do Actor como sessão inválida sem expor o cookie", async () => {
+    process.env.APIFY_INSTAGRAM_SESSION_COOKIE = "session-cookie-secret";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { message: "Instagram session cookie expired" } }), { status: 403, headers: { "content-type": "application/json" } })
+    );
+    await expect(startAsyncApifyStoriesRun({ trigger: "automatic" })).rejects.toThrow("credencial de sessão");
+    expect(mocks.finishIngestionRun).toHaveBeenCalledWith(42, expect.objectContaining({ httpStatus: 403, details: expect.objectContaining({ error: "SESSION_COOKIE_INVALID_OR_EXPIRED", kind: "session_credentials" }) }));
+    expect(JSON.stringify(mocks.finishIngestionRun.mock.calls)).not.toContain("session-cookie-secret");
+    fetchMock.mockRestore();
+    delete process.env.APIFY_INSTAGRAM_SESSION_COOKIE;
+  });
+
   it("rejeita token inválido do webhook sem alterar o run", async () => {
     mocks.findIngestionRunByApifyActor.mockResolvedValueOnce({ id: 77, status: "running", details: JSON.stringify({ callbackToken: "expected" }) });
     const res = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() } as never;

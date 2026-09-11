@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { containsTargetVenue, extractMrIngressosListingEvents, extractPublicEventLinks, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseMrIngressosEventMetadata } from "./ingestion";
+import { containsTargetVenue, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseMrIngressosEventMetadata } from "./ingestion";
 
 describe("adapters de ticketeiras oficiais", () => {
   it("normaliza metadados públicos do Black Pass", () => {
@@ -48,6 +48,21 @@ describe("adapters de ticketeiras oficiais", () => {
   it("descobre rotas Black Pass no HTML e em atributos incorporados", () => {
     const html = `<a href="/event/700">Jungle Room</a><div data-url="/event/692"></div>`;
     expect(extractPublicEventLinks(html, "https://blackpass.com.br/events")).toEqual(["https://blackpass.com.br/event/700", "https://blackpass.com.br/event/692"]);
+  });
+
+  it("mantém o timeout do Ingresse curto e limitado para falhar rápido", () => {
+    const previous = process.env.INGRESSE_FETCH_TIMEOUT_MS;
+    try {
+      delete process.env.INGRESSE_FETCH_TIMEOUT_MS;
+      expect(getIngresseFetchTimeoutMs()).toBe(6_000);
+      process.env.INGRESSE_FETCH_TIMEOUT_MS = "25000";
+      expect(getIngresseFetchTimeoutMs()).toBe(10_000);
+      process.env.INGRESSE_FETCH_TIMEOUT_MS = "1000";
+      expect(getIngresseFetchTimeoutMs()).toBe(3_000);
+    } finally {
+      if (previous === undefined) delete process.env.INGRESSE_FETCH_TIMEOUT_MS;
+      else process.env.INGRESSE_FETCH_TIMEOUT_MS = previous;
+    }
   });
 
   it("aceita apenas venues da allowlist oficial", () => {

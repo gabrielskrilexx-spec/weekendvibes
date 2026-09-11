@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import { eq, or } from "drizzle-orm";
 import { ingestionSources } from "../drizzle/schema";
 import { getDb } from "./db";
-import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl } from "./instagram-pipeline";
+import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl } from "./instagram-pipeline";
 
 describe("Instagram weekend pipeline", () => {
   beforeEach(async () => {
@@ -10,6 +10,22 @@ describe("Instagram weekend pipeline", () => {
     if (!db) return;
     await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null }).where(or(eq(ingestionSources.sourceKey, "instagram:curvaosurfhouse"), eq(ingestionSources.sourceKey, "instagram:flamingomusicbar")));
   });
+  it("limits the Stories Actor runtime and keeps the payload explicit", () => {
+    const previous = process.env.APIFY_ACTOR_MAX_RUNTIME_SECS;
+    try {
+      delete process.env.APIFY_ACTOR_MAX_RUNTIME_SECS;
+      expect(getApifyActorMaxRuntimeSecs()).toBe(45);
+      process.env.APIFY_ACTOR_MAX_RUNTIME_SECS = "120";
+      expect(getApifyActorMaxRuntimeSecs()).toBe(60);
+      process.env.APIFY_ACTOR_MAX_RUNTIME_SECS = "5";
+      expect(getApifyActorMaxRuntimeSecs()).toBe(20);
+      expect(buildInstagramStoriesScraperPayload([{ username: "meulugar.bar" }])).toMatchObject({ maxRunTimeSecs: 20, includeHighlights: true });
+    } finally {
+      if (previous === undefined) delete process.env.APIFY_ACTOR_MAX_RUNTIME_SECS;
+      else process.env.APIFY_ACTOR_MAX_RUNTIME_SECS = previous;
+    }
+  });
+
   it("sanitizes OCR audit entries for the administrative history", () => {
     const [entry] = buildOcrAuditEntries([{ post: { mediaType: "story", displayUrl: "https://cdn.example.com/story.jpg", url: "https://www.instagram.com/meulugar.bar/", ocrText: "Programação 22h", highlightTitle: "Programação" }, rawText: "Programação 22h\nSantos" }]);
     expect(entry).toEqual({ mediaOrigin: "story", imageUrl: "https://cdn.example.com/story.jpg", sourceUrl: "https://www.instagram.com/meulugar.bar/", highlightTitle: "Programação", ocrText: "Programação 22h", rawText: "Programação 22h\nSantos" });
@@ -137,6 +153,7 @@ describe("Instagram weekend pipeline", () => {
       includeHighlights: true,
       maxHighlights: 10,
       includeProfile: false,
+      maxRunTimeSecs: 45,
     });
   });
 

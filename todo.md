@@ -2568,3 +2568,10 @@
 - [x] Adicionar botão Copiar texto original com feedback acessível
 - [x] Cobrir parsing, cópia, feedback e responsividade com Vitest
 - [x] Validar TypeScript, Vitest, build, preview e publicar checkpoint
+
+## Resiliência de ingestão — 11/09
+- [x] Auditar adapters public:ingresse e instagramApify:actor-run-cookie, timeouts e autenticação
+- [x] Melhorar diagnóstico de 403 e cookies expirados sem mascarar falhas
+- [x] Implementar fail-fast e limites de execução controlados para proteger a fila
+- [x] Adicionar testes de regressão para 403, cookies, timeout e reconciliação
+- [x] Validar TypeScript, Vitest, build e publicar checkpoint

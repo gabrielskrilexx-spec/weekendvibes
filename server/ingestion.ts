@@ -53,6 +53,12 @@ const normalizeSlug = (value: string) => value.toLowerCase().normalize("NFD").re
 const normalizeText = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 const stripHtml = (value: string) => value.replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
 const INGRESSE_SITE_API = "https://api-site.ingresse.com/events";
+export const DEFAULT_INGRESSE_FETCH_TIMEOUT_MS = 6_000;
+export function getIngresseFetchTimeoutMs() {
+  const configured = Number.parseInt(process.env.INGRESSE_FETCH_TIMEOUT_MS ?? "", 10);
+  if (!Number.isFinite(configured)) return DEFAULT_INGRESSE_FETCH_TIMEOUT_MS;
+  return Math.min(10_000, Math.max(3_000, configured));
+}
 
 function verboseDryRunEnabled() {
   return process.env.INGESTION_VERBOSE_DRY_RUN === "1";
@@ -357,7 +363,7 @@ export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCac
   const slug = getIngresseSlug(url);
   if (!slug) throw createFetchError(`URL Ingresse sem slug de evento: ${url}`);
   try {
-    const response = await fetchExternal(`${INGRESSE_SITE_API}/${encodeURIComponent(slug)}`, { headers: { accept: "application/json" } }, 12_000, true);
+    const response = await fetchExternal(`${INGRESSE_SITE_API}/${encodeURIComponent(slug)}`, { headers: { accept: "application/json" } }, getIngresseFetchTimeoutMs(), true);
     if (!response.ok) throw createFetchError(`API pública do Ingresse respondeu ${response.status}`, response.status);
     const payload = JSON.parse(await readExternalBody(response)) as Record<string, unknown>;
     const place = payload.place && typeof payload.place === "object" ? payload.place as Record<string, unknown> : {};
@@ -380,6 +386,8 @@ export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCac
     return { url, html: "", text: text.slice(0, 16_000), imageUrl, structured };
   } catch (error) {
     const failure = sanitizeFetchFailure(error);
+    // Um 403 indica bloqueio explícito do provedor; não reutilizamos cache potencialmente obsoleto.
+    if (failure.status === 403) throw Object.assign(error instanceof Error ? error : new Error(failure.message), { fetchFailure: failure });
     const cached = await cacheStore.read(ingresseCacheKey(url)).catch(() => undefined);
     if (cached) {
       try {
@@ -445,7 +453,10 @@ async function guardedFetchPublicPage(url: string, options: { dryRun?: boolean }
 const PUBLIC_FETCH_TIMEOUT_MS = 12_000;
 export const ARTICKET_FETCH_TIMEOUT_MS = 30_000;
 function publicFetchTimeoutMs(url: string) {
-  return publicSourceKey(url) === "public:articket" ? ARTICKET_FETCH_TIMEOUT_MS : PUBLIC_FETCH_TIMEOUT_MS;
+  const sourceKey = publicSourceKey(url);
+  if (sourceKey === "public:articket") return ARTICKET_FETCH_TIMEOUT_MS;
+  if (sourceKey === "public:ingresse") return getIngresseFetchTimeoutMs();
+  return PUBLIC_FETCH_TIMEOUT_MS;
 }
 export const MR_INGRESSOS_RETRY_ATTEMPTS = 3;
 export const MR_INGRESSOS_RETRY_BASE_DELAY_MS = 250;

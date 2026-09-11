@@ -161,6 +161,13 @@ export function buildInstagramScraperPayload(targets: ReadonlyArray<{ username: 
 }
 
 /** Input contract for the dedicated Stories Actor; kept separate from the profile/posts Actor contract. */
+export const DEFAULT_APIFY_ACTOR_MAX_RUNTIME_SECS = 45;
+export function getApifyActorMaxRuntimeSecs() {
+  const configured = Number.parseInt(process.env.APIFY_ACTOR_MAX_RUNTIME_SECS ?? "", 10);
+  if (!Number.isFinite(configured)) return DEFAULT_APIFY_ACTOR_MAX_RUNTIME_SECS;
+  return Math.min(60, Math.max(20, configured));
+}
+
 export function buildInstagramStoriesScraperPayload(targets: ReadonlyArray<{ username: string }>, sessionCookie?: string) {
   return {
     usernames: targets.map(target => target.username),
@@ -168,6 +175,7 @@ export function buildInstagramStoriesScraperPayload(targets: ReadonlyArray<{ use
     includeHighlights: true,
     maxHighlights: 10,
     includeProfile: false,
+    maxRunTimeSecs: getApifyActorMaxRuntimeSecs(),
   } as const;
 }
 

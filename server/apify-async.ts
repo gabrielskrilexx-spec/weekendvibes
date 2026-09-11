@@ -68,6 +68,16 @@ function isApifyTimeoutError(error: unknown) {
   return error instanceof Error && (error.name === "AbortError" || /aborted|timeout|timed out|tempo limite/i.test(error.message));
 }
 
+function readApifyErrorDetail(payload: Record<string, unknown>) {
+  const error = payload.error && typeof payload.error === "object" ? payload.error as Record<string, unknown> : {};
+  const candidates = [error.message, payload.message, payload.raw];
+  return candidates.find((value): value is string => typeof value === "string" && value.trim().length > 0)?.trim().slice(0, 240) ?? "";
+}
+
+function isSessionCredentialFailure(status: number, detail: string) {
+  return [401, 403].includes(status) && /cookie|session|login|checkpoint|authentication|unauthorized|forbidden|token/i.test(detail);
+}
+
 function readResource(body: unknown) {
   const root = body && typeof body === "object" ? body as Record<string, unknown> : {};
   const resource = root.resource && typeof root.resource === "object" ? root.resource as Record<string, unknown> : root;
@@ -114,8 +124,21 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
   }
   const payload = await readJson(response);
   if (!response.ok) {
-    await finishIngestionRun(runId, { status: "failed", failedCount: 1, httpStatus: response.status, details: { provider: "apify", error: "ACTOR_START_FAILED", status: response.status } });
-    throw new Error(`Apify não aceitou o disparo assíncrono (HTTP ${response.status}).`);
+    const detail = readApifyErrorDetail(payload);
+    const sessionFailure = isSessionCredentialFailure(response.status, detail);
+    await finishIngestionRun(runId, {
+      status: "failed",
+      failedCount: 1,
+      httpStatus: response.status,
+      details: {
+        provider: "apify",
+        error: sessionFailure ? "SESSION_COOKIE_INVALID_OR_EXPIRED" : "ACTOR_START_FAILED",
+        kind: sessionFailure ? "session_credentials" : "actor_start",
+        status: response.status,
+        message: sessionFailure ? "Credencial de sessão do Actor ausente, inválida ou expirada; atualize o segredo autorizado." : "Apify rejeitou o disparo do Actor.",
+      },
+    });
+    throw new Error(sessionFailure ? "A credencial de sessão do Actor está ausente, inválida ou expirada." : `Apify não aceitou o disparo assíncrono (HTTP ${response.status}).`);
   }
 
   const data = payload.data && typeof payload.data === "object" ? payload.data as Record<string, unknown> : {};
@@ -127,7 +150,15 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
   }
 
   await linkIngestionRunToApifyActor({ runId, actorRunId });
-  await setIngestionRunDetails(runId, { provider: "apify", actorRunId, datasetId, callbackToken, status: "QUEUED", trigger: options.trigger ?? "automatic" });
+  await setIngestionRunDetails(runId, {
+    provider: "apify",
+    actorRunId,
+    datasetId,
+    callbackToken,
+    status: "QUEUED",
+    trigger: options.trigger ?? "automatic",
+    sessionCookieConfigured: Boolean(process.env.APIFY_INSTAGRAM_SESSION_COOKIE?.trim()),
+  });
   return { runId, actorRunId, status: "QUEUED" as const };
 }
 
