@@ -37,6 +37,14 @@ vi.mock("@/lib/trpc", () => ({
 }));
 vi.mock("@/lib/adminFeedback", () => ({ friendlyAdminErrorMessage: (_error: unknown, fallback: string) => fallback }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/components/ui/dialog", () => ({
+  Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) => open ? <>{children}</> : null,
+  DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogDescription: ({ children, className }: { children: React.ReactNode; className?: string }) => <p className={className}>{children}</p>,
+  DialogFooter: ({ children, className }: { children: React.ReactNode; className?: string }) => <div className={className}>{children}</div>,
+  DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
+}));
 
 import ManualReviewPanel, { draftFromEvent, localDateTimeToIso, toDateTimeLocal } from "./ManualReviewPanel";
 
@@ -63,6 +71,18 @@ describe("ManualReviewPanel bulk selection", () => {
   beforeEach(() => {
     state.approveMany.mockClear();
     state.rejectMany.mockClear();
+  });
+
+  it("exibe o texto bruto na prévia da edição assistida", () => {
+    let renderer!: ReturnType<typeof create>;
+    act(() => { renderer = create(<ManualReviewPanel />); });
+    const editButton = renderer.root.findByProps({ "data-testid": "manual-review-edit-7" });
+    expect(editButton).toBeTruthy();
+    act(() => { editButton.props.onClick(); });
+    const preview = renderer.root.findByProps({ "data-testid": "manual-review-source-preview" });
+    expect(preview).toBeTruthy();
+    expect(JSON.stringify(renderer.toJSON())).toContain("Festa");
+    expect(renderer.root.findByProps({ children: "Texto original da publicação" })).toBeTruthy();
   });
 
   it("seleciona todos os pendentes visíveis e envia IDs deduplicados para aprovação", () => {

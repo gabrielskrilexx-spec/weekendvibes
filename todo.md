@@ -2556,3 +2556,9 @@
 ## Verificação da Fila de Revisão Manual — sessão atual
 - [x] Confirmar integração da fila, edição assistida, aprovação e métricas separadas no Admin
 - [x] Validar TypeScript, Vitest, build e publicar checkpoint da versão verificada
+
+## Prévia lado a lado da revisão manual — sessão atual
+- [x] Adicionar painel de texto bruto OCR/legenda no modal de edição assistida
+- [x] Ajustar layout responsivo para split view no desktop e composição vertical no mobile
+- [x] Cobrir a prévia e o layout com testes Vitest
+- [x] Validar TypeScript, Vitest, build, preview e publicar checkpoint
