@@ -46,9 +46,15 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
 }));
 
-import ManualReviewPanel, { draftFromEvent, localDateTimeToIso, toDateTimeLocal } from "./ManualReviewPanel";
+import ManualReviewPanel, { draftFromEvent, highlightRawText, localDateTimeToIso, toDateTimeLocal } from "./ManualReviewPanel";
 
 describe("ManualReviewPanel helpers", () => {
+  it("destaca horários, datas, dias da semana e termos relativos", () => {
+    const nodes = highlightRawText("Sábado 12/10 às 22h; amanhã às 23:00.");
+    const highlighted = nodes.filter(node => React.isValidElement<{ children?: React.ReactNode }>(node) && node.type === "mark").map(node => String((node as React.ReactElement<{ children?: React.ReactNode }>).props.children));
+    expect(highlighted).toEqual(["Sábado", "12/10", "22h", "amanhã", "23:00"]);
+  });
+
   it("converte datas UTC para o campo local de São Paulo", () => {
     expect(toDateTimeLocal("2026-12-12T01:00:00.000Z")).toBe("2026-12-11T22:00");
     expect(toDateTimeLocal(null)).toBe("");
@@ -71,6 +77,20 @@ describe("ManualReviewPanel bulk selection", () => {
   beforeEach(() => {
     state.approveMany.mockClear();
     state.rejectMany.mockClear();
+  });
+
+  it("copia o texto original e exibe o estado de sucesso", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    let renderer!: ReturnType<typeof create>;
+    await act(async () => { renderer = create(<ManualReviewPanel />); });
+    const editButton = renderer.root.findByProps({ "data-testid": "manual-review-edit-7" });
+    await act(async () => { editButton.props.onClick(); });
+    const copyButton = renderer.root.findByProps({ "aria-label": "Copiar texto original" });
+    await act(async () => { await copyButton.props.onClick(); });
+    expect(writeText).toHaveBeenCalledWith("Festa");
+    expect(JSON.stringify(renderer.toJSON())).toContain("Texto copiado");
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
   });
 
   it("exibe o texto bruto na prévia da edição assistida", () => {

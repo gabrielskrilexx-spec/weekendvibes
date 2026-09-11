@@ -2562,3 +2562,9 @@
 - [x] Ajustar layout responsivo para split view no desktop e composição vertical no mobile
 - [x] Cobrir a prévia e o layout com testes Vitest
 - [x] Validar TypeScript, Vitest, build, preview e publicar checkpoint
+
+## Destaque e cópia do texto bruto — sessão atual
+- [x] Destacar horários, datas e dias da semana no texto bruto OCR/legenda
+- [x] Adicionar botão Copiar texto original com feedback acessível
+- [x] Cobrir parsing, cópia, feedback e responsividade com Vitest
+- [x] Validar TypeScript, Vitest, build, preview e publicar checkpoint
