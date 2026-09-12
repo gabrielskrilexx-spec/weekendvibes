@@ -4,6 +4,15 @@ const consecutive403BySource = new Map<string, number>();
 const alerted403Sources = new Set<string>();
 const HTTP_403_ALERT_THRESHOLD = 3;
 
+function severeFailureThreshold() {
+  const configured = Number(process.env.INGESTION_CIRCUIT_BREAKER_FAILURE_THRESHOLD ?? 3);
+  return Number.isFinite(configured) ? Math.min(10, Math.max(2, Math.trunc(configured))) : 3;
+}
+
+function isSevereFailure(input: { status?: number; message: string }) {
+  return input.status === 401 || input.status === 403 || /session|cookie|credential|authentication/i.test(input.message);
+}
+
 export type CircuitFailureKind = "proxy_or_session" | "upstream";
 export type CircuitMachineState = "closed" | "open" | "half_open";
 
@@ -71,18 +80,19 @@ export async function allowSourceAttempt(sourceKey: string) {
 
 export async function registerSourceFailure(input: { sourceKey: string; routine: string; status?: number; message: string }) {
   const is403 = input.status === 403;
+  const severe = isSevereFailure(input);
   const next403Count = is403 ? (consecutive403BySource.get(input.sourceKey) ?? 0) + 1 : 0;
   if (is403) consecutive403BySource.set(input.sourceKey, next403Count);
-  else {
+  else if (!severe) {
     consecutive403BySource.delete(input.sourceKey);
     alerted403Sources.delete(input.sourceKey);
   }
-  const result = await recordCircuitFailure(input.sourceKey, input.message, input.status);
+  const result = await recordCircuitFailure(input.sourceKey, input.message, input.status, new Date(), undefined, severe);
   if (result.openedNow && result.nextAttemptAt) {
     const payload = buildCircuitOpenedPayload({ sourceKey: input.sourceKey, routine: input.routine, nextAttemptAt: result.nextAttemptAt, failureCount: result.failureCount, message: input.message });
     await notifyCircuitOpened(payload);
   }
-  if (is403 && next403Count >= HTTP_403_ALERT_THRESHOLD && !alerted403Sources.has(input.sourceKey)) {
+  if (is403 && next403Count >= severeFailureThreshold() && !alerted403Sources.has(input.sourceKey)) {
     alerted403Sources.add(input.sourceKey);
     await notifyCircuitOpened({ type: "source_http_403_blocked", routine: input.routine.slice(0, 64), sourceKey: input.sourceKey.slice(0, 120), failureCount: next403Count, nextAttemptAt: new Date().toISOString(), message: `A fonte ${input.sourceKey} respondeu HTTP 403 em ${next403Count} falhas consecutivas.` });
   }

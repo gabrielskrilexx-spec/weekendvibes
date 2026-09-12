@@ -314,6 +314,8 @@ export const ingestionSources = mysqlTable("ingestionSources", {
   lastSuccessAt: timestamp("lastSuccessAt"),
   lastStatus: mysqlEnum("lastStatus", ["never", "succeeded", "failed", "skipped"]).default("never").notNull(),
   lastMessage: text("lastMessage"),
+  lastHttpStatus: int("lastHttpStatus"),
+  lastFailureReason: varchar("lastFailureReason", { length: 500 }),
   circuitState: mysqlEnum("circuitState", ["closed", "open", "half_open"]).default("closed").notNull(),
   circuitFailureCount: int("circuitFailureCount").default(0).notNull(),
   circuitOpenedAt: timestamp("circuitOpenedAt"),

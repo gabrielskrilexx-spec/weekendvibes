@@ -2575,3 +2575,11 @@
 - [x] Implementar fail-fast e limites de execução controlados para proteger a fila
 - [x] Adicionar testes de regressão para 403, cookies, timeout e reconciliação
 - [x] Validar TypeScript, Vitest, build e publicar checkpoint
+
+## Circuit Breaker inteligente e diagnóstico por fonte — sessão atual
+- [x] Auditar regras de falha severa, limiar consecutivo, alertas e diagnóstico existentes
+- [x] Implementar pausa automática configurável para 403 e falhas de sessão/cookie consecutivas
+- [x] Expor alerta sanitizado e status de pausa no contrato administrativo
+- [x] Adicionar diagnóstico rápido por fonte no painel administrativo
+- [x] Cobrir limiar, pausa, alerta, autorização e diagnóstico com Vitest
+- [x] Validar TypeScript, Vitest, build, preview e publicar checkpoint

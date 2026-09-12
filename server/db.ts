@@ -315,26 +315,40 @@ export async function listCircuitBreakerStatuses(dbOverride?: Awaited<ReturnType
   const db = dbOverride ?? await getDb();
   if (!db) return [];
   await ensureDefaultIngestionSources(db);
-  return db.select({ sourceKey: ingestionSources.sourceKey, name: ingestionSources.name, kind: ingestionSources.kind, circuitState: ingestionSources.circuitState, circuitFailureCount: ingestionSources.circuitFailureCount, circuitOpenedAt: ingestionSources.circuitOpenedAt, circuitNextAttemptAt: ingestionSources.circuitNextAttemptAt, circuitLastError: ingestionSources.circuitLastError, lastStatus: ingestionSources.lastStatus, lastMessage: ingestionSources.lastMessage }).from(ingestionSources).orderBy(asc(ingestionSources.kind), asc(ingestionSources.name));
+  return db.select({ sourceKey: ingestionSources.sourceKey, name: ingestionSources.name, kind: ingestionSources.kind, circuitState: ingestionSources.circuitState, circuitFailureCount: ingestionSources.circuitFailureCount, circuitOpenedAt: ingestionSources.circuitOpenedAt, circuitNextAttemptAt: ingestionSources.circuitNextAttemptAt, circuitLastError: ingestionSources.circuitLastError, lastStatus: ingestionSources.lastStatus, lastMessage: ingestionSources.lastMessage, lastHttpStatus: ingestionSources.lastHttpStatus, lastFailureReason: ingestionSources.lastFailureReason }).from(ingestionSources).orderBy(asc(ingestionSources.kind), asc(ingestionSources.name));
 }
 
-export async function recordCircuitFailure(sourceKey: string, message: string, status?: number, now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+function circuitFailureThreshold() {
+  const configured = Number(process.env.INGESTION_CIRCUIT_BREAKER_FAILURE_THRESHOLD ?? 3);
+  return Number.isFinite(configured) ? Math.min(10, Math.max(2, Math.trunc(configured))) : 3;
+}
+
+function sanitizedFailureReason(status: number | undefined, message: string) {
+  const normalized = message.replace(/(token|secret|key|cookie|authorization)=[^\s&]+/gi, "$1=[redacted]").replace(/\s+/g, " ").trim();
+  if (status === 401 || /session|cookie|credential|authentication/i.test(normalized)) return "Falha de Sessão";
+  if (status === 403) return "403 - Proibido";
+  if (status !== undefined) return `${status} - ${status >= 500 ? "Erro do provedor" : "Falha HTTP"}`;
+  return normalized.slice(0, 500) || "Falha de rede";
+}
+
+export async function recordCircuitFailure(sourceKey: string, message: string, status?: number, now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>, severe = true) {
   const db = dbOverride ?? await getDb();
   if (!db) return { state: "closed" as const, failureCount: 0, openedNow: false, nextAttemptAt: null };
   const [source] = await db.select({ circuitState: ingestionSources.circuitState, circuitFailureCount: ingestionSources.circuitFailureCount }).from(ingestionSources).where(eq(ingestionSources.sourceKey, sourceKey)).limit(1);
   if (!source) return { state: "closed" as const, failureCount: 0, openedNow: false, nextAttemptAt: null };
-  const failureCount = source.circuitState === "half_open" ? 3 : source.circuitFailureCount + 1;
-  const shouldOpen = failureCount >= 3;
+  const threshold = circuitFailureThreshold();
+  const failureCount = severe ? (source.circuitState === "half_open" ? threshold : source.circuitFailureCount + 1) : 0;
+  const shouldOpen = severe && failureCount >= threshold;
   const nextAttemptAt = shouldOpen ? new Date(now.getTime() + circuitCooldownMs()) : null;
   const safeMessage = `${status ? `HTTP ${status}: ` : ""}${message}`.replace(/(token|secret|key|cookie|authorization)=[^\s&]+/gi, "$1=[redacted]").slice(0, 1000);
-  await db.update(ingestionSources).set({ circuitState: shouldOpen ? "open" : "closed", circuitFailureCount: failureCount, circuitOpenedAt: shouldOpen ? now : undefined, circuitNextAttemptAt: nextAttemptAt, circuitLastError: safeMessage, lastStatus: "failed", lastMessage: safeMessage, updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
+  await db.update(ingestionSources).set({ circuitState: shouldOpen ? "open" : "closed", circuitFailureCount: failureCount, circuitOpenedAt: shouldOpen ? now : null, circuitNextAttemptAt: nextAttemptAt, circuitLastError: safeMessage, lastStatus: "failed", lastMessage: safeMessage, lastHttpStatus: status ?? null, lastFailureReason: sanitizedFailureReason(status, message), updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
   return { state: shouldOpen ? "open" as const : "closed" as const, failureCount, openedNow: shouldOpen && source.circuitState !== "open", nextAttemptAt };
 }
 
 export async function recordCircuitSuccess(sourceKey: string, now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) return;
-  await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, lastStatus: "succeeded", lastSuccessAt: now, updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
+  await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, lastStatus: "succeeded", lastSuccessAt: now, lastHttpStatus: 200, lastFailureReason: null, updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
 }
 
 export async function resetActiveIngestionSourceCircuitBreakers(dbOverride?: Awaited<ReturnType<typeof getDb>>) {

@@ -18,6 +18,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   delete process.env.CRITICAL_ALERT_WEBHOOK_URL;
+  delete process.env.INGESTION_CIRCUIT_BREAKER_FAILURE_THRESHOLD;
 });
 
 describe("resiliência dos adaptadores", () => {
@@ -40,6 +41,22 @@ describe("resiliência dos adaptadores", () => {
     const response = await fetchMrIngressosWithRetry("https://mringressos.com.br/comprar/1/teste", {}, fetchImpl);
     expect(response.status).toBe(403);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("usa um limiar configurável para pausar uma fonte após falhas severas consecutivas", async () => {
+    process.env.INGESTION_CIRCUIT_BREAKER_FAILURE_THRESHOLD = "2";
+    process.env.CRITICAL_ALERT_WEBHOOK_URL = "https://alerts.example.test/hook";
+    const webhook = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok", { status: 200 }));
+    const sourceKey = `instagram:session-test-${Date.now()}`;
+    dbMocks.recordCircuitFailure
+      .mockResolvedValueOnce({ openedNow: false, failureCount: 1, nextAttemptAt: null })
+      .mockResolvedValueOnce({ openedNow: true, failureCount: 2, nextAttemptAt: new Date("2026-09-12T02:00:00.000Z") });
+    await circuit.registerSourceFailure({ sourceKey, routine: "instagram-agenda", status: 401, message: "session cookie expired" });
+    await circuit.registerSourceFailure({ sourceKey, routine: "instagram-agenda", status: 401, message: "session cookie expired" });
+    expect(dbMocks.recordCircuitFailure).toHaveBeenLastCalledWith(sourceKey, "session cookie expired", 401, expect.any(Date), undefined, true);
+    expect(webhook).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String(webhook.mock.calls[0][1]?.body));
+    expect(body).toMatchObject({ type: "circuit_opened", sourceKey, failureCount: 2 });
   });
 
   it("notifica uma fonte após três HTTP 403 consecutivos, sem expor segredo", async () => {
