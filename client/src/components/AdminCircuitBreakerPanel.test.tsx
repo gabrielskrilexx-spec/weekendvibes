@@ -5,6 +5,7 @@ import AdminCircuitBreakerPanel from "./AdminCircuitBreakerPanel";
 
 const refetch = vi.fn();
 const reset = vi.fn();
+const reactivate = vi.fn();
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
@@ -14,6 +15,7 @@ vi.mock("@/lib/trpc", () => ({
         { sourceKey: "public:ingresse", name: "Ingresse", kind: "public", circuitState: "half_open", circuitFailureCount: 3, circuitOpenedAt: new Date("2026-08-22T12:00:00Z"), circuitNextAttemptAt: new Date("2026-08-23T06:00:00Z"), circuitLastError: null, lastHttpStatus: 502, lastFailureReason: "502 - Erro do provedor", lastStatus: "failed", lastMessage: "HTTP 502" },
       ], isLoading: false, isError: false, isFetching: false, refetch }) },
       resetActive: { useMutation: () => ({ isPending: false, mutate: reset }) },
+      reactivateAndTest: { useMutation: () => ({ isPending: false, mutate: reactivate }) },
     },
   },
 }));
@@ -28,6 +30,18 @@ describe("AdminCircuitBreakerPanel", () => {
     await act(async () => { button.props.onClick(); });
     expect(confirmSpy).toHaveBeenCalledWith("Resetar o Circuit Breaker de todas as fontes ativas? Isso remove o cooldown e preserva a freshness já registrada.");
     expect(reset).toHaveBeenCalledWith();
+    vi.unstubAllGlobals();
+  });
+
+  it("confirma e dispara o teste controlado apenas para a fonte pausada", async () => {
+    const confirmSpy = vi.fn().mockReturnValue(true);
+    vi.stubGlobal("window", { confirm: confirmSpy });
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminCircuitBreakerPanel />); });
+    const button = tree!.root.findByProps({ children: "Reativar e testar" });
+    await act(async () => { button.props.onClick(); });
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining("Testar e reativar Ativa House"));
+    expect(reactivate).toHaveBeenCalledWith({ sourceKey: "instagram:ativahouse" });
     vi.unstubAllGlobals();
   });
 

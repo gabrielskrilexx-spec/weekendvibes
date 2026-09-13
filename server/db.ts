@@ -351,6 +351,12 @@ export async function recordCircuitSuccess(sourceKey: string, now = new Date(), 
   await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, lastStatus: "succeeded", lastSuccessAt: now, lastHttpStatus: 200, lastFailureReason: null, updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
 }
 
+export async function reactivateIngestionSourceCircuitBreaker(sourceKey: string, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, updatedAt: new Date() }).where(eq(ingestionSources.sourceKey, sourceKey));
+}
+
 export async function resetActiveIngestionSourceCircuitBreakers(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) throw new Error("Database unavailable");

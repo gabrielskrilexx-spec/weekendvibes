@@ -35,6 +35,13 @@ describe("ingestion reconciliation", () => {
     expect(result.issues).not.toContain("reconciliation_gap");
   });
 
+  it("closes Instagram accounting when 200 items are read and two are persisted", () => {
+    const result = reconcileIngestionResult({ read: 200, persisted: 2, skippedByReason: { past_event: 120, invalid_schema: 78 } });
+    expect(result.reconciliationGap).toBe(0);
+    expect(result.counts).toEqual({ read: 200, filtered: 198, persisted: 2 });
+    expect(result.consistent).toBe(true);
+  });
+
   it("flags only items with unknown destinations", () => {
     const result = reconcileIngestionResult({
       read: 109,

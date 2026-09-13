@@ -2583,3 +2583,11 @@
 - [x] Adicionar diagnóstico rápido por fonte no painel administrativo
 - [x] Cobrir limiar, pausa, alerta, autorização e diagnóstico com Vitest
 - [x] Validar TypeScript, Vitest, build, preview e publicar checkpoint
+
+## Reativação controlada e resiliência Instagram — sessão atual
+- [x] Auditar Circuit Breaker, teste de fonte e contabilidade da rotina Instagram
+- [x] Implementar mutation e fluxo de reativação com teste controlado por fonte pausada
+- [x] Corrigir reconciliation_gap para contabilizar todos os descartes conhecidos
+- [x] Aplicar limites rígidos de paginação e timeout fail-fast no Instagram
+- [x] Cobrir reativação, reconciliação, timeout e autorização com Vitest
+- [x] Validar TypeScript, Vitest, build, preview e publicar checkpoint

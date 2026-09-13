@@ -15,7 +15,7 @@ vi.mock("./instagram-pipeline", () => ({ runInstagramPipeline: mocks.runInstagra
 vi.mock("./ingestion-reports", () => ({ startIngestionRun: mocks.startIngestionRun, finishIngestionRun: mocks.finishIngestionRun }));
 vi.mock("./geocoding", () => ({ processPendingGeocoding: mocks.processPendingGeocoding }));
 
-import { AGENDA_ROUTINE_COMPOSITION, buildAutomationSourceSummariesForTest, normalizeTrackedStepResultForTest, runFullAgendaRoutine, runInstagramAgendaStep, runPublicAgendaStep, runScheduledWithRetriesForTest, isRetryableAgendaErrorForTest } from "./agenda-routine";
+import { AGENDA_ROUTINE_COMPOSITION, buildAutomationSourceSummariesForTest, normalizeTrackedStepResultForTest, runFullAgendaRoutine, runInstagramAgendaStep, runPublicAgendaStep, runScheduledWithRetriesForTest, isRetryableAgendaErrorForTest, getInstagramAgendaTimeoutMs } from "./agenda-routine";
 
 describe("agenda routine composition", () => {
   beforeEach(() => { vi.clearAllMocks(); vi.stubEnv("CRITICAL_ALERT_WEBHOOK_URL", ""); });
@@ -96,6 +96,13 @@ describe("agenda routine composition", () => {
     expect(state.history).toHaveLength(2);
     expect(state.history[0]).toEqual(expect.objectContaining({ attempt: 1, reason: "upstream timeout", httpStatus: 503 }));
     expect(state.history[1]).toEqual(expect.objectContaining({ attempt: 2, httpStatus: 503 }));
+  });
+
+  it("limita o timeout da etapa Instagram a uma faixa fail-fast configurável", () => {
+    vi.stubEnv("INSTAGRAM_AGENDA_TIMEOUT_MS", "30000");
+    expect(getInstagramAgendaTimeoutMs()).toBe(10_000);
+    vi.stubEnv("INSTAGRAM_AGENDA_TIMEOUT_MS", "500");
+    expect(getInstagramAgendaTimeoutMs()).toBe(1_000);
   });
 
   it("não repete erro 4xx nem execução manual", async () => {

@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const maintenanceMocks = vi.hoisted(() => ({
   resolveOperationalAlertsBefore: vi.fn().mockResolvedValue({ resolvedCount: 3, before: "2026-08-20T15:00:00.000Z" }),
   resetActiveIngestionSourceCircuitBreakers: vi.fn().mockResolvedValue({ resetCount: 2, sourceKeys: ["instagram:bar", "public:agenda"] }),
+  reactivateIngestionSourceCircuitBreaker: vi.fn().mockResolvedValue(undefined),
+  runIngestionSourceChunk: vi.fn().mockResolvedValue({ sourceKey: "public:ingresse", dryRun: true, result: { read: 1, persisted: 1, filtered: 0, sandboxRestricted: false, previewMock: false } }),
 }));
 
 vi.mock("./db", () => ({
@@ -61,6 +63,7 @@ vi.mock("./db", () => ({
   resolveOperationalAlert: vi.fn(),
   resolveOperationalAlertsBefore: maintenanceMocks.resolveOperationalAlertsBefore,
   resetActiveIngestionSourceCircuitBreakers: maintenanceMocks.resetActiveIngestionSourceCircuitBreakers,
+  reactivateIngestionSourceCircuitBreaker: maintenanceMocks.reactivateIngestionSourceCircuitBreaker,
   deleteEvent: vi.fn(),
   deleteEvents: vi.fn(),
   updateEventsPublication: vi.fn(),
@@ -80,6 +83,7 @@ vi.mock("./db", () => ({
   getDb: vi.fn(),
 }));
 vi.mock("./manual-ingestion", () => ({
+  runIngestionSourceChunk: maintenanceMocks.runIngestionSourceChunk,
   getWednesdayRoutineStatus: vi
     .fn()
     .mockResolvedValue({
@@ -134,6 +138,13 @@ describe("admin transport contracts", () => {
     await expect(caller.circuitBreaker.resetActive()).resolves.toEqual({ success: true, resetCount: 2, sourceKeys: ["instagram:bar", "public:agenda"] });
     expect(maintenanceMocks.resolveOperationalAlertsBefore).toHaveBeenCalledWith({ before: new Date("2026-08-20T15:00:00.000Z"), alertTypes: ["reconciliation_divergence"] });
     expect(maintenanceMocks.resetActiveIngestionSourceCircuitBreakers).toHaveBeenCalledWith();
+  });
+
+  it("reativa uma fonte somente após teste controlado bem-sucedido", async () => {
+    const result = await appRouter.createCaller(adminContext).circuitBreaker.reactivateAndTest({ sourceKey: "public:ingresse" });
+    expect(result).toEqual({ success: true, sourceKey: "public:ingresse", status: "reactivated", read: 1, persisted: 1, message: "Teste concluído; fonte reativada para o próximo ciclo." });
+    expect(maintenanceMocks.runIngestionSourceChunk).toHaveBeenCalledWith({ sourceKey: "public:ingresse", dryRun: true });
+    expect(maintenanceMocks.reactivateIngestionSourceCircuitBreaker).toHaveBeenCalledWith("public:ingresse");
   });
 
   it("returns forbidden for maintenance mutations outside admin context", async () => {

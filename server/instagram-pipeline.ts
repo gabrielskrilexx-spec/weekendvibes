@@ -851,6 +851,10 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     imported += 1;
   }
   const rejectionReasons = summarizeStructuredRejections(rejectedEvents);
+  const persistedCount = dryRun ? approvedPosts.length : added + updated;
+  const filteredCount = Math.max(0, posts.length - persistedCount);
+  const explicitFilteredCount = Object.entries(rejectionReasons).reduce((sum, [reason, count]) => reason === "fetch_failed" ? sum : sum + Math.max(0, Number(count) || 0), 0);
+  if (filteredCount > explicitFilteredCount) rejectionReasons.unclassified_filtered = filteredCount - explicitFilteredCount;
   const acceptedSourceUrls = new Set(structuredEvents.filter((event, index) => validateStructuredInstagramEvent(event, activeAliases).length === 0).map(event => event.sourceUrl));
   const rejectedBySourceUrl = new Map(rejectedEvents.map(rejection => [rejection.sourceUrl, rejection.reasons]));
   const filteredStories: FilteredInstagramStory[] = ocrAuditCandidates
@@ -870,7 +874,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     sourceKey: "instagram",
     durationMs: Math.max(0, Date.now() - pipelineStartedAt),
     read: posts.length,
-    filtered: Math.max(0, posts.length - approvedPosts.length) + rejectedEvents.length,
+    filtered: filteredCount,
     persistable: dryRun ? imported : added + updated,
     added: dryRun ? 0 : added,
     updated: dryRun ? 0 : updated,
@@ -883,6 +887,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
       invalidStructuredEvent: Number(rejectionReasons.invalid_date ?? 0) + Number(rejectionReasons.invalid_source_url ?? 0) + Number(rejectionReasons.missing_required_field ?? 0) + Number(rejectionReasons.invalid_category ?? 0) + Number(rejectionReasons.invalid_genre ?? 0),
       duplicate: duplicates,
       pastEvent: Number(rejectionReasons.past_event ?? 0),
+      other: Number(rejectionReasons.unclassified_filtered ?? 0),
     },
   }];
   return {
@@ -900,11 +905,11 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
 
     structuredEvents: structuredEvents.length,
     imported,
-    persisted: dryRun ? 0 : added + updated,
+    persisted: persistedCount,
     added: dryRun ? 0 : added,
     updated: dryRun ? 0 : updated,
     ignored: dryRun ? 0 : ignored,
-    filtered: Math.max(0, posts.length - approvedPosts.length),
+    filtered: filteredCount,
     duplicates,
     missingCoordinates,
     outOfBoundsCoordinates: 0,

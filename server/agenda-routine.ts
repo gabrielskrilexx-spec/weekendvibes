@@ -34,6 +34,21 @@ export type FullAgendaRoutineOptions = { trigger?: "manual" | "scheduled"; runId
 export type RetryAttempt = { attempt: number; startedAt: string; failedAt: string; reason: string; httpStatus: number | null };
 const MAX_SCHEDULED_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 1000;
+export const DEFAULT_INSTAGRAM_AGENDA_TIMEOUT_MS = 3_000;
+export function getInstagramAgendaTimeoutMs() {
+  const configured = Number.parseInt(process.env.INSTAGRAM_AGENDA_TIMEOUT_MS ?? "", 10);
+  if (!Number.isFinite(configured)) return DEFAULT_INSTAGRAM_AGENDA_TIMEOUT_MS;
+  return Math.min(10_000, Math.max(1_000, configured));
+}
+
+async function withAgendaTimeout<T>(work: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([work, new Promise<T>((_, reject) => { timer = setTimeout(() => reject(new Error(`Tempo limite de ${timeoutMs} ms excedido para instagram-agenda.`)), timeoutMs); })]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 export function isRetryableAgendaErrorForTest(error: unknown) {
   const status = error && typeof error === "object" && "upstreamStatus" in error ? Number((error as { upstreamStatus?: unknown }).upstreamStatus) : 0;
@@ -196,7 +211,7 @@ export async function runPublicAgendaStep(options: AgendaStepOptions = {}) {
 export async function runInstagramAgendaStep(options: AgendaStepOptions = {}) {
   const execute = async () => {
     const archived = options.archive === false ? 0 : await archiveExpiredSoldOutEvents();
-    const result = await runInstagramPipeline();
+    const result = await withAgendaTimeout(runInstagramPipeline(), getInstagramAgendaTimeoutMs());
     let geocoding = { processed: 0, succeeded: 0, failed: 0, pending: 0 };
     try {
       geocoding = await processPendingGeocoding(5);
@@ -253,6 +268,7 @@ function collectRejectionReasons(result: Record<string, unknown>) {
       const count = safeAutomationNumber(rawCount);
       if (count <= 0) continue;
       const reason = normalizeRejectionReasonKey(rawReason).slice(0, 80);
+      if (["fetch_failed", "circuit_open", "actor_timeout", "proxy_or_session", "transport_failure"].includes(reason)) continue;
       totals[reason] = (totals[reason] ?? 0) + count;
     }
   };

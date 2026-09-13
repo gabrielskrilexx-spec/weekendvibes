@@ -19,6 +19,7 @@ import {
   resolveAllOperationalAlerts,
   resolveOperationalAlertsBefore,
   resetActiveIngestionSourceCircuitBreakers,
+  reactivateIngestionSourceCircuitBreaker,
   saveEvent,
   updateEvent,
   updateEventsPublication,
@@ -908,6 +909,24 @@ export const appRouter = router({
           return { success: true as const, resetCount: result.resetCount, sourceKeys: result.sourceKeys };
         } catch (error) {
           return throwSanitizedAdminMutationError(error, "Não foi possível resetar o Circuit Breaker das fontes ativas.");
+        }
+      }),
+    reactivateAndTest: adminOnly
+      .input(z.object({ sourceKey: z.string().trim().min(1).max(120) }).strict())
+      .output(z.object({ success: z.boolean(), sourceKey: z.string().min(1).max(120), status: z.enum(["reactivated", "test_failed", "sandbox_restricted"]), read: z.number().int().nonnegative(), persisted: z.number().int().nonnegative(), message: z.string().max(240) }).strict())
+      .mutation(async ({ input }) => {
+        try {
+          const result = await runIngestionSourceChunk({ sourceKey: input.sourceKey, dryRun: true });
+          const payload = result && typeof result === "object" && "result" in result ? (result as { result?: unknown }).result : result;
+          const value = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+          const sandboxRestricted = value.sandboxRestricted === true || value.previewMock === true || value.status === "SANDBOX_RESTRICTED";
+          const read = Number(value.read ?? value.receivedPosts ?? value.discovered ?? 0);
+          const persisted = Number(value.persisted ?? value.imported ?? 0);
+          if (sandboxRestricted) return { success: false, sourceKey: input.sourceKey, status: "sandbox_restricted" as const, read: Math.max(0, Math.trunc(read)), persisted: Math.max(0, Math.trunc(persisted)), message: "O teste não foi concluído porque o ambiente está restrito ao sandbox." };
+          await reactivateIngestionSourceCircuitBreaker(input.sourceKey);
+          return { success: true, sourceKey: input.sourceKey, status: "reactivated" as const, read: Math.max(0, Math.trunc(read)), persisted: Math.max(0, Math.trunc(persisted)), message: "Teste concluído; fonte reativada para o próximo ciclo." };
+        } catch (error) {
+          return { success: false, sourceKey: input.sourceKey, status: "test_failed" as const, read: 0, persisted: 0, message: String(error instanceof Error ? error.message : error).replace(/https?:\/\/[^\s]+/gi, "fonte externa").replace(/[\\r\\n\\t]+/g, " ").slice(0, 240) || "Teste de conexão falhou." };
         }
       }),
   }),
