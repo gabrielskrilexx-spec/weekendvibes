@@ -111,7 +111,20 @@ function statusClass(status: ManualReviewStatus) {
 
 const RAW_TEXT_HIGHLIGHT_PATTERN = /(^|[^A-Za-zÀ-ÿ0-9])((?:[01]?\d|2[0-3])(?:[:hH][0-5]\d|h)|(?:segunda|terça|terca|quarta|quinta|sexta|sábado|sabado|domingo)(?:-feira)?|(?:amanhã|amanha|hoje)|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)(?![A-Za-zÀ-ÿ0-9])/gi;
 
-export function highlightRawText(text: string): React.ReactNode[] {
+export type RawTextTokenKind = "time" | "date";
+export type RawTextToken = { value: string; kind: RawTextTokenKind };
+export type RawTextHighlightOptions = {
+  onTokenClick?: (token: RawTextToken) => void;
+  onApplyToken?: (token: RawTextToken) => void;
+  copiedToken?: string | null;
+  appliedToken?: string | null;
+};
+
+function tokenKind(value: string): RawTextTokenKind {
+  return /^(?:[01]?\d|2[0-3])(?:[:hH][0-5]\d|h)$/i.test(value) ? "time" : "date";
+}
+
+export function highlightRawText(text: string, options: RawTextHighlightOptions = {}): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   let cursor = 0;
   let match: RegExpExecArray | null;
@@ -119,13 +132,46 @@ export function highlightRawText(text: string): React.ReactNode[] {
   RAW_TEXT_HIGHLIGHT_PATTERN.lastIndex = 0;
   while ((match = RAW_TEXT_HIGHLIGHT_PATTERN.exec(text)) !== null) {
     const prefixLength = match[0].length - match[2].length;
+    const token: RawTextToken = { value: match[2], kind: tokenKind(match[2]) };
     nodes.push(<React.Fragment key={`text-${index}`}>{text.slice(cursor, match.index + prefixLength)}</React.Fragment>);
-    nodes.push(<mark key={`highlight-${index}`} className="rounded bg-amber-300/25 px-1 font-bold text-amber-100 ring-1 ring-inset ring-amber-200/20">{match[2]}</mark>);
+    if (!options.onTokenClick) {
+      nodes.push(<mark key={`highlight-${index}`} className="rounded bg-amber-300/25 px-1 font-bold text-amber-100 ring-1 ring-inset ring-amber-200/20">{token.value}</mark>);
+    } else {
+      nodes.push(
+        <span key={`interactive-highlight-${index}`} className="mx-0.5 inline-flex items-center align-baseline rounded bg-amber-300/25 font-bold text-amber-100 ring-1 ring-inset ring-amber-200/20">
+          <button type="button" onClick={() => options.onTokenClick?.(token)} aria-label={`Copiar ${token.value}`} title="Copiar este valor" className="rounded-l px-1 font-bold underline decoration-dotted underline-offset-2 hover:bg-amber-200/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200">{token.value}</button>
+          {options.onApplyToken && <button type="button" onClick={() => options.onApplyToken?.(token)} aria-label={`Aplicar ${token.value} ao formulário`} title="Aplicar ao formulário" className="rounded-r border-l border-amber-200/20 px-1.5 text-xs font-black hover:bg-amber-200/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200">+</button>}
+          {options.copiedToken === token.value && <span role="status" className="sr-only">Copiado!</span>}
+          {options.appliedToken === token.value && <span role="status" className="sr-only">Aplicado!</span>}
+        </span>,
+      );
+    }
     cursor = match.index + match[0].length;
     index += 1;
   }
   nodes.push(<React.Fragment key={`text-${index}`}>{text.slice(cursor)}</React.Fragment>);
   return nodes;
+}
+
+export function applyRawTokenToDateTime(currentValue: string, token: RawTextToken, fallbackDate?: string): string | null {
+  const datePart = currentValue.slice(0, 10) || fallbackDate || new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Sao_Paulo" }).format(new Date());
+  if (token.kind === "time") {
+    const timeMatch = token.value.match(/^(\d{1,2})(?::|h)(\d{2})?$/i);
+    if (!timeMatch || !/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null;
+    const hours = Number(timeMatch[1]);
+    const minutes = Number(timeMatch[2] ?? 0);
+    if (!Number.isInteger(hours) || hours > 23 || minutes > 59) return null;
+    return `${datePart}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  }
+  const dateMatch = token.value.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+  if (!dateMatch) return null;
+  const currentYear = datePart.slice(0, 4);
+  const year = dateMatch[3] ? (dateMatch[3].length === 2 ? `20${dateMatch[3]}` : dateMatch[3]) : currentYear;
+  if (!/^\d{4}$/.test(year)) return null;
+  const month = Number(dateMatch[2]);
+  const day = Number(dateMatch[1]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}${currentValue.slice(10) || "T00:00"}`;
 }
 
 export function draftFromEvent(event: ManualReviewEvent): ManualReviewDraft {
@@ -159,6 +205,8 @@ export default function ManualReviewPanel() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [draft, setDraft] = useState<ManualReviewDraft | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [appliedToken, setAppliedToken] = useState<string | null>(null);
 
   const listInput = useMemo(() => ({ status: status || undefined, sourceType: sourceType.trim() || undefined, from: from || undefined, to: to || undefined, offset: page * pageSize, limit: pageSize }), [status, sourceType, from, to, page, pageSize]);
   const queueQuery = trpc.adminRoutine.manualReview.list.useQuery(listInput, { refetchInterval: 30_000 });
@@ -239,6 +287,8 @@ export default function ManualReviewPanel() {
     setSelectedEvent(event);
     setDraft(draftFromEvent(event));
     setCopyState("idle");
+    setCopiedToken(null);
+    setAppliedToken(null);
   };
   const copyRawText = async () => {
     if (!draft?.rawText) return;
@@ -251,7 +301,27 @@ export default function ManualReviewPanel() {
       sonnerToast.error("Não foi possível copiar", { description: "Selecione o texto manualmente e tente novamente." });
     }
   };
+  const copyToken = async (token: RawTextToken) => {
+    try {
+      await navigator.clipboard.writeText(token.value);
+      setCopiedToken(token.value);
+      sonnerToast.success("Token copiado", { description: `“${token.value}” foi copiado.` });
+    } catch {
+      sonnerToast.error("Não foi possível copiar o token", { description: "Selecione o valor manualmente e tente novamente." });
+    }
+  };
   const setDraftField = <K extends keyof ManualReviewDraft>(key: K, value: ManualReviewDraft[K]) => setDraft(current => current ? { ...current, [key]: value } : current);
+  const applyTokenToDraft = (token: RawTextToken) => {
+    if (!draft) return;
+    const nextEventDate = applyRawTokenToDateTime(draft.eventDate, token);
+    if (!nextEventDate) {
+      sonnerToast.info("Token não reconhecido para preenchimento", { description: "O valor foi mantido disponível para cópia manual; confirme a data ou horário no formulário." });
+      return;
+    }
+    setDraft(current => current ? { ...current, eventDate: nextEventDate } : current);
+    setAppliedToken(token.value);
+    sonnerToast.success("Token aplicado", { description: `“${token.value}” foi aplicado à data e hora do evento.` });
+  };
   const saveDraft = () => {
     if (!selectedEvent || !draft || updateMutation.isPending) return;
     updateMutation.mutate({
@@ -315,7 +385,7 @@ export default function ManualReviewPanel() {
       <Dialog open={selectedEvent !== null} onOpenChange={open => { if (!open && !isSaving) { setSelectedEvent(null); setDraft(null); } }}>
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto bg-zinc-950 text-zinc-100">
           <DialogHeader><DialogTitle>Revisão assistida do evento</DialogTitle><DialogDescription className="text-zinc-400">Complete os campos faltantes, salve a revisão e publique somente quando os dados essenciais estiverem conferidos.</DialogDescription></DialogHeader>
-          {selectedEvent && draft && <div className="grid gap-4 py-3"><section data-testid="manual-review-source-preview" aria-labelledby="manual-review-source-title" className="grid gap-4 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-300/[0.05] p-4 lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)]"><div className="min-w-0">{draft.imageUrl ? <img src={draft.imageUrl} alt={`Imagem original de ${draft.title}`} className="h-48 w-full rounded-xl border border-white/10 object-cover" /> : <div className="grid h-48 place-items-center rounded-xl border border-dashed border-white/10 text-sm text-zinc-600">Sem imagem original</div>}</div><div className="min-w-0"><div className="flex items-center justify-between gap-3"><h3 id="manual-review-source-title" className="text-xs font-black uppercase tracking-[0.16em] text-fuchsia-100">Texto original da publicação</h3><span className="rounded-full bg-white/[0.06] px-2 py-1 text-[11px] font-bold text-zinc-500">OCR / legenda</span></div><div className="mt-3 flex flex-wrap items-center justify-between gap-2"><span className="text-xs text-zinc-500">Horários, datas e dias reconhecidos ficam destacados.</span><Button type="button" variant="outline" size="sm" onClick={() => void copyRawText()} disabled={!draft.rawText} aria-label="Copiar texto original"><Copy size={14} /> {copyState === "copied" ? "Texto copiado" : "Copiar texto original"}</Button></div><pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-zinc-950/60 p-3 text-sm leading-6 text-zinc-200">{draft.rawText ? highlightRawText(draft.rawText) : "Sem texto bruto registrado para esta entrada."}</pre><p role="status" aria-live="polite" className="mt-2 text-xs text-zinc-500">{copyState === "error" ? "A cópia automática falhou; selecione o texto manualmente." : "Use esta referência para completar horário, cidade, categoria e demais campos estruturados abaixo."}</p></div></section><div className="grid gap-4 lg:grid-cols-[180px_1fr]">{draft.imageUrl ? <img src={draft.imageUrl} alt={`Imagem original de ${draft.title}`} className="h-44 w-full rounded-2xl border border-white/10 object-cover" /> : <div className="grid h-44 place-items-center rounded-2xl border border-dashed border-white/10 text-sm text-zinc-600">Sem imagem original</div>}<div className="grid gap-3"><label className="grid gap-1 text-xs font-bold text-zinc-400">Título<input value={draft.title} onChange={event => setDraftField("title", event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Motivo da revisão<input value={draft.reason} onChange={event => setDraftField("reason", event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label></div></div><div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1 text-xs font-bold text-zinc-400">Data e hora<input type="datetime-local" value={draft.eventDate} onChange={event => setDraftField("eventDate", event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Fim (opcional)<input type="datetime-local" value={draft.endDate} onChange={event => setDraftField("endDate", event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Local<input value={draft.locationName} onChange={event => setDraftField("locationName", event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Cidade<select value={draft.city} onChange={event => setDraftField("city", event.target.value as ManualReviewDraft["city"])} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100"><option value="">Selecionar cidade</option><option value="Santos">Santos</option><option value="Guarujá">Guarujá</option></select></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Categoria<select value={draft.category} onChange={event => setDraftField("category", event.target.value as ManualReviewDraft["category"])} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100"><option value="">Selecionar categoria</option><option value="show">Show</option><option value="balada">Balada</option><option value="evento_musical">Evento musical</option></select></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Gênero<input value={draft.genre} onChange={event => setDraftField("genre", event.target.value)} placeholder="funk, house/eletrônica..." className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label></div><label className="grid gap-1 text-xs font-bold text-zinc-400">Endereço<input value={draft.address} onChange={event => setDraftField("address", event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Resumo<textarea value={draft.summary} onChange={event => setDraftField("summary", event.target.value)} className="min-h-24 rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-zinc-100" /></label></div>}
+          {selectedEvent && draft && <div className="grid gap-4 py-3"><section data-testid="manual-review-source-preview" aria-labelledby="manual-review-source-title" className="grid gap-4 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-300/[0.05] p-4 lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)]"><div className="min-w-0">{draft.imageUrl ? <img src={draft.imageUrl} alt={`Imagem original de ${draft.title}`} className="h-48 w-full rounded-xl border border-white/10 object-cover" /> : <div className="grid h-48 place-items-center rounded-xl border border-dashed border-white/10 text-sm text-zinc-600">Sem imagem original</div>}</div><div className="min-w-0"><div className="flex items-center justify-between gap-3"><h3 id="manual-review-source-title" className="text-xs font-black uppercase tracking-[0.16em] text-fuchsia-100">Texto original da publicação</h3><span className="rounded-full bg-white/[0.06] px-2 py-1 text-[11px] font-bold text-zinc-500">OCR / legenda</span></div><div className="mt-3 flex flex-wrap items-center justify-between gap-2"><span className="text-xs text-zinc-500">Horários, datas e dias reconhecidos ficam destacados.</span><Button type="button" variant="outline" size="sm" onClick={() => void copyRawText()} disabled={!draft.rawText} aria-label="Copiar texto original"><Copy size={14} /> {copyState === "copied" ? "Texto copiado" : "Copiar texto original"}</Button></div><pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-zinc-950/60 p-3 text-sm leading-6 text-zinc-200">{draft.rawText ? highlightRawText(draft.rawText, { onTokenClick: copyToken, onApplyToken: applyTokenToDraft, copiedToken, appliedToken }) : "Sem texto bruto registrado para esta entrada."}</pre><p role="status" aria-live="polite" className="mt-2 text-xs text-zinc-500">{copyState === "error" ? "A cópia automática falhou; selecione o texto manualmente." : "Use esta referência para completar horário, cidade, categoria e demais campos estruturados abaixo."}</p></div></section><div className="grid gap-4 lg:grid-cols-[180px_1fr]">{draft.imageUrl ? <img src={draft.imageUrl} alt={`Imagem original de ${draft.title}`} className="h-44 w-full rounded-2xl border border-white/10 object-cover" /> : <div className="grid h-44 place-items-center rounded-2xl border border-dashed border-white/10 text-sm text-zinc-600">Sem imagem original</div>}<div className="grid gap-3"><label className="grid gap-1 text-xs font-bold text-zinc-400">Título<input value={draft.title} onChange={event => setDraftField("title", event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Motivo da revisão<input value={draft.reason} onChange={event => setDraftField("reason", event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label></div></div><div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1 text-xs font-bold text-zinc-400">Data e hora<input type="datetime-local" value={draft.eventDate} onChange={event => setDraftField("eventDate", event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Fim (opcional)<input type="datetime-local" value={draft.endDate} onChange={event => setDraftField("endDate", event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Local<input value={draft.locationName} onChange={event => setDraftField("locationName", event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Cidade<select value={draft.city} onChange={event => setDraftField("city", event.target.value as ManualReviewDraft["city"])} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100"><option value="">Selecionar cidade</option><option value="Santos">Santos</option><option value="Guarujá">Guarujá</option></select></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Categoria<select value={draft.category} onChange={event => setDraftField("category", event.target.value as ManualReviewDraft["category"])} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100"><option value="">Selecionar categoria</option><option value="show">Show</option><option value="balada">Balada</option><option value="evento_musical">Evento musical</option></select></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Gênero<input value={draft.genre} onChange={event => setDraftField("genre", event.target.value)} placeholder="funk, house/eletrônica..." className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label></div><label className="grid gap-1 text-xs font-bold text-zinc-400">Endereço<input value={draft.address} onChange={event => setDraftField("address", event.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Resumo<textarea value={draft.summary} onChange={event => setDraftField("summary", event.target.value)} className="min-h-24 rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-zinc-100" /></label></div>}
           <DialogFooter className="gap-2 sm:justify-between"><div className="flex flex-wrap gap-2">{selectedEvent?.status === "pending" && <Button type="button" variant="outline" onClick={rejectSelected} disabled={isSaving} className="text-red-100"><XCircle size={14} /> Rejeitar</Button>}{selectedEvent?.status === "pending" && <Button type="button" onClick={approveSelected} disabled={isSaving} className="bg-emerald-300 text-zinc-950 hover:bg-emerald-200"><CheckCircle2 size={14} /> {approveMutation.isPending ? "Publicando…" : "Aprovar e publicar"}</Button>}</div><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => { if (!isSaving) { setSelectedEvent(null); setDraft(null); } }} disabled={isSaving}>Fechar</Button>{selectedEvent?.status === "pending" && <Button type="button" onClick={saveDraft} disabled={isSaving || !draft?.title.trim()}>{updateMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Edit3 size={14} />} Salvar revisão</Button>}</div></DialogFooter>
         </DialogContent>
       </Dialog>

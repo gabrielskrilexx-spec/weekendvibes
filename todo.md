@@ -2598,3 +2598,10 @@
 - [x] Implementar ou consolidar cópia com um clique e seleção manual
 - [x] Cobrir a interação sem alterar aprovação
 - [x] Validar TypeScript, Vitest, build, preview e publicar checkpoint
+
+## Tokens clicáveis e preenchimento assistido — sessão atual
+- [x] Auditar tokens destacados, formulário e fluxo de salvamento
+- [x] Tornar tokens destacados clicáveis com cópia individual e feedback
+- [x] Adicionar ação assistida para aplicar tokens aos campos vazios
+- [x] Cobrir cópia, aplicação, acessibilidade e salvamento com Vitest
+- [x] Validar TypeScript, Vitest, build, preview e publicar checkpoint
