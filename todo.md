@@ -2591,3 +2591,10 @@
 - [x] Aplicar limites rígidos de paginação e timeout fail-fast no Instagram
 - [x] Cobrir reativação, reconciliação, timeout e autorização com Vitest
 - [x] Validar TypeScript, Vitest, build, preview e publicar checkpoint
+
+## Highlighting e cópia no visualizador — sessão atual
+- [x] Reauditar o visualizador de texto bruto e o fluxo de aprovação
+- [x] Implementar ou consolidar highlighting de horários, datas e dias
+- [x] Implementar ou consolidar cópia com um clique e seleção manual
+- [x] Cobrir a interação sem alterar aprovação
+- [x] Validar TypeScript, Vitest, build, preview e publicar checkpoint
