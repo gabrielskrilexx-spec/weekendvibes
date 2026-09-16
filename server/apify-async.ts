@@ -21,7 +21,7 @@ import { sdk } from "./_core/sdk";
 import { HttpError } from "@shared/_core/errors";
 import { redactError } from "./_core/security";
 
-export const DEFAULT_APIFY_STORIES_ACTOR_ID = "apify~instagram-scraper";
+export const DEFAULT_APIFY_STORIES_ACTOR_ID = "zaver.api~instagram-stories-highlights-scraper";
 const ACTOR_ID = process.env.APIFY_STORIES_ACTOR_ID?.trim() || DEFAULT_APIFY_STORIES_ACTOR_ID;
 const DATASET_TIMEOUT_MS = 30_000;
 
@@ -142,7 +142,7 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
     response = await fetchWithTimeout(`https://api.apify.com/v2/acts/${ACTOR_ID}/runs?${query.toString()}`, {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "WeekendVibes/1.0" },
-      body: JSON.stringify(buildInstagramStoriesScraperPayload(INSTAGRAM_TARGETS, process.env.APIFY_INSTAGRAM_SESSION_COOKIE?.trim())),
+      body: JSON.stringify(buildInstagramStoriesScraperPayload(INSTAGRAM_TARGETS)),
     });
   } catch (error) {
     const actorTimedOut = isApifyTimeoutError(error);
@@ -181,7 +181,7 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
         message: sessionFailure
           ? "Credencial de sessão do Actor ausente, inválida ou expirada; atualize o segredo autorizado."
           : response.status === 404
-            ? "Actor público ou credencial não encontrada; verifique APIFY_STORIES_ACTOR_ID e APIFY_API_TOKEN."
+            ? "Actor público ou credencial não encontrada; verifique APIFY_STORIES_ACTOR_ID, APIFY_API_TOKEN e a disponibilidade do Actor na conta."
             : response.status === 400
               ? "Payload do Actor ou credencial rejeitada pela Apify; verifique a configuração da integração."
               : "Apify rejeitou o disparo do Actor.",
@@ -208,7 +208,8 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
     callbackToken,
     status: "QUEUED",
     trigger: options.trigger ?? "automatic",
-    sessionCookieConfigured: Boolean(process.env.APIFY_INSTAGRAM_SESSION_COOKIE?.trim()),
+        sessionCookieConfigured: false,
+        actorInputContract: "zaver-instagram-stories-highlights-v1",
   });
   return { runId, actorRunId, status: "QUEUED" as const };
 }

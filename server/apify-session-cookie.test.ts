@@ -26,13 +26,13 @@ describe("Apify Stories session cookie", () => {
     if (originalEnv.cookie === undefined) delete process.env.APIFY_INSTAGRAM_SESSION_COOKIE; else process.env.APIFY_INSTAGRAM_SESSION_COOKIE = originalEnv.cookie;
   });
 
-  it("sends the session cookie only in the Actor JSON input, never in the URL", async () => {
+  it("does not send a legacy session cookie to the no-login Stories Actor", async () => {
     await startAsyncApifyStoriesRun({ trigger: "manual" });
     const request = vi.mocked(globalThis.fetch).mock.calls[0];
     const url = String(request?.[0] ?? "");
     const init = request?.[1] as RequestInit;
-    expect(url).toContain("apify~instagram-scraper");
+    expect(url).toContain("zaver.api~instagram-stories-highlights-scraper");
     expect(url).not.toContain(SECRET);
-    expect(JSON.parse(String(init.body))).toMatchObject({ usernames: expect.arrayContaining(["meulugar.bar"]), sessionCookie: SECRET, includeHighlights: true, includeProfile: false });
+    expect(JSON.parse(String(init.body))).toEqual({ targets: expect.arrayContaining(["meulugar.bar"]), scrapeType: "both", maxHighlights: 10, onlyNew: false });
   });
 });

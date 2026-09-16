@@ -2612,3 +2612,10 @@
 - [x] Tratar HTTP 404/400 com diagnóstico sanitizado no painel
 - [x] Adicionar testes de configuração, erro e rota sem chamadas reais
 - [x] Validar TypeScript, Vitest, build, preview e publicar checkpoint
+
+## Migração do Actor Apify de Stories — sessão atual
+- [x] Pesquisar Actors disponíveis e documentação atual na Apify Store
+- [x] Definir Actor autorizado e adaptar payload/mapeamento de saída
+- [x] Preservar Circuit Breaker e tratamento sanitizado de 404
+- [x] Adicionar testes de contrato, payload, mapeamento e falha do provedor
+- [x] Validar TypeScript, Vitest, build, execução manual autorizada e publicar checkpoint

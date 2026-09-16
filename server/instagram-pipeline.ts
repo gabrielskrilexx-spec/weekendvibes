@@ -168,31 +168,29 @@ export function getApifyActorMaxRuntimeSecs() {
   return Math.min(60, Math.max(20, configured));
 }
 
-export function buildInstagramStoriesScraperPayload(targets: ReadonlyArray<{ username: string }>, sessionCookie?: string) {
+export function buildInstagramStoriesScraperPayload(targets: ReadonlyArray<{ username: string }>) {
   return {
-    usernames: targets.map(target => target.username),
-    ...(sessionCookie ? { sessionCookie } : {}),
-    includeHighlights: true,
+    targets: targets.map(target => target.username),
+    scrapeType: "both" as const,
     maxHighlights: 10,
-    includeProfile: false,
-    maxRunTimeSecs: getApifyActorMaxRuntimeSecs(),
+    onlyNew: false,
   } as const;
 }
 
 export function normalizeInstagramMediaItem(item: Record<string, unknown>, fallbackUsername = ""): InstagramPost | null {
-  const rawType = [item.type, item.mediaType, item.productType].find(value => String(value ?? "").toLowerCase().includes("story"))
-    ?? [item.type, item.mediaType, item.productType].find(value => String(value ?? "").toLowerCase().includes("highlight"))
-    ?? item.mediaType ?? item.type ?? item.productType ?? "post";
+  const rawType = [item.item_type, item.type, item.mediaType, item.productType].find(value => String(value ?? "").toLowerCase().includes("story"))
+    ?? [item.item_type, item.type, item.mediaType, item.productType].find(value => String(value ?? "").toLowerCase().includes("highlight"))
+    ?? item.mediaType ?? item.item_type ?? item.type ?? item.productType ?? "post";
   const mediaType = String(rawType).toLowerCase();
   const normalizedType: InstagramMediaOrigin = mediaType.includes("highlight") ? "highlight" : mediaType.includes("story") ? "story" : "post";
-  const isVideo = mediaType.includes("video") || mediaType.includes("reel") || item.isVideo === true;
-  const mediaUrl = String(item.mediaUrl ?? item.media_url ?? item.displayUrl ?? item.imageUrl ?? item.url ?? "");
-  const thumbnailUrl = String(item.thumbnailUrl ?? item.thumbnail_url ?? "");
+  const isVideo = mediaType.includes("video") || mediaType.includes("reel") || String(item.media_type ?? "").toLowerCase().includes("video") || item.isVideo === true;
+  const mediaUrl = String(item.mediaUrl ?? item.media_url ?? item.displayUrl ?? item.display_url ?? item.imageUrl ?? item.image_url ?? item.image_url ?? item.videoUrl ?? item.video_url ?? item.url ?? "");
+  const thumbnailUrl = String(item.thumbnailUrl ?? item.thumbnail_url ?? item.imageUrl ?? item.image_url ?? "");
   const imageUrl = isVideo ? (thumbnailUrl || mediaUrl) : mediaUrl;
   const owner = item.owner && typeof item.owner === "object" ? item.owner as Record<string, unknown> : undefined;
   const highlight = item.highlight && typeof item.highlight === "object" ? item.highlight as Record<string, unknown> : undefined;
-  const username = String(item.ownerUsername ?? item.username ?? owner?.username ?? fallbackUsername);
-  const highlightTitle = String(item.highlightTitle ?? highlight?.title ?? item.title ?? "");
+  const username = String(item.source_username ?? item.ownerUsername ?? item.username ?? owner?.username ?? fallbackUsername);
+  const highlightTitle = String(item.highlightTitle ?? item.highlight_title ?? highlight?.title ?? item.title ?? "");
   if (!imageUrl && !item.caption && !item.text) return null;
   if (normalizedType === "highlight" && !isAgendaHighlightTitle(highlightTitle)) return null;
   return {
@@ -202,10 +200,10 @@ export function normalizeInstagramMediaItem(item: Record<string, unknown>, fallb
     permalink: item.permalink ? String(item.permalink) : undefined,
     caption: item.caption ? String(item.caption) : undefined,
     text: item.text ? String(item.text) : undefined,
-    timestamp: typeof (item.timestamp ?? item.postedAt) === "number" || typeof (item.timestamp ?? item.postedAt) === "string" ? (item.timestamp ?? item.postedAt) as string | number : undefined,
-    takenAt: typeof item.takenAt === "number" || typeof item.takenAt === "string" ? item.takenAt : undefined,
-    postedAt: typeof item.postedAt === "number" || typeof item.postedAt === "string" ? item.postedAt : undefined,
-    expiresAt: typeof item.expiresAt === "number" || typeof item.expiresAt === "string" ? item.expiresAt : undefined,
+    timestamp: typeof (item.timestamp ?? item.postedAt ?? item.taken_at) === "number" || typeof (item.timestamp ?? item.postedAt ?? item.taken_at) === "string" ? (item.timestamp ?? item.postedAt ?? item.taken_at) as string | number : undefined,
+    takenAt: typeof (item.takenAt ?? item.taken_at) === "number" || typeof (item.takenAt ?? item.taken_at) === "string" ? (item.takenAt ?? item.taken_at) as string | number : undefined,
+    postedAt: typeof (item.postedAt ?? item.taken_at) === "number" || typeof (item.postedAt ?? item.taken_at) === "string" ? (item.postedAt ?? item.taken_at) as string | number : undefined,
+    expiresAt: typeof (item.expiresAt ?? item.expiring_at) === "number" || typeof (item.expiresAt ?? item.expiring_at) === "string" ? (item.expiresAt ?? item.expiring_at) as string | number : undefined,
     displayUrl: imageUrl || undefined,
     imageUrl: imageUrl || undefined,
     thumbnailUrl: thumbnailUrl || undefined,
@@ -216,7 +214,7 @@ export function normalizeInstagramMediaItem(item: Record<string, unknown>, fallb
     sourceKey: item.sourceKey ? String(item.sourceKey) : undefined,
     mediaType: normalizedType,
     highlightTitle: highlightTitle || undefined,
-    ocrText: item.ocrText ? String(item.ocrText) : undefined,
+    ocrText: item.ocrText ? String(item.ocrText) : item.accessibility_caption ? String(item.accessibility_caption) : undefined,
   };
 }
 

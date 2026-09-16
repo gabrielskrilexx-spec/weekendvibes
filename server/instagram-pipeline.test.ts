@@ -19,7 +19,7 @@ describe("Instagram weekend pipeline", () => {
       expect(getApifyActorMaxRuntimeSecs()).toBe(60);
       process.env.APIFY_ACTOR_MAX_RUNTIME_SECS = "5";
       expect(getApifyActorMaxRuntimeSecs()).toBe(20);
-      expect(buildInstagramStoriesScraperPayload([{ username: "meulugar.bar" }])).toMatchObject({ maxRunTimeSecs: 20, includeHighlights: true });
+      expect(buildInstagramStoriesScraperPayload([{ username: "meulugar.bar" }])).toEqual({ targets: ["meulugar.bar"], scrapeType: "both", maxHighlights: 10, onlyNew: false });
     } finally {
       if (previous === undefined) delete process.env.APIFY_ACTOR_MAX_RUNTIME_SECS;
       else process.env.APIFY_ACTOR_MAX_RUNTIME_SECS = previous;
@@ -149,12 +149,16 @@ describe("Instagram weekend pipeline", () => {
 
   it("builds the dedicated Stories Actor payload with the documented fields", () => {
     expect(buildInstagramStoriesScraperPayload([{ username: "meulugar.bar" }])).toEqual({
-      usernames: ["meulugar.bar"],
-      includeHighlights: true,
+      targets: ["meulugar.bar"],
+      scrapeType: "both",
       maxHighlights: 10,
-      includeProfile: false,
-      maxRunTimeSecs: 45,
+      onlyNew: false,
     });
+  });
+
+  it("maps the documented Zaver media fields into the internal Story contract", () => {
+    const [item] = normalizeInstagramMediaPayload([{ source_username: "meulugar.bar", item_type: "story", media_type: "video", video_url: "https://cdn.example.com/story.mp4", image_url: "https://cdn.example.com/story.jpg", taken_at: "2026-09-16T20:00:00.000Z", expiring_at: "2026-09-17T20:00:00.000Z", accessibility_caption: "Agenda 22h" }]);
+    expect(item).toMatchObject({ username: "meulugar.bar", mediaType: "story", imageUrl: "https://cdn.example.com/story.jpg", postedAt: "2026-09-16T20:00:00.000Z", expiresAt: "2026-09-17T20:00:00.000Z", ocrText: "Agenda 22h", isVideo: true });
   });
 
   it("filters Highlights to agenda titles and normalizes Story media", () => {
