@@ -41,6 +41,7 @@ import {
   runWednesdayRoutineNow,
   getIngestionChunkSources,
   runIngestionSourceChunk,
+  getInstagramManualConfigIssue,
 } from "./manual-ingestion";
 import {
   listIngestionReport,
@@ -73,6 +74,10 @@ import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentE
 import { compareHeartbeatExecutionStats, evaluateHeartbeatHealth, evaluateHeartbeatPerformance, getHeartbeatExecutionStats, getHeartbeatHealthSettings, getHeartbeatExecutionSummary, listHeartbeatExecutionEvents, listHeartbeatHealthSettingsHistory, listHeartbeatIncidentsByRegression, recordHeartbeatExecutionEvent, updateHeartbeatHealthSettings, type HeartbeatEventType, type HeartbeatHealthEnvironment } from "./heartbeat-observability";
 
 const safeFilter = (max = 120) => z.string().trim().max(max).optional();
+
+function isInstagramConfigurationError(message: string) {
+  return /missing required environment variable|token|cookie|sess[aã]o|credencial|credential|HTTP\s*(400|401|403|404)|actor.*not found|actor.*não encontrado/i.test(message);
+}
 const latitudeInput = z
   .string()
   .regex(/^-?(?:90(?:\.0+)?|[1-8]?\d(?:\.\d+)?)$/)
@@ -769,6 +774,16 @@ export const appRouter = router({
       .output(ingestionChunkOutput)
       .mutation(async ({ input }) => {
         const startedAt = Date.now();
+        const configIssue = input.sourceKey === "instagram" && !shouldUseSandboxMocks()
+          ? getInstagramManualConfigIssue({ storiesOnly: input.storiesOnly })
+          : null;
+        if (configIssue) {
+          throw new TRPCError({
+            code: "UNPROCESSABLE_CONTENT",
+            message: configIssue.message,
+            cause: configIssue.code,
+          });
+        }
         try {
           const raw = await runIngestionSourceChunk(input);
           const durationMs = Date.now() - startedAt;
@@ -784,6 +799,12 @@ export const appRouter = router({
           return { ok: true as const, sourceKey: raw.sourceKey, dryRun: raw.dryRun, status, read: Math.max(0, Math.trunc(read)), added: Math.max(0, Math.trunc(added)), updated: Math.max(0, Math.trunc(updated)), ignored: Math.max(0, Math.trunc(ignored)), errors, durationMs, sandboxRestricted: result.sandboxRestricted === true, previewMock: result.previewMock === true };
         } catch (error) {
           const message = error instanceof Error ? error.message : "Falha interna ao processar a fonte.";
+          if (input.sourceKey === "instagram" && isInstagramConfigurationError(message)) {
+            throw new TRPCError({
+              code: "UNPROCESSABLE_CONTENT",
+              message: "Configuração da integração Instagram/Apify ausente ou inválida.",
+            });
+          }
           const sandboxRestricted = isSandboxRestrictedError(error);
           if (sandboxRestricted && shouldUseSandboxMocks()) return { ok: true as const, sourceKey: input.sourceKey, dryRun: input.dryRun, status: "SANDBOX_RESTRICTED" as const, read: 0, added: 0, updated: 0, ignored: 0, errors: ["Fonte restrita no ambiente de preview; fallback sandbox aplicado."], durationMs: Math.max(1, Date.now() - startedAt), sandboxRestricted: true, previewMock: true };
           return { ok: false as const, sourceKey: input.sourceKey, dryRun: input.dryRun, status: "failed" as const, message: sandboxRestricted ? "SANDBOX_RESTRICTED: fonte externa bloqueada no ambiente de preview." : message.replace(/https?:\/\/[^\s]+/gi, "fonte pública").slice(0, 240), errors: [sandboxRestricted ? "Fonte restrita no ambiente de preview do Manus." : "A fonte não pôde ser processada nesta etapa."], durationMs: Math.max(1, Date.now() - startedAt), sandboxRestricted };

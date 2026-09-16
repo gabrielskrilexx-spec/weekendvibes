@@ -2619,3 +2619,10 @@
 - [x] Preservar Circuit Breaker e tratamento sanitizado de 404
 - [x] Adicionar testes de contrato, payload, mapeamento e falha do provedor
 - [x] Validar TypeScript, Vitest, build, execução manual autorizada e publicar checkpoint
+
+## Correção do disparo manual Instagram — sessão atual
+- [x] Auditar endpoint manual, autenticação e inicialização Apify/Instagram
+- [x] Adicionar try/catch e validação sanitizada de APIFY_API_TOKEN/session cookie
+- [x] Retornar 400/422 para configuração ausente ou inválida sem expor segredos
+- [x] Cobrir rota, falhas do provedor e segredos ausentes com Vitest
+- [x] Validar TypeScript, Vitest, build, preview e publicar checkpoint

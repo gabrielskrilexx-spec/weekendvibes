@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import { getWednesdayRoutineStatus, runWednesdayRoutineNow, runIngestionSourceChunk } from "./manual-ingestion";
 import { getDb } from "./db";
+import { setSandboxMocksAllowed } from "./ingestion-preview-settings";
 
 vi.mock("./db", async importOriginal => ({ ...(await importOriginal<typeof import("./db")>()), getDb: vi.fn() }));
 
@@ -9,6 +10,7 @@ vi.mock("./manual-ingestion", () => ({
   getWednesdayRoutineStatus: vi.fn(() => ({ enabled: true, runMode: "full_auto", timezone: "America/Sao_Paulo", cron: "0 0 10 * * 3", nextExecutionAt: "2026-08-19T13:00:00.000Z", isRunning: false, recentRuns: [{ id: 77, filteredStories: [{ id: "story-1", username: "meulugar.bar", mediaOrigin: "story", imageUrl: "https://example.com/story.png", sourceUrl: "https://instagram.com/meulugar.bar", postedAt: new Date("2026-08-29T01:00:00.000Z"), expiresAt: null, ocrText: "Rolê hoje", rawText: "Rolê hoje", reasons: ["sem data"], status: "approved", approvedBy: "admin-open-id", approvedAt: new Date("2026-08-29T02:00:00.000Z") }, { id: "story-2", username: "outra-fonte", mediaOrigin: "highlight", imageUrl: "https://example.com/highlight.png", sourceUrl: "https://instagram.com/outra-fonte", postedAt: null, expiresAt: null, ocrText: "", rawText: "", reasons: ["baixa confiança"], status: "pending" }] }] })),
   runWednesdayRoutineNow: vi.fn().mockResolvedValue({ archived: 0, publicSources: { imported: 2 }, instagram: { imported: 1 }, startedAt: "2026-08-12T13:00:00.000Z", finishedAt: "2026-08-12T13:00:02.000Z" }),
   runIngestionSourceChunk: vi.fn().mockResolvedValue({ sourceKey: "instagram", dryRun: false, result: { sourceReports: [{ read: 1, errors: [] }], sandboxRestricted: true, previewMock: true, degraded: false } }),
+  getInstagramManualConfigIssue: vi.fn(({ storiesOnly }: { storiesOnly?: boolean } = {}) => storiesOnly && !process.env.APIFY_API_TOKEN?.trim() ? { code: "APIFY_TOKEN_MISSING", message: "Token da Apify não configurado para a rotina de Stories." } : null),
 }));
 
 const context = (role: "admin" | "user") => ({
@@ -58,6 +60,33 @@ describe("adminRoutine tRPC contract", () => {
     const result = await appRouter.createCaller(context("admin")).adminRoutine.syncStories({});
     expect(result).toEqual({ success: true });
     expect(runIngestionSourceChunk).toHaveBeenCalledWith({ sourceKey: "instagram", dryRun: false, storiesOnly: true });
+  });
+  it("retorna 422 sanitizado quando Stories não tem token Apify em modo real", async () => {
+    const originalToken = process.env.APIFY_API_TOKEN;
+    delete process.env.APIFY_API_TOKEN;
+    setSandboxMocksAllowed(false);
+    try {
+      await expect(appRouter.createCaller(context("admin")).adminRoutine.runSource({ sourceKey: "instagram", dryRun: false, storiesOnly: true })).rejects.toThrow("Token da Apify não configurado para a rotina de Stories.");
+      expect(runIngestionSourceChunk).not.toHaveBeenCalled();
+    } finally {
+      setSandboxMocksAllowed(true);
+      if (originalToken === undefined) delete process.env.APIFY_API_TOKEN; else process.env.APIFY_API_TOKEN = originalToken;
+    }
+  });
+  it("converte credencial rejeitada pelo provedor em erro 422 sanitizado", async () => {
+    const originalToken = process.env.META_INSTAGRAM_TOKEN;
+    const originalAccount = process.env.META_INSTAGRAM_ACCOUNT_ID;
+    process.env.META_INSTAGRAM_TOKEN = "meta-token";
+    process.env.META_INSTAGRAM_ACCOUNT_ID = "account-id";
+    setSandboxMocksAllowed(false);
+    vi.mocked(runIngestionSourceChunk).mockRejectedValueOnce(new Error("Apify respondeu HTTP 403: token=super-secret"));
+    try {
+      await expect(appRouter.createCaller(context("admin")).adminRoutine.runSource({ sourceKey: "instagram", dryRun: false })).rejects.toThrow("Configuração da integração Instagram/Apify ausente ou inválida.");
+    } finally {
+      setSandboxMocksAllowed(true);
+      if (originalToken === undefined) delete process.env.META_INSTAGRAM_TOKEN; else process.env.META_INSTAGRAM_TOKEN = originalToken;
+      if (originalAccount === undefined) delete process.env.META_INSTAGRAM_ACCOUNT_ID; else process.env.META_INSTAGRAM_ACCOUNT_ID = originalAccount;
+    }
   });
   it("converte ECONNREFUSED do Instagram em fallback sandbox serializável", async () => {
     vi.mocked(runIngestionSourceChunk).mockRejectedValueOnce(new Error("ECONNREFUSED"));

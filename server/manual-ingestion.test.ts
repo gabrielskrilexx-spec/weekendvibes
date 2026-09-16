@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   archiveExpiredSoldOutEvents: vi.fn().mockResolvedValue(0),
@@ -18,7 +18,34 @@ vi.mock("./ingestion-failure-alerts", () => ({ notifyIngestionSummary: vi.fn().m
 vi.mock("./_core/heartbeat", () => ({ listHeartbeatJobs: mocks.listHeartbeatJobs }));
 vi.mock("./ingestion-reports", () => ({ startIngestionRun: mocks.startIngestionRun, finishIngestionRun: mocks.finishIngestionRun }));
 
-import { getNextWednesdayExecution, getWednesdayRoutineStatus, runWednesdayRoutineNow, withChunkTimeout } from "./manual-ingestion";
+import { getInstagramManualConfigIssue, getNextWednesdayExecution, getWednesdayRoutineStatus, runWednesdayRoutineNow, withChunkTimeout } from "./manual-ingestion";
+
+describe("manual Instagram configuration", () => {
+  const original = {
+    apify: process.env.APIFY_API_TOKEN,
+    metaToken: process.env.META_INSTAGRAM_TOKEN,
+    metaAccount: process.env.META_INSTAGRAM_ACCOUNT_ID,
+  };
+
+  afterEach(() => {
+    if (original.apify === undefined) delete process.env.APIFY_API_TOKEN; else process.env.APIFY_API_TOKEN = original.apify;
+    if (original.metaToken === undefined) delete process.env.META_INSTAGRAM_TOKEN; else process.env.META_INSTAGRAM_TOKEN = original.metaToken;
+    if (original.metaAccount === undefined) delete process.env.META_INSTAGRAM_ACCOUNT_ID; else process.env.META_INSTAGRAM_ACCOUNT_ID = original.metaAccount;
+  });
+
+  it("retorna diagnóstico sanitizado quando o token da Apify está ausente para Stories", () => {
+    delete process.env.APIFY_API_TOKEN;
+    expect(getInstagramManualConfigIssue({ storiesOnly: true })).toEqual({ code: "APIFY_TOKEN_MISSING", message: "Token da Apify não configurado para a rotina de Stories." });
+  });
+
+  it("exige Meta token e account id para a rotina Instagram completa", () => {
+    delete process.env.META_INSTAGRAM_TOKEN;
+    delete process.env.META_INSTAGRAM_ACCOUNT_ID;
+    expect(getInstagramManualConfigIssue()).toEqual({ code: "META_TOKEN_MISSING", message: "Token da integração Instagram não configurado." });
+    process.env.META_INSTAGRAM_TOKEN = "meta-token";
+    expect(getInstagramManualConfigIssue()).toEqual({ code: "META_ACCOUNT_ID_MISSING", message: "Identificador da conta Instagram não configurado." });
+  });
+});
 
 describe("chunk timeout", () => {
   it("falha rápido quando uma fonte excede o limite configurado", async () => {

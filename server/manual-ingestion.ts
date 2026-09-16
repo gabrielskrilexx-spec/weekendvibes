@@ -124,6 +124,27 @@ export function getIngestionChunkSources() {
 
 const CHUNK_TIMEOUT_MS = 8_000;
 
+export type InstagramManualConfigIssue = {
+  code: "APIFY_TOKEN_MISSING" | "META_TOKEN_MISSING" | "META_ACCOUNT_ID_MISSING";
+  message: string;
+};
+
+export function getInstagramManualConfigIssue(options: { storiesOnly?: boolean } = {}): InstagramManualConfigIssue | null {
+  if (options.storiesOnly) {
+    if (!process.env.APIFY_API_TOKEN?.trim()) {
+      return { code: "APIFY_TOKEN_MISSING", message: "Token da Apify não configurado para a rotina de Stories." };
+    }
+    return null;
+  }
+  if (!process.env.META_INSTAGRAM_TOKEN?.trim()) {
+    return { code: "META_TOKEN_MISSING", message: "Token da integração Instagram não configurado." };
+  }
+  if (!process.env.META_INSTAGRAM_ACCOUNT_ID?.trim()) {
+    return { code: "META_ACCOUNT_ID_MISSING", message: "Identificador da conta Instagram não configurado." };
+  }
+  return null;
+}
+
 export async function withChunkTimeout<T>(work: Promise<T>, timeoutMs = CHUNK_TIMEOUT_MS): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
