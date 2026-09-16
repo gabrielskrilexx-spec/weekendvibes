@@ -21,8 +21,45 @@ import { sdk } from "./_core/sdk";
 import { HttpError } from "@shared/_core/errors";
 import { redactError } from "./_core/security";
 
-const ACTOR_ID = process.env.APIFY_STORIES_ACTOR_ID?.trim() || "automation-lab~instagram-stories-scraper";
+export const DEFAULT_APIFY_STORIES_ACTOR_ID = "apify~instagram-scraper";
+const ACTOR_ID = process.env.APIFY_STORIES_ACTOR_ID?.trim() || DEFAULT_APIFY_STORIES_ACTOR_ID;
 const DATASET_TIMEOUT_MS = 30_000;
+
+type ApifyDispatchFailure = Error & {
+  apifyStatus?: number;
+  apifyCode?: "APIFY_ACTOR_NOT_FOUND" | "APIFY_ACTOR_REQUEST_INVALID";
+  safeMessage?: string;
+};
+
+function createApifyDispatchFailure(status: number, detail: string): ApifyDispatchFailure {
+  const actorFailure = status === 404;
+  const error = new Error(
+    actorFailure
+      ? "Erro na Apify (404): Actor público ou credencial não encontrada. Verifique APIFY_STORIES_ACTOR_ID e APIFY_API_TOKEN."
+      : "Erro na Apify (400): payload do Actor ou credencial rejeitada. Verifique a configuração da integração."
+  ) as ApifyDispatchFailure;
+  error.apifyStatus = status;
+  error.apifyCode = actorFailure ? "APIFY_ACTOR_NOT_FOUND" : "APIFY_ACTOR_REQUEST_INVALID";
+  error.safeMessage = error.message;
+  void detail;
+  return error;
+}
+
+function getApifyDispatchFailure(error: unknown) {
+  const candidate = error as Partial<ApifyDispatchFailure>;
+  if (candidate.apifyStatus === 404 || candidate.apifyStatus === 400) {
+    return {
+      status: 502,
+      error: candidate.apifyCode ?? "APIFY_ACTOR_REQUEST_FAILED",
+      message: candidate.safeMessage ?? "A configuração do Actor Apify não pôde ser validada.",
+    } as const;
+  }
+  return null;
+}
+
+export function getConfiguredApifyStoriesActorId() {
+  return ACTOR_ID;
+}
 
 function getWebhookBaseUrl() {
   return process.env.SCHEDULED_TASK_ENDPOINT_BASE?.trim().replace(/\/$/, "") ?? "";
@@ -132,13 +169,27 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
       httpStatus: response.status,
       details: {
         provider: "apify",
-        error: sessionFailure ? "SESSION_COOKIE_INVALID_OR_EXPIRED" : "ACTOR_START_FAILED",
-        kind: sessionFailure ? "session_credentials" : "actor_start",
+        error: sessionFailure
+          ? "SESSION_COOKIE_INVALID_OR_EXPIRED"
+          : response.status === 404
+            ? "APIFY_ACTOR_NOT_FOUND"
+            : response.status === 400
+              ? "APIFY_ACTOR_REQUEST_INVALID"
+              : "ACTOR_START_FAILED",
+        kind: sessionFailure ? "session_credentials" : response.status === 404 || response.status === 400 ? "actor_configuration" : "actor_start",
         status: response.status,
-        message: sessionFailure ? "Credencial de sessão do Actor ausente, inválida ou expirada; atualize o segredo autorizado." : "Apify rejeitou o disparo do Actor.",
+        message: sessionFailure
+          ? "Credencial de sessão do Actor ausente, inválida ou expirada; atualize o segredo autorizado."
+          : response.status === 404
+            ? "Actor público ou credencial não encontrada; verifique APIFY_STORIES_ACTOR_ID e APIFY_API_TOKEN."
+            : response.status === 400
+              ? "Payload do Actor ou credencial rejeitada pela Apify; verifique a configuração da integração."
+              : "Apify rejeitou o disparo do Actor.",
       },
     });
-    throw new Error(sessionFailure ? "A credencial de sessão do Actor está ausente, inválida ou expirada." : `Apify não aceitou o disparo assíncrono (HTTP ${response.status}).`);
+    if (sessionFailure) throw new Error("A credencial de sessão do Actor está ausente, inválida ou expirada.");
+    if (response.status === 404 || response.status === 400) throw createApifyDispatchFailure(response.status, detail);
+    throw new Error(`Apify não aceitou o disparo assíncrono (HTTP ${response.status}).`);
   }
 
   const data = payload.data && typeof payload.data === "object" ? payload.data as Record<string, unknown> : {};
@@ -262,6 +313,8 @@ export async function asyncIngestInstagramHandler(req: Request, res: Response) {
     return res.status(202).json({ ok: true, accepted: true, runId: scheduled.runId, actorRunId: scheduled.actorRunId, status: scheduled.status });
   } catch (error) {
     console.error("[Instagram async] Actor dispatch failed", redactError(error));
+    const providerFailure = getApifyDispatchFailure(error);
+    if (providerFailure) return res.status(providerFailure.status).json({ ok: false, ...providerFailure });
     return res.status(502).json({ ok: false, error: "APIFY_DISPATCH_FAILED", message: "A execução foi recusada pelo provedor ou não pôde ser agendada." });
   }
 }

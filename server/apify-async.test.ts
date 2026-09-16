@@ -16,7 +16,7 @@ vi.mock("./ingestion-reports", () => ({
   findIngestionRunByApifyActor: mocks.findIngestionRunByApifyActor,
 }));
 
-import { apifyInstagramWebhookHandler, asyncIngestInstagramHandler, startAsyncApifyStoriesRun } from "./apify-async";
+import { apifyInstagramWebhookHandler, asyncIngestInstagramHandler, getConfiguredApifyStoriesActorId, startAsyncApifyStoriesRun } from "./apify-async";
 
 describe("Apify async Stories", () => {
   beforeEach(() => {
@@ -38,10 +38,43 @@ describe("Apify async Stories", () => {
 
     expect(result).toEqual({ runId: 42, actorRunId: "actor-run-1", status: "QUEUED" });
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/v2/acts/automation-lab~instagram-stories-scraper/runs?");
+    expect(getConfiguredApifyStoriesActorId()).toBe("apify~instagram-scraper");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/v2/acts/apify~instagram-scraper/runs?");
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("webhooks=");
     expect(mocks.linkIngestionRunToApifyActor).toHaveBeenCalledWith({ runId: 42, actorRunId: "actor-run-1" });
     expect(mocks.setIngestionRunDetails).toHaveBeenCalledWith(42, expect.objectContaining({ actorRunId: "actor-run-1", datasetId: "dataset-1", status: "QUEUED" }));
+    fetchMock.mockRestore();
+  });
+
+  it("retorna diagnóstico sanitizado quando o Actor público não existe", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { message: "Task not found" } }), { status: 404, headers: { "content-type": "application/json" } })
+    );
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() } as never;
+    await asyncIngestInstagramHandler({ headers: { "x-cron-secret": process.env.INTERNAL_CRON_SECRET } } as never, res);
+    expect((res as any).status).toHaveBeenCalledWith(502);
+    expect((res as any).json).toHaveBeenCalledWith({
+      ok: false,
+      status: 502,
+      error: "APIFY_ACTOR_NOT_FOUND",
+      message: expect.stringContaining("Erro na Apify (404)"),
+    });
+    expect(JSON.stringify((res as any).json.mock.calls)).not.toContain("Task not found");
+    fetchMock.mockRestore();
+  });
+
+  it("retorna diagnóstico sanitizado quando o payload do Actor é inválido", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { message: "invalid input" } }), { status: 400, headers: { "content-type": "application/json" } })
+    );
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() } as never;
+    await asyncIngestInstagramHandler({ headers: { "x-cron-secret": process.env.INTERNAL_CRON_SECRET } } as never, res);
+    expect((res as any).status).toHaveBeenCalledWith(502);
+    expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({
+      ok: false,
+      error: "APIFY_ACTOR_REQUEST_INVALID",
+      message: expect.stringContaining("Erro na Apify (400)"),
+    }));
     fetchMock.mockRestore();
   });
 

@@ -31,7 +31,7 @@ describe("Apify Stories session cookie", () => {
     const request = vi.mocked(globalThis.fetch).mock.calls[0];
     const url = String(request?.[0] ?? "");
     const init = request?.[1] as RequestInit;
-    expect(url).toContain("automation-lab~instagram-stories-scraper");
+    expect(url).toContain("apify~instagram-scraper");
     expect(url).not.toContain(SECRET);
     expect(JSON.parse(String(init.body))).toMatchObject({ usernames: expect.arrayContaining(["meulugar.bar"]), sessionCookie: SECRET, includeHighlights: true, includeProfile: false });
   });

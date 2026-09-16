@@ -2605,3 +2605,10 @@
 - [x] Adicionar ação assistida para aplicar tokens aos campos vazios
 - [x] Cobrir cópia, aplicação, acessibilidade e salvamento com Vitest
 - [x] Validar TypeScript, Vitest, build, preview e publicar checkpoint
+
+## Integração resiliente Apify/Instagram — sessão atual
+- [x] Auditar chamada Apify, Actor/Task configurado e rota instagram-agenda
+- [x] Desacoplar execução de Actor público de Tasks privadas antigas
+- [x] Tratar HTTP 404/400 com diagnóstico sanitizado no painel
+- [x] Adicionar testes de configuração, erro e rota sem chamadas reais
+- [x] Validar TypeScript, Vitest, build, preview e publicar checkpoint
