@@ -274,7 +274,7 @@ export async function createIngestionSource(input: { name: string; kind: "instag
     isEnabled: 1,
     priority: 50,
     frequencyMinutes: 10080,
-    p95LatencyThresholdMs: 3000,
+    p95LatencyThresholdMs: input.kind === "public" ? 15_000 : 3_000,
   });
   const [created] = await db.select({ id: ingestionSources.id, sourceKey: ingestionSources.sourceKey }).from(ingestionSources).where(eq(ingestionSources.sourceKey, sourceKey)).limit(1);
   if (!created) throw new Error("Source creation failed");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv, sortFilteredStoriesForTest } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv, sortFilteredStoriesForTest, DEFAULT_PUBLIC_P95_THRESHOLD_MS, getEffectiveSourceP95ThresholdForTest, findConsecutiveP95PerformanceAlertsForTest } from "./ingestion-reports";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
 import { sanitizeAgendaStepErrorForTest } from "./agenda-routine";
 
@@ -116,6 +116,33 @@ describe("freshness and source reconciliation", () => {
 
   it("builds a source freshness view with explicit states", () => {
     expect(buildFreshnessForTest([{ sourceKey: "instagram", lastSuccessAt: new Date(now.getTime() - 500 * 60000), expectedMinutes: 60 }], now)[0].state).toBe("critical");
+  });
+});
+
+describe("public ingestion P95 SLA", () => {
+  it("uses a 15 second default for public sources while preserving the Instagram default", () => {
+    expect(DEFAULT_PUBLIC_P95_THRESHOLD_MS).toBe(15_000);
+    expect(getEffectiveSourceP95ThresholdForTest({ kind: "public", p95LatencyThresholdMs: 3_000 })).toBe(15_000);
+    expect(getEffectiveSourceP95ThresholdForTest({ kind: "instagram", p95LatencyThresholdMs: 3_000 })).toBe(3_000);
+  });
+
+  it("does not alert public sources below the 15 second threshold", () => {
+    const runs = [
+      { sourceKey: "public:articket", status: "succeeded", startedAt: "2026-08-22T10:00:00.000Z", durationMs: 10_500 },
+      { sourceKey: "public:articket", status: "succeeded", startedAt: "2026-08-22T09:00:00.000Z", durationMs: 10_200 },
+    ];
+
+    expect(findConsecutiveP95PerformanceAlertsForTest(runs, new Map([["public:articket", getEffectiveSourceP95ThresholdForTest({ kind: "public", p95LatencyThresholdMs: 3_000 })]]))).toEqual([]);
+  });
+
+  it("still alerts public sources when two consecutive runs exceed 15 seconds", () => {
+    const threshold = getEffectiveSourceP95ThresholdForTest({ kind: "public", p95LatencyThresholdMs: 3_000 });
+    const alerts = findConsecutiveP95PerformanceAlertsForTest([
+      { sourceKey: "public:articket", status: "succeeded", startedAt: "2026-08-22T10:00:00.000Z", durationMs: 16_000 },
+      { sourceKey: "public:articket", status: "succeeded", startedAt: "2026-08-22T09:00:00.000Z", durationMs: 17_000 },
+    ], new Map([["public:articket", threshold]]));
+
+    expect(alerts[0]).toMatchObject({ sourceKey: "public:articket", thresholdMs: 15_000, consecutiveRuns: 2 });
   });
 });
 

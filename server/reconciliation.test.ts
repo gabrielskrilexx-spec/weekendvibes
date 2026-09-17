@@ -52,4 +52,20 @@ describe("ingestion reconciliation", () => {
     expect(result.consistent).toBe(false);
     expect(result.issues).toContain("reconciliation_gap");
   });
+
+  it("counts supplied filtered items only once against the remaining capacity", () => {
+    const result = reconcileIngestionResult({
+      read: 10,
+      persisted: 4,
+      filtered: 9,
+      skippedByReason: { past_event: 6, invalid_schema: 3 },
+    });
+
+    expect(result.counts.filtered).toBe(6);
+    expect(result.skippedByReason).toEqual({ past_event: 6 });
+    expect(result.allKnownSkipped).toBe(6);
+    expect(result.reconciliationGap).toBe(0);
+    expect(result.issues).toContain("filtered_exceeds_read");
+    expect(result.issues).not.toContain("reconciliation_gap");
+  });
 });

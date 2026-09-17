@@ -481,6 +481,17 @@ export function buildSourceTelemetryHistoryForTest(runs: Array<{ sourceKey: stri
 }
 type SourceErrorCategory = SourceTelemetry["errors"][number]["category"];
 
+export const DEFAULT_PUBLIC_P95_THRESHOLD_MS = 15_000;
+
+export function getEffectiveSourceP95ThresholdForTest(source: { kind?: string | null; p95LatencyThresholdMs?: number | null }) {
+  const configured = Number(source.p95LatencyThresholdMs ?? 0);
+  if (source.kind === "public" && (!Number.isFinite(configured) || configured <= 3_000)) {
+    const fromEnv = Number.parseInt(process.env.PUBLIC_INGESTION_P95_THRESHOLD_MS ?? "", 10);
+    return Number.isFinite(fromEnv) ? Math.min(60_000, Math.max(DEFAULT_PUBLIC_P95_THRESHOLD_MS, fromEnv)) : DEFAULT_PUBLIC_P95_THRESHOLD_MS;
+  }
+  return Number.isFinite(configured) && configured > 0 ? configured : 3_000;
+}
+
 export function findConsecutiveP95PerformanceAlertsForTest(runs: Array<{ sourceKey: string | null; status: string; startedAt: string | Date; durationMs?: number | null }>, thresholdMs: number | Map<string, number> = 3000) {
   const bySource = new Map<string, Array<{ startedAt: number; durationMs: number }>>();
   for (const run of runs) { const durationMs = Number(run.durationMs ?? 0); const startedAt = new Date(run.startedAt).getTime(); if (!run.sourceKey || !Number.isFinite(durationMs) || durationMs <= 0 || !Number.isFinite(startedAt)) continue; const list = bySource.get(run.sourceKey) ?? []; list.push({ startedAt, durationMs }); bySource.set(run.sourceKey, list); }
@@ -1516,7 +1527,7 @@ export async function listIngestionReport(
     realCoverage: value.runs > 0 ? Number((value.realSuccesses / value.runs).toFixed(4)) : 0,
   }));
   const sourceTelemetry = buildSourceTelemetryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), durationMs: run.durationMs, httpStatus: run.httpStatus, details: run.details })));
-  const performanceAlerts = findConsecutiveP95PerformanceAlertsForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, durationMs: run.durationMs })), new Map(sourceConfigs.map(source => [source.sourceKey, source.p95LatencyThresholdMs ?? 3000])));
+  const performanceAlerts = findConsecutiveP95PerformanceAlertsForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, durationMs: run.durationMs })), new Map(sourceConfigs.map(source => [source.sourceKey, getEffectiveSourceP95ThresholdForTest(source)])));
   await Promise.all(performanceAlerts.map(async alert => { const message = `Desempenho degradado: P95 de ${Math.round(alert.p95LatencyMs)} ms em ${alert.sourceKey}, acima do limite de ${alert.thresholdMs} ms por ${alert.consecutiveRuns} rodadas consecutivas.`; await handleIngestionFailureAlert({ routine: "performance-monitor", sourceKey: alert.sourceKey, integration: alert.sourceKey.startsWith("instagram") ? "meta" : "public", severity: "WARNING", alertType: "performance_degraded", message }); await notifyPerformanceDegradationWebhook({ ...alert, message }); }));
   const sourceTelemetryHistory = buildSourceTelemetryHistoryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, finishedAt: run.finishedAt, durationMs: run.durationMs, details: run.details })));
   const freshness = sourceConfigs.map(source => ({

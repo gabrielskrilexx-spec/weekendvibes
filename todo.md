@@ -2626,3 +2626,11 @@
 - [x] Retornar 400/422 para configuração ausente ou inválida sem expor segredos
 - [x] Cobrir rota, falhas do provedor e segredos ausentes com Vitest
 - [x] Validar TypeScript, Vitest, build, preview e publicar checkpoint
+
+## Reconciliação pública e SLA por fonte — sessão atual
+- [ ] Auditar contadores de destinos e limiar de SLA público
+- [ ] Corrigir para que cada item incremente apenas um destino de reconciliação
+- [ ] Ajustar timeout/threshold de performance somente para fontes públicas
+- [ ] Sanear alertas históricos específicos sem ocultar falhas novas
+- [ ] Adicionar testes de reconciliação, SLA e saneamento de alertas
+- [ ] Validar TypeScript, Vitest, build, preview e publicar checkpoint

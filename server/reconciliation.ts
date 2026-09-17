@@ -44,6 +44,20 @@ function normalizeSkipReasons(input: Record<string, number> | undefined) {
   return normalized;
 }
 
+function capSkipReasons(input: Record<string, number>, maximum: number) {
+  let remaining = Math.max(0, safeCount(maximum));
+  const capped: Record<string, number> = {};
+  for (const [reason, count] of Object.entries(input)) {
+    if (remaining <= 0) break;
+    const accepted = Math.min(safeCount(count), remaining);
+    if (accepted > 0) {
+      capped[reason] = accepted;
+      remaining -= accepted;
+    }
+  }
+  return capped;
+}
+
 export function isRegionalCoordinate(latitude: unknown, longitude: unknown) {
   const lat = Number(latitude);
   const lng = Number(longitude);
@@ -57,19 +71,21 @@ export function reconcileIngestionResult(input: ReconciliationInput): Reconcilia
   const persisted = safeCount(input.persisted);
   const suppliedReasons = normalizeSkipReasons(input.skippedByReason);
   const hasReasonBreakdown = Object.keys(suppliedReasons).length > 0;
-  const legacyFiltered = safeCount(input.filtered);
-  const filtered = hasReasonBreakdown ? Object.values(suppliedReasons).reduce((sum, count) => sum + count, 0) : legacyFiltered;
   const duplicates = safeCount(input.duplicates);
+  const filteredCapacity = Math.max(0, read - persisted - duplicates);
+  const cappedReasons = capSkipReasons(suppliedReasons, filteredCapacity);
+  const legacyFiltered = Math.min(safeCount(input.filtered), filteredCapacity);
+  const filtered = hasReasonBreakdown ? Object.values(cappedReasons).reduce((sum, count) => sum + count, 0) : legacyFiltered;
   const missingCoordinates = safeCount(input.missingCoordinates);
   const outOfBoundsCoordinates = safeCount(input.outOfBoundsCoordinates);
   const retries = safeCount(input.retries);
   const fallbackList = safeCount(input.fallbackList);
-  const skippedByReason = hasReasonBreakdown ? suppliedReasons : (filtered > 0 ? { filtered: filtered } : {});
+  const skippedByReason = hasReasonBreakdown ? cappedReasons : (filtered > 0 ? { filtered: filtered } : {});
   const allKnownSkipped = Object.values(skippedByReason).reduce((sum, count) => sum + count, 0);
   const reconciliationGap = read - persisted - allKnownSkipped;
   const issues: string[] = [];
 
-  if (filtered > read) issues.push("filtered_exceeds_read");
+  if (safeCount(input.filtered) > filteredCapacity || Object.values(suppliedReasons).reduce((sum, count) => sum + count, 0) > filteredCapacity) issues.push("filtered_exceeds_read");
   if (persisted > read) issues.push("persisted_exceeds_read");
   if (duplicates > persisted && !hasReasonBreakdown) issues.push("duplicates_exceeds_persisted");
   if (missingCoordinates > persisted && !hasReasonBreakdown) issues.push("missing_coordinates_exceeds_persisted");

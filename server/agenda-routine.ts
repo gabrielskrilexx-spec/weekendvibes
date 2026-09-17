@@ -261,9 +261,9 @@ function sumRejectionReasons(candidate: unknown) {
 }
 
 function collectRejectionReasons(result: Record<string, unknown>) {
-  const totals: Record<string, number> = {};
-  const add = (candidate: unknown) => {
-    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return;
+  const normalizeCandidate = (candidate: unknown) => {
+    const totals: Record<string, number> = {};
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return totals;
     for (const [rawReason, rawCount] of Object.entries(candidate)) {
       const count = safeAutomationNumber(rawCount);
       if (count <= 0) continue;
@@ -271,15 +271,20 @@ function collectRejectionReasons(result: Record<string, unknown>) {
       if (["fetch_failed", "circuit_open", "actor_timeout", "proxy_or_session", "transport_failure"].includes(reason)) continue;
       totals[reason] = (totals[reason] ?? 0) + count;
     }
+    return totals;
   };
-  add(result.rejectionReasons);
-  add(result.filteredByReason);
+  const topLevel = normalizeCandidate(result.rejectionReasons);
+  if (Object.keys(topLevel).length > 0) return topLevel;
+  const filteredByReason = normalizeCandidate(result.filteredByReason);
+  if (Object.keys(filteredByReason).length > 0) return filteredByReason;
+  const sourceTotals: Record<string, number> = {};
   if (Array.isArray(result.sourceReports)) {
     for (const report of result.sourceReports) {
-      if (report && typeof report === "object") add((report as Record<string, unknown>).rejectionReasons);
+      const reportReasons = normalizeCandidate(report && typeof report === "object" ? (report as Record<string, unknown>).rejectionReasons : undefined);
+      for (const [reason, count] of Object.entries(reportReasons)) sourceTotals[reason] = (sourceTotals[reason] ?? 0) + count;
     }
   }
-  return totals;
+  return sourceTotals;
 }
 
 function sourceReportsFromResult(sourceKey: string, result: unknown): AutomationSourceSummary[] {
