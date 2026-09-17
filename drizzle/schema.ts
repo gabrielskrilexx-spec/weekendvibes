@@ -160,6 +160,23 @@ export const manualReviewEvents = mysqlTable("manualReviewEvents", {
 export type ManualReviewEvent = typeof manualReviewEvents.$inferSelect;
 export type InsertManualReviewEvent = typeof manualReviewEvents.$inferInsert;
 
+export const manualReviewAuditLogs = mysqlTable("manualReviewAuditLogs", {
+  id: int("id").autoincrement().primaryKey(),
+  manualReviewEventId: int("manualReviewEventId").notNull(),
+  action: mysqlEnum("action", ["edited", "approved", "rejected", "undone"]).notNull(),
+  changedFieldsJson: text("changedFieldsJson").notNull(),
+  beforeJson: text("beforeJson").notNull(),
+  afterJson: text("afterJson").notNull(),
+  changedByOpenId: varchar("changedByOpenId", { length: 160 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => ({
+  eventCreatedIdx: index("manualReviewAuditLogs_event_created_idx").on(table.manualReviewEventId, table.createdAt),
+  actorCreatedIdx: index("manualReviewAuditLogs_actor_created_idx").on(table.changedByOpenId, table.createdAt),
+}));
+
+export type ManualReviewAuditLog = typeof manualReviewAuditLogs.$inferSelect;
+export type InsertManualReviewAuditLog = typeof manualReviewAuditLogs.$inferInsert;
+
 export const operationalAlerts = mysqlTable("operationalAlerts", {
   id: int("id").autoincrement().primaryKey(),
   integration: mysqlEnum("integration", ["meta", "public", "ocr", "openai", "pipeline"]).notNull(),

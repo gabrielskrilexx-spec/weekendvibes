@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
-const { listManualReviewEventsMock, getManualReviewMetricsMock, updateManualReviewEventMock, approveManualReviewEventMock, rejectManualReviewEventMock, approveManualReviewEventsMock, rejectManualReviewEventsMock } = vi.hoisted(() => ({
+const { listManualReviewEventsMock, getManualReviewMetricsMock, updateManualReviewEventMock, approveManualReviewEventMock, rejectManualReviewEventMock, undoManualReviewActionMock, undoManualReviewActionsMock, approveManualReviewEventsMock, rejectManualReviewEventsMock } = vi.hoisted(() => ({
   listManualReviewEventsMock: vi.fn(),
   getManualReviewMetricsMock: vi.fn(),
   updateManualReviewEventMock: vi.fn(),
   approveManualReviewEventMock: vi.fn(),
   rejectManualReviewEventMock: vi.fn(),
+  undoManualReviewActionMock: vi.fn(),
+  undoManualReviewActionsMock: vi.fn(),
   approveManualReviewEventsMock: vi.fn(),
   rejectManualReviewEventsMock: vi.fn(),
 }));
@@ -16,6 +18,8 @@ vi.mock("./manual-review", () => ({
   updateManualReviewEvent: updateManualReviewEventMock,
   approveManualReviewEvent: approveManualReviewEventMock,
   rejectManualReviewEvent: rejectManualReviewEventMock,
+  undoManualReviewAction: undoManualReviewActionMock,
+  undoManualReviewActions: undoManualReviewActionsMock,
   approveManualReviewEvents: approveManualReviewEventsMock,
   rejectManualReviewEvents: rejectManualReviewEventsMock,
 }));
@@ -86,6 +90,18 @@ describe("adminRoutine.manualReview", () => {
 
   it("bloqueia usuários comuns também nas ações em lote", async () => {
     await expect(appRouter.createCaller(ctx("user")).adminRoutine.manualReview.approveMany({ ids: [7] })).rejects.toThrow();
+  });
+
+  it("desfaz uma ação recente com a identidade do administrador", async () => {
+    undoManualReviewActionMock.mockResolvedValueOnce({ ...reviewEvent, status: "pending" });
+    await expect(appRouter.createCaller(ctx()).adminRoutine.manualReview.undo({ id: 7 })).resolves.toMatchObject({ id: 7, status: "pending" });
+    expect(undoManualReviewActionMock).toHaveBeenCalledWith(7, "admin-open-id");
+  });
+
+  it("desfaz ações em massa com contrato primitivo", async () => {
+    undoManualReviewActionsMock.mockResolvedValueOnce({ success: true, count: 2, ids: [7, 8] });
+    await expect(appRouter.createCaller(ctx()).adminRoutine.manualReview.undoMany({ ids: [7, 8] })).resolves.toEqual({ success: true, count: 2, ids: [7, 8] });
+    expect(undoManualReviewActionsMock).toHaveBeenCalledWith([7, 8], "admin-open-id");
   });
 
   it("bloqueia usuários comuns", async () => {

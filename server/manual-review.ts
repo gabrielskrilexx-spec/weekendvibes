@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
-import { events, manualReviewEvents } from "../drizzle/schema";
+import { events, manualReviewAuditLogs, manualReviewEvents } from "../drizzle/schema";
 import { getDb, saveEvent } from "./db";
 
 export type ManualReviewStatus = "pending" | "approved" | "rejected";
@@ -21,6 +21,32 @@ export type ManualReviewEventInput = {
   rawText?: string | null;
   reason: string;
 };
+
+const AUDITED_FIELDS = ["title", "summary", "eventDate", "endDate", "locationName", "address", "city", "category", "genre", "priceCents", "sourceUrl", "sourceType", "imageUrl", "rawText", "reason"] as const;
+
+function auditSnapshot(row: typeof manualReviewEvents.$inferSelect) {
+  return Object.fromEntries(AUDITED_FIELDS.map(field => [field, field === "eventDate" || field === "endDate" ? safeIso(row[field]) : row[field] ?? null]));
+}
+
+function diffAuditFields(before: Record<string, unknown>, after: Record<string, unknown>) {
+  return AUDITED_FIELDS.filter(field => String(before[field] ?? "") !== String(after[field] ?? ""));
+}
+
+export function getManualReviewAuditChangedFieldsForTest(before: Record<string, unknown>, after: Record<string, unknown>) {
+  return diffAuditFields(before, after);
+}
+
+async function recordManualReviewAudit(db: Awaited<ReturnType<typeof getDb>>, input: { eventId: number; action: "edited" | "approved" | "rejected" | "undone"; before: Record<string, unknown>; after: Record<string, unknown>; changedByOpenId: string }) {
+  if (!db) return;
+  await db.insert(manualReviewAuditLogs).values({
+    manualReviewEventId: input.eventId,
+    action: input.action,
+    changedFieldsJson: JSON.stringify(diffAuditFields(input.before, input.after)),
+    beforeJson: JSON.stringify(input.before),
+    afterJson: JSON.stringify(input.after),
+    changedByOpenId: input.changedByOpenId.slice(0, 160),
+  });
+}
 
 export type ManualReviewFilter = {
   status?: ManualReviewStatus;
@@ -160,11 +186,12 @@ export async function getManualReviewMetrics() {
   return metrics;
 }
 
-export async function updateManualReviewEvent(input: ManualReviewEventInput & { id: number }) {
+export async function updateManualReviewEvent(input: ManualReviewEventInput & { id: number; changedByOpenId?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const [existing] = await db.select().from(manualReviewEvents).where(eq(manualReviewEvents.id, input.id)).limit(1);
   if (!existing) throw new Error("Evento pendente não encontrado.");
+  const before = auditSnapshot(existing);
   const eventDate = safeDate(input.eventDate);
   const endDate = safeDate(input.endDate);
   await db.update(manualReviewEvents).set({
@@ -186,6 +213,10 @@ export async function updateManualReviewEvent(input: ManualReviewEventInput & { 
     updatedAt: new Date(),
   }).where(eq(manualReviewEvents.id, input.id));
   const [updated] = await db.select().from(manualReviewEvents).where(eq(manualReviewEvents.id, input.id)).limit(1);
+  if (updated && input.changedByOpenId) {
+    const after = auditSnapshot(updated);
+    if (diffAuditFields(before, after).length > 0) await recordManualReviewAudit(db, { eventId: input.id, action: "edited", before, after, changedByOpenId: input.changedByOpenId });
+  }
   return updated ? toPublicReview(updated) : null;
 }
 
@@ -219,8 +250,10 @@ export async function approveManualReviewEvent(id: number, reviewedBy: string) {
   });
   const publishedEventId = saved.id ?? null;
   if (!publishedEventId) throw new Error("Não foi possível publicar o evento revisado.");
+  const before = auditSnapshot(row);
   await db.update(manualReviewEvents).set({ status: "approved", reviewedBy: reviewedBy.slice(0, 160), reviewedAt: new Date(), publishedEventId, updatedAt: new Date() }).where(eq(manualReviewEvents.id, id));
   const [updated] = await db.select().from(manualReviewEvents).where(eq(manualReviewEvents.id, id)).limit(1);
+  if (updated) await recordManualReviewAudit(db, { eventId: id, action: "approved", before, after: auditSnapshot(updated), changedByOpenId: reviewedBy });
   return updated ? toPublicReview(updated) : null;
 }
 
@@ -251,9 +284,10 @@ export async function rejectManualReviewEvents(ids: number[], reviewedBy: string
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const pendingRows = await db.select({ id: manualReviewEvents.id }).from(manualReviewEvents).where(and(inArray(manualReviewEvents.id, normalizedIds), eq(manualReviewEvents.status, "pending")));
-  const affectedIds = pendingRows.map(row => Number(row.id));
-  if (affectedIds.length > 0) {
-    await db.update(manualReviewEvents).set({ status: "rejected", reviewedBy: reviewedBy.slice(0, 160), reviewedAt: new Date(), updatedAt: new Date() }).where(inArray(manualReviewEvents.id, affectedIds));
+  const affectedIds: number[] = [];
+  for (const row of pendingRows) {
+    const rejected = await rejectManualReviewEvent(Number(row.id), reviewedBy);
+    if (rejected?.status === "rejected") affectedIds.push(Number(row.id));
   }
   return { success: true as const, count: affectedIds.length, ids: affectedIds };
 }
@@ -261,9 +295,39 @@ export async function rejectManualReviewEvents(ids: number[], reviewedBy: string
 export async function rejectManualReviewEvent(id: number, reviewedBy: string) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
+  const [existing] = await db.select().from(manualReviewEvents).where(eq(manualReviewEvents.id, id)).limit(1);
+  if (!existing) return null;
+  const before = auditSnapshot(existing);
   await db.update(manualReviewEvents).set({ status: "rejected", reviewedBy: reviewedBy.slice(0, 160), reviewedAt: new Date(), updatedAt: new Date() }).where(eq(manualReviewEvents.id, id));
   const [updated] = await db.select().from(manualReviewEvents).where(eq(manualReviewEvents.id, id)).limit(1);
+  if (updated) await recordManualReviewAudit(db, { eventId: id, action: "rejected", before, after: auditSnapshot(updated), changedByOpenId: reviewedBy });
   return updated ? toPublicReview(updated) : null;
+}
+
+export async function undoManualReviewAction(id: number, changedByOpenId: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const [row] = await db.select().from(manualReviewEvents).where(eq(manualReviewEvents.id, id)).limit(1);
+  if (!row) throw new Error("Evento da revisão não encontrado.");
+  if (row.status === "pending") return toPublicReview(row);
+  const [latestAudit] = await db.select().from(manualReviewAuditLogs).where(eq(manualReviewAuditLogs.manualReviewEventId, id)).orderBy(desc(manualReviewAuditLogs.createdAt)).limit(1);
+  if (!latestAudit || (latestAudit.action !== "approved" && latestAudit.action !== "rejected")) throw new Error("Não há uma ação recente disponível para desfazer.");
+  const before = auditSnapshot(row);
+  if (row.publishedEventId) await db.update(events).set({ isPublished: 0, isArchived: 1, updatedAt: new Date() }).where(eq(events.id, row.publishedEventId));
+  await db.update(manualReviewEvents).set({ status: "pending", reviewedBy: null, reviewedAt: null, publishedEventId: null, updatedAt: new Date() }).where(eq(manualReviewEvents.id, id));
+  const [updated] = await db.select().from(manualReviewEvents).where(eq(manualReviewEvents.id, id)).limit(1);
+  if (updated) await recordManualReviewAudit(db, { eventId: id, action: "undone", before, after: auditSnapshot(updated), changedByOpenId });
+  return updated ? toPublicReview(updated) : null;
+}
+
+export async function undoManualReviewActions(ids: number[], changedByOpenId: string) {
+  const normalizedIds = normalizeReviewIds(ids);
+  const restoredIds: number[] = [];
+  for (const id of normalizedIds) {
+    const restored = await undoManualReviewAction(id, changedByOpenId);
+    if (restored?.status === "pending") restoredIds.push(id);
+  }
+  return { success: true as const, count: restoredIds.length, ids: restoredIds };
 }
 
 export function buildManualReviewInputFromAgentEvent(item: { title: string; eventDate: string; locationName: string; address: string; city: string; summary: string; sourceUrl: string; reason: string; imageUrl?: string; rawText?: string }) {

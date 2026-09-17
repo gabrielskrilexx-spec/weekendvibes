@@ -66,7 +66,7 @@ import {
   listCircuitBreakerStatuses,
 } from "./db";
 import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
-import { approveManualReviewEvent, approveManualReviewEvents, getManualReviewMetrics, listManualReviewEvents, rejectManualReviewEvent, rejectManualReviewEvents, updateManualReviewEvent, type ManualReviewEventInput } from "./manual-review";
+import { approveManualReviewEvent, approveManualReviewEvents, getManualReviewMetrics, listManualReviewEvents, rejectManualReviewEvent, rejectManualReviewEvents, undoManualReviewAction, undoManualReviewActions, updateManualReviewEvent, type ManualReviewEventInput } from "./manual-review";
 import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
 import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
@@ -605,8 +605,8 @@ export const appRouter = router({
       update: adminOnly
         .input(manualReviewEventInput.extend({ id: z.number().int().positive() }).strict())
         .output(manualReviewEventOutput)
-        .mutation(async ({ input }) => {
-          const result = await updateManualReviewEvent(input as ManualReviewEventInput & { id: number });
+        .mutation(async ({ ctx, input }) => {
+          const result = await updateManualReviewEvent({ ...(input as ManualReviewEventInput & { id: number }), changedByOpenId: ctx.user.openId });
           if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Evento pendente não encontrado." });
           return result;
         }),
@@ -630,6 +630,18 @@ export const appRouter = router({
           if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Evento pendente não encontrado." });
           return result;
         }),
+      undo: adminOnly
+        .input(z.object({ id: z.number().int().positive() }).strict())
+        .output(manualReviewEventOutput)
+        .mutation(async ({ ctx, input }) => {
+          const result = await undoManualReviewAction(input.id, ctx.user.openId);
+          if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Evento da revisão não encontrado." });
+          return result;
+        }),
+      undoMany: adminOnly
+        .input(manualReviewBulkInput)
+        .output(manualReviewBulkOutput)
+        .mutation(({ ctx, input }) => undoManualReviewActions(input.ids, ctx.user.openId)),
       rejectMany: adminOnly
         .input(manualReviewBulkInput)
         .output(manualReviewBulkOutput)

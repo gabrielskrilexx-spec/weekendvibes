@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({
   approveMany: vi.fn(),
   rejectMany: vi.fn(),
+  approveOptions: null as any,
+  toastSuccess: vi.fn(),
   queue: {
     data: {
       items: [
@@ -29,14 +31,16 @@ vi.mock("@/lib/trpc", () => ({
     list: { useQuery: () => state.queue },
     metrics: { useQuery: () => state.metrics },
     update: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
-    approve: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
+    approve: { useMutation: (options: any) => { state.approveOptions = options; return { isPending: false, mutate: vi.fn() }; } },
     reject: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
+    undo: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
+    undoMany: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
     approveMany: { useMutation: () => ({ isPending: false, mutate: state.approveMany }) },
     rejectMany: { useMutation: () => ({ isPending: false, mutate: state.rejectMany }) },
   } } },
 }));
 vi.mock("@/lib/adminFeedback", () => ({ friendlyAdminErrorMessage: (_error: unknown, fallback: string) => fallback }));
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("sonner", () => ({ toast: { success: (...args: unknown[]) => state.toastSuccess(...args), error: vi.fn() } }));
 vi.mock("@/components/ui/dialog", () => ({
   Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) => open ? <>{children}</> : null,
   DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -83,6 +87,7 @@ describe("ManualReviewPanel bulk selection", () => {
   beforeEach(() => {
     state.approveMany.mockClear();
     state.rejectMany.mockClear();
+    state.toastSuccess.mockClear();
   });
 
   it("copia o texto original e exibe o estado de sucesso", async () => {
@@ -137,5 +142,14 @@ describe("ManualReviewPanel bulk selection", () => {
     const approveButton = renderer.root.findByProps({ "data-testid": "manual-review-approve-many" });
     act(() => { approveButton.props.onClick(); });
     expect(state.approveMany).toHaveBeenCalledWith({ ids: [7, 8] });
+  });
+
+  it("oferece Desfazer no toast após aprovação individual", () => {
+    let renderer!: ReturnType<typeof create>;
+    act(() => { renderer = create(<ManualReviewPanel />); });
+    act(() => { state.approveOptions.onSuccess({ ...state.queue.data.items[0], status: "approved" }); });
+    const toastOptions = state.toastSuccess.mock.calls.at(-1)?.[1] as { action?: { label: string } };
+    expect(toastOptions.action?.label).toBe("Desfazer");
+    renderer.unmount();
   });
 });

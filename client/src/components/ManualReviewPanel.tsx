@@ -225,7 +225,7 @@ export default function ManualReviewPanel() {
     onSuccess: approved => {
       setSelectedEvent(approved);
       setDraft(draftFromEvent(approved));
-      sonnerToast.success("Evento publicado", { description: "O evento revisado já está disponível na agenda pública." });
+      showUndoToast(approved.id, "Evento publicado");
       void queueQuery.refetch();
       void metricsQuery.refetch();
     },
@@ -234,7 +234,7 @@ export default function ManualReviewPanel() {
   const approveManyMutation = trpc.adminRoutine.manualReview.approveMany.useMutation({
     onSuccess: result => {
       setSelectedIds(current => current.filter(id => !result.ids.includes(id)));
-      sonnerToast.success("Eventos publicados", { description: `${result.count} evento(s) foram aprovados e publicados.` });
+      sonnerToast.success("Eventos publicados", { description: `${result.count} evento(s) foram aprovados e publicados.`, duration: 8_000, action: { label: "Desfazer", onClick: () => undoManyMutation.mutate({ ids: result.ids }) } });
       void queueQuery.refetch();
       void metricsQuery.refetch();
     },
@@ -243,7 +243,7 @@ export default function ManualReviewPanel() {
   const rejectManyMutation = trpc.adminRoutine.manualReview.rejectMany.useMutation({
     onSuccess: result => {
       setSelectedIds(current => current.filter(id => !result.ids.includes(id)));
-      sonnerToast.success("Eventos rejeitados", { description: `${result.count} evento(s) foram removidos da fila de revisão.` });
+      sonnerToast.success("Eventos rejeitados", { description: `${result.count} evento(s) foram removidos da fila de revisão.`, duration: 8_000, action: { label: "Desfazer", onClick: () => undoManyMutation.mutate({ ids: result.ids }) } });
       void queueQuery.refetch();
       void metricsQuery.refetch();
     },
@@ -253,12 +253,37 @@ export default function ManualReviewPanel() {
     onSuccess: rejected => {
       setSelectedEvent(rejected);
       setDraft(draftFromEvent(rejected));
-      sonnerToast.success("Evento rejeitado", { description: "A entrada foi retirada da fila de revisão." });
+      showUndoToast(rejected.id, "Evento rejeitado");
       void queueQuery.refetch();
       void metricsQuery.refetch();
     },
     onError: error => sonnerToast.error("Não foi possível rejeitar", { description: friendlyAdminErrorMessage(error, "Tente novamente em instantes.") }),
   });
+  const undoMutation = trpc.adminRoutine.manualReview.undo.useMutation({
+    onSuccess: restored => {
+      setSelectedEvent(restored);
+      setDraft(draftFromEvent(restored));
+      sonnerToast.success("Ação desfeita", { description: "O evento voltou para a fila de revisão manual." });
+      void queueQuery.refetch();
+      void metricsQuery.refetch();
+    },
+    onError: error => sonnerToast.error("Não foi possível desfazer", { description: friendlyAdminErrorMessage(error, "A ação já pode ter sido revertida ou expirado o prazo.") }),
+  });
+  const undoManyMutation = trpc.adminRoutine.manualReview.undoMany.useMutation({
+    onSuccess: result => {
+      sonnerToast.success("Ações desfeitas", { description: `${result.count} evento(s) voltaram para a fila de revisão.` });
+      void queueQuery.refetch();
+      void metricsQuery.refetch();
+    },
+    onError: error => sonnerToast.error("Não foi possível desfazer em massa", { description: friendlyAdminErrorMessage(error, "Algumas ações já podem ter expirado.") }),
+  });
+  const showUndoToast = (id: number, message: string) => {
+    sonnerToast.success(message, {
+      description: "Você pode reverter esta ação rapidamente.",
+      duration: 8_000,
+      action: { label: "Desfazer", onClick: () => undoMutation.mutate({ id }) },
+    });
+  };
 
   useEffect(() => {
     setPage(0);
