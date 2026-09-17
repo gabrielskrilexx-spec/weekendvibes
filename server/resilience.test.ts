@@ -4,6 +4,8 @@ import { fetchMrIngressosWithRetry, MR_INGRESSOS_RETRY_ATTEMPTS, MR_INGRESSOS_RE
 const dbMocks = vi.hoisted(() => ({
   getCircuitBreakerStatus: vi.fn().mockResolvedValue({ allowed: true }),
   recordCircuitFailure: vi.fn().mockResolvedValue({ openedNow: false, failureCount: 1, nextAttemptAt: null }),
+  recordSource403Failure: vi.fn().mockResolvedValue({ count: 0, shouldAlert: false }),
+  resetSource403State: vi.fn().mockResolvedValue(undefined),
   recordCircuitSuccess: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("./db", () => dbMocks);
@@ -12,6 +14,9 @@ const circuit = await import("./circuit-breaker");
 
 beforeEach(() => {
   dbMocks.recordCircuitFailure.mockResolvedValue({ openedNow: false, failureCount: 1, nextAttemptAt: null });
+  dbMocks.recordSource403Failure.mockReset();
+  dbMocks.recordSource403Failure.mockResolvedValue({ count: 0, shouldAlert: false });
+  dbMocks.resetSource403State.mockResolvedValue(undefined);
   dbMocks.recordCircuitSuccess.mockResolvedValue(undefined);
 });
 
@@ -63,6 +68,10 @@ describe("resiliência dos adaptadores", () => {
     process.env.CRITICAL_ALERT_WEBHOOK_URL = "https://alerts.example.test/hook";
     const webhook = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok", { status: 200 }));
     const sourceKey = `public:ingresse-test-${Date.now()}`;
+    dbMocks.recordSource403Failure
+      .mockResolvedValueOnce({ count: 1, shouldAlert: false })
+      .mockResolvedValueOnce({ count: 2, shouldAlert: false })
+      .mockResolvedValueOnce({ count: 3, shouldAlert: true });
     for (let attempt = 0; attempt < 3; attempt += 1) {
       await circuit.registerSourceFailure({ sourceKey, routine: "public-agenda", status: 403, message: "Fonte pública respondeu 403" });
     }

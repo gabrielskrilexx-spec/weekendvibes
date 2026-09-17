@@ -1,7 +1,5 @@
-import { getCircuitBreakerStatus, recordCircuitFailure, recordCircuitSuccess } from "./db";
+import { getCircuitBreakerStatus, recordCircuitFailure, recordSource403Failure, recordCircuitSuccess, resetSource403State } from "./db";
 
-const consecutive403BySource = new Map<string, number>();
-const alerted403Sources = new Set<string>();
 const HTTP_403_ALERT_THRESHOLD = 3;
 
 function severeFailureThreshold() {
@@ -81,26 +79,24 @@ export async function allowSourceAttempt(sourceKey: string) {
 export async function registerSourceFailure(input: { sourceKey: string; routine: string; status?: number; message: string }) {
   const is403 = input.status === 403;
   const severe = isSevereFailure(input);
-  const next403Count = is403 ? (consecutive403BySource.get(input.sourceKey) ?? 0) + 1 : 0;
-  if (is403) consecutive403BySource.set(input.sourceKey, next403Count);
-  else if (!severe) {
-    consecutive403BySource.delete(input.sourceKey);
-    alerted403Sources.delete(input.sourceKey);
-  }
-  const result = await recordCircuitFailure(input.sourceKey, input.message, input.status, new Date(), undefined, severe);
+  const now = new Date();
+  const source403 = is403
+    ? await recordSource403Failure(input.sourceKey, severeFailureThreshold(), now)
+    : !severe
+      ? (await resetSource403State(input.sourceKey, now), { count: 0, shouldAlert: false })
+      : { count: 0, shouldAlert: false };
+  const result = await recordCircuitFailure(input.sourceKey, input.message, input.status, now, undefined, severe);
   if (result.openedNow && result.nextAttemptAt) {
     const payload = buildCircuitOpenedPayload({ sourceKey: input.sourceKey, routine: input.routine, nextAttemptAt: result.nextAttemptAt, failureCount: result.failureCount, message: input.message });
     await notifyCircuitOpened(payload);
   }
-  if (is403 && next403Count >= severeFailureThreshold() && !alerted403Sources.has(input.sourceKey)) {
-    alerted403Sources.add(input.sourceKey);
-    await notifyCircuitOpened({ type: "source_http_403_blocked", routine: input.routine.slice(0, 64), sourceKey: input.sourceKey.slice(0, 120), failureCount: next403Count, nextAttemptAt: new Date().toISOString(), message: `A fonte ${input.sourceKey} respondeu HTTP 403 em ${next403Count} falhas consecutivas.` });
+  if (is403 && source403.shouldAlert) {
+    await notifyCircuitOpened({ type: "source_http_403_blocked", routine: input.routine.slice(0, 64), sourceKey: input.sourceKey.slice(0, 120), failureCount: source403.count, nextAttemptAt: new Date().toISOString(), message: `A fonte ${input.sourceKey} respondeu HTTP 403 em ${source403.count} falhas consecutivas.` });
   }
   return result;
 }
 
 export async function registerSourceSuccess(sourceKey: string) {
-  consecutive403BySource.delete(sourceKey);
-  alerted403Sources.delete(sourceKey);
+  await resetSource403State(sourceKey);
   await recordCircuitSuccess(sourceKey);
 }

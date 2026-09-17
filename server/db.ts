@@ -345,16 +345,38 @@ export async function recordCircuitFailure(sourceKey: string, message: string, s
   return { state: shouldOpen ? "open" as const : "closed" as const, failureCount, openedNow: shouldOpen && source.circuitState !== "open", nextAttemptAt };
 }
 
+/** Atomically increments the persisted HTTP 403 streak and claims its alert once. */
+export async function recordSource403Failure(sourceKey: string, threshold: number, now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return { count: 0, shouldAlert: false } as const;
+  await db.update(ingestionSources)
+    .set({ consecutive403Count: sql`${ingestionSources.consecutive403Count} + 1`, updatedAt: now })
+    .where(eq(ingestionSources.sourceKey, sourceKey));
+  const [source] = await db.select({ count: ingestionSources.consecutive403Count, alertedAt: ingestionSources.last403AlertedAt }).from(ingestionSources).where(eq(ingestionSources.sourceKey, sourceKey)).limit(1);
+  const count = Number(source?.count ?? 0);
+  if (!source || count < threshold || source.alertedAt) return { count, shouldAlert: false } as const;
+  const claimed = await db.update(ingestionSources)
+    .set({ last403AlertedAt: now, updatedAt: now })
+    .where(and(eq(ingestionSources.sourceKey, sourceKey), isNull(ingestionSources.last403AlertedAt), gte(ingestionSources.consecutive403Count, threshold)));
+  return { count, shouldAlert: Number((claimed as { affectedRows?: number }).affectedRows ?? 0) > 0 } as const;
+}
+
+export async function resetSource403State(sourceKey: string, now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return;
+  await db.update(ingestionSources).set({ consecutive403Count: 0, last403AlertedAt: null, updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
+}
+
 export async function recordCircuitSuccess(sourceKey: string, now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) return;
-  await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, lastStatus: "succeeded", lastSuccessAt: now, lastHttpStatus: 200, lastFailureReason: null, updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
+  await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, lastStatus: "succeeded", lastSuccessAt: now, lastHttpStatus: 200, lastFailureReason: null, consecutive403Count: 0, last403AlertedAt: null, updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
 }
 
 export async function reactivateIngestionSourceCircuitBreaker(sourceKey: string, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) throw new Error("Database unavailable");
-  await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, updatedAt: new Date() }).where(eq(ingestionSources.sourceKey, sourceKey));
+  await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, consecutive403Count: 0, last403AlertedAt: null, updatedAt: new Date() }).where(eq(ingestionSources.sourceKey, sourceKey));
 }
 
 export async function resetActiveIngestionSourceCircuitBreakers(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
@@ -362,7 +384,7 @@ export async function resetActiveIngestionSourceCircuitBreakers(dbOverride?: Awa
   if (!db) throw new Error("Database unavailable");
   const activeSources = await db.select({ sourceKey: ingestionSources.sourceKey }).from(ingestionSources).where(eq(ingestionSources.isEnabled, 1));
   if (activeSources.length > 0) {
-    await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, updatedAt: new Date() }).where(eq(ingestionSources.isEnabled, 1));
+    await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, consecutive403Count: 0, last403AlertedAt: null, updatedAt: new Date() }).where(eq(ingestionSources.isEnabled, 1));
   }
   return { resetCount: activeSources.length, sourceKeys: activeSources.map(source => source.sourceKey) };
 }

@@ -338,6 +338,8 @@ export const ingestionSources = mysqlTable("ingestionSources", {
   circuitOpenedAt: timestamp("circuitOpenedAt"),
   circuitNextAttemptAt: timestamp("circuitNextAttemptAt"),
   circuitLastError: text("circuitLastError"),
+  consecutive403Count: int("consecutive403Count").default(0).notNull(),
+  last403AlertedAt: timestamp("last403AlertedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
