@@ -2628,9 +2628,9 @@
 - [x] Validar TypeScript, Vitest, build, preview e publicar checkpoint
 
 ## Reconciliação pública e SLA por fonte — sessão atual
-- [ ] Auditar contadores de destinos e limiar de SLA público
-- [ ] Corrigir para que cada item incremente apenas um destino de reconciliação
-- [ ] Ajustar timeout/threshold de performance somente para fontes públicas
-- [ ] Sanear alertas históricos específicos sem ocultar falhas novas
-- [ ] Adicionar testes de reconciliação, SLA e saneamento de alertas
-- [ ] Validar TypeScript, Vitest, build, preview e publicar checkpoint
+- [x] Auditar contadores de destinos e limiar de SLA público
+- [x] Corrigir para que cada item incremente apenas um destino de reconciliação
+- [x] Ajustar timeout/threshold de performance somente para fontes públicas
+- [x] Sanear alertas históricos específicos sem ocultar falhas novas
+- [x] Adicionar testes de reconciliação, SLA e saneamento de alertas
+- [x] Validar TypeScript, Vitest, build, preview e publicar checkpoint
