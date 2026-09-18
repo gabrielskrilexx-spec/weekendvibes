@@ -178,11 +178,13 @@ describe("Instagram weekend pipeline", () => {
   it("clamps the Apify sync timeout to a safe configurable range", () => {
     const original = process.env.APIFY_SYNC_TIMEOUT_MS;
     process.env.APIFY_SYNC_TIMEOUT_MS = "12000";
-    expect(getApifySyncTimeoutMs()).toBe(15000);
+    expect(getApifySyncTimeoutMs()).toBe(60000);
     process.env.APIFY_SYNC_TIMEOUT_MS = "45000";
-    expect(getApifySyncTimeoutMs()).toBe(30000);
-    process.env.APIFY_SYNC_TIMEOUT_MS = "25000";
-    expect(getApifySyncTimeoutMs()).toBe(25000);
+    expect(getApifySyncTimeoutMs()).toBe(60000);
+    process.env.APIFY_SYNC_TIMEOUT_MS = "75000";
+    expect(getApifySyncTimeoutMs()).toBe(75000);
+    process.env.APIFY_SYNC_TIMEOUT_MS = "120000";
+    expect(getApifySyncTimeoutMs()).toBe(90000);
     if (original === undefined) delete process.env.APIFY_SYNC_TIMEOUT_MS; else process.env.APIFY_SYNC_TIMEOUT_MS = original;
   });
 
@@ -224,11 +226,11 @@ describe("Instagram weekend pipeline", () => {
     const originalFetch = globalThis.fetch;
     const originalToken = process.env.APIFY_API_TOKEN;
     process.env.APIFY_API_TOKEN = "production-token-for-test";
-    process.env.APIFY_SYNC_TIMEOUT_MS = "20000";
+    process.env.APIFY_SYNC_TIMEOUT_MS = "60000";
     globalThis.fetch = vi.fn().mockRejectedValue(Object.assign(new Error("The operation was aborted"), { name: "AbortError" })) as typeof fetch;
     try {
       const result = await fetchApifyStoriesAndHighlights({ dryRun: true });
-      expect(result.transportFailures).toEqual([expect.objectContaining({ username: "apify-collector", status: 0, kind: "actor_timeout", message: "Timeout de conexão com o coletor Apify após 20000 ms." })]);
+      expect(result.transportFailures).toEqual([expect.objectContaining({ username: "apify-collector", status: 0, kind: "actor_timeout", message: "Timeout de conexão com o coletor Apify após 60000 ms." })]);
     } finally {
       globalThis.fetch = originalFetch;
       if (originalToken === undefined) delete process.env.APIFY_API_TOKEN; else process.env.APIFY_API_TOKEN = originalToken;

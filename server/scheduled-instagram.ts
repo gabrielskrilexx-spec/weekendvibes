@@ -35,6 +35,23 @@ export async function ingestInstagramHandler(req: Request, res: Response) {
   try {
     const { archived, result } = await runInstagramAgendaStep();
     const finishedAt = new Date().toISOString();
+    const apifyTimeouts = (result.transportFailures ?? []).filter(failure => failure.kind === "actor_timeout");
+    for (const failure of apifyTimeouts.slice(0, 3)) {
+      try {
+        await handleIngestionFailureAlert({
+          routine: "instagram-agenda",
+          sourceKey: "instagram:apify",
+          integration: "pipeline",
+          status: failure.status || 504,
+          errorCode: "APIFY_CONNECTIVITY_TIMEOUT",
+          alertType: "apify_connectivity_timeout",
+          message: failure.message,
+          severity: "WARNING",
+        });
+      } catch (alertError) {
+        console.warn("[Instagram] Could not persist Apify timeout alert", redactError(alertError));
+      }
+    }
     return res.json({ ok: true, startedAt, finishedAt, durationMs: Date.now() - startedAtMs, archived, degraded: Boolean(result.degraded), transportFailures: result.transportFailures ?? [], result, counts: { read: Number(result.receivedPosts ?? 0), filtered: Math.max(0, Number(result.receivedPosts ?? 0) - Number(result.approvedPosts ?? 0)), persisted: Number(result.imported ?? 0) } });
   } catch (error) {
     const integration: OperationalIntegration = error instanceof AgendaStepFailure

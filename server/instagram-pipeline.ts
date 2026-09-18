@@ -613,12 +613,12 @@ async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId:
   return { posts, transportFailures };
 }
 
-export const DEFAULT_APIFY_SYNC_TIMEOUT_MS = 20_000;
+export const DEFAULT_APIFY_SYNC_TIMEOUT_MS = 60_000;
 
 export function getApifySyncTimeoutMs() {
   const configured = Number.parseInt(process.env.APIFY_SYNC_TIMEOUT_MS ?? "", 10);
   if (!Number.isFinite(configured)) return DEFAULT_APIFY_SYNC_TIMEOUT_MS;
-  return Math.min(30_000, Math.max(15_000, configured));
+  return Math.min(90_000, Math.max(60_000, configured));
 }
 
 function isAbortTimeout(error: unknown) {

@@ -104,6 +104,31 @@ describe("scheduled Instagram ingestion", () => {
     expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, archived: 2, result: expect.objectContaining({ imported: 1 }) }));
   });
 
+  it("registra alerta deduplicável para timeout de conectividade do Apify", async () => {
+    vi.spyOn(sdk, "authenticateRequest").mockResolvedValue({ isCron: true } as never);
+    vi.spyOn(await import("./instagram-pipeline"), "runInstagramPipeline").mockResolvedValueOnce({
+      receivedPosts: 0,
+      approvedPosts: 0,
+      imported: 0,
+      degraded: true,
+      transportFailures: [{ username: "apify-collector", status: 0, kind: "actor_timeout", message: "Timeout de conexão com o coletor Apify após 60000 ms." }],
+    } as never);
+    const res = { json: vi.fn().mockReturnThis(), status: vi.fn().mockReturnThis() } as never;
+
+    await ingestInstagramHandler({} as never, res);
+
+    expect(handleIngestionFailureAlert).toHaveBeenCalledWith(expect.objectContaining({
+      routine: "instagram-agenda",
+      sourceKey: "instagram:apify",
+      integration: "pipeline",
+      status: 504,
+      errorCode: "APIFY_CONNECTIVITY_TIMEOUT",
+      alertType: "apify_connectivity_timeout",
+      severity: "WARNING",
+    }));
+    expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, degraded: true }));
+  });
+
   it("processes a captioned post through structured classification", async () => {
     const originalFetch = globalThis.fetch;
     const sourceUrl = "https://www.instagram.com/p/ocr-agenda/";
