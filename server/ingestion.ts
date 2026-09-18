@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { load } from "cheerio";
 import { invokeLLM } from "./_core/llm";
 import { assertEventDateIsCurrentOrFuture, getIngestionPayloadCache, listActiveLocationAliasValues, saveEvent, saveIngestionPayloadCache } from "./db";
 import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
@@ -51,7 +52,11 @@ export const TARGET_VENUES = [
 
 const normalizeSlug = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 const normalizeText = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-const stripHtml = (value: string) => value.replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
+const stripHtml = (value: string) => {
+  const $ = load(value, undefined, false);
+  $("script, style, noscript").remove();
+  return $.root().text().replace(/\s+/g, " ").trim();
+};
 const INGRESSE_SITE_API = "https://api-site.ingresse.com/events";
 export const DEFAULT_INGRESSE_FETCH_TIMEOUT_MS = 6_000;
 export function getIngresseFetchTimeoutMs() {
@@ -172,53 +177,75 @@ export function normalizeVenueCity(locationName: string, address: string, city: 
 export function extractPublicEventLinks(html: string, baseUrl: string) {
   const links = new Set<string>();
   const absoluteBase = new URL(baseUrl);
-  const pattern = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(html))) {
+  const $ = load(html, undefined, false);
+  $("a[href]").each((_, anchor) => {
     try {
-      const url = new URL(match[1], absoluteBase);
-      if (url.origin !== absoluteBase.origin) continue;
+      const href = $(anchor).attr("href");
+      if (!href) return;
+      const url = new URL(href, absoluteBase);
+      if (url.origin !== absoluteBase.origin) return;
       const isArticket = url.pathname.startsWith("/e/") && url.hostname.includes("articket");
       const isBlacktag = url.pathname.startsWith("/eventos/") && url.hostname.includes("blacktag");
       const isZig = url.pathname.startsWith("/eventos/") && (url.hostname === "zig.tickets" || url.hostname.endsWith(".zig.tickets"));
       const isIngresseEvent = url.hostname.includes("ingresse") && url.pathname !== "/" && !url.pathname.startsWith("/search");
       const isBlackPass = url.hostname.endsWith("blackpass.com.br") && /^\/event\/[A-Za-z0-9_-]+/.test(url.pathname);
       const isMrIngressos = url.hostname.endsWith("mringressos.com.br") && /^\/comprar\/[A-Za-z0-9_-]+/.test(url.pathname);
-      const anchorText = stripHtml(match[2]);
+      const anchorText = $(anchor).text().replace(/\s+/g, " ").trim();
       const isZigRegional = !isZig || /santos|guaruj[aá]/i.test(normalizeText(anchorText));
       if ((isArticket || isBlacktag || isZig || isIngresseEvent || isBlackPass || isMrIngressos) && isZigRegional) links.add(url.href);
     } catch {
       // Ignore malformed public links.
     }
-  }
-  const rawPathPattern = /(?:href|url|link)=["'\\]*(\/event\/[A-Za-z0-9_-]+|\/comprar\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)?)/gi;
-  let rawMatch: RegExpExecArray | null;
-  while ((rawMatch = rawPathPattern.exec(html))) {
+  });
+  const collectEmbeddedPath = (value: string) => {
     try {
-      const url = new URL(rawMatch[1], absoluteBase);
+      const path = value.match(/(?:^|["'\\])((?:\/event\/[A-Za-z0-9_-]+)|(?:\/comprar\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)?))(?:["'\\]|$)/)?.[1];
+      if (!path) return;
+      const url = new URL(path, absoluteBase);
       if (url.origin === absoluteBase.origin && (url.pathname.startsWith("/event/") || url.pathname.startsWith("/comprar/"))) links.add(url.href);
     } catch { /* ignore malformed embedded paths */ }
-  }
+  };
+  $("[href], [url], [link], [data-href], [data-url], [data-link]").each((_, element) => {
+    for (const attribute of ["href", "url", "link", "data-href", "data-url", "data-link"] as const) {
+      const value = $(element).attr(attribute);
+      if (value) collectEmbeddedPath(value);
+    }
+  });
+  $("script").each((_, script) => collectEmbeddedPath($(script).html() ?? ""));
   return Array.from(links).slice(0, 60);
 }
 
 function readJsonLd(html: string) {
-  const matches = Array.from(html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi));
-  for (const match of matches) {
+  const $ = load(html, undefined, false);
+  let found: Record<string, unknown> | undefined;
+  $("script[type='application/ld+json'], script[type='application/json']").each((_, script) => {
+    if (found) return false;
     try {
-      const parsed = JSON.parse(match[1].trim()) as unknown;
+      const parsed = JSON.parse($(script).contents().text().trim()) as unknown;
       const values = Array.isArray(parsed) ? parsed : [parsed];
       const event = values.find(value => {
         if (!value || typeof value !== "object") return false;
         const record = value as Record<string, unknown>;
         return String(record["@type"] ?? "").toLowerCase() === "event" || "startDate" in record;
       });
-      if (event && typeof event === "object") return event as Record<string, unknown>;
+      if (event && typeof event === "object") found = event as Record<string, unknown>;
     } catch {
       // Ignore malformed structured data and continue with metadata fallbacks.
     }
-  }
-  return undefined;
+    return undefined;
+  });
+  return found;
+}
+
+function readMetaTags(html: string) {
+  const $ = load(html, undefined, false);
+  const values = new Map<string, string>();
+  $("meta").each((_, element) => {
+    const key = String($(element).attr("property") ?? $(element).attr("name") ?? "").toLowerCase();
+    const content = $(element).attr("content");
+    if (key && content !== undefined && !values.has(key)) values.set(key, content);
+  });
+  return (key: string) => values.get(key.toLowerCase()) ?? "";
 }
 
 export function parseZigEventMetadata(html: string, url: string) {
@@ -226,7 +253,7 @@ export function parseZigEventMetadata(html: string, url: string) {
   const location = jsonLd?.location && typeof jsonLd.location === "object" ? jsonLd.location as Record<string, unknown> : {};
   const address = location.address && typeof location.address === "object" ? location.address as Record<string, unknown> : {};
   const offers = jsonLd?.offers && typeof jsonLd.offers === "object" ? jsonLd.offers as Record<string, unknown> : {};
-  const meta = (property: string) => html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)["']`, "i"))?.[1] ?? "";
+  const meta = readMetaTags(html);
   const title = typeof jsonLd?.name === "string" ? jsonLd.name : meta("og:title");
   const eventDate = typeof jsonLd?.startDate === "string" ? jsonLd.startDate : meta("event:start_time");
   const locationName = typeof location.name === "string" ? location.name : "";
@@ -301,17 +328,18 @@ function isMrIngressosCatalogUrl(url: string) {
 
 export function extractMrIngressosListingEvents(html: string, baseUrl = "https://mringressos.com.br/") {
   const events: Array<{ url: string; title: string; text: string }> = [];
-  const pattern = /<a\b[^>]*href=["']([^"']*\/comprar\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)?)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(html))) {
+  const $ = load(html, undefined, false);
+  $("a[href]").each((_, anchor) => {
     try {
-      const url = new URL(match[1], baseUrl).href;
-      const text = stripHtml(match[2]);
-      const heading = match[2].match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/i)?.[1];
+      const href = $(anchor).attr("href");
+      if (!href || !/\/comprar\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)?/.test(href)) return;
+      const url = new URL(href, baseUrl).href;
+      const text = $(anchor).text().replace(/\s+/g, " ").trim();
+      const heading = $(anchor).find("h1, h2, h3, h4, h5, h6").first().text();
       const title = stripHtml(heading ?? "") || text.match(/(?:\d{1,2}h\d{2})\s+(.+?)(?=\s+(?:Dolores|Boteco|Projac|Tardezinha|Amsterdã|Asipavic|Campo|Quintalzinho|Sede Vicente|G\.R\.C\.E\.S\.)\b|\s+-\s+(?:Guarujá|Guaruja|Santos))/i)?.[1]?.trim() || text.slice(0, 160);
       if (title && !events.some(event => event.url === url)) events.push({ url, title: title.slice(0, 160), text: text.slice(0, 1000) });
     } catch { /* ignore malformed listing links */ }
-  }
+  });
   return events;
 }
 
@@ -328,10 +356,12 @@ export function parseTicketingEventMetadata(html: string, url: string) {
   const location = jsonLd?.location && typeof jsonLd.location === "object" ? jsonLd.location as Record<string, unknown> : {};
   const address = location.address && typeof location.address === "object" ? location.address as Record<string, unknown> : {};
   const offers = jsonLd?.offers && typeof jsonLd.offers === "object" ? jsonLd.offers as Record<string, unknown> : {};
-  const meta = (property: string) => html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)`, "i"))?.[1] ?? "";
-  const visibleText = stripHtml(html).replace(/\s+/g, " ");
-  const h1Text = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? "";
-  const pageTitle = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "";
+  const meta = readMetaTags(html);
+  const $ = load(html, undefined, false);
+  $("script, style, noscript").remove();
+  const visibleText = $.root().text().replace(/\s+/g, " ").trim();
+  const h1Text = $("h1").first().text();
+  const pageTitle = $("title").first().text();
   const title = typeof jsonLd?.name === "string" ? jsonLd.name : meta("og:title") || stripHtml(h1Text) || stripHtml(pageTitle);
   const eventDate = typeof jsonLd?.startDate === "string" ? jsonLd.startDate : (meta("event:start_time") || visibleText.match(/(?:sex|sab|dom|seg|ter|qua|qui)[^0-9]{0,20}(\d{1,2})[\/ .-]+([a-záéêç]+|\d{1,2})[^0-9]{0,12}(\d{1,2})h?(\d{2})?/i)?.[0] || "");
   const locationName = typeof location.name === "string" ? location.name : (visibleText.match(/(?:Guarujá|Guaruja|Santos)[^,|]{0,80}/i)?.[0] ?? "").trim();
@@ -540,15 +570,10 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
       ? await fetchMrIngressosWithRetry(url, requestInit, (targetUrl: string | URL | Request, targetInit?: RequestInit) => fetchExternal(targetUrl instanceof Request ? targetUrl.url : String(targetUrl), targetInit ?? {}, MR_INGRESSOS_FETCH_TIMEOUT_MS))
       : await fetchExternal(url, requestInit, publicFetchTimeoutMs(url));
     const html = await readExternalBody(response);
-    const imageMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
-    const text = html
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&nbsp;/gi, " ")
-      .replace(/&amp;/gi, "&")
-      .replace(/\s+/g, " ")
-      .trim();
+    const meta = readMetaTags(html);
+    const $ = load(html, undefined, false);
+    $("script, style, noscript").remove();
+    const text = $.root().text().replace(/\s+/g, " ").trim();
     if (!text) throw createFetchError("Fonte pública retornou conteúdo vazio");
     const hostname = new URL(url).hostname;
     const structured = hostname.endsWith("zig.tickets") ? parseZigEventMetadata(html, url) : (isBlackPassEventUrl(url) ? parseBlackPassEventMetadata(html, url) : isMrIngressosEventUrl(url) ? parseMrIngressosEventMetadata(html, url) : undefined);
@@ -556,7 +581,7 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
     logPublicResponseDiagnostics({ url, status: response.status, contentType: response.headers.get("content-type"), html, text: normalizedText, structured: Boolean(structured), links: extractPublicEventLinks(html, url).length });
     const adapter = hostname.endsWith("blackpass.com.br") ? "blackpass" : hostname.endsWith("mringressos.com.br") ? "mringressos" : hostname.includes("ingresse") ? "ingresse" : "generic";
     const adapterError = (isBlackPassEventUrl(url) || isMrIngressosEventUrl(url)) && !structured ? `Adaptador ${adapter} não encontrou JSON-LD/metadados completos; conteúdo textual encaminhado para a classificação.` : undefined;
-    return { url, html, text: normalizedText, imageUrl: structured?.imageUrl ?? imageMatch?.[1] ?? "", structured, adapter, adapterError };
+    return { url, html, text: normalizedText, imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter, adapterError };
   } catch (error) {
     throw Object.assign(error instanceof Error ? error : new Error(sanitizeFetchFailure(error).message), { fetchFailure: sanitizeFetchFailure(error) });
   }
