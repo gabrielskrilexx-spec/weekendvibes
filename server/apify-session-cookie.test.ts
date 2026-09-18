@@ -33,6 +33,6 @@ describe("Apify Stories session cookie", () => {
     const init = request?.[1] as RequestInit;
     expect(url).toContain("zaver.api~instagram-stories-highlights-scraper");
     expect(url).not.toContain(SECRET);
-    expect(JSON.parse(String(init.body))).toEqual({ targets: expect.arrayContaining(["meulugar.bar"]), scrapeType: "both", maxHighlights: 10, onlyNew: false });
+    expect(JSON.parse(String(init.body))).toEqual({ targets: expect.arrayContaining(["meulugar.bar"]), scrapeType: "both", maxHighlights: 2, onlyNew: true });
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import { eq, or } from "drizzle-orm";
 import { ingestionSources } from "../drizzle/schema";
 import { getDb } from "./db";
-import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest } from "./instagram-pipeline";
+import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest, limitInstagramStoriesForCost } from "./instagram-pipeline";
 
 describe("Instagram weekend pipeline", () => {
   beforeEach(async () => {
@@ -19,11 +19,21 @@ describe("Instagram weekend pipeline", () => {
       expect(getApifyActorMaxRuntimeSecs()).toBe(60);
       process.env.APIFY_ACTOR_MAX_RUNTIME_SECS = "5";
       expect(getApifyActorMaxRuntimeSecs()).toBe(20);
-      expect(buildInstagramStoriesScraperPayload([{ username: "meulugar.bar" }])).toEqual({ targets: ["meulugar.bar"], scrapeType: "both", maxHighlights: 10, onlyNew: false });
+      expect(buildInstagramStoriesScraperPayload([{ username: "meulugar.bar" }])).toEqual({ targets: ["meulugar.bar"], scrapeType: "both", maxHighlights: 2, onlyNew: true });
     } finally {
       if (previous === undefined) delete process.env.APIFY_ACTOR_MAX_RUNTIME_SECS;
       else process.env.APIFY_ACTOR_MAX_RUNTIME_SECS = previous;
     }
+  });
+
+  it("aplica a trava financeira local: Stories em 24h e no máximo 2 Highlights por perfil", () => {
+    const now = new Date("2026-09-18T12:00:00.000Z");
+    const posts = [
+      ...Array.from({ length: 4 }, (_, index) => ({ id: `highlight-${index}`, ownerUsername: "meulugar.bar", mediaType: "highlight" as const, timestamp: `2026-09-18T0${index + 1}:00:00.000Z` })),
+      { id: "recent-story", ownerUsername: "meulugar.bar", mediaType: "story" as const, timestamp: "2026-09-18T11:00:00.000Z" },
+      { id: "old-story", ownerUsername: "meulugar.bar", mediaType: "story" as const, timestamp: "2026-09-16T11:00:00.000Z" },
+    ];
+    expect(limitInstagramStoriesForCost(posts, now).map(post => post.id)).toEqual(["recent-story", "highlight-3", "highlight-2"]);
   });
 
   it("sanitizes OCR audit entries for the administrative history", () => {
@@ -151,8 +161,8 @@ describe("Instagram weekend pipeline", () => {
     expect(buildInstagramStoriesScraperPayload([{ username: "meulugar.bar" }])).toEqual({
       targets: ["meulugar.bar"],
       scrapeType: "both",
-      maxHighlights: 10,
-      onlyNew: false,
+      maxHighlights: 2,
+      onlyNew: true,
     });
   });
 

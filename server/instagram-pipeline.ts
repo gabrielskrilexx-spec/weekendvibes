@@ -172,9 +172,27 @@ export function buildInstagramStoriesScraperPayload(targets: ReadonlyArray<{ use
   return {
     targets: targets.map(target => target.username),
     scrapeType: "both" as const,
-    maxHighlights: 10,
-    onlyNew: false,
+    maxHighlights: 2,
+    onlyNew: true,
   } as const;
+}
+
+export function limitInstagramStoriesForCost(posts: InstagramPost[], now = new Date()) {
+  const cutoff = now.getTime() - 24 * 60 * 60 * 1000;
+  const highlightCount = new Map<string, number>();
+  const sorted = [...posts].sort((a, b) => (postDate(b)?.getTime() ?? 0) - (postDate(a)?.getTime() ?? 0));
+  return sorted.filter(post => {
+    const handle = String(post.ownerUsername ?? post.username ?? "").replace(/^@/, "").toLowerCase();
+    if (post.mediaType === "highlight") {
+      const count = highlightCount.get(handle) ?? 0;
+      if (count >= 2) return false;
+      highlightCount.set(handle, count + 1);
+      return true;
+    }
+    if (post.mediaType !== "story") return false;
+    const takenAt = postDate(post)?.getTime();
+    return typeof takenAt === "number" && takenAt >= cutoff && takenAt <= now.getTime();
+  });
 }
 
 export function normalizeInstagramMediaItem(item: Record<string, unknown>, fallbackUsername = ""): InstagramPost | null {
@@ -666,13 +684,13 @@ export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean
     const configuredSources = (await listEnabledInstagramSources()) ?? [];
     const sourceByHandle = new Map(configuredSources.map(source => [String(source.handle ?? "").replace(/^@/, "").toLowerCase(), source.sourceKey]));
     const allowedHandles = configuredSources.length > 0 ? sourceByHandle : new Map(INSTAGRAM_TARGETS.map(target => [target.username.toLowerCase(), `instagram:${target.username}`]));
-    const posts = normalizeInstagramMediaPayload(parsed)
+    const posts = limitInstagramStoriesForCost(normalizeInstagramMediaPayload(parsed)
       .filter((post: InstagramPost) => post.mediaType === "story" || post.mediaType === "highlight")
       .filter((post: InstagramPost) => allowedHandles.has(String(post.ownerUsername ?? post.username ?? "").replace(/^@/, "").toLowerCase()))
       .map((post: InstagramPost) => ({
         ...post,
         sourceKey: allowedHandles.get(String(post.ownerUsername ?? post.username ?? "").replace(/^@/, "").toLowerCase()),
-      }));
+      })), new Date());
     if (posts.length === 0) {
       const diagnostic = "Apify respondeu HTTP 200, mas nenhum Story/Destaque parseável foi encontrado no payload.";
       console.warn("[Instagram Stories]", diagnostic, { topLevelKeys: parsed && typeof parsed === "object" ? Object.keys(parsed as Record<string, unknown>).slice(0, 20) : [] });
