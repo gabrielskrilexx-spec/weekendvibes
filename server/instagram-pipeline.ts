@@ -487,17 +487,7 @@ export function resolveInstagramVisualUrl(post: InstagramPost) {
 
 export async function extractOcrText(imageUrl: string) {
   if (!imageUrl) return "";
-  let imagePayload = "";
-  try {
-    imagePayload = await prepareImageForOcr(imageUrl);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn("[Instagram OCR] Image unavailable; continuing with caption only:", message);
-    try { await recordOperationalAlert({ integration: "ocr", title: "Imagem do Instagram indisponível", message }); } catch (alertError) { console.warn("[Instagram OCR] Could not persist image alert:", alertError); }
-    return "";
-  }
-  try {
-    const result = await openAiChat({
+  const requestOcr = async (imagePayload: string) => openAiChat({
       model: MODEL,
       temperature: 0,
       messages: [{ role: "user", content: [
@@ -505,6 +495,22 @@ export async function extractOcrText(imageUrl: string) {
         { type: "image_url", image_url: { url: imagePayload, detail: "high" } },
       ] }],
     });
+  const isPublicUrl = /^https?:\/\//i.test(imageUrl);
+  let directError: unknown;
+  if (isPublicUrl) {
+    try {
+      const result = await requestOcr(imageUrl);
+      const text = String(result.choices?.[0]?.message?.content ?? "");
+      if (text.trim()) return text;
+      directError = new Error("OpenAI retornou OCR vazio para a URL pública");
+    } catch (error) {
+      if (isRecoverableOcrRateLimit(error)) throw error;
+      directError = error;
+    }
+  }
+  try {
+    const imagePayload = await prepareImageForOcr(imageUrl);
+    const result = await requestOcr(imagePayload);
     return String(result.choices?.[0]?.message?.content ?? "");
   } catch (error) {
     if (isRecoverableOcrRateLimit(error)) {
@@ -514,7 +520,12 @@ export async function extractOcrText(imageUrl: string) {
       return "";
     }
     if (error instanceof InstagramIntegrationFailure) throw error;
-    throw new InstagramIntegrationFailure("ocr", error instanceof Error ? error.message : String(error), { cause: error });
+    const fallbackMessage = error instanceof Error ? error.message : String(error);
+    const directMessage = directError instanceof Error ? directError.message : String(directError ?? "");
+    const message = directMessage ? `${directMessage}; fallback Base64: ${fallbackMessage}` : fallbackMessage;
+    console.warn("[Instagram OCR] Image unavailable; continuing with caption only:", message);
+    try { await recordOperationalAlert({ integration: "ocr", title: "Imagem do Instagram indisponível", message }); } catch (alertError) { console.warn("[Instagram OCR] Could not persist image alert:", alertError); }
+    return "";
   }
 }
 
@@ -724,29 +735,41 @@ function deduplicateInstagramPosts(posts: InstagramPost[]) {
   });
 }
 
+const STRUCTURED_EVENTS_CHUNK_SIZE = 18;
+const STRUCTURED_EVENT_RESPONSE_FORMAT = { type: "json_schema", json_schema: { name: "instagram_weekend_events", strict: true, schema: {
+  type: "object", properties: { events: { type: "array", items: { type: "object", properties: {
+    title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string", enum: ["Santos", "Guarujá"] }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "samba_pagode", "rap_trap"] }, priceCents: { type: "integer" }, imageUrl: { type: "string" }, sourceUrl: { type: "string" },
+  }, required: ["title", "summary", "eventDate", "locationName", "address", "city", "category", "genre", "priceCents", "imageUrl", "sourceUrl"], additionalProperties: false } } }, required: ["events"], additionalProperties: false,
+} } } as const;
+
+function structuredEventsSystemPrompt(referenceDate: string) {
+  return `Extraia somente eventos futuros de fim de semana, públicos e musicais, localizados exclusivamente em Santos ou Guarujá. Data de Referência: ${referenceDate}. Ignore rigorosamente qualquer postagem ou evento que se refira a data anterior à Data de Referência; não tente inferir datas passadas como futuras. A data mínima aceita é ${referenceDate}. Para MEDIA_ORIGIN story ou highlight, trate RAW_POST_TEXT como OCR da arte gráfica e extraia Nome do Evento, Data, Horário e Atrações somente do texto reconhecido. Se a legenda informar dia e mês, mas omitir o ano, infira o ano atual ou futuro que torne a data válida a partir da Data de Referência; nunca use um ano passado por padrão. Retorne eventDate em ISO 8601. Use apenas informações presentes no texto bruto. Se data, cidade, endereço ou gênero não forem verificáveis, descarte o evento. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Não invente preços; use 0 quando o texto não informar preço.`;
+}
+
+function serializeApprovedPost({ post, rawText }: { post: InstagramPost; rawText: string }) {
+  return `SOURCE_URL: ${postUrl(post)}\nACCOUNT: ${post.ownerUsername ?? post.username ?? ""}\nMEDIA_ORIGIN: ${post.mediaType ?? "post"}${post.highlightTitle ? `\nHIGHLIGHT_TITLE: ${post.highlightTitle}` : ""}\nRAW_POST_TEXT: ${rawText.slice(0, 2500)}`;
+}
+
 async function extractStructuredEvents(referenceDate: string, approvedPosts: Array<{ post: InstagramPost; rawText: string }>) {
   if (approvedPosts.length === 0) return [] as StructuredEvent[];
-  const raw = approvedPosts.map(({ post, rawText }) => `SOURCE_URL: ${postUrl(post)}\nACCOUNT: ${post.ownerUsername ?? post.username ?? ""}\nMEDIA_ORIGIN: ${post.mediaType ?? "post"}${post.highlightTitle ? `\nHIGHLIGHT_TITLE: ${post.highlightTitle}` : ""}\nRAW_POST_TEXT: ${rawText}`).join("\n\n").slice(0, 48_000);
-  try {
-    const result = await openAiChat({
-      model: MODEL,
-      temperature: 0,
-      messages: [
-        { role: "system", content: `Extraia somente eventos futuros de fim de semana, públicos e musicais, localizados exclusivamente em Santos ou Guarujá. Data de Referência: ${referenceDate}. Ignore rigorosamente qualquer postagem ou evento que se refira a data anterior à Data de Referência; não tente inferir datas passadas como futuras. A data mínima aceita é ${referenceDate}. Para MEDIA_ORIGIN story ou highlight, trate RAW_POST_TEXT como OCR da arte gráfica e extraia Nome do Evento, Data, Horário e Atrações somente do texto reconhecido. Se a legenda informar dia e mês, mas omitir o ano, infira o ano atual ou futuro que torne a data válida a partir da Data de Referência; nunca use um ano passado por padrão. Retorne eventDate em ISO 8601. Use apenas informações presentes no texto bruto. Se data, cidade, endereço ou gênero não forem verificáveis, descarte o evento. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Não invente preços; use 0 quando o texto não informar preço.` },
-        { role: "user", content: raw },
-      ],
-      response_format: { type: "json_schema", json_schema: { name: "instagram_weekend_events", strict: true, schema: {
-        type: "object", properties: { events: { type: "array", items: { type: "object", properties: {
-          title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string", enum: ["Santos", "Guarujá"] }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "samba_pagode", "rap_trap"] }, priceCents: { type: "integer" }, imageUrl: { type: "string" }, sourceUrl: { type: "string" },
-        }, required: ["title", "summary", "eventDate", "locationName", "address", "city", "category", "genre", "priceCents", "imageUrl", "sourceUrl"], additionalProperties: false } } }, required: ["events"], additionalProperties: false,
-      } } },
-    });
-    const content = result.choices?.[0]?.message?.content ?? "{\"events\":[]}";
-    return (JSON.parse(content) as { events: StructuredEvent[] }).events;
-  } catch (error) {
-    if (error instanceof InstagramIntegrationFailure) throw error;
-    throw new InstagramIntegrationFailure("openai", error instanceof Error ? error.message : String(error), { cause: error });
+  const events: StructuredEvent[] = [];
+  for (let offset = 0; offset < approvedPosts.length; offset += STRUCTURED_EVENTS_CHUNK_SIZE) {
+    const raw = approvedPosts.slice(offset, offset + STRUCTURED_EVENTS_CHUNK_SIZE).map(serializeApprovedPost).join("\n\n").slice(0, 48_000);
+    try {
+      const result = await openAiChat({ model: MODEL, temperature: 0, messages: [{ role: "system", content: structuredEventsSystemPrompt(referenceDate) }, { role: "user", content: raw }], response_format: STRUCTURED_EVENT_RESPONSE_FORMAT });
+      const content = result.choices?.[0]?.message?.content ?? "{\"events\":[]}";
+      const parsed = JSON.parse(content) as { events?: StructuredEvent[] };
+      if (Array.isArray(parsed.events)) events.push(...parsed.events);
+    } catch (error) {
+      if (error instanceof InstagramIntegrationFailure) throw error;
+      throw new InstagramIntegrationFailure("openai", error instanceof Error ? error.message : String(error), { cause: error });
+    }
   }
+  return events;
+}
+
+export async function extractStructuredEventsForTest(referenceDate: string, approvedPosts: Array<{ post: InstagramPost; rawText: string }>) {
+  return extractStructuredEvents(referenceDate, approvedPosts);
 }
 
 export type InstagramPipelineOptions = { dryRun?: boolean; storiesOnly?: boolean; postsOverride?: InstagramPost[] };

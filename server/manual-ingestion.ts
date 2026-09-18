@@ -163,7 +163,8 @@ export async function runIngestionSourceChunk(input: { sourceKey: string; dryRun
   const sourceKey = input.sourceKey.trim();
   if (sourceKey === "instagram") {
     if (input.dryRun) {
-      return { sourceKey, dryRun: true, result: await withChunkTimeout(runInstagramPipeline({ dryRun: true, storiesOnly: input.storiesOnly === true })) };
+      const timeoutMs = input.storiesOnly === true ? 75_000 : CHUNK_TIMEOUT_MS;
+      return { sourceKey, dryRun: true, result: await withChunkTimeout(runInstagramPipeline({ dryRun: true, storiesOnly: input.storiesOnly === true }), timeoutMs) };
     }
     if (input.storiesOnly) return { sourceKey, dryRun: false, result: await startAsyncApifyStoriesRun({ trigger: "manual" }) };
     return { sourceKey, dryRun: false, result: await withChunkTimeout(runInstagramAgendaStep({ archive: false, trigger: "manual" })) };

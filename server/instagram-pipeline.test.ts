@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import { eq, or } from "drizzle-orm";
 import { ingestionSources } from "../drizzle/schema";
 import { getDb } from "./db";
-import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl } from "./instagram-pipeline";
+import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest } from "./instagram-pipeline";
 
 describe("Instagram weekend pipeline", () => {
   beforeEach(async () => {
@@ -220,6 +220,35 @@ describe("Instagram weekend pipeline", () => {
       await expect(extractOcrText("data:image/png;base64,AA==")).resolves.toContain("Meu Lugar");
       expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("chat/completions"), expect.objectContaining({ method: "POST", body: expect.stringContaining("image_url") }));
     } finally { globalThis.fetch = originalFetch; }
+  });
+
+  it("envia URL pública diretamente ao Vision sem baixar a imagem para a RAM", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: "Sábado 22h Santos" } }] }), { status: 200, headers: { "content-type": "application/json" } }));
+    globalThis.fetch = fetchMock as typeof fetch;
+    try {
+      await expect(extractOcrText("https://cdn.example.com/story.jpg")).resolves.toContain("Sábado");
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain("https://cdn.example.com/story.jpg");
+    } finally { globalThis.fetch = originalFetch; }
+  });
+
+  it("fragmenta a extração estruturada em lotes de 18 posts", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ events: [] }) } }] }), { status: 200, headers: { "content-type": "application/json" } })));
+    const posts = Array.from({ length: 19 }, (_, index) => ({ post: { url: `https://www.instagram.com/p/post-${index}/`, ownerUsername: "meulugar.bar", mediaType: "story" as const }, rawText: `Evento ${index}` }));
+    const originalKey = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "test-openai-key";
+    globalThis.fetch = fetchMock as typeof fetch;
+    try {
+      await expect(extractStructuredEventsForTest("2026-09-18", posts)).resolves.toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain("Evento 17");
+      expect(String(fetchMock.mock.calls[1]?.[1]?.body)).toContain("Evento 18");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = originalKey;
+    }
   });
 
   it("classifies a global Apify timeout separately from a profile failure", async () => {
