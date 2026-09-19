@@ -152,10 +152,33 @@ export function getApifyDailyRequestLimit() {
   return Number.isFinite(configured) ? Math.min(100, Math.max(1, configured)) : 3;
 }
 
+const APIFY_DAILY_REQUEST_LIMIT_KEY = "APIFY_DAILY_REQUEST_LIMIT";
+const normalizeApifyDailyRequestLimit = (value: unknown) => {
+  const parsed = typeof value === "number" ? value : Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) ? Math.min(100, Math.max(1, Math.trunc(parsed))) : getApifyDailyRequestLimit();
+};
+
+async function getConfiguredApifyDailyRequestLimit(db: Awaited<ReturnType<typeof getDb>>) {
+  if (!db) return getApifyDailyRequestLimit();
+  const [setting] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, APIFY_DAILY_REQUEST_LIMIT_KEY)).limit(1);
+  return normalizeApifyDailyRequestLimit(setting?.value);
+}
+
+export async function setApifyDailyRequestLimit(value: number) {
+  const limit = normalizeApifyDailyRequestLimit(value);
+  if (limit !== value) throw new Error("O limite diário deve ser um número inteiro entre 1 e 100.");
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await db.insert(appSettings).values({ key: APIFY_DAILY_REQUEST_LIMIT_KEY, value: String(limit) }).onDuplicateKeyUpdate({ set: { value: String(limit), updatedAt: new Date() } });
+  const dateKey = saoPauloDateKey(new Date());
+  await db.update(apifyDailyUsage).set({ dailyLimit: limit, updatedAt: new Date() }).where(eq(apifyDailyUsage.dateKey, dateKey));
+  return limit;
+}
+
 export async function claimApifyDailyRequest(input: { now?: Date; dbOverride?: Awaited<ReturnType<typeof getDb>> }) {
   const db = input.dbOverride ?? await getDb();
   const dateKey = saoPauloDateKey(input.now);
-  const dailyLimit = getApifyDailyRequestLimit();
+  const dailyLimit = await getConfiguredApifyDailyRequestLimit(db);
   if (!db) return { allowed: true, dateKey, requestCount: 0, dailyLimit, persistence: false };
   await db.insert(apifyDailyUsage).values({ dateKey, requestCount: 0, dailyLimit }).onDuplicateKeyUpdate({ set: { dailyLimit, updatedAt: new Date() } });
   const result = await db.update(apifyDailyUsage).set({ requestCount: sql`${apifyDailyUsage.requestCount} + 1`, updatedAt: new Date() }).where(and(eq(apifyDailyUsage.dateKey, dateKey), lt(apifyDailyUsage.requestCount, dailyLimit)));
@@ -172,7 +195,7 @@ export async function getApifyDailyUsageStatus(input: { now?: Date; dbOverride?:
   const db = input.dbOverride ?? await getDb();
   const now = input.now ?? new Date();
   const dateKey = saoPauloDateKey(now);
-  const dailyLimit = getApifyDailyRequestLimit();
+  const dailyLimit = await getConfiguredApifyDailyRequestLimit(db);
   const nextReleaseAt = new Date(`${dateKey}T00:00:00-03:00`);
   nextReleaseAt.setUTCDate(nextReleaseAt.getUTCDate() + 1);
   if (!db) {

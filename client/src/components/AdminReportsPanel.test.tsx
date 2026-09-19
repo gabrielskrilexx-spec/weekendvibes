@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   toastWarning: vi.fn(),
   toastInfo: vi.fn(),
   summaryInput: undefined as unknown,
+  apifyUsageData: { dateKey: "2026-09-19", requestCount: 1, dailyLimit: 3, remaining: 2, isLimitReached: false, nextReleaseAt: "2026-09-20T03:00:00.000Z", persistence: true },
 }));
 
 
@@ -46,7 +47,8 @@ vi.mock("@/lib/trpc", () => ({
   trpc: {
     ingestionReports: {
       summary: { useQuery: (input: unknown) => { mocks.summaryInput = input; return { data: latestReportData, refetch: mocks.reportRefetch }; } },
-      apifyDailyUsage: { useQuery: () => ({ data: { dateKey: "2026-09-19", requestCount: 1, dailyLimit: 3, remaining: 2, isLimitReached: false, nextReleaseAt: "2026-09-20T03:00:00.000Z", persistence: true }, isLoading: false, isError: false }) },
+      apifyDailyUsage: { useQuery: () => ({ data: mocks.apifyUsageData, isLoading: false, isError: false, refetch: vi.fn() }) },
+      setApifyDailyLimit: { useMutation: (options: { onSuccess?: (result: { dailyLimit: number }) => void }) => ({ isPending: false, mutate: vi.fn((input: { dailyLimit: number }) => options.onSuccess?.({ dailyLimit: input.dailyLimit })) }) },
       geocoding: { useQuery: () => ({ data: { pending: 0, processing: 0, succeeded: 0, failed: 0 }, refetch: vi.fn() }) },
       geocodeNow: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
       reprocess: { useMutation: (options: typeof mutationOptions) => { mutationOptions = options; return { ...mutationState, mutate: mocks.mutate }; } },
@@ -66,6 +68,7 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     mocks.toastWarning.mockReset();
     mocks.toastInfo.mockReset();
     mocks.summaryInput = undefined;
+    mocks.apifyUsageData = { dateKey: "2026-09-19", requestCount: 1, dailyLimit: 3, remaining: 2, isLimitReached: false, nextReleaseAt: "2026-09-20T03:00:00.000Z", persistence: true };
     mutationOptions = {};
     mutationState = { isPending: false };
   });
@@ -301,6 +304,13 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     const markup = JSON.stringify(tree!.toJSON());
     expect(markup).toContain("1 de 3 requisições");
     expect(markup).toContain("2 requisição(ões) disponível(is)");
+  });
+  it("exibe aviso visual ao atingir 80% do limite Apify", async () => {
+    mocks.apifyUsageData = { dateKey: "2026-09-19", requestCount: 8, dailyLimit: 10, remaining: 2, isLimitReached: false, nextReleaseAt: "2026-09-20T03:00:00.000Z", persistence: true };
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    expect(tree!.root.findByProps({ "data-testid": "apify-usage-warning" })).toBeTruthy();
+    expect(JSON.stringify(tree!.toJSON())).toContain("pelo menos 80% do limite diário");
   });
 });
 

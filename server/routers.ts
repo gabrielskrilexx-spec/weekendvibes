@@ -34,6 +34,7 @@ import {
   setPublicFeedRolloverHour,
   listOperationalAlerts,
   getApifyDailyUsageStatus,
+  setApifyDailyRequestLimit,
 } from "./db";
 import { invokeLLM } from "./_core/llm";
 import { isSandboxRestrictedError } from "./external-fetch";
@@ -1001,6 +1002,16 @@ export const appRouter = router({
     apifyDailyUsage: adminOnly
       .output(z.object({ dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), requestCount: z.number().int().nonnegative(), dailyLimit: z.number().int().positive(), remaining: z.number().int().nonnegative(), isLimitReached: z.boolean(), nextReleaseAt: z.string().datetime(), persistence: z.boolean() }).strict())
       .query(() => getApifyDailyUsageStatus()),
+    setApifyDailyLimit: adminOnly
+      .input(z.object({ dailyLimit: z.number().int().min(1).max(100) }).strict())
+      .output(z.object({ success: z.literal(true), dailyLimit: z.number().int().min(1).max(100) }).strict())
+      .mutation(async ({ input }) => {
+        try {
+          return { success: true as const, dailyLimit: await setApifyDailyRequestLimit(input.dailyLimit) };
+        } catch {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível salvar o limite diário da Apify." });
+        }
+      }),
     logs: adminOnly
       .input(
         z
