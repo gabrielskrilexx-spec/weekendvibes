@@ -33,6 +33,7 @@ import {
   getPublicFeedRolloverHour,
   setPublicFeedRolloverHour,
   listOperationalAlerts,
+  getApifyDailyUsageStatus,
 } from "./db";
 import { invokeLLM } from "./_core/llm";
 import { isSandboxRestrictedError } from "./external-fetch";
@@ -997,6 +998,9 @@ export const appRouter = router({
       }),
   }),
   ingestionReports: router({
+    apifyDailyUsage: adminOnly
+      .output(z.object({ dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), requestCount: z.number().int().nonnegative(), dailyLimit: z.number().int().positive(), remaining: z.number().int().nonnegative(), isLimitReached: z.boolean(), nextReleaseAt: z.string().datetime(), persistence: z.boolean() }).strict())
+      .query(() => getApifyDailyUsageStatus()),
     logs: adminOnly
       .input(
         z

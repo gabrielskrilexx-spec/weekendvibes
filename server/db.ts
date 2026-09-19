@@ -168,6 +168,23 @@ export async function claimApifyDailyRequest(input: { now?: Date; dbOverride?: A
   return { allowed, dateKey, requestCount: row.requestCount, dailyLimit: row.dailyLimit, persistence: true };
 }
 
+export async function getApifyDailyUsageStatus(input: { now?: Date; dbOverride?: Awaited<ReturnType<typeof getDb>> } = {}) {
+  const db = input.dbOverride ?? await getDb();
+  const now = input.now ?? new Date();
+  const dateKey = saoPauloDateKey(now);
+  const dailyLimit = getApifyDailyRequestLimit();
+  const nextReleaseAt = new Date(`${dateKey}T00:00:00-03:00`);
+  nextReleaseAt.setUTCDate(nextReleaseAt.getUTCDate() + 1);
+  if (!db) {
+    return { dateKey, requestCount: 0, dailyLimit, remaining: dailyLimit, isLimitReached: false, nextReleaseAt: nextReleaseAt.toISOString(), persistence: false };
+  }
+  const rows = await db.select({ requestCount: apifyDailyUsage.requestCount, dailyLimit: apifyDailyUsage.dailyLimit }).from(apifyDailyUsage).where(eq(apifyDailyUsage.dateKey, dateKey)).limit(1);
+  const row = rows[0];
+  const requestCount = Number(row?.requestCount ?? 0);
+  const configuredLimit = Number(row?.dailyLimit ?? dailyLimit);
+  return { dateKey, requestCount, dailyLimit: configuredLimit, remaining: Math.max(0, configuredLimit - requestCount), isLimitReached: requestCount >= configuredLimit, nextReleaseAt: nextReleaseAt.toISOString(), persistence: true };
+}
+
 export async function resolveAllOperationalAlerts(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) throw new Error("Database unavailable");

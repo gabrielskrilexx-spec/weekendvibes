@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, Loader2, MapPin, RefreshCw, Trash2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Loader2, MapPin, RefreshCw, Trash2, XCircle, Zap } from "lucide-react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast as sonnerToast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -99,6 +99,7 @@ export default function AdminReportsPanel() {
     return () => { cancelled = true; globalThis.clearInterval(intervalId); };
   }, []);
   const report = trpc.ingestionReports.summary.useQuery({ periodDays, routine: routineFilter === "all" ? undefined : routineFilter, status: statusFilter === "all" ? undefined : statusFilter, trigger: triggerFilter === "all" ? undefined : triggerFilter, runId: runIdFilter.trim() ? Number(runIdFilter) : undefined, sourceKey: sourceFilter.trim() || undefined, executionKind }, { refetchInterval: 30_000 });
+  const apifyUsage = trpc.ingestionReports.apifyDailyUsage.useQuery(undefined, { refetchInterval: 30_000 });
   const geocoding = trpc.ingestionReports.geocoding.useQuery(undefined, { refetchInterval: 30_000 });
   const reprocess = trpc.ingestionReports.reprocess.useMutation({
     onSuccess: async (_ack, variables) => {
@@ -241,6 +242,12 @@ export default function AdminReportsPanel() {
     </div>
     {newVersionAvailable && <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-cyan-300/30 bg-cyan-300/10 p-4 text-cyan-50 sm:flex-row sm:items-center sm:justify-between" role="status" aria-live="polite" data-testid="new-version-notice"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200">Atualização disponível</p><p className="mt-1 text-sm font-bold">Uma nova versão do painel foi detectada.</p><p className="mt-1 text-xs text-cyan-100/75">Recarregue a página para aplicar as correções e melhorias mais recentes.</p></div><button type="button" onClick={() => { if (typeof window !== "undefined") window.location.reload(); }} className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl bg-cyan-300 px-4 py-2 text-xs font-black text-zinc-950 hover:bg-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-100">Recarregar página</button></div>}
     <div className="mt-5 grid gap-3 sm:grid-cols-4">{cards.map(item => <div key={item.label} className="rounded-2xl border border-white/10 bg-black/10 p-4"><item.icon size={17} className={item.tone} /><p className="mt-3 text-2xl font-black">{item.value}</p><p className="text-xs text-zinc-500">{item.label}</p></div>)}</div>
+    <div data-testid="apify-daily-usage" className={`mt-5 rounded-2xl border p-4 ${apifyUsage.data?.isLimitReached ? "border-red-300/30 bg-red-300/10" : "border-violet-300/20 bg-violet-300/5"}`} aria-live="polite">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3"><Zap size={19} className={apifyUsage.data?.isLimitReached ? "mt-0.5 shrink-0 text-red-200" : "mt-0.5 shrink-0 text-violet-200"} /><div><p className="text-xs font-black uppercase tracking-[0.16em] text-violet-200">Consumo Apify hoje</p><h3 className="mt-1 text-lg font-black">{apifyUsage.isLoading ? "Consultando…" : `${apifyUsage.data?.requestCount ?? 0} de ${apifyUsage.data?.dailyLimit ?? 0} requisições`}</h3><p className="mt-1 text-xs text-zinc-400">{apifyUsage.isError ? "Não foi possível consultar o consumo agora." : apifyUsage.data?.isLimitReached ? `Limite atingido. Nova liberação à meia-noite de Brasília (${new Date(apifyUsage.data.nextReleaseAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}).` : `${apifyUsage.data?.remaining ?? 0} requisição(ões) disponível(is) até a virada do dia.`}</p></div></div>
+        <div className="min-w-44 rounded-xl border border-white/10 bg-black/10 px-3 py-2"><p className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Status financeiro</p><p className={`mt-1 text-sm font-black ${apifyUsage.data?.isLimitReached ? "text-red-200" : "text-emerald-200"}`}>{apifyUsage.isError ? "Indisponível" : apifyUsage.data?.isLimitReached ? "Bloqueado até a virada" : "Dentro do limite"}</p></div>
+      </div>
+    </div>
     <div className={`mt-5 rounded-2xl border p-4 ${metaStatusCopy.tone}`} aria-live="polite" data-testid="meta-integration-status">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3"><MetaIcon size={19} className="mt-0.5 shrink-0" /><div><p className="text-xs font-black uppercase tracking-[0.16em] opacity-80">Integração Meta</p><h3 className="mt-1 text-lg font-black">{metaStatusCopy.label}</h3><p className="mt-1 text-xs opacity-75">Status baseado nas execuções oficiais persistidas, sem dados simulados.</p></div></div>

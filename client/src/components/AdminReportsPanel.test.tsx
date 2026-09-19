@@ -46,6 +46,7 @@ vi.mock("@/lib/trpc", () => ({
   trpc: {
     ingestionReports: {
       summary: { useQuery: (input: unknown) => { mocks.summaryInput = input; return { data: latestReportData, refetch: mocks.reportRefetch }; } },
+      apifyDailyUsage: { useQuery: () => ({ data: { dateKey: "2026-09-19", requestCount: 1, dailyLimit: 3, remaining: 2, isLimitReached: false, nextReleaseAt: "2026-09-20T03:00:00.000Z", persistence: true }, isLoading: false, isError: false }) },
       geocoding: { useQuery: () => ({ data: { pending: 0, processing: 0, succeeded: 0, failed: 0 }, refetch: vi.fn() }) },
       geocodeNow: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
       reprocess: { useMutation: (options: typeof mutationOptions) => { mutationOptions = options; return { ...mutationState, mutate: mocks.mutate }; } },
@@ -292,6 +293,14 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     await act(async () => { mutationOptions.onError?.(new Error("Unable to transform response from server"), { sourceKey: "instagram" }); });
     expect(mocks.toastError).toHaveBeenCalledWith("Não foi possível executar a ingestão", expect.objectContaining({ description: expect.stringContaining("nenhum resultado novo foi confirmado") }));
     expect(mocks.toastError).not.toHaveBeenCalledWith("Relatório atualizado", expect.anything());
+  });
+  it("exibe o consumo atual da Apify e o saldo restante", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    tree!.root.findByProps({ "data-testid": "apify-daily-usage" });
+    const markup = JSON.stringify(tree!.toJSON());
+    expect(markup).toContain("1 de 3 requisições");
+    expect(markup).toContain("2 requisição(ões) disponível(is)");
   });
 });
 
