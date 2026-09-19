@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { INSTAGRAM_AGENDA_SOURCE_TYPE, listActiveLocationAliasValues, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent } from "./db";
+import { INSTAGRAM_AGENDA_SOURCE_TYPE, claimApifyDailyRequest, listActiveLocationAliasValues, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent } from "./db";
 import { fetchExternal, isSandboxRestrictedError, readExternalBody } from "./external-fetch";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import { containsTargetVenue } from "./ingestion";
@@ -654,9 +654,22 @@ function isAbortTimeout(error: unknown) {
   return error instanceof Error && (error.name === "AbortError" || /aborted|timeout|timed out|tempo limite/i.test(error.message));
 }
 
+export async function claimApifyBudgetOrReport() {
+  const budget = await claimApifyDailyRequest({});
+  if (budget.allowed) return budget;
+  const message = `Limite diário de chamadas Apify atingido (${budget.requestCount}/${budget.dailyLimit}) em ${budget.dateKey}; novas extrações bloqueadas até a meia-noite de Brasília.`;
+  await recordOperationalAlert({ integration: "pipeline", alertType: "apify_daily_limit_reached", severity: "CRITICAL", title: "Limite diário da Apify atingido", message });
+  return { ...budget, blockedMessage: message };
+}
+
 export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean } = {}) {
   const token = process.env.APIFY_API_TOKEN?.trim();
   if (!token) return { posts: [] as InstagramPost[], transportFailures: [] as InstagramTransportFailure[] };
+  const budget = await claimApifyBudgetOrReport();
+  if (!budget.allowed) {
+    const message = "blockedMessage" in budget ? budget.blockedMessage : "Limite diário de chamadas Apify atingido.";
+    return { posts: [] as InstagramPost[], transportFailures: [{ username: "apify-budget", status: 429, kind: "quota" as const, message }] };
+  }
   const payload = buildInstagramScraperPayload(INSTAGRAM_TARGETS);
   try {
     const timeoutMs = getApifySyncTimeoutMs();

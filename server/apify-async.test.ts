@@ -16,6 +16,11 @@ vi.mock("./ingestion-reports", () => ({
   findIngestionRunByApifyActor: mocks.findIngestionRunByApifyActor,
 }));
 
+vi.mock("./db", () => ({
+  claimApifyDailyRequest: vi.fn().mockResolvedValue({ allowed: true, dateKey: "2026-09-18", requestCount: 1, dailyLimit: 100, persistence: true }),
+  recordOperationalAlert: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { apifyInstagramWebhookHandler, asyncIngestInstagramHandler, getConfiguredApifyStoriesActorId, startAsyncApifyStoriesRun } from "./apify-async";
 
 describe("Apify async Stories", () => {

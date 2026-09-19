@@ -29,6 +29,13 @@
       "when": 1789650583679,
       "tag": "0003_violet_pepper_potts",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1789779189882,
+      "tag": "0004_striped_joystick",
+      "breakpoints": true
     }
   ]
 }

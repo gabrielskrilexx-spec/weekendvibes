@@ -6,6 +6,7 @@ import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPost
 
 describe("Instagram weekend pipeline", () => {
   beforeEach(async () => {
+    process.env.APIFY_DAILY_REQUEST_LIMIT = "100";
     const db = await getDb();
     if (!db) return;
     await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null }).where(or(eq(ingestionSources.sourceKey, "instagram:curvaosurfhouse"), eq(ingestionSources.sourceKey, "instagram:flamingomusicbar")));

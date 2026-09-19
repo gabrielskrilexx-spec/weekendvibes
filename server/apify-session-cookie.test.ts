@@ -12,6 +12,7 @@ describe("Apify Stories session cookie", () => {
   };
 
   beforeEach(() => {
+    process.env.APIFY_DAILY_REQUEST_LIMIT = "100";
     process.env.APIFY_API_TOKEN = "apify-test-token";
     process.env.SCHEDULED_TASK_ENDPOINT_BASE = "https://weekendvib-jscaalye.manus.space";
     process.env.APIFY_INSTAGRAM_SESSION_COOKIE = SECRET;

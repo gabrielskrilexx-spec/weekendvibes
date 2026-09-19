@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 
@@ -145,6 +145,27 @@ export async function resolveOperationalAlert(id: number, dbOverride?: Awaited<R
   const db = dbOverride ?? await getDb();
   if (!db) throw new Error("Database unavailable");
   await db.update(operationalAlerts).set({ isResolved: 1, updatedAt: new Date() }).where(eq(operationalAlerts.id, id));
+}
+
+export function getApifyDailyRequestLimit() {
+  const configured = Number.parseInt(process.env.APIFY_DAILY_REQUEST_LIMIT ?? "", 10);
+  return Number.isFinite(configured) ? Math.min(100, Math.max(1, configured)) : 3;
+}
+
+export async function claimApifyDailyRequest(input: { now?: Date; dbOverride?: Awaited<ReturnType<typeof getDb>> }) {
+  const db = input.dbOverride ?? await getDb();
+  const dateKey = saoPauloDateKey(input.now);
+  const dailyLimit = getApifyDailyRequestLimit();
+  if (!db) return { allowed: true, dateKey, requestCount: 0, dailyLimit, persistence: false };
+  await db.insert(apifyDailyUsage).values({ dateKey, requestCount: 0, dailyLimit }).onDuplicateKeyUpdate({ set: { dailyLimit, updatedAt: new Date() } });
+  const result = await db.update(apifyDailyUsage).set({ requestCount: sql`${apifyDailyUsage.requestCount} + 1`, updatedAt: new Date() }).where(and(eq(apifyDailyUsage.dateKey, dateKey), lt(apifyDailyUsage.requestCount, dailyLimit)));
+  const rows = await db.select({ requestCount: apifyDailyUsage.requestCount, dailyLimit: apifyDailyUsage.dailyLimit }).from(apifyDailyUsage).where(eq(apifyDailyUsage.dateKey, dateKey)).limit(1);
+  const row = rows[0] ?? { requestCount: 0, dailyLimit };
+  const resultValue = result as unknown as { affectedRows?: number } | [{ affectedRows?: number }, unknown];
+  const affectedRows = Number(Array.isArray(resultValue) ? resultValue[0]?.affectedRows ?? 0 : resultValue.affectedRows ?? 0);
+  const allowed = affectedRows > 0;
+  if (!allowed) await db.update(apifyDailyUsage).set({ lastBlockedAt: new Date(), updatedAt: new Date() }).where(eq(apifyDailyUsage.dateKey, dateKey));
+  return { allowed, dateKey, requestCount: row.requestCount, dailyLimit: row.dailyLimit, persistence: true };
 }
 
 export async function resolveAllOperationalAlerts(dbOverride?: Awaited<ReturnType<typeof getDb>>) {

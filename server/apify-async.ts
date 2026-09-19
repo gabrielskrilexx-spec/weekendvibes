@@ -20,6 +20,7 @@ import { hasValidInternalCronSecret } from "./_core/cron-auth";
 import { sdk } from "./_core/sdk";
 import { HttpError } from "@shared/_core/errors";
 import { redactError } from "./_core/security";
+import { claimApifyDailyRequest, recordOperationalAlert } from "./db";
 
 export const DEFAULT_APIFY_STORIES_ACTOR_ID = "zaver.api~instagram-stories-highlights-scraper";
 const ACTOR_ID = process.env.APIFY_STORIES_ACTOR_ID?.trim() || DEFAULT_APIFY_STORIES_ACTOR_ID;
@@ -130,6 +131,12 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
   const baseUrl = getWebhookBaseUrl();
   if (!token) throw new Error("APIFY_API_TOKEN não configurado.");
   if (!baseUrl) throw new Error("SCHEDULED_TASK_ENDPOINT_BASE não configurado.");
+  const budget = await claimApifyDailyRequest({});
+  if (!budget.allowed) {
+    const message = `Limite diário de chamadas Apify atingido (${budget.requestCount}/${budget.dailyLimit}) em ${budget.dateKey}; novas extrações bloqueadas até a meia-noite de Brasília.`;
+    await recordOperationalAlert({ integration: "pipeline", alertType: "apify_daily_limit_reached", severity: "CRITICAL", title: "Limite diário da Apify atingido", message });
+    throw new Error(message);
+  }
 
   const runId = await startIngestionRun({ routine: "instagram-stories-async", sourceKey: "instagram:apify:pending" });
   if (!runId) throw new Error("Não foi possível registrar a execução assíncrona.");

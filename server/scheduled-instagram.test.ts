@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "./_core/sdk";
 import { ingestInstagramHandler } from "./scheduled-instagram";
 import { hasRegionalHashtag, runInstagramPipeline, InstagramIntegrationFailure } from "./instagram-pipeline";
-import { archiveExpiredSoldOutEvents, saveEvent } from "./db";
+import { archiveExpiredSoldOutEvents, claimApifyDailyRequest, saveEvent } from "./db";
 import { handleIngestionFailureAlert } from "./ingestion-failure-alerts";
 
 vi.mock("./ingestion-failure-alerts", () => ({
@@ -18,6 +18,7 @@ vi.mock("./db", () => ({
   markIngestionSourceResult: vi.fn().mockResolvedValue(undefined),
   saveEvent: vi.fn().mockResolvedValue(undefined),
   recordOperationalAlert: vi.fn().mockResolvedValue({ created: true, fingerprint: "test-clock" }),
+  claimApifyDailyRequest: vi.fn().mockResolvedValue({ allowed: true, dateKey: "2026-09-18", requestCount: 1, dailyLimit: 100, persistence: false }),
 }));
 
 vi.mock("./_core/notification", () => ({
@@ -27,6 +28,7 @@ vi.mock("./_core/notification", () => ({
 describe("scheduled Instagram ingestion", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.mocked(claimApifyDailyRequest).mockResolvedValue({ allowed: true, dateKey: "2026-09-18", requestCount: 1, dailyLimit: 100, persistence: false });
     vi.mocked(saveEvent).mockClear();
     vi.mocked(archiveExpiredSoldOutEvents).mockClear();
     vi.mocked(handleIngestionFailureAlert).mockClear();

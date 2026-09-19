@@ -347,6 +347,17 @@ export const ingestionSources = mysqlTable("ingestionSources", {
 export type IngestionSource = typeof ingestionSources.$inferSelect;
 export type InsertIngestionSource = typeof ingestionSources.$inferInsert;
 
+export const apifyDailyUsage = mysqlTable("apifyDailyUsage", {
+  dateKey: varchar("dateKey", { length: 10 }).primaryKey(),
+  requestCount: int("requestCount").default(0).notNull(),
+  dailyLimit: int("dailyLimit").notNull(),
+  lastBlockedAt: timestamp("lastBlockedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ApifyDailyUsage = typeof apifyDailyUsage.$inferSelect;
+export type InsertApifyDailyUsage = typeof apifyDailyUsage.$inferInsert;
+
 export const filteredStoryExportJobs = mysqlTable("filteredStoryExportJobs", {
   id: varchar("id", { length: 128 }).primaryKey(),
   format: mysqlEnum("format", ["csv", "json"]).notNull(),
