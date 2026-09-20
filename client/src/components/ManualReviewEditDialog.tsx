@@ -1,0 +1,45 @@
+import React, { memo, useMemo } from "react";
+import { CheckCircle2, Copy, Edit3, Loader2, XCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { applyRawTokenToDateTime, draftFromEvent, getRawTextHighlightSegments, localDateTimeToIso, renderRawTextSegments, type ManualReviewDraft, type ManualReviewEvent, type RawTextToken } from "./manual-review-shared";
+
+export { draftFromEvent, localDateTimeToIso };
+
+type Props = {
+  event: ManualReviewEvent | null;
+  draft: ManualReviewDraft | null;
+  copyState: "idle" | "copied" | "error";
+  copiedToken: string | null;
+  appliedToken: string | null;
+  isSaving: boolean;
+  updatePending: boolean;
+  approvePending: boolean;
+  onClose: () => void;
+  onCopyRawText: () => Promise<void>;
+  onCopyToken: (token: RawTextToken) => Promise<void>;
+  onApplyToken: (token: RawTextToken) => void;
+  onDraftField: <K extends keyof ManualReviewDraft>(key: K, value: ManualReviewDraft[K]) => void;
+  onSave: () => void;
+  onApprove: () => void;
+  onReject: () => void;
+};
+
+const RawTextPreview = memo(function RawTextPreview({ draft, copyState, copiedToken, appliedToken, onCopyRawText, onCopyToken, onApplyToken }: Pick<Props, "draft" | "copyState" | "copiedToken" | "appliedToken" | "onCopyRawText" | "onCopyToken" | "onApplyToken">) {
+  const segments = useMemo(() => getRawTextHighlightSegments(draft?.rawText ?? ""), [draft?.rawText]);
+  const renderedText = useMemo(() => renderRawTextSegments(segments, { onTokenClick: onCopyToken, onApplyToken, copiedToken, appliedToken }), [segments, onCopyToken, onApplyToken, copiedToken, appliedToken]);
+  return <section data-testid="manual-review-source-preview" aria-labelledby="manual-review-source-title" className="grid gap-4 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-300/[0.05] p-4 lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
+    <div className="min-w-0">{draft?.imageUrl ? <img src={draft.imageUrl} alt={`Imagem original de ${draft.title}`} className="h-48 w-full rounded-xl border border-white/10 object-cover" /> : <div className="grid h-48 place-items-center rounded-xl border border-dashed border-white/10 text-sm text-zinc-600">Sem imagem original</div>}</div>
+    <div className="min-w-0"><div className="flex items-center justify-between gap-3"><h3 id="manual-review-source-title" className="text-xs font-black uppercase tracking-[0.16em] text-fuchsia-100">Texto original da publicação</h3><span className="rounded-full bg-white/[0.06] px-2 py-1 text-[11px] font-bold text-zinc-500">OCR / legenda</span></div><div className="mt-3 flex flex-wrap items-center justify-between gap-2"><span className="text-xs text-zinc-500">Horários, datas e dias reconhecidos ficam destacados.</span><Button type="button" variant="outline" size="sm" onClick={() => void onCopyRawText()} disabled={!draft?.rawText} aria-label="Copiar texto original"><Copy size={14} /> {copyState === "copied" ? "Texto copiado" : "Copiar texto original"}</Button></div><pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-zinc-950/60 p-3 text-sm leading-6 text-zinc-200">{draft?.rawText ? renderedText : "Sem texto bruto registrado para esta entrada."}</pre><p role="status" aria-live="polite" className="mt-2 text-xs text-zinc-500">{copyState === "error" ? "A cópia automática falhou; selecione o texto manualmente." : "Use esta referência para completar horário, cidade, categoria e demais campos estruturados abaixo."}</p></div>
+  </section>;
+});
+
+export const ManualReviewEditDialog = memo(function ManualReviewEditDialog({ event, draft, copyState, copiedToken, appliedToken, isSaving, updatePending, approvePending, onClose, onCopyRawText, onCopyToken, onApplyToken, onDraftField, onSave, onApprove, onReject }: Props) {
+  return <Dialog open={event !== null} onOpenChange={open => { if (!open && !isSaving) onClose(); }}>
+    <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto bg-zinc-950 text-zinc-100">
+      <DialogHeader><DialogTitle>Revisão assistida do evento</DialogTitle><DialogDescription className="text-zinc-400">Complete os campos faltantes, salve a revisão e publique somente quando os dados essenciais estiverem conferidos.</DialogDescription></DialogHeader>
+      {event && draft && <div className="grid gap-4 py-3"><RawTextPreview draft={draft} copyState={copyState} copiedToken={copiedToken} appliedToken={appliedToken} onCopyRawText={onCopyRawText} onCopyToken={onCopyToken} onApplyToken={onApplyToken} /><div className="grid gap-4 lg:grid-cols-[180px_1fr]"><div>{draft.imageUrl ? <img src={draft.imageUrl} alt={`Imagem original de ${draft.title}`} className="h-44 w-full rounded-2xl border border-white/10 object-cover" /> : <div className="grid h-44 place-items-center rounded-2xl border border-dashed border-white/10 text-sm text-zinc-600">Sem imagem original</div>}</div><div className="grid gap-3"><label className="grid gap-1 text-xs font-bold text-zinc-400">Título<input value={draft.title} onChange={input => onDraftField("title", input.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Motivo da revisão<input value={draft.reason} onChange={input => onDraftField("reason", input.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label></div></div><div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1 text-xs font-bold text-zinc-400">Data e hora<input type="datetime-local" value={draft.eventDate} onChange={input => onDraftField("eventDate", input.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Fim (opcional)<input type="datetime-local" value={draft.endDate} onChange={input => onDraftField("endDate", input.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Local<input value={draft.locationName} onChange={input => onDraftField("locationName", input.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Cidade<select value={draft.city} onChange={input => onDraftField("city", input.target.value as ManualReviewDraft["city"])} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100"><option value="">Selecionar cidade</option><option value="Santos">Santos</option><option value="Guarujá">Guarujá</option></select></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Categoria<select value={draft.category} onChange={input => onDraftField("category", input.target.value as ManualReviewDraft["category"])} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100"><option value="">Selecionar categoria</option><option value="show">Show</option><option value="balada">Balada</option><option value="evento_musical">Evento musical</option></select></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Gênero<input value={draft.genre} onChange={input => onDraftField("genre", input.target.value)} placeholder="funk, house/eletrônica..." className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label></div><label className="grid gap-1 text-xs font-bold text-zinc-400">Endereço<input value={draft.address} onChange={input => onDraftField("address", input.target.value)} className="min-h-10 rounded-xl border border-white/10 bg-zinc-900 px-3 text-zinc-100" /></label><label className="grid gap-1 text-xs font-bold text-zinc-400">Resumo<textarea value={draft.summary} onChange={input => onDraftField("summary", input.target.value)} className="min-h-24 rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-zinc-100" /></label></div>}
+      <DialogFooter className="gap-2 sm:justify-between"><div className="flex flex-wrap gap-2">{event?.status === "pending" && <Button type="button" variant="outline" onClick={onReject} disabled={isSaving} className="text-red-100"><XCircle size={14} /> Rejeitar</Button>}{event?.status === "pending" && <Button type="button" onClick={onApprove} disabled={isSaving} className="bg-emerald-300 text-zinc-950 hover:bg-emerald-200"><CheckCircle2 size={14} /> {approvePending ? "Publicando…" : "Aprovar e publicar"}</Button>}</div><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>Fechar</Button>{event?.status === "pending" && <Button type="button" onClick={onSave} disabled={isSaving || !draft?.title.trim()}>{updatePending ? <Loader2 size={14} className="animate-spin" /> : <Edit3 size={14} />} Salvar revisão</Button>}</div></DialogFooter>
+    </DialogContent>
+  </Dialog>;
+});
