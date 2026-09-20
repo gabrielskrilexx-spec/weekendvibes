@@ -186,6 +186,61 @@ export async function getManualReviewMetrics() {
   return metrics;
 }
 
+type AuditValue = string | number | boolean | null;
+
+function parseAuditObject(value: string | null | undefined) {
+  if (!value) return {} as Record<string, AuditValue>;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {} as Record<string, AuditValue>;
+    return Object.fromEntries(Object.entries(parsed).map(([key, item]) => [key, typeof item === "string" || typeof item === "number" || typeof item === "boolean" || item === null ? item : String(item)]));
+  } catch {
+    return {} as Record<string, AuditValue>;
+  }
+}
+
+function parseChangedFields(value: string | null | undefined) {
+  if (!value) return [] as string[];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string").slice(0, AUDITED_FIELDS.length) : [];
+  } catch {
+    return [] as string[];
+  }
+}
+
+function auditValueToText(value: AuditValue) {
+  if (value === null || value === "") return null;
+  return typeof value === "boolean" ? (value ? "Sim" : "Não") : String(value);
+}
+
+export async function listManualReviewAuditHistory(eventId: number, limit = 50) {
+  const db = await getDb();
+  const safeLimit = Math.min(100, Math.max(1, Math.trunc(limit)));
+  if (!db) return [];
+  const rows = await db.select().from(manualReviewAuditLogs)
+    .where(eq(manualReviewAuditLogs.manualReviewEventId, eventId))
+    .orderBy(desc(manualReviewAuditLogs.createdAt))
+    .limit(safeLimit);
+  return rows.map(row => {
+    const before = parseAuditObject(row.beforeJson);
+    const after = parseAuditObject(row.afterJson);
+    const changedFields = parseChangedFields(row.changedFieldsJson);
+    const fields = changedFields.length > 0 ? changedFields : AUDITED_FIELDS.filter(field => String(before[field] ?? "") !== String(after[field] ?? ""));
+    return {
+      id: Number(row.id),
+      action: row.action,
+      changedByOpenId: row.changedByOpenId,
+      createdAt: safeIso(row.createdAt) ?? new Date(0).toISOString(),
+      changes: fields.map(field => ({
+        field,
+        before: auditValueToText(before[field] ?? null),
+        after: auditValueToText(after[field] ?? null),
+      })),
+    };
+  });
+}
+
 export async function updateManualReviewEvent(input: ManualReviewEventInput & { id: number; changedByOpenId?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");

@@ -24,12 +24,14 @@ const state = vi.hoisted(() => ({
     refetch: vi.fn(),
   },
   metrics: { data: { published: 3, awaitingReview: 2, rejected: 0, total: 2 }, isFetching: false, refetch: vi.fn() },
+  auditHistory: { data: [] as Array<{ id: number; action: "edited" | "approved" | "rejected" | "undone"; changedByOpenId: string; createdAt: string; changes: Array<{ field: string; before: string | null; after: string | null }> }>, isFetching: false, isError: false },
 }));
 
 vi.mock("@/lib/trpc", () => ({
   trpc: { adminRoutine: { manualReview: {
     list: { useQuery: () => state.queue },
     metrics: { useQuery: () => state.metrics },
+    auditHistory: { useQuery: () => state.auditHistory },
     update: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
     approve: { useMutation: (options: any) => { state.approveOptions = options; return { isPending: false, mutate: vi.fn() }; } },
     reject: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
@@ -132,6 +134,20 @@ describe("ManualReviewPanel bulk selection", () => {
     expect(preview).toBeTruthy();
     expect(JSON.stringify(renderer.toJSON())).toContain("Festa");
     expect(renderer.root.findByProps({ children: "Texto original da publicação" })).toBeTruthy();
+    expect(JSON.stringify(renderer.toJSON())).toContain("Nenhuma edição manual registrada.");
+  });
+
+  it("exibe alterações manuais com valores anterior e posterior", () => {
+    state.auditHistory.data = [{ id: 31, action: "edited", changedByOpenId: "admin-1", createdAt: "2026-09-19T12:00:00.000Z", changes: [{ field: "eventDate", before: "2026-09-19T21:00:00.000Z", after: "2026-09-20T22:00:00.000Z" }] }];
+    let renderer!: ReturnType<typeof create>;
+    act(() => { renderer = create(<ManualReviewPanel />); });
+    act(() => { renderer.root.findByProps({ "data-testid": "manual-review-edit-7" }).props.onClick(); });
+    const rendered = JSON.stringify(renderer.toJSON());
+    expect(rendered).toContain("Edição manual");
+    expect(rendered).toContain("Data e hora");
+    expect(rendered).toContain("admin-1");
+    state.auditHistory.data = [];
+    renderer.unmount();
   });
 
   it("seleciona todos os pendentes visíveis e envia IDs deduplicados para aprovação", () => {

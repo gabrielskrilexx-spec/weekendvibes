@@ -68,7 +68,7 @@ import {
   listCircuitBreakerStatuses,
 } from "./db";
 import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
-import { approveManualReviewEvent, approveManualReviewEvents, getManualReviewMetrics, listManualReviewEvents, rejectManualReviewEvent, rejectManualReviewEvents, undoManualReviewAction, undoManualReviewActions, updateManualReviewEvent, type ManualReviewEventInput } from "./manual-review";
+import { approveManualReviewEvent, approveManualReviewEvents, getManualReviewMetrics, listManualReviewAuditHistory, listManualReviewEvents, rejectManualReviewEvent, rejectManualReviewEvents, undoManualReviewAction, undoManualReviewActions, updateManualReviewEvent, type ManualReviewEventInput } from "./manual-review";
 import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
 import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
@@ -154,6 +154,17 @@ const manualReviewMetricsOutput = z.object({
   rejected: z.number().int().nonnegative(),
   total: z.number().int().nonnegative(),
 }).strict();
+const manualReviewAuditHistoryOutput = z.array(z.object({
+  id: z.number().int().positive(),
+  action: z.enum(["edited", "approved", "rejected", "undone"]),
+  changedByOpenId: z.string().min(1).max(160),
+  createdAt: z.string().datetime(),
+  changes: z.array(z.object({
+    field: z.string().min(1).max(64),
+    before: z.string().nullable(),
+    after: z.string().nullable(),
+  }).strict()).max(20),
+}).strict()).max(100);
 const manualReviewBulkInput = z.object({ ids: z.array(z.number().int().positive()).min(1).max(100) }).strict();
 const manualReviewBulkOutput = z.object({ success: z.literal(true), count: z.number().int().nonnegative(), ids: z.array(z.number().int().positive()).max(100) }).strict();
 
@@ -604,6 +615,10 @@ export const appRouter = router({
       metrics: adminOnly
         .output(manualReviewMetricsOutput)
         .query(() => getManualReviewMetrics()),
+      auditHistory: adminOnly
+        .input(z.object({ eventId: z.number().int().positive(), limit: z.number().int().positive().max(100).default(50) }).strict())
+        .output(manualReviewAuditHistoryOutput)
+        .query(({ input }) => listManualReviewAuditHistory(input.eventId, input.limit)),
       update: adminOnly
         .input(manualReviewEventInput.extend({ id: z.number().int().positive() }).strict())
         .output(manualReviewEventOutput)
