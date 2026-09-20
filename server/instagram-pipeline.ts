@@ -85,6 +85,11 @@ export function isInstagramTransportFailure(status: number, body = "") {
   return [401, 403, 502].includes(status) || /invalid proxy response|proxy response|session|forbidden|authentication/i.test(body);
 }
 
+/** OAuthException/invalid-token responses are isolated to Meta so Apify can still run. */
+export function isMetaCredentialFailure(status: number, body = "") {
+  return status === 401 || (status === 400 && /oauthexception|invalid oauth|access token|expired|token.*invalid|session.*expired/i.test(body));
+}
+
 export const INSTAGRAM_TARGETS = [
   { name: "Moby House", username: "mobydicksantos", directUrl: "https://www.instagram.com/mobydicksantos/" },
   { name: "Projac Bar", username: "projac.bar", directUrl: "https://www.instagram.com/projac.bar/" },
@@ -625,6 +630,21 @@ async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId:
     }
     if (!response.ok) {
       if (source && !options.dryRun) await markIngestionSourceResult(source.sourceKey, { status: "failed", message: `HTTP ${response.status}` });
+      if (isMetaCredentialFailure(response.status, responseBody)) {
+        const message = "Token da Meta expirado ou inválido. Atualize as variáveis de ambiente.";
+        resetInstagramSessionForRetry(`meta_credentials_${response.status}`);
+        if (source && !options.dryRun) await registerSourceFailure({ sourceKey: source.sourceKey, routine: "instagram-agenda", status: response.status, message });
+        if (!options.dryRun) {
+          try {
+            await recordOperationalAlert({ integration: "meta", alertType: "meta_token_expired", severity: "CRITICAL", title: "Token da Meta expirado", message });
+          } catch (alertError) {
+            console.warn("[Instagram] Could not persist Meta token alert", { message: normalizeDiagnosticText(alertError instanceof Error ? alertError.message : alertError, 160) });
+          }
+        }
+        console.warn("[Instagram] Meta credential rejected; continuing with Apify", { username: target.username, status: response.status, reason: message });
+        transportFailures.push({ username: target.username, status: response.status, kind: "proxy_or_session", message });
+        continue;
+      }
       if (isInstagramTransportFailure(response.status, responseBody)) {
         resetInstagramSessionForRetry(`meta_${response.status}`);
         if (source && !options.dryRun) await registerSourceFailure({ sourceKey: source.sourceKey, routine: "instagram-agenda", status: response.status, message: `Meta respondeu HTTP ${response.status}; perfil ignorado nesta tentativa.` });

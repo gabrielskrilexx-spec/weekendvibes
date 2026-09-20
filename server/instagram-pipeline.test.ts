@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import { eq, or } from "drizzle-orm";
 import { ingestionSources } from "../drizzle/schema";
 import { getDb } from "./db";
-import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest, limitInstagramStoriesForCost } from "./instagram-pipeline";
+import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, isMetaCredentialFailure, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest, limitInstagramStoriesForCost } from "./instagram-pipeline";
 
 describe("Instagram weekend pipeline", () => {
   beforeEach(async () => {
@@ -305,6 +305,38 @@ describe("Instagram weekend pipeline", () => {
     expect(isInstagramTransportFailure(403, "Forbidden")).toBe(true);
     expect(isInstagramTransportFailure(502, "invalid proxy response")).toBe(true);
     expect(isInstagramTransportFailure(400, "permission denied")).toBe(false);
+  });
+
+  it("degrades an expired Meta token and still invokes the Apify stage", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalMetaToken = process.env.META_INSTAGRAM_TOKEN;
+    const originalAccountId = process.env.META_INSTAGRAM_ACCOUNT_ID;
+    const originalApifyToken = process.env.APIFY_API_TOKEN;
+    process.env.META_INSTAGRAM_TOKEN = "expired-meta-token";
+    process.env.META_INSTAGRAM_ACCOUNT_ID = "17841438723866203";
+    process.env.APIFY_API_TOKEN = "test-apify-token";
+    process.env.INGESTION_FORCE_INSTAGRAM = "1";
+    process.env.INGESTION_FOCUS_INSTAGRAM = "projac.bar";
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { type: "OAuthException", message: "Error validating access token: Session has expired" } }), { status: 400, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200, headers: { "content-type": "application/json" } }));
+    globalThis.fetch = fetchMock as typeof fetch;
+    try {
+      expect(isMetaCredentialFailure(400, "OAuthException: access token has expired")).toBe(true);
+      const result = await fetchInstagramPostsDetailed({ dryRun: true });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(result.posts).toEqual([]);
+      expect(result.transportFailures).toEqual(expect.arrayContaining([
+        expect.objectContaining({ status: 400, message: "Token da Meta expirado ou inválido. Atualize as variáveis de ambiente." }),
+      ]));
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalMetaToken === undefined) delete process.env.META_INSTAGRAM_TOKEN; else process.env.META_INSTAGRAM_TOKEN = originalMetaToken;
+      if (originalAccountId === undefined) delete process.env.META_INSTAGRAM_ACCOUNT_ID; else process.env.META_INSTAGRAM_ACCOUNT_ID = originalAccountId;
+      if (originalApifyToken === undefined) delete process.env.APIFY_API_TOKEN; else process.env.APIFY_API_TOKEN = originalApifyToken;
+      delete process.env.INGESTION_FORCE_INSTAGRAM;
+      delete process.env.INGESTION_FOCUS_INSTAGRAM;
+    }
   });
 
   it("resets the request context and continues across profiles on 403/502", async () => {
