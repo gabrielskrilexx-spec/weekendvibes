@@ -312,6 +312,16 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     expect(tree!.root.findByProps({ "data-testid": "apify-usage-warning" })).toBeTruthy();
     expect(JSON.stringify(tree!.toJSON())).toContain("pelo menos 80% do limite diário");
   });
+  it("exibe bloqueio e próxima liberação quando o limite diário é atingido", async () => {
+    mocks.apifyUsageData = { dateKey: "2026-09-19", requestCount: 10, dailyLimit: 10, remaining: 0, isLimitReached: true, nextReleaseAt: "2026-09-20T03:00:00.000Z", persistence: true };
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    const markup = JSON.stringify(tree!.toJSON());
+    expect(markup).toContain("10 de 10 requisições");
+    expect(markup).toContain("Limite atingido");
+    expect(markup).toContain("Nova liberação à meia-noite de Brasília");
+    expect(markup).toContain("Bloqueado até a virada");
+  });
 });
 
 afterEach(() => {
