@@ -631,7 +631,7 @@ async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId:
     if (!response.ok) {
       if (source && !options.dryRun) await markIngestionSourceResult(source.sourceKey, { status: "failed", message: `HTTP ${response.status}` });
       if (isMetaCredentialFailure(response.status, responseBody)) {
-        const message = "Token da Meta expirado ou inválido. Atualize as variáveis de ambiente.";
+        const message = "Token da Meta Expirado - Atualize a variável META_INSTAGRAM_TOKEN";
         resetInstagramSessionForRetry(`meta_credentials_${response.status}`);
         if (source && !options.dryRun) await registerSourceFailure({ sourceKey: source.sourceKey, routine: "instagram-agenda", status: response.status, message });
         if (!options.dryRun) {
@@ -742,7 +742,27 @@ export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean
 export async function fetchInstagramPostsDetailed(options: { dryRun?: boolean } = {}) {
   const token = requiredEnv("META_INSTAGRAM_TOKEN");
   const accountId = requiredEnv("META_INSTAGRAM_ACCOUNT_ID");
-  const meta = await fetchMetaBusinessDiscoveryPostsDetailed(token, accountId, options);
+  let meta: { posts: InstagramPost[]; transportFailures: InstagramTransportFailure[] } = { posts: [], transportFailures: [] };
+  try {
+    meta = await fetchMetaBusinessDiscoveryPostsDetailed(token, accountId, options);
+  } catch (error) {
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    const credentialFailure = /oauthexception|invalid oauth|access token|expired|token.*invalid|META_INSTAGRAM_TOKEN|session.*expired/i.test(rawMessage);
+    const statusMatch = rawMessage.match(/\b([45]\d{2})\b/);
+    const status = statusMatch ? Number(statusMatch[1]) : 0;
+    const message = credentialFailure
+      ? "Token da Meta Expirado - Atualize a variável META_INSTAGRAM_TOKEN"
+      : `Falha isolada na Graph API da Meta${status ? ` (HTTP ${status})` : ""}; a extração da Apify continuará.`;
+    if (credentialFailure && !options.dryRun) {
+      try {
+        await recordOperationalAlert({ integration: "meta", alertType: "meta_token_expired", severity: "CRITICAL", title: "Token da Meta expirado", message });
+      } catch (alertError) {
+        console.warn("[Instagram] Could not persist isolated Meta alert", { message: normalizeDiagnosticText(alertError instanceof Error ? alertError.message : alertError, 160) });
+      }
+    }
+    console.warn("[Instagram] Meta stage isolated; continuing with Apify", { status, reason: message });
+    meta = { posts: [], transportFailures: [{ username: "meta-graph", status, kind: "proxy_or_session", message }] };
+  }
   const supplemental = await fetchApifyStoriesAndHighlights(options);
   return { posts: [...meta.posts, ...supplemental.posts], transportFailures: [...meta.transportFailures, ...supplemental.transportFailures] };
 }

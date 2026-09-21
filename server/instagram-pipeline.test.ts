@@ -327,7 +327,7 @@ describe("Instagram weekend pipeline", () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(result.posts).toEqual([]);
       expect(result.transportFailures).toEqual(expect.arrayContaining([
-        expect.objectContaining({ status: 400, message: "Token da Meta expirado ou inválido. Atualize as variáveis de ambiente." }),
+        expect.objectContaining({ status: 400, message: "Token da Meta Expirado - Atualize a variável META_INSTAGRAM_TOKEN" }),
       ]));
     } finally {
       globalThis.fetch = originalFetch;
@@ -364,17 +364,25 @@ describe("Instagram weekend pipeline", () => {
     }
   });
 
-  it("propagates an official Graph API error instead of converting it to no data", async () => {
+  it("isolates an official Graph API error and still returns the Apify stage result", async () => {
     const originalFetch = globalThis.fetch;
+    const previousApifyToken = process.env.APIFY_API_TOKEN;
     process.env.META_INSTAGRAM_TOKEN = "test-meta-token";
     process.env.META_INSTAGRAM_ACCOUNT_ID = "17841438723866203";
+    delete process.env.APIFY_API_TOKEN;
     process.env.INGESTION_FORCE_INSTAGRAM = "1";
     process.env.INGESTION_FOCUS_INSTAGRAM = "projac.bar";
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 10, message: "Application does not have permission for this action" } }), { status: 400 }));
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 10, message: "OAuthException: The access token has expired" } }), { status: 400 }));
     try {
-      await expect(fetchInstagramPosts()).rejects.toThrow("Meta Graph API request failed with 400");
+      const result = await fetchInstagramPostsDetailed({ dryRun: true });
+      expect(result.posts).toEqual([]);
+      expect(result.transportFailures).toEqual(expect.arrayContaining([
+        expect.objectContaining({ status: 400, kind: "proxy_or_session", message: "Token da Meta Expirado - Atualize a variável META_INSTAGRAM_TOKEN" }),
+      ]));
     } finally {
       globalThis.fetch = originalFetch;
+      if (previousApifyToken === undefined) delete process.env.APIFY_API_TOKEN;
+      else process.env.APIFY_API_TOKEN = previousApifyToken;
       delete process.env.INGESTION_FORCE_INSTAGRAM;
       delete process.env.INGESTION_FOCUS_INSTAGRAM;
     }
