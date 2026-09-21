@@ -586,7 +586,7 @@ function logInstagramResponseDiagnostics(input: { username: string; status: numb
   });
 }
 
-async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId: string, options: { dryRun?: boolean } = {}): Promise<{ posts: InstagramPost[]; transportFailures: InstagramTransportFailure[] }> {
+export async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId: string, options: { dryRun?: boolean } = {}): Promise<{ posts: InstagramPost[]; transportFailures: InstagramTransportFailure[] }> {
   const posts: InstagramPost[] = [];
   const transportFailures: InstagramTransportFailure[] = [];
   const configuredSources = (await listEnabledInstagramSources()) ?? [];
