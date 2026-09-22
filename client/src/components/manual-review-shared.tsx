@@ -1,6 +1,6 @@
 import React from "react";
 
-export type ManualReviewStatus = "pending" | "approved" | "rejected";
+export type ManualReviewStatus = "pending" | "approved" | "rejected" | "expired";
 export type ManualReviewCategory = "show" | "balada" | "evento_musical";
 
 export type ManualReviewEvent = {
@@ -141,5 +141,5 @@ export function formatDate(value: string | null) {
   return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(date) : "Data inválida";
 }
 export function sourceLabel(sourceType: string | null) { return !sourceType ? "Origem não informada" : sourceType === "instagram" ? "Instagram" : sourceType === "public" ? "Agenda pública" : sourceType; }
-export function statusLabel(status: ManualReviewStatus) { return status === "pending" ? "Aguardando revisão" : status === "approved" ? "Publicado" : "Rejeitado"; }
-export function statusClass(status: ManualReviewStatus) { return status === "pending" ? "bg-amber-300/15 text-amber-100" : status === "approved" ? "bg-emerald-300/15 text-emerald-100" : "bg-red-300/15 text-red-100"; }
+export function statusLabel(status: ManualReviewStatus) { return status === "pending" ? "Aguardando revisão" : status === "approved" ? "Publicado" : status === "expired" ? "Expirado" : "Rejeitado"; }
+export function statusClass(status: ManualReviewStatus) { return status === "pending" ? "bg-amber-300/15 text-amber-100" : status === "approved" ? "bg-emerald-300/15 text-emerald-100" : status === "expired" ? "bg-zinc-300/15 text-zinc-300" : "bg-red-300/15 text-red-100"; }

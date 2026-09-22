@@ -7,6 +7,7 @@ import { HttpError } from "@shared/_core/errors";
 import { evaluateCriticalFreshnessAlerts, finishIngestionRun, startIngestionRun } from "./ingestion-reports";
 import { redactError } from "./_core/security";
 import { hasValidInternalCronSecret } from "./_core/cron-auth";
+import { runPlatformSanitization } from "./platform-sanitization";
 
 const MONITORED_ROUTINES = ["full-agenda", "instagram-agenda", "scheduled-instagram"] as const;
 const MAX_HEARTBEAT_AGE_MS = 26 * 60 * 60 * 1000;
@@ -47,8 +48,9 @@ export async function heartbeatMonitorHandler(req: Request, res: Response) {
     monitorRunId = await startIngestionRun({ routine: "heartbeat-monitor", sourceKey: "heartbeat-direct" });
     const expiredRemoved = await deleteExpiredEvents(db);
     const purgedResolvedAlerts = await purgeResolvedOperationalAlerts(30, new Date(), db);
+    const sanitization = await runPlatformSanitization(new Date(), { resetNoisySources: false });
     const freshnessAlerts = await evaluateCriticalFreshnessAlerts(db);
-    console.info(`[HeartbeatMonitor] expired_events_removed=${expiredRemoved} resolved_alerts_purged=${purgedResolvedAlerts.purgedCount} freshness_alerts=${freshnessAlerts.triggered}`);
+    console.info(`[HeartbeatMonitor] expired_events_removed=${expiredRemoved} review_expired=${sanitization.manualReview.expiredCount} stale_alerts_resolved=${sanitization.alerts.resolvedCount} sources_reset=${sanitization.reset.resetCount} public_sources_paused=${sanitization.paused.pausedCount} resolved_alerts_purged=${purgedResolvedAlerts.purgedCount} freshness_alerts=${freshnessAlerts.triggered}`);
     const latestRuns = await db.select().from(ingestionRuns)
       .where(sql`${ingestionRuns.routine} IN (${sql.join(MONITORED_ROUTINES.map(routine => sql`${routine}`), sql`, `)})`)
       .orderBy(desc(ingestionRuns.startedAt)).limit(10);
@@ -66,6 +68,7 @@ export async function heartbeatMonitorHandler(req: Request, res: Response) {
       latestRunAgeMs: latestFinishedAt ? Math.max(0, now - latestFinishedAt) : null,
       persistedPublishedEvents: persistedEventCount,
       expiredRemoved,
+      sanitization,
       purgedResolvedAlerts,
       freshnessAlerts,
       timezone: "America/Sao_Paulo",

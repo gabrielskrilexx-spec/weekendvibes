@@ -1,0 +1,2 @@
+ALTER TABLE `manualReviewAuditLogs` MODIFY COLUMN `action` enum('edited','approved','rejected','expired','undone') NOT NULL;--> statement-breakpoint
+ALTER TABLE `manualReviewEvents` MODIFY COLUMN `status` enum('pending','approved','rejected','expired') NOT NULL DEFAULT 'pending';

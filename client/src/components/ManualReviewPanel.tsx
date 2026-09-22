@@ -12,10 +12,10 @@ export { applyRawTokenToDateTime, draftFromEvent, getRawTextHighlightSegments, h
 export type { ManualReviewDraft, ManualReviewEvent, ManualReviewStatus, RawTextToken };
 
 function readUrlValue(key: string) { if (typeof window === "undefined") return ""; return new URLSearchParams(window.location.search).get(key) ?? ""; }
-function validStatus(value: string): value is ManualReviewStatus { return value === "pending" || value === "approved" || value === "rejected"; }
+function validStatus(value: string): value is ManualReviewStatus { return value === "pending" || value === "approved" || value === "rejected" || value === "expired"; }
 
 export default function ManualReviewPanel() {
-  const [status, setStatus] = useState<"" | ManualReviewStatus>(() => { const value = readUrlValue("manual_review_status"); return validStatus(value) ? value : ""; });
+  const [status, setStatus] = useState<"" | ManualReviewStatus>(() => { const value = readUrlValue("manual_review_status"); return validStatus(value) ? value : "pending"; });
   const [sourceType, setSourceType] = useState(() => readUrlValue("manual_review_source"));
   const [from, setFrom] = useState(() => readUrlValue("manual_review_from"));
   const [to, setTo] = useState(() => readUrlValue("manual_review_to"));

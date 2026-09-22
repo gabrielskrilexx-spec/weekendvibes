@@ -3,12 +3,22 @@ import { sdk } from "./_core/sdk";
 import { heartbeatMonitorHandler } from "./scheduled-heartbeat-monitor";
 import { deleteExpiredEvents, getDb, purgeResolvedOperationalAlerts } from "./db";
 import { evaluateCriticalFreshnessAlerts, finishIngestionRun, startIngestionRun } from "./ingestion-reports";
+import { runPlatformSanitization } from "./platform-sanitization";
 
 vi.mock("./db", () => ({ getDb: vi.fn(), deleteExpiredEvents: vi.fn(), purgeResolvedOperationalAlerts: vi.fn() }));
 vi.mock("./ingestion-reports", () => ({
   startIngestionRun: vi.fn().mockResolvedValue(77),
   finishIngestionRun: vi.fn().mockResolvedValue(undefined),
   evaluateCriticalFreshnessAlerts: vi.fn().mockResolvedValue({ evaluated: 0, triggered: 0 }),
+}));
+vi.mock("./platform-sanitization", () => ({
+  runPlatformSanitization: vi.fn().mockResolvedValue({
+    cutoff: "2026-09-22T03:00:00.000Z",
+    alerts: { resolvedCount: 0, alertTypes: [] },
+    manualReview: { expiredCount: 0 },
+    reset: { resetCount: 0, sourceKeys: [] },
+    paused: { pausedCount: 0, sourceKeys: [] },
+  }),
 }));
 
 type ResponseStub = { status: ReturnType<typeof vi.fn>; json: ReturnType<typeof vi.fn> };
@@ -33,6 +43,13 @@ describe("heartbeat direct monitor", () => {
     vi.mocked(evaluateCriticalFreshnessAlerts).mockResolvedValue({ evaluated: 0, triggered: 0 });
     vi.mocked(deleteExpiredEvents).mockResolvedValue(0);
     vi.mocked(purgeResolvedOperationalAlerts).mockResolvedValue({ purgedCount: 0, cutoff: new Date().toISOString() });
+    vi.mocked(runPlatformSanitization).mockResolvedValue({
+      cutoff: "2026-09-22T03:00:00.000Z",
+      alerts: { resolvedCount: 0, alertTypes: [] },
+      manualReview: { expiredCount: 0 },
+      reset: { resetCount: 0, sourceKeys: [] },
+      paused: { pausedCount: 0, sourceKeys: [] },
+    });
   });
 
   it("rejects non-cron callers without touching the database", async () => {

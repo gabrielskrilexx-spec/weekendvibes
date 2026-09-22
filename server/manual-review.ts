@@ -1,8 +1,8 @@
-import { and, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, isNotNull, lte, lt, sql } from "drizzle-orm";
 import { events, manualReviewAuditLogs, manualReviewEvents } from "../drizzle/schema";
-import { getDb, saveEvent } from "./db";
+import { getDb, saoPauloDayStartUtc, saveEvent } from "./db";
 
-export type ManualReviewStatus = "pending" | "approved" | "rejected";
+export type ManualReviewStatus = "pending" | "approved" | "rejected" | "expired";
 
 export type ManualReviewEventInput = {
   title: string;
@@ -36,7 +36,7 @@ export function getManualReviewAuditChangedFieldsForTest(before: Record<string, 
   return diffAuditFields(before, after);
 }
 
-async function recordManualReviewAudit(db: Awaited<ReturnType<typeof getDb>>, input: { eventId: number; action: "edited" | "approved" | "rejected" | "undone"; before: Record<string, unknown>; after: Record<string, unknown>; changedByOpenId: string }) {
+async function recordManualReviewAudit(db: Awaited<ReturnType<typeof getDb>>, input: { eventId: number; action: "edited" | "approved" | "rejected" | "expired" | "undone"; before: Record<string, unknown>; after: Record<string, unknown>; changedByOpenId: string }) {
   if (!db) return;
   await db.insert(manualReviewAuditLogs).values({
     manualReviewEventId: input.eventId,
@@ -167,6 +167,40 @@ export async function listManualReviewEvents(filters: ManualReviewFilter = {}) {
   const items = rows.map(toPublicReview);
   const nextOffset = offset + items.length < total ? offset + items.length : null;
   return { items, total, offset, limit, nextOffset, hasNextPage: nextOffset !== null } as const;
+}
+
+export function isManualReviewEventPastCutoff(eventDate: Date | null, now = new Date()) {
+  return eventDate !== null && eventDate.getTime() < saoPauloDayStartUtc(now).getTime();
+}
+
+export async function expirePastManualReviewEvents(input: { now?: Date; dbOverride?: Awaited<ReturnType<typeof getDb>> } = {}) {
+  const db = input.dbOverride ?? await getDb();
+  const now = input.now ?? new Date();
+  const cutoff = saoPauloDayStartUtc(now);
+  if (!db) return { expiredCount: 0, cutoff: cutoff.toISOString() } as const;
+  const rows = await db.select().from(manualReviewEvents).where(and(
+    eq(manualReviewEvents.status, "pending"),
+    isNotNull(manualReviewEvents.eventDate),
+    lt(manualReviewEvents.eventDate, cutoff),
+  ));
+  let expiredCount = 0;
+  for (const row of rows) {
+    const before = auditSnapshot(row);
+    const updated = await db.update(manualReviewEvents).set({
+      status: "expired",
+      reviewedBy: "system:sanitize",
+      reviewedAt: now,
+      updatedAt: now,
+    }).where(and(eq(manualReviewEvents.id, row.id), eq(manualReviewEvents.status, "pending")));
+    const resultValue = updated as unknown as { affectedRows?: number } | [{ affectedRows?: number }, unknown];
+    const affectedRows = Number(Array.isArray(resultValue) ? resultValue[0]?.affectedRows ?? 0 : resultValue.affectedRows ?? 0);
+    if (affectedRows > 0) {
+      const [after] = await db.select().from(manualReviewEvents).where(eq(manualReviewEvents.id, row.id)).limit(1);
+      if (after) await recordManualReviewAudit(db, { eventId: row.id, action: "expired", before, after: auditSnapshot(after), changedByOpenId: "system:sanitize" });
+      expiredCount += 1;
+    }
+  }
+  return { expiredCount, cutoff: cutoff.toISOString() } as const;
 }
 
 export async function getManualReviewMetrics() {

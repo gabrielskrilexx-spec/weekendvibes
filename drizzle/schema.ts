@@ -145,7 +145,7 @@ export const manualReviewEvents = mysqlTable("manualReviewEvents", {
   imageUrl: varchar("imageUrl", { length: 1000 }),
   rawText: text("rawText"),
   reason: varchar("reason", { length: 160 }).notNull(),
-  status: mysqlEnum("status", ["pending", "approved", "rejected"]).default("pending").notNull(),
+  status: mysqlEnum("status", ["pending", "approved", "rejected", "expired"]).default("pending").notNull(),
   reviewedBy: varchar("reviewedBy", { length: 160 }),
   reviewedAt: timestamp("reviewedAt"),
   publishedEventId: int("publishedEventId"),
@@ -163,7 +163,7 @@ export type InsertManualReviewEvent = typeof manualReviewEvents.$inferInsert;
 export const manualReviewAuditLogs = mysqlTable("manualReviewAuditLogs", {
   id: int("id").autoincrement().primaryKey(),
   manualReviewEventId: int("manualReviewEventId").notNull(),
-  action: mysqlEnum("action", ["edited", "approved", "rejected", "undone"]).notNull(),
+  action: mysqlEnum("action", ["edited", "approved", "rejected", "expired", "undone"]).notNull(),
   changedFieldsJson: text("changedFieldsJson").notNull(),
   beforeJson: text("beforeJson").notNull(),
   afterJson: text("afterJson").notNull(),

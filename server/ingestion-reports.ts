@@ -266,6 +266,7 @@ export async function evaluateCriticalFreshnessAlerts(
     .where(eq(ingestionSources.isEnabled, 1));
   let triggered = 0;
   for (const source of sources) {
+    if (source.circuitState === "open") continue;
     const state = getFreshnessState(
       source.lastSuccessAt,
       source.frequencyMinutes,

@@ -89,7 +89,7 @@ const longitudeInput = z
   .regex(/^-?(?:180(?:\.0+)?|1[0-7]\d(?:\.\d+)?|\d{1,2}(?:\.\d+)?)$/)
   .optional();
 
-const manualReviewStatusInput = z.enum(["pending", "approved", "rejected"]);
+const manualReviewStatusInput = z.enum(["pending", "approved", "rejected", "expired"]);
 const manualReviewFiltersInput = z.object({
   status: manualReviewStatusInput.optional(),
   sourceType: z.string().trim().max(64).optional(),
@@ -156,7 +156,7 @@ const manualReviewMetricsOutput = z.object({
 }).strict();
 const manualReviewAuditHistoryOutput = z.array(z.object({
   id: z.number().int().positive(),
-  action: z.enum(["edited", "approved", "rejected", "undone"]),
+  action: z.enum(["edited", "approved", "rejected", "expired", "undone"]),
   changedByOpenId: z.string().min(1).max(160),
   createdAt: z.string().datetime(),
   changes: z.array(z.object({

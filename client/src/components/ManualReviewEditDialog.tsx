@@ -25,8 +25,8 @@ const auditFieldLabels: Record<string, string> = {
   reason: "Motivo da revisão",
 };
 
-function auditActionLabel(action: "edited" | "approved" | "rejected" | "undone") {
-  return action === "edited" ? "Edição manual" : action === "approved" ? "Aprovação" : action === "rejected" ? "Rejeição" : "Ação desfeita";
+function auditActionLabel(action: "edited" | "approved" | "rejected" | "expired" | "undone") {
+  return action === "edited" ? "Edição manual" : action === "approved" ? "Aprovação" : action === "rejected" ? "Rejeição" : action === "expired" ? "Expiração automática" : "Ação desfeita";
 }
 
 function formatAuditTimestamp(value: string) {
