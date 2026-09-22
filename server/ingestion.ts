@@ -393,7 +393,14 @@ export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCac
   const slug = getIngresseSlug(url);
   if (!slug) throw createFetchError(`URL Ingresse sem slug de evento: ${url}`);
   try {
-    const response = await fetchExternal(`${INGRESSE_SITE_API}/${encodeURIComponent(slug)}`, { headers: { accept: "application/json" } }, getIngresseFetchTimeoutMs(), true);
+    const response = await fetchExternal(`${INGRESSE_SITE_API}/${encodeURIComponent(slug)}`, {
+      headers: {
+        accept: "application/json",
+        "accept-language": "pt-BR,pt;q=0.9,en;q=0.8",
+        "cache-control": "no-cache",
+        "user-agent": "WeekendVibesPublicIngestion/1.1 (+public-event-ingestion)",
+      },
+    }, getIngresseFetchTimeoutMs(), true);
     if (!response.ok) throw createFetchError(`API pública do Ingresse respondeu ${response.status}`, response.status);
     const payload = JSON.parse(await readExternalBody(response)) as Record<string, unknown>;
     const place = payload.place && typeof payload.place === "object" ? payload.place as Record<string, unknown> : {};
@@ -561,8 +568,10 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
   try {
     const requestInit: RequestInit = {
       headers: {
-        "user-agent": "WeekendVibesBot/1.0 (+public-event-ingestion)",
+        "user-agent": "WeekendVibesPublicIngestion/1.1 (+public-event-ingestion)",
         accept: "text/html,application/xhtml+xml",
+        "accept-language": "pt-BR,pt;q=0.9,en;q=0.8",
+        "cache-control": "no-cache",
       },
       signal: AbortSignal.timeout(isMrIngressosEventUrl(url) ? MR_INGRESSOS_FETCH_TIMEOUT_MS : publicFetchTimeoutMs(url)),
     };

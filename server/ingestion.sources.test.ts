@@ -51,7 +51,16 @@ describe("public event discovery", () => {
     }), { status: 200, headers: { "content-type": "application/json" } }));
     vi.stubGlobal("fetch", fetchMock);
     const page = await fetchIngresseEventApi("https://www.ingresse.com/laroc-guaruja-apresenta-reveillon-2027-feat-mau-p/");
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("api-site.ingresse.com/events/laroc-guaruja-apresenta-reveillon-2027-feat-mau-p"), expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("api-site.ingresse.com/events/laroc-guaruja-apresenta-reveillon-2027-feat-mau-p"),
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
+    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const requestHeaders = new Headers(requestInit.headers);
+    expect(requestHeaders.get("accept")).toBe("application/json");
+    expect(requestHeaders.get("accept-language")).toBe("pt-BR,pt;q=0.9,en;q=0.8");
+    expect(requestHeaders.get("cache-control")).toBe("no-cache");
+    expect(requestHeaders.get("user-agent")).toBe("WeekendVibesPublicIngestion/1.1 (+public-event-ingestion)");
     expect(page.structured).toMatchObject({
       title: "Laroc Guarujá apresenta: Réveillon 2027 feat. Mau P",
       eventDate: "2026-12-31T23:00:00+00:00",
