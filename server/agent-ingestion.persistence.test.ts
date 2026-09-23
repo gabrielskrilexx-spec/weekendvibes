@@ -20,8 +20,8 @@ describe("agent ingestion persistence identity", () => {
     saveEventMock.mockReset();
     invokeLLMMock.mockReset();
     invokeLLMMock
-      .mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "Festa do Branco", summary: "Noite musical", eventDate: "2026-09-22T20:00:00-03:00", locationName: "Curvão Surf House", address: "Guarujá", city: "Guarujá", category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: "https://zig.tickets/eventos/festa-do-branco-22-09", imageUrl: "", latitude: "", longitude: "" }] }) } }] })
-      .mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "FESTA DO BRANCO 22-08", summary: "Noite musical atualizada", eventDate: "2026-09-22T20:00:00-03:00", locationName: "CURVAO SURF HOUSE", address: "Guarujá", city: "Guarujá", category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: "https://zig.tickets/eventos/festa-do-branco-22-09", imageUrl: "", latitude: "", longitude: "" }] }) } }] });
+      .mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "Festa do Branco", summary: "Noite musical", eventDate: "2030-09-22T20:00:00-03:00", locationName: "Curvão Surf House", address: "Guarujá", city: "Guarujá", category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: "https://zig.tickets/eventos/festa-do-branco-22-09", imageUrl: "", latitude: "", longitude: "" }] }) } }] })
+      .mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "FESTA DO BRANCO 22-08", summary: "Noite musical atualizada", eventDate: "2030-09-22T20:00:00-03:00", locationName: "CURVAO SURF HOUSE", address: "Guarujá", city: "Guarujá", category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: "https://zig.tickets/eventos/festa-do-branco-22-09", imageUrl: "", latitude: "", longitude: "" }] }) } }] });
   });
 
   it("instructs the extractor to resolve relative dates and preserve partial events for review", () => {
@@ -88,11 +88,10 @@ describe("agent ingestion persistence identity", () => {
     expect(saveEventMock).toHaveBeenCalledTimes(2);
     const identities = saveEventMock.mock.calls.map(([event]) => eventIdentityKey(event.sourceUrl, event.eventDate));
     expect(new Set(identities).size).toBe(1);
-    expect(identities[0]).toBe("https://zig.tickets/eventos/festa-do-branco-22-09|2026-09-22");
+    expect(identities[0]).toBe("https://zig.tickets/eventos/festa-do-branco-22-09|2030-09-22");
   });
 });
 
 
 type _KeepIdentityImportUsed = typeof eventIdentityKey;
 void (0 as unknown as _KeepIdentityImportUsed);
-
