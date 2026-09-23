@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { getConfiguredSourceUrls } from "./ingestion";
+import { filterDisabledPublicSourceUrls, getConfiguredSourceUrls } from "./ingestion";
 
 describe("ingestion source configuration", () => {
+  it("excludes URLs whose persisted public source is disabled", () => {
+    expect(filterDisabledPublicSourceUrls([
+      "https://www.ingresse.com/",
+      "https://articket.com.br/",
+    ], new Set(["public:ingresse"]))).toEqual(["https://articket.com.br/"]);
+  });
+
   it("reads the configured public source URLs", () => {
     const focused = process.env.INGESTION_FOCUS_URLS;
     delete process.env.INGESTION_FOCUS_URLS;

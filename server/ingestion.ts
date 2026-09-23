@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { load } from "cheerio";
 import { invokeLLM } from "./_core/llm";
-import { assertEventDateIsCurrentOrFuture, getIngestionPayloadCache, listActiveLocationAliasValues, saveEvent, saveIngestionPayloadCache } from "./db";
+import { assertEventDateIsCurrentOrFuture, getIngestionPayloadCache, listActiveLocationAliasValues, listIngestionSources, saveEvent, saveIngestionPayloadCache } from "./db";
 import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
 import { fetchExternal, isSandboxRestrictedError, readExternalBody, sanitizeExternalFetchError } from "./external-fetch";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
@@ -147,6 +147,24 @@ export function getConfiguredSourceUrls() {
     return Array.from(new Set([...configuredUrls, ...DEFAULT_SOURCE_URLS]));
   }
   return DEFAULT_SOURCE_URLS;
+}
+
+export function filterDisabledPublicSourceUrls(urls: string[], disabledSourceKeys: ReadonlySet<string>) {
+  return urls.filter(url => !disabledSourceKeys.has(publicSourceKey(url)));
+}
+
+async function getEnabledConfiguredSourceUrls() {
+  const configuredUrls = getConfiguredSourceUrls();
+  try {
+    const sources = await listIngestionSources();
+    const disabledSourceKeys = new Set(
+      sources.filter(source => source.kind === "public" && source.isEnabled !== 1).map(source => source.sourceKey),
+    );
+    return filterDisabledPublicSourceUrls(configuredUrls, disabledSourceKeys);
+  } catch (error) {
+    console.warn("[Ingestion] Failed to read source enablement; preserving configured URLs", sanitizeFetchFailure(error));
+    return configuredUrls;
+  }
 }
 
 export function containsTargetVenue(value: string, aliases: string[] = []) {
@@ -597,7 +615,7 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
 }
 
 async function discoverCandidatePages(options: IngestionPipelineOptions = {}) {
-  const configuredBases = getConfiguredSourceUrls();
+  const configuredBases = await getEnabledConfiguredSourceUrls();
   const bases = options.sourceKey
     ? configuredBases.filter(url => options.sourceKey === "public" || publicSourceKey(url) === options.sourceKey)
     : configuredBases;
