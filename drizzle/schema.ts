@@ -123,7 +123,9 @@ export const events = mysqlTable("events", {
   isArchived: int("isArchived").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, table => ({
+  publishedDateIdx: index("events_published_archived_date_idx").on(table.isPublished, table.isArchived, table.eventDate),
+}));
 
 export type Event = typeof events.$inferSelect;
 export type InsertEvent = typeof events.$inferInsert;
@@ -251,7 +253,9 @@ export const ingestionStoryAuditLogs = mysqlTable("ingestionStoryAuditLogs", {
   status: varchar("status", { length: 32 }),
   actorOpenId: varchar("actorOpenId", { length: 160 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, table => ({
+  storyCreatedIdx: index("ingestionStoryAuditLogs_story_created_idx").on(table.storyId, table.createdAt),
+}));
 
 export type IngestionStoryAuditLog = typeof ingestionStoryAuditLogs.$inferSelect;
 export type InsertIngestionStoryAuditLog = typeof ingestionStoryAuditLogs.$inferInsert;

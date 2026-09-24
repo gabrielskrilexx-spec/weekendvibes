@@ -294,6 +294,26 @@ function isBlackPassRootUrl(url: string) {
 
 const BLACKPASS_EVENTS_API = "https://api.blackpass.com.br/events/list";
 
+async function fetchPublicAdapterJson<T>(input: string, init: RequestInit = {}, timeoutMs = 12_000, attempts = 2): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetchExternal(input, init, timeoutMs);
+      if (!response.ok) throw createFetchError(`Fonte pública respondeu ${response.status}`, response.status);
+      return await response.json() as T;
+    } catch (error) {
+      lastError = error;
+      const failure = sanitizeFetchFailure(error);
+      if (failure.status !== null || !isTimeoutFailure(error) || attempt === attempts - 1) {
+        console.warn("[Public adapter] request failed", { url: input, status: failure.status, message: failure.message });
+        throw Object.assign(error instanceof Error ? error : new Error(failure.message), { fetchFailure: failure });
+      }
+      await new Promise(resolve => setTimeout(resolve, 150 * (attempt + 1)));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Falha na fonte pública");
+}
+
 type BlackPassCatalogEvent = { id?: string | number; title?: string; name?: string; address?: string; address_comp?: string; city?: string; uf?: string; latlng?: string; dates?: Array<{ dstart?: string; dstop?: string; status?: number }>; poster?: { poster_vertical?: string; poster_horizontal?: string } };
 
 function blackPassEventUrl(id: string | number) {
@@ -323,9 +343,8 @@ function parseBlackPassCatalogPayload(payload: unknown): BlackPassCatalogEvent[]
 }
 
 async function fetchBlackPassCatalog(): Promise<BlackPassCatalogEvent[]> {
-  const response = await fetchExternal(BLACKPASS_EVENTS_API, { headers: { accept: "application/json" } }, 12_000);
-  if (!response.ok) throw createFetchError(`API pública do Black Pass respondeu ${response.status}`, response.status);
-  return parseBlackPassCatalogPayload(await response.json() as unknown);
+  const payload = await fetchPublicAdapterJson<unknown>(BLACKPASS_EVENTS_API, { headers: { accept: "application/json" } }, 12_000);
+  return parseBlackPassCatalogPayload(payload);
 }
 
 async function fetchBlackPassEventPage(url: string): Promise<PublicPage> {
@@ -411,16 +430,14 @@ export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCac
   const slug = getIngresseSlug(url);
   if (!slug) throw createFetchError(`URL Ingresse sem slug de evento: ${url}`);
   try {
-    const response = await fetchExternal(`${INGRESSE_SITE_API}/${encodeURIComponent(slug)}`, {
+    const payload = await fetchPublicAdapterJson<Record<string, unknown>>(`${INGRESSE_SITE_API}/${encodeURIComponent(slug)}`, {
       headers: {
         accept: "application/json",
         "accept-language": "pt-BR,pt;q=0.9,en;q=0.8",
         "cache-control": "no-cache",
         "user-agent": "WeekendVibesPublicIngestion/1.1 (+public-event-ingestion)",
       },
-    }, getIngresseFetchTimeoutMs(), true);
-    if (!response.ok) throw createFetchError(`API pública do Ingresse respondeu ${response.status}`, response.status);
-    const payload = JSON.parse(await readExternalBody(response)) as Record<string, unknown>;
+    }, getIngresseFetchTimeoutMs());
     const place = payload.place && typeof payload.place === "object" ? payload.place as Record<string, unknown> : {};
     const session = Array.isArray(payload.sessions) && payload.sessions[0] && typeof payload.sessions[0] === "object" ? payload.sessions[0] as Record<string, unknown> : {};
     const location = place.location && typeof place.location === "object" ? place.location as Record<string, unknown> : {};
@@ -565,8 +582,8 @@ function buildPreviewPublicMockResult(sourceKey: string, candidateCount: number,
   };
 }
 
-async function fetchWithConcurrency<T>(items: string[], worker: (item: string) => Promise<T>, concurrency: number): Promise<PromiseSettledResult<T>[]> {
-  const results: PromiseSettledResult<T>[] = new Array(items.length);
+export async function fetchWithConcurrency<TItem, TResult>(items: TItem[], worker: (item: TItem) => Promise<TResult>, concurrency: number): Promise<PromiseSettledResult<TResult>[]> {
+  const results: PromiseSettledResult<TResult>[] = new Array(items.length);
   let nextIndex = 0;
   const runWorker = async () => {
     while (true) {

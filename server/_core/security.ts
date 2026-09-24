@@ -8,7 +8,7 @@ const LOCAL_ORIGINS = new Set([
 
 export interface RateLimitOptions {
   windowMs: number;
-  max: number;
+  max: number | ((req: Request) => number);
   name?: string;
 }
 
@@ -28,6 +28,7 @@ export function createRateLimit(options: RateLimitOptions): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
     const now = Date.now();
     const key = `${name}:${req.ip || "unknown"}`;
+    const max = typeof options.max === "function" ? options.max(req) : options.max;
     const current = buckets.get(key);
     const bucket = current && current.resetAt > now
       ? current
@@ -42,11 +43,11 @@ export function createRateLimit(options: RateLimitOptions): RequestHandler {
       });
     }
 
-    res.setHeader("X-RateLimit-Limit", String(options.max));
-    res.setHeader("X-RateLimit-Remaining", String(Math.max(0, options.max - bucket.count)));
+    res.setHeader("X-RateLimit-Limit", String(max));
+    res.setHeader("X-RateLimit-Remaining", String(Math.max(0, max - bucket.count)));
     res.setHeader("X-RateLimit-Reset", String(Math.ceil(bucket.resetAt / 1000)));
 
-    if (bucket.count > options.max) {
+    if (bucket.count > max) {
       res.setHeader("Retry-After", String(Math.max(1, Math.ceil((bucket.resetAt - now) / 1000))));
       res.status(429).json({ error: "too_many_requests" });
       return;

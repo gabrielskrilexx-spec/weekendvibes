@@ -807,6 +807,22 @@ function deduplicateInstagramPosts(posts: InstagramPost[]) {
 }
 
 const STRUCTURED_EVENTS_CHUNK_SIZE = 18;
+export const INSTAGRAM_OCR_CONCURRENCY = 3;
+
+async function processWithConcurrency<TItem, TResult>(items: TItem[], worker: (item: TItem) => Promise<TResult>, concurrency: number): Promise<PromiseSettledResult<TResult>[]> {
+  const results: PromiseSettledResult<TResult>[] = new Array(items.length);
+  let nextIndex = 0;
+  const runWorker = async () => {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= items.length) return;
+      try { results[index] = { status: "fulfilled", value: await worker(items[index]!) }; }
+      catch (reason) { results[index] = { status: "rejected", reason }; }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, concurrency), Math.max(1, items.length)) }, runWorker));
+  return results;
+}
 const STRUCTURED_EVENT_RESPONSE_FORMAT = { type: "json_schema", json_schema: { name: "instagram_weekend_events", strict: true, schema: {
   type: "object", properties: { events: { type: "array", items: { type: "object", properties: {
     title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string", enum: ["Santos", "Guarujá"] }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "samba_pagode", "rap_trap"] }, priceCents: { type: "integer" }, imageUrl: { type: "string" }, sourceUrl: { type: "string" },
@@ -878,10 +894,9 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   const approvedPosts: Array<{ post: InstagramPost; rawText: string }> = [];
   const ocrAuditCandidates: Array<{ post: InstagramPost; rawText: string }> = [];
   const forceFocusedRun = process.env.INGESTION_FORCE_INSTAGRAM === "1";
-  for (const post of posts) {
-    if (!forceFocusedRun && !isWithinInstagramLookback(post)) continue;
+  const ocrResults = await processWithConcurrency(posts, async post => {
+    if (!forceFocusedRun && !isWithinInstagramLookback(post)) return null;
     const caption = String(post.caption ?? post.text ?? "");
-    const postUsername = post.ownerUsername ?? post.username;
     const imageUrl = resolveInstagramVisualUrl(post);
     const isVisualMedia = post.mediaType === "story" || post.mediaType === "highlight";
     let ocrText = post.ocrText?.trim() ?? "";
@@ -899,6 +914,11 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
       }
     }
     const rawText = [caption, ocrText].filter(value => value.trim()).join("\n");
+    return { post, rawText, isVisualMedia, ocrText };
+  }, INSTAGRAM_OCR_CONCURRENCY);
+  for (const result of ocrResults) {
+    if (result.status !== "fulfilled" || !result.value) continue;
+    const { post, rawText, isVisualMedia, ocrText } = result.value;
     if (isVisualMedia || ocrText) ocrAuditCandidates.push({ post, rawText });
     const regionalMarker = hasRegionalHashtag(rawText) ? "\nREGIONAL_HASHTAG_MATCH: Santos/Guarujá" : "";
     if (rawText.trim()) approvedPosts.push({ post, rawText: `${rawText}${regionalMarker}` });

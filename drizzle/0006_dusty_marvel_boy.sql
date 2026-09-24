@@ -1,0 +1,2 @@
+CREATE INDEX `events_published_archived_date_idx` ON `events` (`isPublished`,`isArchived`,`eventDate`);--> statement-breakpoint
+CREATE INDEX `ingestionStoryAuditLogs_story_created_idx` ON `ingestionStoryAuditLogs` (`storyId`,`createdAt`);
