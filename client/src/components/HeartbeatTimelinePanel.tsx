@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Download, HeartPulse, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { getVisibilityAwarePollingInterval } from "@/lib/visibilityPolling";
 
 type EventType = "all" | "started" | "step" | "log" | "alert" | "completed" | "failed" | "timeout";
 const eventTypes: Array<{ value: EventType; label: string }> = [
@@ -43,21 +44,21 @@ export default function HeartbeatTimelinePanel() {
   const enabled = heartbeatExecutionId.trim().length > 0;
   const timelineInput = useMemo(() => ({ heartbeatExecutionId, ...(eventType !== "all" ? { eventType: eventType as Exclude<EventType, "all"> } : {}), ...(from ? { from: new Date(`${from}T00:00:00.000Z`).toISOString() } : {}), ...(to ? { to: new Date(`${to}T23:59:59.999Z`).toISOString() } : {}), offset, limit }), [heartbeatExecutionId, eventType, from, to, offset, limit]);
   const statsInput = useMemo(() => ({ ...(from ? { from: new Date(`${from}T00:00:00.000Z`).toISOString() } : {}), ...(to ? { to: new Date(`${to}T23:59:59.999Z`).toISOString() } : {}) }), [from, to]);
-  const timeline = trpc.heartbeat.timeline.useQuery(timelineInput, { enabled, refetchInterval: enabled ? 30_000 : false });
+  const timeline = trpc.heartbeat.timeline.useQuery(timelineInput, { enabled, refetchInterval: () => enabled ? getVisibilityAwarePollingInterval(30_000) : false });
   const summary = trpc.heartbeat.summary.useQuery({ heartbeatExecutionId }, { enabled });
-  const stats = trpc.heartbeat.executionStats.useQuery(statsInput, { refetchInterval: 30_000 });
+  const stats = trpc.heartbeat.executionStats.useQuery(statsInput, { refetchInterval: () => getVisibilityAwarePollingInterval(30_000) });
   const compareInput = useMemo(() => ({ first: { ...(firstFrom ? { from: new Date(`${firstFrom}T00:00:00.000Z`).toISOString() } : {}), ...(firstTo ? { to: new Date(`${firstTo}T23:59:59.999Z`).toISOString() } : {}) }, second: { ...(secondFrom ? { from: new Date(`${secondFrom}T00:00:00.000Z`).toISOString() } : {}), ...(secondTo ? { to: new Date(`${secondTo}T23:59:59.999Z`).toISOString() } : {}) } }), [firstFrom, firstTo, secondFrom, secondTo]);
   const comparison = trpc.heartbeat.compareExecutionStats.useQuery(compareInput, { enabled: Boolean(firstFrom || firstTo || secondFrom || secondTo) });
   const healthSettings = trpc.heartbeat.healthSettings.useQuery({ environment: "preview" });
   const updateHealthSettings = trpc.heartbeat.updateHealthSettings.useMutation({ onSuccess: () => { void healthSettings.refetch(); void history.refetch(); toast.success("Limiares atualizados", { description: "A alteração foi registrada na trilha de governança." }); }, onError: error => toast.error("Não foi possível atualizar os limiares", { description: error.message }) });
-  const history = trpc.heartbeat.healthSettingsHistory.useQuery({ environment: "preview", offset: historyOffset, limit: 5 }, { refetchInterval: 60_000 });
+  const history = trpc.heartbeat.healthSettingsHistory.useQuery({ environment: "preview", offset: historyOffset, limit: 5 }, { refetchInterval: () => getVisibilityAwarePollingInterval(60_000) });
   const incidents = trpc.heartbeat.incidents.listByRegression.useQuery({ heartbeatExecutionId, offset: incidentOffset, limit: 10, ...(from ? { from: new Date(`${from}T00:00:00.000Z`).toISOString() } : {}), ...(to ? { to: new Date(`${to}T23:59:59.999Z`).toISOString() } : {}) }, { enabled });
   const startStatsExport = trpc.heartbeat.startStatsExport.useMutation({ onSuccess: data => { setExportJobId(data.jobId); toast.success("Exportação comparativa iniciada", { description: "As métricas dos dois períodos estão sendo preparadas." }); }, onError: error => toast.error("Não foi possível exportar as métricas", { description: error.message }) });
   const startHistoryExport = trpc.heartbeat.exportSettingsHistory.useMutation({ onSuccess: data => { setHistoryExportJobId(data.jobId); toast.success("Exportação do histórico iniciada", { description: "A trilha de governança está sendo preparada em segundo plano." }); }, onError: error => toast.error("Não foi possível exportar o histórico", { description: error.message }) });
   const startExport = trpc.heartbeat.startTimelineExport.useMutation({ onSuccess: data => { setExportJobId(data.jobId); toast.success("Exportação iniciada", { description: "O relatório está sendo preparado em segundo plano." }); }, onError: error => toast.error("Não foi possível exportar", { description: error.message }) });
-  const exportStatus = trpc.heartbeat.exportStatus.useQuery({ jobId: exportJobId ?? "" }, { enabled: Boolean(exportJobId), refetchInterval: query => ["completed", "failed", "cancelled", "expired"].includes(query.state.data?.status ?? "") ? false : 1500 });
+  const exportStatus = trpc.heartbeat.exportStatus.useQuery({ jobId: exportJobId ?? "" }, { enabled: Boolean(exportJobId), refetchInterval: query => ["completed", "failed", "cancelled", "expired"].includes(query.state.data?.status ?? "") ? false : getVisibilityAwarePollingInterval(1500, { jitterRatio: 0.05 }) });
   const download = trpc.heartbeat.exportDownload.useQuery({ jobId: exportJobId ?? "" }, { enabled: false });
-  const historyExportStatus = trpc.heartbeat.exportStatus.useQuery({ jobId: historyExportJobId ?? "" }, { enabled: Boolean(historyExportJobId), refetchInterval: query => ["completed", "failed", "cancelled", "expired"].includes(query.state.data?.status ?? "") ? false : 1500 });
+  const historyExportStatus = trpc.heartbeat.exportStatus.useQuery({ jobId: historyExportJobId ?? "" }, { enabled: Boolean(historyExportJobId), refetchInterval: query => ["completed", "failed", "cancelled", "expired"].includes(query.state.data?.status ?? "") ? false : getVisibilityAwarePollingInterval(1500, { jitterRatio: 0.05 }) });
   const historyDownload = trpc.heartbeat.exportDownload.useQuery({ jobId: historyExportJobId ?? "" }, { enabled: false });
 
   useEffect(() => {

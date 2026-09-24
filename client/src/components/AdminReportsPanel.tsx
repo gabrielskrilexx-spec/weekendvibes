@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, Clock3, Loader2, MapPin, RefreshCw, Trash2
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast as sonnerToast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { getVisibilityAwarePollingInterval } from "@/lib/visibilityPolling";
 
 const sourceLabels = { public: "Fontes públicas", instagram: "Instagram", ingresse: "Ingresse", instagram_agenda_weekend: "Instagram — Agenda da Semana" } as const;
 const labelForSource = (sourceKey: string) => sourceLabels[sourceKey as keyof typeof sourceLabels] ?? sourceKey;
@@ -99,8 +100,8 @@ export default function AdminReportsPanel() {
     const intervalId = globalThis.setInterval(() => void checkVersion(), 30_000);
     return () => { cancelled = true; globalThis.clearInterval(intervalId); };
   }, []);
-  const report = trpc.ingestionReports.summary.useQuery({ periodDays, routine: routineFilter === "all" ? undefined : routineFilter, status: statusFilter === "all" ? undefined : statusFilter, trigger: triggerFilter === "all" ? undefined : triggerFilter, runId: runIdFilter.trim() ? Number(runIdFilter) : undefined, sourceKey: sourceFilter.trim() || undefined, executionKind }, { refetchInterval: 30_000 });
-  const apifyUsage = trpc.ingestionReports.apifyDailyUsage.useQuery(undefined, { refetchInterval: 30_000 });
+  const report = trpc.ingestionReports.summary.useQuery({ periodDays, routine: routineFilter === "all" ? undefined : routineFilter, status: statusFilter === "all" ? undefined : statusFilter, trigger: triggerFilter === "all" ? undefined : triggerFilter, runId: runIdFilter.trim() ? Number(runIdFilter) : undefined, sourceKey: sourceFilter.trim() || undefined, executionKind }, { refetchInterval: () => getVisibilityAwarePollingInterval(30_000) });
+  const apifyUsage = trpc.ingestionReports.apifyDailyUsage.useQuery(undefined, { refetchInterval: () => getVisibilityAwarePollingInterval(30_000) });
   const setApifyLimit = trpc.ingestionReports.setApifyDailyLimit.useMutation({
     onSuccess: async result => {
       setApifyLimitDraft("");
@@ -109,7 +110,7 @@ export default function AdminReportsPanel() {
     },
     onError: error => sonnerToast.error("Não foi possível salvar o limite", { description: error.message || "Tente novamente." }),
   });
-  const geocoding = trpc.ingestionReports.geocoding.useQuery(undefined, { refetchInterval: 30_000 });
+  const geocoding = trpc.ingestionReports.geocoding.useQuery(undefined, { refetchInterval: () => getVisibilityAwarePollingInterval(30_000) });
   const reprocess = trpc.ingestionReports.reprocess.useMutation({
     onSuccess: async (_ack, variables) => {
       const ack = _ack as unknown as { accepted?: boolean; status?: string } | undefined;
