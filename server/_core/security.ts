@@ -1,4 +1,5 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
+import { claimRateLimitRequest } from "../db";
 
 const LOCAL_ORIGINS = new Set([
   "http://localhost:3000",
@@ -12,43 +13,26 @@ export interface RateLimitOptions {
   name?: string;
 }
 
-interface Bucket {
-  count: number;
-  resetAt: number;
-}
-
-/**
- * Small, dependency-free limiter for a single autoscale instance. The edge/WAF
- * must still provide distributed protection in production.
- */
 export function createRateLimit(options: RateLimitOptions): RequestHandler {
-  const buckets = new Map<string, Bucket>();
   const name = options.name ?? "api";
 
-  return (req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
     const now = Date.now();
     const key = `${name}:${req.ip || "unknown"}`;
     const max = typeof options.max === "function" ? options.max(req) : options.max;
-    const current = buckets.get(key);
-    const bucket = current && current.resetAt > now
-      ? current
-      : { count: 0, resetAt: now + options.windowMs };
-
-    bucket.count += 1;
-    buckets.set(key, bucket);
-
-    if (buckets.size > 10_000) {
-      buckets.forEach((value, candidate) => {
-        if (value.resetAt <= now) buckets.delete(candidate);
-      });
+    const bucket = await claimRateLimitRequest({ key, windowMs: options.windowMs });
+    if (!bucket) {
+      next();
+      return;
     }
+    const resetAt = new Date(bucket.resetAt).getTime();
 
     res.setHeader("X-RateLimit-Limit", String(max));
-    res.setHeader("X-RateLimit-Remaining", String(Math.max(0, max - bucket.count)));
-    res.setHeader("X-RateLimit-Reset", String(Math.ceil(bucket.resetAt / 1000)));
+    res.setHeader("X-RateLimit-Remaining", String(Math.max(0, max - bucket.requestCount)));
+    res.setHeader("X-RateLimit-Reset", String(Math.ceil(resetAt / 1000)));
 
-    if (bucket.count > max) {
-      res.setHeader("Retry-After", String(Math.max(1, Math.ceil((bucket.resetAt - now) / 1000))));
+    if (bucket.requestCount > max) {
+      res.setHeader("Retry-After", String(Math.max(1, Math.ceil((resetAt - now) / 1000))));
       res.status(429).json({ error: "too_many_requests" });
       return;
     }

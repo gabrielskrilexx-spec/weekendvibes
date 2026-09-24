@@ -1,4 +1,4 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Request, Response } from "express";
 import {
   buildInstagramStoriesScraperPayload,
@@ -20,7 +20,7 @@ import { hasValidInternalCronSecret } from "./_core/cron-auth";
 import { sdk } from "./_core/sdk";
 import { HttpError } from "@shared/_core/errors";
 import { redactError } from "./_core/security";
-import { claimApifyDailyRequest, recordOperationalAlert } from "./db";
+import { claimApifyDailyRequest, claimApifyProcessedItem, completeApifyProcessedItem, recordOperationalAlert } from "./db";
 
 export const DEFAULT_APIFY_STORIES_ACTOR_ID = "zaver.api~instagram-stories-highlights-scraper";
 const ACTOR_ID = process.env.APIFY_STORIES_ACTOR_ID?.trim() || DEFAULT_APIFY_STORIES_ACTOR_ID;
@@ -229,8 +229,22 @@ async function processDataset(run: Awaited<ReturnType<typeof findIngestionRunByA
     await finishIngestionRun(run.id, { status: "failed", failedCount: 1, httpStatus: response.status || 502, details: { provider: "apify", actorRunId, error: "DATASET_READ_FAILED", status: response.status || 502 } });
     return;
   }
-  const posts = normalizeInstagramMediaPayload(payload).filter((post: InstagramPost) => post.mediaType === "story" || post.mediaType === "highlight");
+  const candidates = normalizeInstagramMediaPayload(payload).filter((post: InstagramPost) => post.mediaType === "story" || post.mediaType === "highlight");
+  const posts: InstagramPost[] = [];
+  const fingerprints: string[] = [];
+  for (const post of candidates) {
+    const mediaUrl = String(post.displayUrl ?? post.imageUrl ?? post.media_url ?? post.thumbnailUrl ?? "").trim();
+    const providerItemId = String(post.id ?? post.shortCode ?? "").trim();
+    const fingerprint = createHash("sha256")
+      .update(["instagram-stories-async", providerItemId, post.ownerUsername ?? post.username ?? "", mediaUrl, post.timestamp ?? post.takenAt ?? ""].join("\u001f"))
+      .digest("hex");
+    const claimed = await claimApifyProcessedItem({ fingerprint, providerItemId, routine: "instagram-stories-async", mediaUrl, actorRunId });
+    if (!claimed) continue;
+    posts.push(post);
+    fingerprints.push(fingerprint);
+  }
   const result = await runInstagramPipeline({ storiesOnly: true, dryRun: false, postsOverride: posts });
+  await Promise.all(fingerprints.map(fingerprint => completeApifyProcessedItem(fingerprint)));
   const status = result.degraded ? "partial" : "succeeded";
   await finishIngestionRun(run.id, {
     status,

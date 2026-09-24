@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 
@@ -18,6 +18,56 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+export async function claimRateLimitRequest(input: { key: string; windowMs: number }) {
+  const db = await getDb();
+  if (!db) return null;
+  const windowMs = Math.max(1_000, Math.min(input.windowMs, 24 * 60 * 60 * 1000));
+  const windowSeconds = Math.ceil(windowMs / 1000);
+  const now = new Date();
+  const resetAt = new Date(now.getTime() + windowMs);
+  const bucketKey = input.key.slice(0, 255);
+  try {
+    await db.insert(rateLimitBuckets).values({ bucketKey, requestCount: 1, resetAt }).onDuplicateKeyUpdate({
+      set: {
+        requestCount: sql`IF(${rateLimitBuckets.resetAt} <= UTC_TIMESTAMP(), 1, ${rateLimitBuckets.requestCount} + 1)`,
+        resetAt: sql`IF(${rateLimitBuckets.resetAt} <= UTC_TIMESTAMP(), DATE_ADD(UTC_TIMESTAMP(), INTERVAL ${windowSeconds} SECOND), ${rateLimitBuckets.resetAt})`,
+        updatedAt: now,
+      },
+    });
+    const [bucket] = await db.select({ requestCount: rateLimitBuckets.requestCount, resetAt: rateLimitBuckets.resetAt })
+      .from(rateLimitBuckets)
+      .where(eq(rateLimitBuckets.bucketKey, bucketKey))
+      .limit(1);
+    return bucket ?? { requestCount: 1, resetAt };
+  } catch (error) {
+    console.warn("[RateLimit] Persistent bucket unavailable; allowing request until migration is visible", error instanceof Error ? error.message : String(error));
+    return null;
+  }
+}
+
+export async function claimApifyProcessedItem(input: { fingerprint: string; providerItemId?: string; routine: string; mediaUrl?: string; actorRunId?: string }) {
+  const db = await getDb();
+  if (!db) return true;
+  const fingerprint = input.fingerprint.slice(0, 64);
+  const result = await db.insert(apifyProcessedItems).values({
+    itemFingerprint: fingerprint,
+    providerItemId: input.providerItemId?.slice(0, 255),
+    routine: input.routine.slice(0, 64),
+    mediaUrl: input.mediaUrl?.slice(0, 1000),
+    actorRunId: input.actorRunId?.slice(0, 160),
+    status: "processing",
+  }).onDuplicateKeyUpdate({ set: { itemFingerprint: sql`${apifyProcessedItems.itemFingerprint}` } });
+  const affectedRows = Number((result as unknown as { affectedRows?: number }).affectedRows ?? 1);
+  return affectedRows > 0;
+}
+
+export async function completeApifyProcessedItem(fingerprint: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(apifyProcessedItems).set({ status: "completed", completedAt: new Date() })
+    .where(eq(apifyProcessedItems.itemFingerprint, fingerprint.slice(0, 64)));
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {

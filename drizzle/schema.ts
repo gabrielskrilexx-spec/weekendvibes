@@ -192,7 +192,9 @@ export const operationalAlerts = mysqlTable("operationalAlerts", {
   isResolved: int("isResolved").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, table => ({
+  resolvedCreatedIdx: index("operationalAlerts_resolved_created_idx").on(table.isResolved, table.createdAt),
+}));
 
 export type OperationalAlert = typeof operationalAlerts.$inferSelect;
 export type InsertOperationalAlert = typeof operationalAlerts.$inferInsert;
@@ -238,7 +240,9 @@ export const ingestionRuns = mysqlTable("ingestionRuns", {
   details: text("details"),
   startedAt: timestamp("startedAt").defaultNow().notNull(),
   finishedAt: timestamp("finishedAt"),
-});
+}, table => ({
+  routineStartedIdx: index("ingestionRuns_routine_started_idx").on(table.routine, table.startedAt),
+}));
 
 export type IngestionRun = typeof ingestionRuns.$inferSelect;
 export type InsertIngestionRun = typeof ingestionRuns.$inferInsert;
@@ -392,3 +396,27 @@ export const filteredStoryExportJobs = mysqlTable("filteredStoryExportJobs", {
 }));
 export type FilteredStoryExportJob = typeof filteredStoryExportJobs.$inferSelect;
 export type InsertFilteredStoryExportJob = typeof filteredStoryExportJobs.$inferInsert;
+export const rateLimitBuckets = mysqlTable("rateLimitBuckets", {
+  bucketKey: varchar("bucketKey", { length: 255 }).primaryKey(),
+  requestCount: int("requestCount").default(0).notNull(),
+  resetAt: timestamp("resetAt").notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type RateLimitBucket = typeof rateLimitBuckets.$inferSelect;
+export type InsertRateLimitBucket = typeof rateLimitBuckets.$inferInsert;
+export const apifyProcessedItems = mysqlTable("apifyProcessedItems", {
+  itemFingerprint: varchar("itemFingerprint", { length: 64 }).primaryKey(),
+  providerItemId: varchar("providerItemId", { length: 255 }),
+  routine: varchar("routine", { length: 64 }).notNull(),
+  mediaUrl: varchar("mediaUrl", { length: 1000 }),
+  actorRunId: varchar("actorRunId", { length: 160 }),
+  status: mysqlEnum("status", ["processing", "completed"]).default("processing").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  completedAt: timestamp("completedAt"),
+}, table => ({
+  providerRoutineIdx: index("apifyProcessedItems_provider_routine_idx").on(table.providerItemId, table.routine),
+}));
+
+export type ApifyProcessedItem = typeof apifyProcessedItems.$inferSelect;
+export type InsertApifyProcessedItem = typeof apifyProcessedItems.$inferInsert;

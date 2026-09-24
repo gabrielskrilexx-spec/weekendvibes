@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+const { claimRateLimitRequest } = vi.hoisted(() => ({ claimRateLimitRequest: vi.fn() }));
+vi.mock("./db", () => ({ claimRateLimitRequest }));
 import { getSessionCookieOptions } from "./_core/cookies";
 import { applySecurityHeaders, createRateLimit, createStrictCors, redactError } from "./_core/security";
 import { isSafeStorageKey } from "./_core/storageProxy";
@@ -24,13 +26,16 @@ describe("security boundaries", () => {
     expect(isSafeStorageKey("a".repeat(513))).toBe(false);
   });
 
-  it("limits requests with a retry hint and never exposes a token", () => {
+  it("limits requests with a retry hint and never exposes a token", async () => {
+    claimRateLimitRequest
+      .mockResolvedValueOnce({ requestCount: 1, resetAt: new Date(Date.now() + 60_000) })
+      .mockResolvedValueOnce({ requestCount: 2, resetAt: new Date(Date.now() + 60_000) });
     const middleware = createRateLimit({ windowMs: 60_000, max: 1, name: "test" });
     const response = createResponse();
     const request = { ip: "203.0.113.10" } as any;
     let nextCalls = 0;
-    middleware(request, response as any, () => { nextCalls += 1; });
-    middleware(request, response as any, () => { nextCalls += 1; });
+    await middleware(request, response as any, () => { nextCalls += 1; });
+    await middleware(request, response as any, () => { nextCalls += 1; });
     expect(nextCalls).toBe(1);
     expect(response.statusCode).toBe(429);
     expect(response.body).toEqual({ error: "too_many_requests" });

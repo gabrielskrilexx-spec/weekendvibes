@@ -490,7 +490,9 @@ export async function prepareImageForOcr(imageUrl: string) {
   if (!contentType.startsWith("image/")) throw new Error(`Instagram image returned unsupported content type: ${contentType}`);
   const bytes = Buffer.from(await response.arrayBuffer());
   if (bytes.length === 0) throw new Error("Instagram image download returned an empty body");
-  return `data:${contentType};base64,${bytes.toString("base64")}`;
+  const encoded = bytes.toString("base64");
+  bytes.fill(0);
+  return `data:${contentType};base64,${encoded}`;
 }
 
 export function isRecoverableOcrRateLimit(error: unknown) {
