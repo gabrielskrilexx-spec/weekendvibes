@@ -131,10 +131,14 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
   const baseUrl = getWebhookBaseUrl();
   if (!token) throw new Error("APIFY_API_TOKEN não configurado.");
   if (!baseUrl) throw new Error("SCHEDULED_TASK_ENDPOINT_BASE não configurado.");
-  const budget = await claimApifyDailyRequest({});
+  const budget = await claimApifyDailyRequest({ units: INSTAGRAM_TARGETS.length });
   if (!budget.allowed) {
-    const message = `Limite diário de chamadas Apify atingido (${budget.requestCount}/${budget.dailyLimit}) em ${budget.dateKey}; novas extrações bloqueadas até a meia-noite de Brasília.`;
-    await recordOperationalAlert({ integration: "pipeline", alertType: "apify_daily_limit_reached", severity: "CRITICAL", title: "Limite diário da Apify atingido", message });
+    const message = budget.blockedReason === "kill_switch"
+      ? "Extração Apify bloqueada pelo kill switch operacional; nenhuma chamada paga foi iniciada."
+      : budget.blockedReason === "budget_unavailable"
+        ? "Extração Apify bloqueada porque o orçamento persistido não está disponível; nenhuma chamada paga foi iniciada."
+        : `Limite diário de chamadas Apify atingido (${budget.requestCount}/${budget.dailyLimit}) em ${budget.dateKey}; novas extrações bloqueadas até a meia-noite de Brasília.`;
+    await recordOperationalAlert({ integration: "pipeline", alertType: budget.blockedReason === "kill_switch" ? "apify_kill_switch_active" : "apify_daily_limit_reached", severity: "CRITICAL", title: "Extração Apify bloqueada", message });
     throw new Error(message);
   }
 

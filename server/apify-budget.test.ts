@@ -4,6 +4,7 @@ import { claimApifyDailyRequest, getApifyDailyRequestLimit, saoPauloDateKey } fr
 describe("Apify daily budget", () => {
   afterEach(() => {
     delete process.env.APIFY_DAILY_REQUEST_LIMIT;
+    delete process.env.APIFY_INGESTION_KILL_SWITCH;
   });
 
   it("uses a bounded configurable daily limit with a safe default", () => {
@@ -32,5 +33,15 @@ describe("Apify daily budget", () => {
     } as never;
     await expect(claimApifyDailyRequest({ now: new Date("2026-09-19T12:00:00.000Z"), dbOverride: fakeDb })).resolves.toMatchObject({ allowed: false, requestCount: 2, dailyLimit: 2, dateKey: "2026-09-19", persistence: true });
     expect(where).toHaveBeenCalledTimes(2);
+  });
+
+  it("blocks all paid dispatches when the kill switch is enabled", async () => {
+    process.env.APIFY_INGESTION_KILL_SWITCH = "true";
+    const fakeDb = {} as never;
+    await expect(claimApifyDailyRequest({ units: 14, dbOverride: fakeDb })).resolves.toMatchObject({
+      allowed: false,
+      blockedReason: "kill_switch",
+      persistence: true,
+    });
   });
 });

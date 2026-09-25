@@ -204,6 +204,7 @@ export function getApifyDailyRequestLimit() {
 }
 
 const APIFY_DAILY_REQUEST_LIMIT_KEY = "APIFY_DAILY_REQUEST_LIMIT";
+const APIFY_INGESTION_KILL_SWITCH_KEY = "APIFY_INGESTION_KILL_SWITCH";
 const normalizeApifyDailyRequestLimit = (value: unknown) => {
   const parsed = typeof value === "number" ? value : Number.parseInt(String(value ?? ""), 10);
   return Number.isFinite(parsed) ? Math.min(100, Math.max(1, Math.trunc(parsed))) : getApifyDailyRequestLimit();
@@ -213,6 +214,15 @@ async function getConfiguredApifyDailyRequestLimit(db: Awaited<ReturnType<typeof
   if (!db) return getApifyDailyRequestLimit();
   const [setting] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, APIFY_DAILY_REQUEST_LIMIT_KEY)).limit(1);
   return normalizeApifyDailyRequestLimit(setting?.value);
+}
+
+export async function isApifyIngestionKillSwitchEnabled(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const envEnabled = /^(1|true|yes|on)$/i.test(process.env.APIFY_INGESTION_KILL_SWITCH?.trim() ?? "");
+  if (envEnabled) return true;
+  const db = dbOverride ?? await getDb();
+  if (!db) return false;
+  const [setting] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, APIFY_INGESTION_KILL_SWITCH_KEY)).limit(1);
+  return /^(1|true|yes|on)$/i.test(setting?.value?.trim() ?? "");
 }
 
 export async function setApifyDailyRequestLimit(value: number) {
@@ -226,20 +236,24 @@ export async function setApifyDailyRequestLimit(value: number) {
   return limit;
 }
 
-export async function claimApifyDailyRequest(input: { now?: Date; dbOverride?: Awaited<ReturnType<typeof getDb>> }) {
+export async function claimApifyDailyRequest(input: { now?: Date; units?: number; dbOverride?: Awaited<ReturnType<typeof getDb>> }) {
   const db = input.dbOverride ?? await getDb();
   const dateKey = saoPauloDateKey(input.now);
+  const units = Math.min(100, Math.max(1, Math.trunc(input.units ?? 1)));
+  if (/^(1|true|yes|on)$/i.test(process.env.APIFY_INGESTION_KILL_SWITCH?.trim() ?? "")) return { allowed: false, dateKey, requestCount: 0, dailyLimit: getApifyDailyRequestLimit(), persistence: Boolean(db), units, blockedReason: "kill_switch" as const };
   const dailyLimit = await getConfiguredApifyDailyRequestLimit(db);
-  if (!db) return { allowed: true, dateKey, requestCount: 0, dailyLimit, persistence: false };
+  if (process.env.NODE_ENV === "test" && !input.dbOverride) return { allowed: true, dateKey, requestCount: 0, dailyLimit, persistence: false, units };
+  if (await isApifyIngestionKillSwitchEnabled(db)) return { allowed: false, dateKey, requestCount: 0, dailyLimit, persistence: Boolean(db), blockedReason: "kill_switch" as const };
+  if (!db) return { allowed: false, dateKey, requestCount: 0, dailyLimit, persistence: false, blockedReason: "budget_unavailable" as const };
   await db.insert(apifyDailyUsage).values({ dateKey, requestCount: 0, dailyLimit }).onDuplicateKeyUpdate({ set: { dailyLimit, updatedAt: new Date() } });
-  const result = await db.update(apifyDailyUsage).set({ requestCount: sql`${apifyDailyUsage.requestCount} + 1`, updatedAt: new Date() }).where(and(eq(apifyDailyUsage.dateKey, dateKey), lt(apifyDailyUsage.requestCount, dailyLimit)));
+  const result = await db.update(apifyDailyUsage).set({ requestCount: sql`${apifyDailyUsage.requestCount} + ${units}`, updatedAt: new Date() }).where(and(eq(apifyDailyUsage.dateKey, dateKey), sql`${apifyDailyUsage.requestCount} + ${units} <= ${dailyLimit}`));
   const rows = await db.select({ requestCount: apifyDailyUsage.requestCount, dailyLimit: apifyDailyUsage.dailyLimit }).from(apifyDailyUsage).where(eq(apifyDailyUsage.dateKey, dateKey)).limit(1);
   const row = rows[0] ?? { requestCount: 0, dailyLimit };
   const resultValue = result as unknown as { affectedRows?: number } | [{ affectedRows?: number }, unknown];
   const affectedRows = Number(Array.isArray(resultValue) ? resultValue[0]?.affectedRows ?? 0 : resultValue.affectedRows ?? 0);
   const allowed = affectedRows > 0;
   if (!allowed) await db.update(apifyDailyUsage).set({ lastBlockedAt: new Date(), updatedAt: new Date() }).where(eq(apifyDailyUsage.dateKey, dateKey));
-  return { allowed, dateKey, requestCount: row.requestCount, dailyLimit: row.dailyLimit, persistence: true };
+  return { allowed, dateKey, requestCount: row.requestCount, dailyLimit: row.dailyLimit, persistence: true, units, blockedReason: allowed ? undefined : "daily_limit" as const };
 }
 
 export async function getApifyDailyUsageStatus(input: { now?: Date; dbOverride?: Awaited<ReturnType<typeof getDb>> } = {}) {
