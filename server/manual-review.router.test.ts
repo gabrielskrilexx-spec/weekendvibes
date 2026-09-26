@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-const { listManualReviewEventsMock, getManualReviewMetricsMock, updateManualReviewEventMock, approveManualReviewEventMock, rejectManualReviewEventMock, undoManualReviewActionMock, undoManualReviewActionsMock, approveManualReviewEventsMock, rejectManualReviewEventsMock } = vi.hoisted(() => ({
+const { listManualReviewEventsMock, getManualReviewMetricsMock, expireStaleManualReviewHighlightsMock, updateManualReviewEventMock, approveManualReviewEventMock, rejectManualReviewEventMock, undoManualReviewActionMock, undoManualReviewActionsMock, approveManualReviewEventsMock, rejectManualReviewEventsMock } = vi.hoisted(() => ({
   listManualReviewEventsMock: vi.fn(),
   getManualReviewMetricsMock: vi.fn(),
+  expireStaleManualReviewHighlightsMock: vi.fn(),
   updateManualReviewEventMock: vi.fn(),
   approveManualReviewEventMock: vi.fn(),
   rejectManualReviewEventMock: vi.fn(),
@@ -15,6 +16,7 @@ const { listManualReviewEventsMock, getManualReviewMetricsMock, updateManualRevi
 vi.mock("./manual-review", () => ({
   listManualReviewEvents: listManualReviewEventsMock,
   getManualReviewMetrics: getManualReviewMetricsMock,
+  expireStaleManualReviewHighlights: expireStaleManualReviewHighlightsMock,
   updateManualReviewEvent: updateManualReviewEventMock,
   approveManualReviewEvent: approveManualReviewEventMock,
   rejectManualReviewEvent: rejectManualReviewEventMock,
@@ -88,6 +90,11 @@ describe("adminRoutine.manualReview", () => {
     expect(rejectManualReviewEventsMock).toHaveBeenCalledWith([9], "admin-open-id");
   });
 
+  it("expira destaques antigos com retorno JSON primitivo", async () => {
+    expireStaleManualReviewHighlightsMock.mockResolvedValueOnce({ expiredCount: 3, cutoff: "2026-09-19T12:00:00.000Z", retentionDays: 7 });
+    await expect(appRouter.createCaller(ctx()).adminRoutine.manualReview.expireStaleHighlights({})).resolves.toEqual({ success: true, expiredCount: 3, cutoff: "2026-09-19T12:00:00.000Z", retentionDays: 7 });
+    expect(expireStaleManualReviewHighlightsMock).toHaveBeenCalledOnce();
+  });
   it("bloqueia usuários comuns também nas ações em lote", async () => {
     await expect(appRouter.createCaller(ctx("user")).adminRoutine.manualReview.approveMany({ ids: [7] })).rejects.toThrow();
   });

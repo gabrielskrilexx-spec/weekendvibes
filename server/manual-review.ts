@@ -173,6 +173,44 @@ export function isManualReviewEventPastCutoff(eventDate: Date | null, now = new 
   return eventDate !== null && eventDate.getTime() < saoPauloDayStartUtc(now).getTime();
 }
 
+export const DEFAULT_STALE_HIGHLIGHT_RETENTION_DAYS = 7;
+
+export function getStaleHighlightCutoff(now = new Date(), retentionDays = DEFAULT_STALE_HIGHLIGHT_RETENTION_DAYS) {
+  const safeDays = Math.min(90, Math.max(1, Math.trunc(retentionDays)));
+  return new Date(now.getTime() - safeDays * 24 * 60 * 60 * 1000);
+}
+
+export async function expireStaleManualReviewHighlights(input: { now?: Date; retentionDays?: number; dbOverride?: Awaited<ReturnType<typeof getDb>> } = {}) {
+  const db = input.dbOverride ?? await getDb();
+  const now = input.now ?? new Date();
+  const retentionDays = Math.min(90, Math.max(1, Math.trunc(input.retentionDays ?? DEFAULT_STALE_HIGHLIGHT_RETENTION_DAYS)));
+  const cutoff = getStaleHighlightCutoff(now, retentionDays);
+  if (!db) return { expiredCount: 0, cutoff: cutoff.toISOString(), retentionDays } as const;
+  const rows = await db.select().from(manualReviewEvents).where(and(
+    eq(manualReviewEvents.status, "pending"),
+    eq(manualReviewEvents.sourceType, "instagram_highlight"),
+    lt(manualReviewEvents.createdAt, cutoff),
+  ));
+  let expiredCount = 0;
+  for (const row of rows) {
+    const before = auditSnapshot(row);
+    const updated = await db.update(manualReviewEvents).set({
+      status: "expired",
+      reviewedBy: "system:stale-highlight",
+      reviewedAt: now,
+      updatedAt: now,
+    }).where(and(eq(manualReviewEvents.id, row.id), eq(manualReviewEvents.status, "pending")));
+    const resultValue = updated as unknown as { affectedRows?: number } | [{ affectedRows?: number }, unknown];
+    const affectedRows = Number(Array.isArray(resultValue) ? resultValue[0]?.affectedRows ?? 0 : resultValue.affectedRows ?? 0);
+    if (affectedRows > 0) {
+      const [after] = await db.select().from(manualReviewEvents).where(eq(manualReviewEvents.id, row.id)).limit(1);
+      if (after) await recordManualReviewAudit(db, { eventId: row.id, action: "expired", before, after: auditSnapshot(after), changedByOpenId: "system:stale-highlight" });
+      expiredCount += 1;
+    }
+  }
+  return { expiredCount, cutoff: cutoff.toISOString(), retentionDays } as const;
+}
+
 export async function expirePastManualReviewEvents(input: { now?: Date; dbOverride?: Awaited<ReturnType<typeof getDb>> } = {}) {
   const db = input.dbOverride ?? await getDb();
   const now = input.now ?? new Date();

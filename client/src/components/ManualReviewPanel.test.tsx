@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({
   approveMany: vi.fn(),
   rejectMany: vi.fn(),
+  expireStaleHighlights: vi.fn(),
   approveOptions: null as any,
   toastSuccess: vi.fn(),
   queue: {
@@ -31,6 +32,7 @@ vi.mock("@/lib/trpc", () => ({
   trpc: { adminRoutine: { manualReview: {
     list: { useQuery: () => state.queue },
     metrics: { useQuery: () => state.metrics },
+    expireStaleHighlights: { useMutation: () => ({ isPending: false, mutate: state.expireStaleHighlights }) },
     auditHistory: { useQuery: () => state.auditHistory },
     update: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
     approve: { useMutation: (options: any) => { state.approveOptions = options; return { isPending: false, mutate: vi.fn() }; } },
@@ -166,6 +168,15 @@ describe("ManualReviewPanel bulk selection", () => {
     act(() => { state.approveOptions.onSuccess({ ...state.queue.data.items[0], status: "approved" }); });
     const toastOptions = state.toastSuccess.mock.calls.at(-1)?.[1] as { action?: { label: string } };
     expect(toastOptions.action?.label).toBe("Desfazer");
+    renderer.unmount();
+  });
+
+  it("dispara a expiração de destaques antigos sob demanda", () => {
+    let renderer!: ReturnType<typeof create>;
+    act(() => { renderer = create(<ManualReviewPanel />); });
+    const button = renderer.root.findByProps({ "aria-label": "Expirar destaques antigos pendentes" });
+    act(() => { button.props.onClick(); });
+    expect(state.expireStaleHighlights).toHaveBeenCalledWith({});
     renderer.unmount();
   });
 });

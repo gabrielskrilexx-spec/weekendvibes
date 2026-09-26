@@ -15,7 +15,7 @@ vi.mock("./platform-sanitization", () => ({
   runPlatformSanitization: vi.fn().mockResolvedValue({
     cutoff: "2026-09-22T03:00:00.000Z",
     alerts: { resolvedCount: 0, alertTypes: [] },
-    manualReview: { expiredCount: 0 },
+    manualReview: { expiredCount: 0, staleHighlights: { expiredCount: 0, cutoff: "2026-09-15T03:00:00.000Z", retentionDays: 7 } },
     reset: { resetCount: 0, sourceKeys: [] },
     paused: { pausedCount: 0, sourceKeys: [] },
   }),
@@ -46,7 +46,7 @@ describe("heartbeat direct monitor", () => {
     vi.mocked(runPlatformSanitization).mockResolvedValue({
       cutoff: "2026-09-22T03:00:00.000Z",
       alerts: { resolvedCount: 0, alertTypes: [] },
-      manualReview: { expiredCount: 0 },
+      manualReview: { expiredCount: 0, staleHighlights: { expiredCount: 0, cutoff: "2026-09-15T03:00:00.000Z", retentionDays: 7 } },
       reset: { resetCount: 0, sourceKeys: [] },
       paused: { pausedCount: 0, sourceKeys: [] },
     });

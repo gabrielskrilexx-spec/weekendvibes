@@ -68,7 +68,7 @@ import {
   listCircuitBreakerStatuses,
 } from "./db";
 import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
-import { approveManualReviewEvent, approveManualReviewEvents, getManualReviewMetrics, listManualReviewAuditHistory, listManualReviewEvents, rejectManualReviewEvent, rejectManualReviewEvents, undoManualReviewAction, undoManualReviewActions, updateManualReviewEvent, type ManualReviewEventInput } from "./manual-review";
+import { approveManualReviewEvent, approveManualReviewEvents, expireStaleManualReviewHighlights, getManualReviewMetrics, listManualReviewAuditHistory, listManualReviewEvents, rejectManualReviewEvent, rejectManualReviewEvents, undoManualReviewAction, undoManualReviewActions, updateManualReviewEvent, type ManualReviewEventInput } from "./manual-review";
 import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
 import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
@@ -615,6 +615,17 @@ export const appRouter = router({
       metrics: adminOnly
         .output(manualReviewMetricsOutput)
         .query(() => getManualReviewMetrics()),
+      expireStaleHighlights: adminOnly
+        .input(z.object({}).strict())
+        .output(z.object({ success: z.literal(true), expiredCount: z.number().int().nonnegative(), cutoff: z.string().datetime(), retentionDays: z.number().int().positive().max(90) }).strict())
+        .mutation(async () => {
+          try {
+            const result = await expireStaleManualReviewHighlights();
+            return { success: true as const, ...result };
+          } catch (error) {
+            return throwSanitizedAdminMutationError(error, "Não foi possível expirar destaques antigos.");
+          }
+        }),
       auditHistory: adminOnly
         .input(z.object({ eventId: z.number().int().positive(), limit: z.number().int().positive().max(100).default(50) }).strict())
         .output(manualReviewAuditHistoryOutput)

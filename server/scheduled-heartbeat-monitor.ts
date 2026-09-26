@@ -50,7 +50,7 @@ export async function heartbeatMonitorHandler(req: Request, res: Response) {
     const purgedResolvedAlerts = await purgeResolvedOperationalAlerts(30, new Date(), db);
     const sanitization = await runPlatformSanitization(new Date(), { resetNoisySources: false });
     const freshnessAlerts = await evaluateCriticalFreshnessAlerts(db);
-    console.info(`[HeartbeatMonitor] expired_events_removed=${expiredRemoved} review_expired=${sanitization.manualReview.expiredCount} stale_alerts_resolved=${sanitization.alerts.resolvedCount} sources_reset=${sanitization.reset.resetCount} public_sources_paused=${sanitization.paused.pausedCount} resolved_alerts_purged=${purgedResolvedAlerts.purgedCount} freshness_alerts=${freshnessAlerts.triggered}`);
+    console.info(`[HeartbeatMonitor] expired_events_removed=${expiredRemoved} review_expired=${sanitization.manualReview.expiredCount} stale_highlights_expired=${sanitization.manualReview.staleHighlights.expiredCount} stale_alerts_resolved=${sanitization.alerts.resolvedCount} sources_reset=${sanitization.reset.resetCount} public_sources_paused=${sanitization.paused.pausedCount} resolved_alerts_purged=${purgedResolvedAlerts.purgedCount} freshness_alerts=${freshnessAlerts.triggered}`);
     const latestRuns = await db.select().from(ingestionRuns)
       .where(sql`${ingestionRuns.routine} IN (${sql.join(MONITORED_ROUTINES.map(routine => sql`${routine}`), sql`, `)})`)
       .orderBy(desc(ingestionRuns.startedAt)).limit(10);

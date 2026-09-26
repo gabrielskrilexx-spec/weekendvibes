@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, like, or } from "drizzle-orm";
 import { ingestionSources, operationalAlerts } from "../drizzle/schema";
 import { getDb, resolveOperationalAlertsBefore, saoPauloDayStartUtc } from "./db";
-import { expirePastManualReviewEvents } from "./manual-review";
+import { expirePastManualReviewEvents, expireStaleManualReviewHighlights } from "./manual-review";
 
 const STALE_ALERT_TYPES = ["meta_token_expired", "apify_daily_limit_reached", "reconciliation_gap", "filtered_exceeds_read"] as const;
 const NOISY_SOURCE_NAMES = ["%curv%", "%flaming%"] as const;
@@ -72,9 +72,10 @@ export async function runPlatformSanitization(now = new Date(), options: { reset
   const cutoff = saoPauloDayStartUtc(now);
   const alerts = await resolveOperationalAlertsBefore({ before: cutoff, alertTypes: [...STALE_ALERT_TYPES], dbOverride: db });
   const manualReview = await expirePastManualReviewEvents({ now, dbOverride: db });
+  const staleHighlights = await expireStaleManualReviewHighlights({ now, dbOverride: db });
   const reset = options.resetNoisySources === false ? { resetCount: 0, sourceKeys: [] as string[] } : await resetNoisyInstagramSources(db);
   const paused = await pausePersistentlyBlockedPublicSources(db);
-  return { cutoff: cutoff.toISOString(), alerts, manualReview, reset, paused } as const;
+  return { cutoff: cutoff.toISOString(), alerts, manualReview: { ...manualReview, staleHighlights }, reset, paused } as const;
 }
 
 export { STALE_ALERT_TYPES };
