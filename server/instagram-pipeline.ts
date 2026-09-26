@@ -6,6 +6,7 @@ import { containsTargetVenue } from "./ingestion";
 import { parseMetaBusinessDiscovery } from "./contracts/external";
 import { resolveRegionalCoordinates } from "./geocoding";
 import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
+import { persistManualReviewEvents, type ManualReviewEventInput } from "./manual-review";
 
 const META_GRAPH_BASE_URL = "https://graph.facebook.com/v26.0";
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
@@ -99,6 +100,7 @@ export const INSTAGRAM_TARGETS = [
   { name: "Flamingo Bar", username: "flamingomusicbar", directUrl: "https://www.instagram.com/flamingomusicbar/" },
   { name: "Rocket Sea Club", username: "rocketseaclub", directUrl: "https://www.instagram.com/rocketseaclub/" },
   { name: "Ativa House", username: "ativahouse", directUrl: "https://www.instagram.com/ativahouse/" },
+  { name: "Mimada Festa", username: "mimadafesta", directUrl: "https://www.instagram.com/mimadafesta/" },
 ] as const;
 
 export type InstagramPost = {
@@ -665,6 +667,11 @@ export async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, acc
 }
 
 export const DEFAULT_APIFY_SYNC_TIMEOUT_MS = 60_000;
+export const DEFAULT_APIFY_STORIES_ACTOR_ID = "zaver.api~instagram-stories-highlights-scraper";
+
+export function getConfiguredApifyStoriesActorId() {
+  return process.env.APIFY_STORIES_ACTOR_ID?.trim() || DEFAULT_APIFY_STORIES_ACTOR_ID;
+}
 
 export function getApifySyncTimeoutMs() {
   const configured = Number.parseInt(process.env.APIFY_SYNC_TIMEOUT_MS ?? "", 10);
@@ -676,8 +683,9 @@ function isAbortTimeout(error: unknown) {
   return error instanceof Error && (error.name === "AbortError" || /aborted|timeout|timed out|tempo limite/i.test(error.message));
 }
 
-export async function claimApifyBudgetOrReport() {
-  const budget = await claimApifyDailyRequest({ units: INSTAGRAM_TARGETS.length });
+export async function claimApifyBudgetOrReport(input: { units?: number; allowIsolatedManualRun?: boolean } = {}) {
+  const units = Math.min(100, Math.max(1, Math.trunc(input.units ?? INSTAGRAM_TARGETS.length)));
+  const budget = await claimApifyDailyRequest({ units, allowIsolatedManualRun: input.allowIsolatedManualRun });
   if (budget.allowed) return budget;
   const message = budget.blockedReason === "kill_switch"
     ? "Extração Apify bloqueada pelo kill switch operacional; nenhuma chamada paga foi iniciada."
@@ -688,18 +696,19 @@ export async function claimApifyBudgetOrReport() {
   return { ...budget, blockedMessage: message };
 }
 
-export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean } = {}) {
+export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean; targets?: ReadonlyArray<{ username: string }>; allowIsolatedManualRun?: boolean } = {}) {
   const token = process.env.APIFY_API_TOKEN?.trim();
   if (!token) return { posts: [] as InstagramPost[], transportFailures: [] as InstagramTransportFailure[] };
-  const budget = await claimApifyBudgetOrReport();
+  const targets = options.targets ?? INSTAGRAM_TARGETS;
+  const budget = await claimApifyBudgetOrReport({ units: targets.length, allowIsolatedManualRun: options.allowIsolatedManualRun });
   if (!budget.allowed) {
     const message = "blockedMessage" in budget ? budget.blockedMessage : "Limite diário de chamadas Apify atingido.";
     return { posts: [] as InstagramPost[], transportFailures: [{ username: "apify-budget", status: 429, kind: "quota" as const, message }] };
   }
-  const payload = buildInstagramScraperPayload(INSTAGRAM_TARGETS);
+    const payload = buildInstagramStoriesScraperPayload(targets);
   try {
     const timeoutMs = getApifySyncTimeoutMs();
-    const response = await fetchExternal(`https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "WeekendVibes/1.0" }, body: JSON.stringify(payload) }, timeoutMs, true);
+    const response = await fetchExternal(`https://api.apify.com/v2/acts/${encodeURIComponent(getConfiguredApifyStoriesActorId())}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}&timeout=30`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "WeekendVibes/1.0" }, body: JSON.stringify(payload) }, timeoutMs, true);
     const body = await readExternalBody(response);
     if (!response.ok) {
       let providerMessage = "";
@@ -722,7 +731,7 @@ export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean
     const parsed = JSON.parse(body) as unknown;
     const configuredSources = (await listEnabledInstagramSources()) ?? [];
     const sourceByHandle = new Map(configuredSources.map(source => [String(source.handle ?? "").replace(/^@/, "").toLowerCase(), source.sourceKey]));
-    const allowedHandles = configuredSources.length > 0 ? sourceByHandle : new Map(INSTAGRAM_TARGETS.map(target => [target.username.toLowerCase(), `instagram:${target.username}`]));
+    const allowedHandles = configuredSources.length > 0 ? sourceByHandle : new Map(targets.map(target => [target.username.toLowerCase(), `instagram:${target.username}`]));
     const posts = limitInstagramStoriesForCost(normalizeInstagramMediaPayload(parsed)
       .filter((post: InstagramPost) => post.mediaType === "story" || post.mediaType === "highlight")
       .filter((post: InstagramPost) => allowedHandles.has(String(post.ownerUsername ?? post.username ?? "").replace(/^@/, "").toLowerCase()))
@@ -865,7 +874,7 @@ export async function extractStructuredEventsForTest(referenceDate: string, appr
   return extractStructuredEvents(referenceDate, approvedPosts);
 }
 
-export type InstagramPipelineOptions = { dryRun?: boolean; storiesOnly?: boolean; postsOverride?: InstagramPost[] };
+export type InstagramPipelineOptions = { dryRun?: boolean; storiesOnly?: boolean; postsOverride?: InstagramPost[]; persistIncompleteToManualReview?: boolean };
 
 export async function runInstagramPipeline(options: InstagramPipelineOptions = {}) {
   const pipelineStartedAt = Date.now();
@@ -975,6 +984,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   if (filteredCount > explicitFilteredCount) rejectionReasons.unclassified_filtered = filteredCount - explicitFilteredCount;
   const acceptedSourceUrls = new Set(structuredEvents.filter((event, index) => validateStructuredInstagramEvent(event, activeAliases).length === 0).map(event => event.sourceUrl));
   const rejectedBySourceUrl = new Map(rejectedEvents.map(rejection => [rejection.sourceUrl, rejection.reasons]));
+  let manualReviewInserted = 0;
   const filteredStories: FilteredInstagramStory[] = ocrAuditCandidates
     .filter(({ post }) => !acceptedSourceUrls.has(postUrl(post)))
     .map(({ post, rawText }, index) => {
@@ -988,6 +998,32 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
       return { id: `${username}:${sourceUrl || imageUrl}:${postedAt ?? index}`.slice(0, 500), username, mediaOrigin, imageUrl, sourceUrl, postedAt, expiresAt, ocrText: String(post.ocrText ?? "").slice(0, 3000), rawText: rawText.slice(0, 5000), reasons: reasons.map(reason => String(reason).slice(0, 160)), status: "pending" as const };
     })
     .filter(item => item.imageUrl.startsWith("https://"));
+  if (options.persistIncompleteToManualReview === true) {
+    const structuredBySourceUrl = new Map(structuredEvents.map(event => [event.sourceUrl, event]));
+    const reviewItems: ManualReviewEventInput[] = filteredStories
+      .filter(story => story.rawText.trim().length > 0)
+      .map(story => {
+        const candidate = structuredBySourceUrl.get(story.sourceUrl);
+        const category = ALLOWED_CATEGORIES.has(String(candidate?.category)) ? candidate?.category as StructuredEvent["category"] : null;
+        return {
+          title: String(candidate?.title ?? story.rawText.split(/\r?\n/)[0] ?? story.username).trim().slice(0, 255) || story.username || "Evento extraído do Instagram",
+          eventDate: candidate?.eventDate ?? null,
+          locationName: candidate?.locationName ?? null,
+          address: candidate?.address ?? null,
+          city: candidate?.city ?? null,
+          category,
+          genre: candidate?.genre ?? null,
+          summary: candidate?.summary ?? story.rawText,
+          priceCents: candidate?.priceCents ?? null,
+          sourceUrl: story.sourceUrl || null,
+          sourceType: story.mediaOrigin === "highlight" ? "instagram_highlight" : "instagram_story",
+          imageUrl: story.imageUrl || null,
+          rawText: story.rawText,
+          reason: `Requer revisão manual: ${story.reasons.join("; ")}`,
+        };
+      });
+    manualReviewInserted = (await persistManualReviewEvents(reviewItems)).inserted;
+  }
   const sourceReports = [{
     sourceKey: "instagram",
     durationMs: Math.max(0, Date.now() - pipelineStartedAt),
@@ -1020,6 +1056,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     transportFailures: fetched.transportFailures,
     ocrAudit: buildOcrAuditEntries(ocrAuditCandidates),
     filteredStories,
+    manualReviewInserted,
 
     structuredEvents: structuredEvents.length,
     imported,

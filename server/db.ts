@@ -236,14 +236,19 @@ export async function setApifyDailyRequestLimit(value: number) {
   return limit;
 }
 
-export async function claimApifyDailyRequest(input: { now?: Date; units?: number; dbOverride?: Awaited<ReturnType<typeof getDb>> }) {
+export async function claimApifyDailyRequest(input: { now?: Date; units?: number; allowIsolatedManualRun?: boolean; dbOverride?: Awaited<ReturnType<typeof getDb>> }) {
   const db = input.dbOverride ?? await getDb();
   const dateKey = saoPauloDateKey(input.now);
   const units = Math.min(100, Math.max(1, Math.trunc(input.units ?? 1)));
-  if (/^(1|true|yes|on)$/i.test(process.env.APIFY_INGESTION_KILL_SWITCH?.trim() ?? "")) return { allowed: false, dateKey, requestCount: 0, dailyLimit: getApifyDailyRequestLimit(), persistence: Boolean(db), units, blockedReason: "kill_switch" as const };
+  const isolatedManualRun = input.allowIsolatedManualRun === true && units === 1;
+  const isTestWithoutOverride = process.env.NODE_ENV === "test" && !input.dbOverride;
+  if (isTestWithoutOverride) {
+    const dailyLimit = await getConfiguredApifyDailyRequestLimit(db);
+    return { allowed: true, dateKey, requestCount: 0, dailyLimit, persistence: false, units };
+  }
+  if (/^(1|true|yes|on)$/i.test(process.env.APIFY_INGESTION_KILL_SWITCH?.trim() ?? "") && !isolatedManualRun) return { allowed: false, dateKey, requestCount: 0, dailyLimit: getApifyDailyRequestLimit(), persistence: Boolean(db), units, blockedReason: "kill_switch" as const };
   const dailyLimit = await getConfiguredApifyDailyRequestLimit(db);
-  if (process.env.NODE_ENV === "test" && !input.dbOverride) return { allowed: true, dateKey, requestCount: 0, dailyLimit, persistence: false, units };
-  if (await isApifyIngestionKillSwitchEnabled(db)) return { allowed: false, dateKey, requestCount: 0, dailyLimit, persistence: Boolean(db), blockedReason: "kill_switch" as const };
+  if (await isApifyIngestionKillSwitchEnabled(db) && !isolatedManualRun) return { allowed: false, dateKey, requestCount: 0, dailyLimit, persistence: Boolean(db), blockedReason: "kill_switch" as const };
   if (!db) return { allowed: false, dateKey, requestCount: 0, dailyLimit, persistence: false, blockedReason: "budget_unavailable" as const };
   await db.insert(apifyDailyUsage).values({ dateKey, requestCount: 0, dailyLimit }).onDuplicateKeyUpdate({ set: { dailyLimit, updatedAt: new Date() } });
   const result = await db.update(apifyDailyUsage).set({ requestCount: sql`${apifyDailyUsage.requestCount} + ${units}`, updatedAt: new Date() }).where(and(eq(apifyDailyUsage.dateKey, dateKey), sql`${apifyDailyUsage.requestCount} + ${units} <= ${dailyLimit}`));
@@ -353,6 +358,7 @@ export const DEFAULT_INGESTION_SOURCES = [
   { sourceKey: "instagram:rocketseaclub", name: "Rocket Sea Club", kind: "instagram" as const, handle: "rocketseaclub", url: "https://www.instagram.com/rocketseaclub/" },
   { sourceKey: "instagram:ativahouse", name: "Ativa House", kind: "instagram" as const, handle: "ativahouse", url: "https://www.instagram.com/ativahouse/" },
   { sourceKey: "instagram:casa412santos", name: "Casa 412", kind: "instagram" as const, handle: "casa412santos", url: "https://www.instagram.com/casa412santos/" },
+  { sourceKey: "instagram:mimadafesta", name: "Mimada Festa", kind: "instagram" as const, handle: "mimadafesta", url: "https://www.instagram.com/mimadafesta/" },
   { sourceKey: "instagram:verilonguinho", name: "Verilonguinho", kind: "instagram" as const, handle: "verilonguinho", url: "https://www.instagram.com/verilonguinho/?hl=pt" },
   { sourceKey: "instagram:goatdiningclub", name: "Goat Club", kind: "instagram" as const, handle: "goatdiningclub", url: "https://www.instagram.com/goatdiningclub/" },
   { sourceKey: "instagram:praioguaruja", name: "Praiô", kind: "instagram" as const, handle: "praioguaruja", url: "https://www.instagram.com/praioguaruja/" },
