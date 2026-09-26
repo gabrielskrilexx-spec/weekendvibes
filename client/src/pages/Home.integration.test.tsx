@@ -56,4 +56,13 @@ describe("Home pública simplificada", () => {
     mocks.events = { data: [{ id: 9, title: "Agenda Moby" }], isLoading: false, isError: false };
     expect(renderToStaticMarkup(<Home />)).toContain("Agenda Moby");
   });
+
+  it("exibe os filtros rápidos mobile-first da agenda pública", () => {
+    const markup = renderToStaticMarkup(<Home />);
+    expect(markup).toContain('aria-label="Descobrir eventos"');
+    expect(markup).toContain("Hoje");
+    expect(markup).toContain("Fim de semana");
+    expect(markup).toContain("Santos");
+    expect(markup).toContain("Guarujá");
+  });
 });

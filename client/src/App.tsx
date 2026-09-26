@@ -30,6 +30,7 @@ function Router() {
     <Suspense fallback={<RouteLoading />}>
       <Switch>
         <Route path="/" component={Home} />
+        <Route path="/agenda" component={Home} />
         <Route path="/eventos/:slug" component={EventDetail} />
         <Route path="/admin" component={Admin} />
         <Route path="/admin/health" component={Admin} />

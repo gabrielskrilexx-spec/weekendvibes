@@ -39,6 +39,8 @@ describe("EventCard interaction", () => {
     expect(markup).toContain("focus-within:ring-2");
     expect(markup).toContain("motion-reduce:transition-none");
     expect(markup).toContain('href="/eventos/rolê-santos"');
+    expect(markup).toContain("Garantir ingresso");
+    expect(markup).toContain('href="https://example.com/event"');
     expect(markup).toContain("line-clamp-2");
     expect(markup).toContain("min-h-[3.25rem]");
     expect(markup).toContain("A partir de R$ 50,00");

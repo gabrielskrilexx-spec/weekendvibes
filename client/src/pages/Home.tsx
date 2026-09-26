@@ -10,9 +10,20 @@ import { useTheme } from "@/contexts/ThemeContext";
 import SiteFooter from "@/components/SiteFooter";
 
 const days = [{ label: "Todos", value: "" }, { label: "Sexta", value: "sexta" }, { label: "Sábado", value: "sabado" }];
+const quickFilters = [{ label: "Todos", value: "todos" }, { label: "Hoje", value: "hoje" }, { label: "Fim de semana", value: "fim-de-semana" }, { label: "Santos", value: "santos" }, { label: "Guarujá", value: "guaruja" }] as const;
 const cities = ["Todas", "Santos", "Guarujá"];
 const categories = ["Todas", "show", "balada", "evento_musical"];
 const genres = [{ label: "Todas as vibes", value: "" }, { label: "Funk", value: "funk" }, { label: "House/Eletrônica", value: "house_eletronica" }, { label: "Samba/Pagode", value: "samba_pagode" }, { label: "Rap/Trap", value: "rap_trap" }];
+
+function saoPauloDateKey(date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+}
+
+function addDays(dateKey: string, daysToAdd: number) {
+  const date = new Date(`${dateKey}T12:00:00-03:00`);
+  date.setDate(date.getDate() + daysToAdd);
+  return date.toISOString().slice(0, 10);
+}
 
 export default function Home() {
   const { theme, toggleTheme, highContrast, toggleContrast } = useTheme();
@@ -21,9 +32,19 @@ export default function Home() {
   const [city, setCity] = useState("Todas");
   const [category, setCategory] = useState("Todas");
   const [genre, setGenre] = useState("");
+  const [quickFilter, setQuickFilter] = useState<(typeof quickFilters)[number]["value"]>("todos");
+  const todayKey = saoPauloDateKey();
+  const quickRange = useMemo(() => {
+    if (quickFilter === "hoje") return { date: todayKey };
+    if (quickFilter !== "fim-de-semana") return {};
+    const weekday = new Date(`${todayKey}T12:00:00-03:00`).getDay();
+    const daysUntilFriday = (5 - weekday + 7) % 7;
+    return { startDate: addDays(todayKey, daysUntilFriday), endDate: addDays(todayKey, daysUntilFriday + 3) };
+  }, [quickFilter, todayKey]);
   const eventsQuery = trpc.events.list.useQuery({
     day: day || undefined,
-    city: city === "Santos" || city === "Guarujá" ? city : undefined,
+    ...quickRange,
+    city: quickFilter === "santos" ? "Santos" : quickFilter === "guaruja" ? "Guarujá" : city === "Santos" || city === "Guarujá" ? city : undefined,
     category: category === "show" || category === "balada" || category === "evento_musical" ? category : undefined,
     genre: genre === "funk" || genre === "house_eletronica" || genre === "samba_pagode" || genre === "rap_trap" ? genre : undefined,
     size: 40,
@@ -34,8 +55,9 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-white pb-28 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-      <header className="sticky top-0 z-20 border-b border-zinc-200/80 bg-white/95 dark:border-white/10 dark:bg-zinc-950/95">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
+      <header className="sticky top-0 z-20 border-b border-zinc-200/80 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-zinc-950/95">
+        <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
+          <div className="flex items-center justify-between">
           <Link href="/" className="text-2xl font-black tracking-[-0.06em] text-zinc-900 dark:text-white" aria-label="WeekendVibes"><span className="text-orange-700 dark:text-orange-200">W</span>eekend<span className="text-orange-700 dark:text-orange-200">V</span>ibes<span className="text-yellow-700 dark:text-yellow-200">.</span></Link>
           <div className="flex items-center gap-2">
             {user?.role === "admin" && <Link href="/admin/health" className="hidden min-h-11 items-center rounded-full border border-orange-300/30 bg-orange-300/10 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-orange-100 transition hover:border-orange-200/60 hover:bg-orange-300/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-200 sm:inline-flex">Painel Administrativo</Link>}
@@ -43,6 +65,10 @@ export default function Home() {
             <button type="button" onClick={() => toggleContrast?.()} aria-pressed={highContrast} aria-label={highContrast ? "Desativar alto contraste" : "Ativar alto contraste"} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-orange-700 dark:border-white/10 dark:bg-white/[0.06] dark:text-yellow-200 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300"><Contrast size={17} /></button>
             <div className="hidden items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-700 sm:flex dark:text-zinc-400"><MapPin size={15} className="text-orange-300" /> Baixada Santista</div>
           </div>
+          </div>
+          <nav aria-label="Descobrir eventos" className="-mx-1 mt-3 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none]">
+            {quickFilters.map(filter => <button key={filter.value} type="button" aria-pressed={quickFilter === filter.value} onClick={() => { setQuickFilter(filter.value); if (filter.value === "santos" || filter.value === "guaruja") setCity(filter.value === "santos" ? "Santos" : "Guarujá"); else setCity("Todas"); }} className={`min-h-10 shrink-0 rounded-full border px-4 text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 ${quickFilter === filter.value ? "border-orange-300 bg-orange-300 text-zinc-950 shadow-[0_8px_22px_-12px_rgba(251,146,60,.9)]" : "border-zinc-200 bg-zinc-100/80 text-zinc-600 hover:border-orange-300/50 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-300"}`}>{filter.label}</button>)}
+          </nav>
         </div>
       </header>
 
