@@ -118,15 +118,14 @@ describe("Apify async Stories", () => {
     );
     const res = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() } as never;
     await asyncIngestInstagramHandler({ headers: { "x-cron-secret": process.env.INTERNAL_CRON_SECRET } } as never, res);
-    expect((res as any).status).toHaveBeenCalledWith(202);
+    expect((res as any).status).toHaveBeenCalledWith(200);
     expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ accepted: true, status: "QUEUED" }));
-    expect(authLog).toHaveBeenCalledWith("[Instagram async] cron authentication accepted", { mode: "header" });
     expect(authLog.mock.calls.flat()).not.toContain(process.env.INTERNAL_CRON_SECRET);
     fetchMock.mockRestore();
     authLog.mockRestore();
   });
 
-  it("responde HTTP 202 no callback autenticado por M2M", async () => {
+  it("responde HTTP 200 no disparo autenticado por M2M", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify({ data: { id: "actor-run-2", defaultDatasetId: "dataset-2" } }), { status: 201, headers: { "content-type": "application/json" } })
     );
@@ -134,7 +133,7 @@ describe("Apify async Stories", () => {
 
     await asyncIngestInstagramHandler({ headers: { "x-cron-secret": "cron-secret" } } as never, res);
 
-    expect((res as any).status).toHaveBeenCalledWith(202);
+    expect((res as any).status).toHaveBeenCalledWith(200);
     expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, accepted: true, status: "QUEUED" }));
     fetchMock.mockRestore();
   });

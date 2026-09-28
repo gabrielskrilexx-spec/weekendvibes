@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import type { Request } from "express";
+import type { NextFunction, Request, Response } from "express";
 
 const CRON_SECRET_HEADER = "x-cron-secret";
 
@@ -19,3 +19,13 @@ export function cronAuthMode(req: Pick<Request, "headers">): "machine" | "sessio
 }
 
 export const cronSecretHeaderName = CRON_SECRET_HEADER;
+
+/** Guard for machine-to-machine callbacks; session cookies are intentionally not accepted. */
+export function requireInternalCron(req: Request, res: Response, next: NextFunction) {
+  if (!hasValidInternalCronSecret(req)) {
+    console.warn("[CronAuth] M2M authentication rejected", { mode: "header", reason: "invalid_or_missing_secret" });
+    return res.status(401).json({ ok: false, error: "unauthorized" });
+  }
+  console.info("[CronAuth] M2M authentication accepted", { mode: "header" });
+  return next();
+}

@@ -16,7 +16,7 @@ import { serveStatic, setupVite } from "./vite";
 import { applySecurityHeaders, createRateLimit, createStrictCors } from "./security";
 import { registerMapsJavascriptRoute } from "../maps-javascript";
 import { registerAdminRestRoutes } from "../admin-rest";
-import { hasValidInternalCronSecret } from "./cron-auth";
+import { requireInternalCron } from "./cron-auth";
 
 async function startServer() {
   const app = express();
@@ -48,20 +48,17 @@ async function startServer() {
     res.setHeader("Expires", "0");
     next();
   };
-  app.post("/api/scheduled/health", noStoreScheduledResponse, (req, res) => {
-    if (!hasValidInternalCronSecret(req)) return res.status(403).json({ ok: false, error: "cron-only" });
-    return res.json({ ok: true });
-  });
-  app.post("/api/scheduled/ingest-events", noStoreScheduledResponse, ingestEventsHandler);
-  app.post("/api/scheduled/ingest-full-agenda", noStoreScheduledResponse, ingestFullAgendaHandler);
-  app.post("/api/scheduled/ingest-event-documents", noStoreScheduledResponse, ingestAgentDocumentsHandler);
-  app.post("/api/scheduled/ingest-instagram", noStoreScheduledResponse, asyncIngestInstagramHandler);
-  app.post("/api/v2/ingestion/instagram/async", noStoreScheduledResponse, asyncIngestInstagramHandler);
-  app.post("/api/scheduled/ingest-instagram-sync", noStoreScheduledResponse, ingestInstagramHandler);
+  app.post("/api/scheduled/health", noStoreScheduledResponse, requireInternalCron, (_req, res) => res.json({ ok: true }));
+  app.post("/api/scheduled/ingest-events", noStoreScheduledResponse, requireInternalCron, ingestEventsHandler);
+  app.post("/api/scheduled/ingest-full-agenda", noStoreScheduledResponse, requireInternalCron, ingestFullAgendaHandler);
+  app.post("/api/scheduled/ingest-event-documents", noStoreScheduledResponse, requireInternalCron, ingestAgentDocumentsHandler);
+  app.post("/api/scheduled/ingest-instagram", noStoreScheduledResponse, requireInternalCron, asyncIngestInstagramHandler);
+  app.post("/api/v2/ingestion/instagram/async", noStoreScheduledResponse, requireInternalCron, asyncIngestInstagramHandler);
+  app.post("/api/scheduled/ingest-instagram-sync", noStoreScheduledResponse, requireInternalCron, ingestInstagramHandler);
   app.post("/api/webhooks/apify/instagram", noStoreScheduledResponse, apifyInstagramWebhookHandler);
   app.post("/api/v2/ingestion/instagram/reprocess-dataset", noStoreScheduledResponse, reprocessApifyStoriesDatasetHandler);
-  app.post("/api/scheduled/monitor-heartbeat", noStoreScheduledResponse, heartbeatMonitorHandler);
-  app.post("/api/scheduled/export-jobs-recovery", noStoreScheduledResponse, exportJobsRecoveryHandler);
+  app.post("/api/scheduled/monitor-heartbeat", noStoreScheduledResponse, requireInternalCron, heartbeatMonitorHandler);
+  app.post("/api/scheduled/export-jobs-recovery", noStoreScheduledResponse, requireInternalCron, exportJobsRecoveryHandler);
   // tRPC API
   app.use(
     "/api/trpc",

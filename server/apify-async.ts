@@ -17,8 +17,6 @@ import {
   startIngestionRun,
 } from "./ingestion-reports";
 import { hasValidInternalCronSecret } from "./_core/cron-auth";
-import { sdk } from "./_core/sdk";
-import { HttpError } from "@shared/_core/errors";
 import { redactError } from "./_core/security";
 import { claimApifyDailyRequest, claimApifyProcessedItem, completeApifyProcessedItem, recordOperationalAlert } from "./db";
 
@@ -320,25 +318,15 @@ export async function reprocessApifyStoriesDatasetHandler(req: Request, res: Res
 }
 
 export async function asyncIngestInstagramHandler(req: Request, res: Response) {
-  const authenticatedBySecret = hasValidInternalCronSecret(req);
-  if (authenticatedBySecret) {
-    console.info("[Instagram async] cron authentication accepted", { mode: "header" });
-  }
-  if (!authenticatedBySecret) {
-    try {
-      const user = await sdk.authenticateRequest(req);
-      if (!user.isCron) return res.status(403).json({ error: "cron-only" });
-      console.info("[Instagram async] cron authentication accepted", { mode: "cookie" });
-    } catch (error) {
-      if (error instanceof HttpError && error.statusCode === 403) return res.status(403).json({ error: "cron-only" });
-      return res.status(500).json({ ok: false, error: "internal_error" });
-    }
-  }
   try {
     const scheduled = await startAsyncApifyStoriesRun({ trigger: "automatic" });
-    return res.status(202).json({ ok: true, accepted: true, runId: scheduled.runId, actorRunId: scheduled.actorRunId, status: scheduled.status });
+    return res.status(200).json({ ok: true, accepted: true, runId: scheduled.runId, actorRunId: scheduled.actorRunId, status: scheduled.status });
   } catch (error) {
     console.error("[Instagram async] Actor dispatch failed", redactError(error));
+    const message = error instanceof Error ? error.message : "";
+    if (/limite diário|kill switch|orçamento persistido/i.test(message)) {
+      return res.status(200).json({ ok: true, accepted: false, status: "SKIPPED", reason: "budget_guard" });
+    }
     const providerFailure = getApifyDispatchFailure(error);
     if (providerFailure) return res.status(providerFailure.status).json({ ok: false, ...providerFailure });
     return res.status(502).json({ ok: false, error: "APIFY_DISPATCH_FAILED", message: "A execução foi recusada pelo provedor ou não pôde ser agendada." });
