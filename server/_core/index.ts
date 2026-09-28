@@ -18,9 +18,8 @@ import { registerMapsJavascriptRoute } from "../maps-javascript";
 import { registerAdminRestRoutes } from "../admin-rest";
 import { requireInternalCron } from "./cron-auth";
 
-async function startServer() {
+export function createApp() {
   const app = express();
-  const server = createServer(app);
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
   app.use(createStrictCors());
@@ -42,12 +41,14 @@ async function startServer() {
   registerMapsJavascriptRoute(app);
   registerOAuthRoutes(app);
   registerAdminRestRoutes(app);
+
   const noStoreScheduledResponse = (_req: Request, res: Response, next: NextFunction) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
     next();
   };
+
   app.post("/api/scheduled/health", noStoreScheduledResponse, requireInternalCron, (_req, res) => res.json({ ok: true }));
   app.post("/api/scheduled/ingest-events", noStoreScheduledResponse, requireInternalCron, ingestEventsHandler);
   app.post("/api/scheduled/ingest-full-agenda", noStoreScheduledResponse, requireInternalCron, ingestFullAgendaHandler);
@@ -59,15 +60,19 @@ async function startServer() {
   app.post("/api/v2/ingestion/instagram/reprocess-dataset", noStoreScheduledResponse, reprocessApifyStoriesDatasetHandler);
   app.post("/api/scheduled/monitor-heartbeat", noStoreScheduledResponse, requireInternalCron, heartbeatMonitorHandler);
   app.post("/api/scheduled/export-jobs-recovery", noStoreScheduledResponse, requireInternalCron, exportJobsRecoveryHandler);
-  // tRPC API
-  app.use(
-    "/api/trpc",
-    createExpressMiddleware({
-      router: appRouter,
-      createContext,
-    })
-  );
-  // development mode uses Vite, production mode uses static files
+
+  app.use("/api/trpc", createExpressMiddleware({
+    router: appRouter,
+    createContext,
+  }));
+
+  return app;
+}
+
+async function startServer() {
+  const app = createApp();
+  const server = createServer(app);
+
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
   } else {
@@ -76,7 +81,6 @@ async function startServer() {
 
   const port = Number.parseInt(process.env.PORT || "3000", 10);
   const host = process.env.HOST || "0.0.0.0";
-
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error(`Invalid PORT value: ${process.env.PORT ?? "undefined"}`);
   }
@@ -88,4 +92,6 @@ async function startServer() {
   });
 }
 
-startServer().catch(console.error);
+if (process.env.VERCEL !== "1") {
+  startServer().catch(console.error);
+}
