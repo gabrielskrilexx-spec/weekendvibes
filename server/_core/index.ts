@@ -12,7 +12,6 @@ import { ingestInstagramHandler } from "../scheduled-instagram";
 import { asyncIngestInstagramHandler, apifyInstagramWebhookHandler, reprocessApifyStoriesDatasetHandler } from "../apify-async";
 import { heartbeatMonitorHandler } from "../scheduled-heartbeat-monitor";
 import { exportJobsRecoveryHandler } from "../scheduled-export-recovery";
-import { serveStatic, setupVite } from "./vite";
 import { applySecurityHeaders, createRateLimit, createStrictCors } from "./security";
 import { registerMapsJavascriptRoute } from "../maps-javascript";
 import { registerAdminRestRoutes } from "../admin-rest";
@@ -74,8 +73,10 @@ async function startServer() {
   const server = createServer(app);
 
   if (process.env.NODE_ENV === "development") {
+    const { setupVite } = await import("./vite");
     await setupVite(app, server);
   } else {
+    const { serveStatic } = await import("./vite");
     serveStatic(app);
   }
 
