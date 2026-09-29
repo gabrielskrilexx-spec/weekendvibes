@@ -1255,7 +1255,7 @@ export async function listRoutineScheduleStatus(): Promise<
       routine: "instagram-agenda" as const,
       sourceKey: "instagram" as const,
       label: "Instagram — Agenda da Semana",
-      path: "/api/scheduled/ingest-instagram",
+      path: "/api/v2/ingestion/instagram/async",
     },
     {
       routine: "public-agenda" as const,
