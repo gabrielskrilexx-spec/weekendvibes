@@ -15,6 +15,7 @@ import { applySecurityHeaders, createRateLimit, createStrictCors } from "./secur
 import { registerMapsJavascriptRoute } from "../maps-javascript";
 import { registerAdminRestRoutes } from "../admin-rest";
 import { requireInternalCron } from "./cron-auth";
+import { recordOperationalAlert } from "../db";
 
 export function createApp() {
   const app = express();
@@ -58,6 +59,27 @@ export function createApp() {
     next();
   };
 
+  const monitorIngestionEndpoint = (req: Request, res: Response, next: NextFunction) => {
+    res.once("finish", () => {
+      if (res.statusCode < 500) return;
+      const path = req.path || req.originalUrl || "unknown";
+      const status = res.statusCode;
+      void recordOperationalAlert({
+        integration: "pipeline",
+        alertType: "ingestion_endpoint_failure",
+        severity: status >= 500 ? "CRITICAL" : "WARNING",
+        title: "Falha no endpoint de ingestão Instagram",
+        message: `Endpoint ${path} respondeu HTTP ${status}; revisar o runtime e o deployment da API.`,
+        slaMinutes: 30,
+      }).catch(error => {
+        console.warn("[IngestionMonitor] Could not persist endpoint failure alert", {
+          error: error instanceof Error ? error.message.slice(0, 160) : "unknown_error",
+        });
+      });
+    });
+    next();
+  };
+
   app.use("/api/scheduled", requirePostForScheduledRoute);
   app.use("/api/v2/ingestion/instagram/async", requirePostForScheduledRoute);
 
@@ -65,8 +87,8 @@ export function createApp() {
   app.post("/api/scheduled/ingest-events", noStoreScheduledResponse, requireInternalCron, ingestEventsHandler);
   app.post("/api/scheduled/ingest-full-agenda", noStoreScheduledResponse, requireInternalCron, ingestFullAgendaHandler);
   app.post("/api/scheduled/ingest-event-documents", noStoreScheduledResponse, requireInternalCron, ingestAgentDocumentsHandler);
-  app.post("/api/scheduled/ingest-instagram", noStoreScheduledResponse, requireInternalCron, asyncIngestInstagramHandler);
-  app.post("/api/v2/ingestion/instagram/async", noStoreScheduledResponse, requireInternalCron, asyncIngestInstagramHandler);
+  app.post("/api/scheduled/ingest-instagram", monitorIngestionEndpoint, noStoreScheduledResponse, requireInternalCron, asyncIngestInstagramHandler);
+  app.post("/api/v2/ingestion/instagram/async", monitorIngestionEndpoint, noStoreScheduledResponse, requireInternalCron, asyncIngestInstagramHandler);
   app.post("/api/scheduled/ingest-instagram-sync", noStoreScheduledResponse, requireInternalCron, ingestInstagramHandler);
   app.post("/api/webhooks/apify/instagram", noStoreScheduledResponse, apifyInstagramWebhookHandler);
   app.post("/api/v2/ingestion/instagram/reprocess-dataset", noStoreScheduledResponse, reprocessApifyStoriesDatasetHandler);
