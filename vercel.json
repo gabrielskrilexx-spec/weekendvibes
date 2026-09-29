@@ -4,6 +4,12 @@
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist/public",
   "cleanUrls": true,
+  "functions": {
+    "api/index.ts": {
+      "runtime": "nodejs22.x",
+      "includeFiles": ["server/**", "drizzle/**", "shared/**"]
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
