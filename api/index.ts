@@ -1,10 +1,12 @@
+import { createApp } from "../server/_core/app";
 import type { Request, Response } from "express";
 
-let appPromise: Promise<((req: Request, res: Response) => unknown)> | null = null;
+type ExpressApp = ReturnType<typeof createApp>;
+let appPromise: Promise<ExpressApp> | null = null;
 
-async function loadApp(): Promise<(req: Request, res: Response) => unknown> {
+function loadApp(): Promise<ExpressApp> {
   if (!appPromise) {
-    appPromise = import("../server/_core/app").then(({ createApp }) => createApp());
+    appPromise = Promise.resolve().then(() => createApp());
   }
   return appPromise;
 }
