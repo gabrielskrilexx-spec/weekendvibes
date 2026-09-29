@@ -47,6 +47,20 @@ export function createApp() {
     next();
   };
 
+  const requirePostForScheduledRoute = (req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== "POST") {
+      res.status(405).setHeader("Allow", "POST").json({
+        error: "method_not_allowed",
+        allowedMethods: ["POST"],
+      });
+      return;
+    }
+    next();
+  };
+
+  app.use("/api/scheduled", requirePostForScheduledRoute);
+  app.use("/api/v2/ingestion/instagram/async", requirePostForScheduledRoute);
+
   app.post("/api/scheduled/health", noStoreScheduledResponse, requireInternalCron, (_req, res) => res.json({ ok: true }));
   app.post("/api/scheduled/ingest-events", noStoreScheduledResponse, requireInternalCron, ingestEventsHandler);
   app.post("/api/scheduled/ingest-full-agenda", noStoreScheduledResponse, requireInternalCron, ingestFullAgendaHandler);
