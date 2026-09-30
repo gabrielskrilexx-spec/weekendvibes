@@ -368,4 +368,51 @@ function buildCronUser(
   } as AuthenticatedUser;
 }
 
-export const sdk = new SDKServer();
+let sdkInstance: SDKServer | null = null;
+
+function getSdkInstance(): SDKServer {
+  if (!sdkInstance) sdkInstance = new SDKServer();
+  return sdkInstance;
+}
+
+/**
+ * Backwards-compatible lazy facade. Importing the serverless app no longer
+ * constructs the Axios client or logs OAuth configuration during cold start.
+ * Methods are defined on the facade so callers and test spies can discover
+ * them without forcing construction of SDKServer.
+ */
+const SDK_METHODS = [
+  "exchangeCodeForToken",
+  "getUserInfo",
+  "createSessionToken",
+  "signSession",
+  "verifySession",
+  "getUserInfoWithJwt",
+  "authenticateRequest",
+] as const;
+
+const lazySdkFacade = {} as SDKServer;
+for (const methodName of SDK_METHODS) {
+  Object.defineProperty(lazySdkFacade, methodName, {
+    configurable: true,
+    enumerable: true,
+    writable: true,
+    value: (...args: unknown[]) => {
+      const instance = getSdkInstance() as unknown as Record<string, (...values: unknown[]) => unknown>;
+      if (methodName === "authenticateRequest") {
+        const receiver = new Proxy(instance, {
+          get(target, property, receiverTarget) {
+            if (property === "verifySession" || property === "getUserInfoWithJwt") {
+              return Reflect.get(lazySdkFacade, property, lazySdkFacade);
+            }
+            return Reflect.get(target, property, receiverTarget);
+          },
+        });
+        return Reflect.apply(instance[methodName], receiver, args);
+      }
+      return instance[methodName](...args);
+    },
+  });
+}
+
+export const sdk = lazySdkFacade;
