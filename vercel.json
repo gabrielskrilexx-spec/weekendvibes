@@ -7,7 +7,7 @@
   "functions": {
     "api/index.ts": {
       "runtime": "nodejs22.x",
-      "includeFiles": ["server/**", "drizzle/**", "shared/**"]
+      "includeFiles": "{server/**,drizzle/**,shared/**}"
     }
   },
   "rewrites": [
