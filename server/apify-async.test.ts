@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   setIngestionRunDetails: vi.fn().mockResolvedValue(true),
   finishIngestionRun: vi.fn().mockResolvedValue(undefined),
   findIngestionRunByApifyActor: vi.fn(),
+  claimApifyDailyRequest: vi.fn().mockResolvedValue({ allowed: true, dateKey: "2026-09-18", requestCount: 1, dailyLimit: 100, persistence: true }),
 }));
 
 vi.mock("./ingestion-reports", () => ({
@@ -17,7 +18,7 @@ vi.mock("./ingestion-reports", () => ({
 }));
 
 vi.mock("./db", () => ({
-  claimApifyDailyRequest: vi.fn().mockResolvedValue({ allowed: true, dateKey: "2026-09-18", requestCount: 1, dailyLimit: 100, persistence: true }),
+  claimApifyDailyRequest: mocks.claimApifyDailyRequest,
   recordOperationalAlert: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -29,6 +30,7 @@ describe("Apify async Stories", () => {
     mocks.startIngestionRun.mockResolvedValue(42);
     mocks.linkIngestionRunToApifyActor.mockResolvedValue(true);
     mocks.setIngestionRunDetails.mockResolvedValue(true);
+    mocks.claimApifyDailyRequest.mockResolvedValue({ allowed: true, dateKey: "2026-09-18", requestCount: 1, dailyLimit: 100, persistence: true });
     process.env.APIFY_API_TOKEN = "test-token";
     process.env.SCHEDULED_TASK_ENDPOINT_BASE = "https://weekendvib-jscaalye.manus.space";
     process.env.INTERNAL_CRON_SECRET = "cron-secret";
@@ -135,6 +137,36 @@ describe("Apify async Stories", () => {
 
     expect((res as any).status).toHaveBeenCalledWith(200);
     expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, accepted: true, status: "QUEUED" }));
+    fetchMock.mockRestore();
+  });
+
+  it("retorna 503 sanitizado quando o token da Apify não está configurado", async () => {
+    delete process.env.APIFY_API_TOKEN;
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() } as never;
+
+    await asyncIngestInstagramHandler({ headers: { "x-cron-secret": "cron-secret" } } as never, res);
+
+    expect((res as any).status).toHaveBeenCalledWith(503);
+    expect((res as any).json).toHaveBeenCalledWith({
+      ok: false,
+      status: 503,
+      error: "APIFY_TOKEN_MISSING",
+      message: expect.stringContaining("não configurado"),
+    });
+  });
+
+  it("retorna SKIPPED mesmo quando o alerta do budget não pode ser persistido", async () => {
+    mocks.claimApifyDailyRequest.mockResolvedValueOnce({ allowed: false, blockedReason: "daily_limit", requestCount: 1, dailyLimit: 1, dateKey: "2026-09-30", persistence: true });
+    const alertMock = vi.mocked((await import("./db")).recordOperationalAlert);
+    alertMock.mockRejectedValueOnce(new Error("database unavailable"));
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() } as never;
+
+    await asyncIngestInstagramHandler({ headers: { "x-cron-secret": "cron-secret" } } as never, res);
+
+    expect((res as any).status).toHaveBeenCalledWith(200);
+    expect((res as any).json).toHaveBeenCalledWith({ ok: true, accepted: false, status: "SKIPPED", reason: "budget_guard" });
+    expect(fetchMock).not.toHaveBeenCalled();
     fetchMock.mockRestore();
   });
 });

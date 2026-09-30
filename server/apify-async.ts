@@ -26,7 +26,7 @@ const DATASET_TIMEOUT_MS = 30_000;
 
 type ApifyDispatchFailure = Error & {
   apifyStatus?: number;
-  apifyCode?: "APIFY_ACTOR_NOT_FOUND" | "APIFY_ACTOR_REQUEST_INVALID";
+  apifyCode?: "APIFY_ACTOR_NOT_FOUND" | "APIFY_ACTOR_REQUEST_INVALID" | "APIFY_TOKEN_MISSING" | "APIFY_BUDGET_GUARD";
   safeMessage?: string;
 };
 
@@ -44,11 +44,19 @@ function createApifyDispatchFailure(status: number, detail: string): ApifyDispat
   return error;
 }
 
+function createApifyConfigurationFailure(code: "APIFY_TOKEN_MISSING" | "APIFY_BUDGET_GUARD", message: string, status: number): ApifyDispatchFailure {
+  const error = new Error(message) as ApifyDispatchFailure;
+  error.apifyStatus = status;
+  error.apifyCode = code;
+  error.safeMessage = message;
+  return error;
+}
+
 function getApifyDispatchFailure(error: unknown) {
   const candidate = error as Partial<ApifyDispatchFailure>;
-  if (candidate.apifyStatus === 404 || candidate.apifyStatus === 400) {
+  if (candidate.apifyStatus === 404 || candidate.apifyStatus === 400 || candidate.apifyStatus === 503) {
     return {
-      status: 502,
+      status: candidate.apifyStatus === 503 ? 503 : 502,
       error: candidate.apifyCode ?? "APIFY_ACTOR_REQUEST_FAILED",
       message: candidate.safeMessage ?? "A configuração do Actor Apify não pôde ser validada.",
     } as const;
@@ -127,7 +135,7 @@ function readResource(body: unknown) {
 export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | "automatic" } = {}) {
   const token = process.env.APIFY_API_TOKEN?.trim();
   const baseUrl = getWebhookBaseUrl();
-  if (!token) throw new Error("APIFY_API_TOKEN não configurado.");
+  if (!token) throw createApifyConfigurationFailure("APIFY_TOKEN_MISSING", "APIFY_API_TOKEN não configurado; a extração foi ignorada com segurança.", 503);
   if (!baseUrl) throw new Error("SCHEDULED_TASK_ENDPOINT_BASE não configurado.");
   const budget = await claimApifyDailyRequest({ units: INSTAGRAM_TARGETS.length });
   if (!budget.allowed) {
@@ -136,8 +144,12 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
       : budget.blockedReason === "budget_unavailable"
         ? "Extração Apify bloqueada porque o orçamento persistido não está disponível; nenhuma chamada paga foi iniciada."
         : `Limite diário de chamadas Apify atingido (${budget.requestCount}/${budget.dailyLimit}) em ${budget.dateKey}; novas extrações bloqueadas até a meia-noite de Brasília.`;
-    await recordOperationalAlert({ integration: "pipeline", alertType: budget.blockedReason === "kill_switch" ? "apify_kill_switch_active" : "apify_daily_limit_reached", severity: "CRITICAL", title: "Extração Apify bloqueada", message });
-    throw new Error(message);
+    try {
+      await recordOperationalAlert({ integration: "pipeline", alertType: budget.blockedReason === "kill_switch" ? "apify_kill_switch_active" : "apify_daily_limit_reached", severity: "CRITICAL", title: "Extração Apify bloqueada", message });
+    } catch (alertError) {
+      console.warn("[Apify budget] Could not persist budget guard alert", { error: redactError(alertError) });
+    }
+    throw createApifyConfigurationFailure("APIFY_BUDGET_GUARD", message, 200);
   }
 
   const runId = await startIngestionRun({ routine: "instagram-stories-async", sourceKey: "instagram:apify:pending" });
@@ -324,13 +336,17 @@ export async function asyncIngestInstagramHandler(req: Request, res: Response) {
   } catch (error) {
     console.error("[Instagram async] Actor dispatch failed", redactError(error));
     const message = error instanceof Error ? error.message : "";
-    if (/limite diário|kill switch|orçamento persistido/i.test(message)) {
+    if (candidateIsBudgetGuard(error) || /limite diário|kill switch|orçamento persistido/i.test(message)) {
       return res.status(200).json({ ok: true, accepted: false, status: "SKIPPED", reason: "budget_guard" });
     }
     const providerFailure = getApifyDispatchFailure(error);
     if (providerFailure) return res.status(providerFailure.status).json({ ok: false, ...providerFailure });
     return res.status(502).json({ ok: false, error: "APIFY_DISPATCH_FAILED", message: "A execução foi recusada pelo provedor ou não pôde ser agendada." });
   }
+}
+
+function candidateIsBudgetGuard(error: unknown) {
+  return (error as Partial<ApifyDispatchFailure>).apifyCode === "APIFY_BUDGET_GUARD";
 }
 
 export function readApifyWebhookResourceForTest(body: unknown) { return readResource(body); }
