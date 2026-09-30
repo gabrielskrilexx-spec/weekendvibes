@@ -1,4 +1,4 @@
-import { createApp } from "../server/_core/app";
+import { createApp } from "../server/_core/app.js";
 import type { Request, Response } from "express";
 
 type ExpressApp = ReturnType<typeof createApp>;
