@@ -1,21 +1,21 @@
 import "dotenv/config";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
-import { registerStorageProxy } from "./storageProxy";
-import { appRouter } from "../routers";
-import { createContext } from "./context";
-import { ingestEventsHandler, ingestFullAgendaHandler } from "../scheduled";
-import { ingestAgentDocumentsHandler } from "../scheduled-agent";
-import { ingestInstagramHandler } from "../scheduled-instagram";
-import { asyncIngestInstagramHandler, apifyInstagramWebhookHandler, reprocessApifyStoriesDatasetHandler } from "../apify-async";
-import { heartbeatMonitorHandler } from "../scheduled-heartbeat-monitor";
-import { exportJobsRecoveryHandler } from "../scheduled-export-recovery";
-import { applySecurityHeaders, createRateLimit, createStrictCors } from "./security";
-import { registerMapsJavascriptRoute } from "../maps-javascript";
-import { registerAdminRestRoutes } from "../admin-rest";
-import { requireInternalCron } from "./cron-auth";
-import { recordOperationalAlert } from "../db";
+import { registerOAuthRoutes } from "./oauth.js";
+import { registerStorageProxy } from "./storageProxy.js";
+import { appRouter } from "../routers.js";
+import { createContext } from "./context.js";
+import { ingestEventsHandler, ingestFullAgendaHandler } from "../scheduled.js";
+import { ingestAgentDocumentsHandler } from "../scheduled-agent.js";
+import { ingestInstagramHandler } from "../scheduled-instagram.js";
+import { asyncIngestInstagramHandler, apifyInstagramWebhookHandler, reprocessApifyStoriesDatasetHandler } from "../apify-async.js";
+import { heartbeatMonitorHandler } from "../scheduled-heartbeat-monitor.js";
+import { exportJobsRecoveryHandler } from "../scheduled-export-recovery.js";
+import { applySecurityHeaders, createRateLimit, createStrictCors } from "./security.js";
+import { registerMapsJavascriptRoute } from "../maps-javascript.js";
+import { registerAdminRestRoutes } from "../admin-rest.js";
+import { requireInternalCron } from "./cron-auth.js";
+import { recordOperationalAlert } from "../db.js";
 
 export function createApp() {
   const app = express();

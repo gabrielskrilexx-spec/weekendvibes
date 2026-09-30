@@ -1,11 +1,11 @@
 import { COOKIE_NAME, getSafeReturnPath, ONE_YEAR_MS, OAUTH_STATE_COOKIE, decodeOAuthState } from "@shared/const";
 import { parse as parseCookieHeader } from "cookie";
 import type { Express, Request, Response } from "express";
-import * as db from "../db";
-import { getSessionCookieOptions } from "./cookies";
-import { sdk } from "./sdk";
-import { redactError } from "./security";
-import { ENV } from "./env";
+import * as db from "../db.js";
+import { getSessionCookieOptions } from "./cookies.js";
+import { sdk } from "./sdk.js";
+import { redactError } from "./security.js";
+import { ENV } from "./env.js";
 
 function getQueryParam(req: Request, key: string): string | undefined {
   const value = req.query[key];

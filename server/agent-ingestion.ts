@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
-import { invokeLLM } from "./_core/llm";
-import { assertEventDateIsCurrentOrFuture, saveEvent } from "./db";
-import { containsTargetVenue } from "./ingestion";
-import { buildManualReviewInputFromAgentEvent, persistManualReviewEvents } from "./manual-review";
+import { invokeLLM } from "./_core/llm.js";
+import { assertEventDateIsCurrentOrFuture, saveEvent } from "./db.js";
+import { containsTargetVenue } from "./ingestion.js";
+import { buildManualReviewInputFromAgentEvent, persistManualReviewEvents } from "./manual-review.js";
 
 export type AgentEventDocument = { sourceUrl: string; text: string; imageUrl?: string };
 

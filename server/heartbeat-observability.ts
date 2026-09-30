@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { appSettings, exportJobsAlertSettingsAudit, heartbeatExecutionEvents } from "../drizzle/schema";
-import { getDb, recordOperationalAlert } from "./db";
+import { appSettings, exportJobsAlertSettingsAudit, heartbeatExecutionEvents } from "../drizzle/schema.js";
+import { getDb, recordOperationalAlert } from "./db.js";
 
 export type HeartbeatEventType = "started" | "step" | "log" | "alert" | "completed" | "failed" | "timeout";
 export type HeartbeatExecutionStatus = "running" | "succeeded" | "failed" | "timeout" | "unknown";
@@ -205,7 +205,7 @@ export async function updateHeartbeatHealthSettings(input: Partial<Omit<Heartbea
   const now = new Date();
   const serialized = JSON.stringify({ maxDurationMs: next.maxDurationMs, failureThreshold: next.failureThreshold, cooldownHours: next.cooldownHours, minSuccessRate: next.minSuccessRate, maxP95DurationMs: next.maxP95DurationMs, minRegressionSuccessRateDrop: next.minRegressionSuccessRateDrop, maxRegressionP95IncreasePercent: next.maxRegressionP95IncreasePercent, warningRegressionPct: next.warningRegressionPct, criticalRegressionPct: next.criticalRegressionPct });
   await db.insert(appSettings).values({ key: settingKey(input.environment), value: serialized, createdAt: now, updatedAt: now }).onDuplicateKeyUpdate({ set: { value: serialized, updatedAt: now } });
-  await db.insert((await import("../drizzle/schema")).exportJobsAlertSettingsAudit).values({ environment: input.environment, previousValue: JSON.stringify(previous), nextValue: serialized, changedByOpenId: input.changedByOpenId.slice(0, 160), changedAt: now });
+  await db.insert((await import("../drizzle/schema.js")).exportJobsAlertSettingsAudit).values({ environment: input.environment, previousValue: JSON.stringify(previous), nextValue: serialized, changedByOpenId: input.changedByOpenId.slice(0, 160), changedAt: now });
   return { ...next, changedByOpenId: input.changedByOpenId.slice(0, 160), changedAt: now.toISOString() };
 }
 
@@ -306,7 +306,7 @@ export async function evaluateHeartbeatPerformance(input: {
     alerts.push("heartbeat_p95_degraded");
   }
   const evaluatedAt = new Date();
-  const { recordExportAlertEvaluationSnapshot } = await import("./filtered-story-export-jobs");
+  const { recordExportAlertEvaluationSnapshot } = await import("./filtered-story-export-jobs.js");
   await recordExportAlertEvaluationSnapshot({ environment: env, windowStartedAt: evaluatedAt, windowEndedAt: evaluatedAt, queueSize: Math.round(input.successRate * 100), previousQueueSize: Math.round(settings.minSuccessRate * 100), queueGrowth: Math.round((input.successRate - settings.minSuccessRate) * 100), expiredLeases: input.p95DurationMs, orphanedJobs: 0, growthThreshold: Math.max(1, Math.round(settings.maxP95DurationMs)), minimumQueueSize: Math.max(0, Math.round(settings.minSuccessRate * 100)), consecutiveWindows: settings.failureThreshold, severity: alerts.includes("heartbeat_period_regression") ? regressionSeverity : alerts.length ? "WARNING" : "INFO", decision: alerts.length ? "ALERT_CREATED" : "NO_ALERT", evaluatedByOpenId: "heartbeat-m2m", heartbeatExecutionId: input.heartbeatExecutionId });
   return { heartbeatExecutionId: input.heartbeatExecutionId, settings, alerts, evaluatedAt: evaluatedAt.toISOString() };
 }

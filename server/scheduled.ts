@@ -1,11 +1,11 @@
 import type { Request, Response } from "express";
-import { sdk } from "./_core/sdk";
-import * as agendaRoutine from "./agenda-routine";
-import * as failureAlerts from "./ingestion-failure-alerts";
+import { sdk } from "./_core/sdk.js";
+import * as agendaRoutine from "./agenda-routine.js";
+import * as failureAlerts from "./ingestion-failure-alerts.js";
 import { HttpError } from "@shared/_core/errors";
-import { redactError } from "./_core/security";
-import { notifyOwner } from "./_core/notification";
-import { hasValidInternalCronSecret } from "./_core/cron-auth";
+import { redactError } from "./_core/security.js";
+import { notifyOwner } from "./_core/notification.js";
+import { hasValidInternalCronSecret } from "./_core/cron-auth.js";
 
 function buildPublicAutomationSummary(result: unknown, startedAt: string, finishedAt: string) {
   const value = result && typeof result === "object" ? result as Record<string, unknown> : {};

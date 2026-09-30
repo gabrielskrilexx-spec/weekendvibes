@@ -1,6 +1,6 @@
 import type { Express } from "express";
-import { ENV } from "./env";
-import { redactError } from "./security";
+import { ENV } from "./env.js";
+import { redactError } from "./security.js";
 
 export function isSafeStorageKey(key: string) {
   return Boolean(key) && key.length <= 512 && !key.includes("..") && !/[\u0000-\u001f\u007f]/.test(key);

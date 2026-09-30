@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
-import { events, geocodingAuditLogs, geocodingJobs } from "../drizzle/schema";
-import { getDb } from "./db";
-import { buildRegionalGeocodingQuery, extractNeighborhood, geocodingAddressHash, getRegionalFallback, isWithinRegionalBounds, normalizeLocationText } from "./location";
+import { events, geocodingAuditLogs, geocodingJobs } from "../drizzle/schema.js";
+import { getDb } from "./db.js";
+import { buildRegionalGeocodingQuery, extractNeighborhood, geocodingAddressHash, getRegionalFallback, isWithinRegionalBounds, normalizeLocationText } from "./location.js";
 
 export const GEOCODING_PROVIDER = "nominatim-regional" as const;
 const ARCGIS_GEOCODING_PROVIDER = "arcgis-regional" as const;

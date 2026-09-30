@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { operationalAlerts } from "../drizzle/schema";
-import { getDb, type OperationalIntegration, type OperationalSeverity } from "./db";
+import { operationalAlerts } from "../drizzle/schema.js";
+import { getDb, type OperationalIntegration, type OperationalSeverity } from "./db.js";
 
 export type IngestionFailureInput = {
   routine: string;

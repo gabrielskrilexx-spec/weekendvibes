@@ -1,13 +1,13 @@
 import type { Request, Response } from "express";
-import { sdk } from "./_core/sdk";
-import { notifyOwner } from "./_core/notification";
-import { InstagramIntegrationFailure, isGracefullyDegradedMetaFailure, getMetaFailureStatus } from "./instagram-pipeline";
-import { OperationalIntegration } from "./db";
-import { handleIngestionFailureAlert } from "./ingestion-failure-alerts";
-import { AgendaStepFailure, runInstagramAgendaStep } from "./agenda-routine";
+import { sdk } from "./_core/sdk.js";
+import { notifyOwner } from "./_core/notification.js";
+import { InstagramIntegrationFailure, isGracefullyDegradedMetaFailure, getMetaFailureStatus } from "./instagram-pipeline.js";
+import { OperationalIntegration } from "./db.js";
+import { handleIngestionFailureAlert } from "./ingestion-failure-alerts.js";
+import { AgendaStepFailure, runInstagramAgendaStep } from "./agenda-routine.js";
 import { HttpError } from "@shared/_core/errors";
-import { redactError } from "./_core/security";
-import { hasValidInternalCronSecret } from "./_core/cron-auth";
+import { redactError } from "./_core/security.js";
+import { hasValidInternalCronSecret } from "./_core/cron-auth.js";
 
 const integrationTitles: Record<OperationalIntegration, string> = {
   meta: "Falha na API oficial do Instagram",

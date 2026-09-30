@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
 import { load } from "cheerio";
-import { invokeLLM } from "./_core/llm";
-import { assertEventDateIsCurrentOrFuture, getIngestionPayloadCache, listActiveLocationAliasValues, listIngestionSources, saveEvent, saveIngestionPayloadCache } from "./db";
-import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
-import { fetchExternal, isSandboxRestrictedError, readExternalBody, sanitizeExternalFetchError } from "./external-fetch";
-import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
+import { invokeLLM } from "./_core/llm.js";
+import { assertEventDateIsCurrentOrFuture, getIngestionPayloadCache, listActiveLocationAliasValues, listIngestionSources, saveEvent, saveIngestionPayloadCache } from "./db.js";
+import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker.js";
+import { fetchExternal, isSandboxRestrictedError, readExternalBody, sanitizeExternalFetchError } from "./external-fetch.js";
+import { shouldUseSandboxMocks } from "./ingestion-preview-settings.js";
 
 const DEFAULT_SOURCE_URLS = [
   "https://articket.com.br/e/6784/plants-happy-hour",

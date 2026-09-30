@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, like, or } from "drizzle-orm";
-import { ingestionSources, operationalAlerts } from "../drizzle/schema";
-import { getDb, resolveOperationalAlertsBefore, saoPauloDayStartUtc } from "./db";
-import { expirePastManualReviewEvents, expireStaleManualReviewHighlights } from "./manual-review";
+import { ingestionSources, operationalAlerts } from "../drizzle/schema.js";
+import { getDb, resolveOperationalAlertsBefore, saoPauloDayStartUtc } from "./db.js";
+import { expirePastManualReviewEvents, expireStaleManualReviewHighlights } from "./manual-review.js";
 
 const STALE_ALERT_TYPES = ["meta_token_expired", "apify_daily_limit_reached", "reconciliation_gap", "filtered_exceeds_read"] as const;
 const NOISY_SOURCE_NAMES = ["%curv%", "%flaming%"] as const;

@@ -1,12 +1,12 @@
 import crypto from "node:crypto";
-import { INSTAGRAM_AGENDA_SOURCE_TYPE, claimApifyDailyRequest, listActiveLocationAliasValues, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent } from "./db";
-import { fetchExternal, isSandboxRestrictedError, readExternalBody } from "./external-fetch";
-import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
-import { containsTargetVenue } from "./ingestion";
-import { parseMetaBusinessDiscovery } from "./contracts/external";
-import { resolveRegionalCoordinates } from "./geocoding";
-import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
-import { persistManualReviewEvents, type ManualReviewEventInput } from "./manual-review";
+import { INSTAGRAM_AGENDA_SOURCE_TYPE, claimApifyDailyRequest, listActiveLocationAliasValues, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent } from "./db.js";
+import { fetchExternal, isSandboxRestrictedError, readExternalBody } from "./external-fetch.js";
+import { shouldUseSandboxMocks } from "./ingestion-preview-settings.js";
+import { containsTargetVenue } from "./ingestion.js";
+import { parseMetaBusinessDiscovery } from "./contracts/external.js";
+import { resolveRegionalCoordinates } from "./geocoding.js";
+import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker.js";
+import { persistManualReviewEvents, type ManualReviewEventInput } from "./manual-review.js";
 
 const META_GRAPH_BASE_URL = "https://graph.facebook.com/v26.0";
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";

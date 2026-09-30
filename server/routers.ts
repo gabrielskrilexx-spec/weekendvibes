@@ -1,14 +1,14 @@
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { TRPCError } from "@trpc/server";
-import { getSessionCookieOptions } from "./_core/cookies";
-import { systemRouter } from "./_core/systemRouter";
+import { getSessionCookieOptions } from "./_core/cookies.js";
+import { systemRouter } from "./_core/systemRouter.js";
 import {
   adminProcedure,
   publicProcedure,
   protectedProcedure,
   router,
-} from "./_core/trpc";
+} from "./_core/trpc.js";
 import {
   deleteEvent,
   deleteEvents,
@@ -35,16 +35,16 @@ import {
   listOperationalAlerts,
   getApifyDailyUsageStatus,
   setApifyDailyRequestLimit,
-} from "./db";
-import { invokeLLM } from "./_core/llm";
-import { isSandboxRestrictedError } from "./external-fetch";
+} from "./db.js";
+import { invokeLLM } from "./_core/llm.js";
+import { isSandboxRestrictedError } from "./external-fetch.js";
 import {
   getWednesdayRoutineStatus,
   runWednesdayRoutineNow,
   getIngestionChunkSources,
   runIngestionSourceChunk,
   getInstagramManualConfigIssue,
-} from "./manual-ingestion";
+} from "./manual-ingestion.js";
 import {
   listIngestionReport,
   listIngestionLogs,
@@ -58,7 +58,7 @@ import {
   buildFilteredStoriesCsv,
   getFilteredStoryDetail,
   listFilteredStoryAuditPage,
-} from "./ingestion-reports";
+} from "./ingestion-reports.js";
 import {
   createLocationAlias,
   deleteLocationAlias,
@@ -66,14 +66,14 @@ import {
   updateLocationAlias,
   listPotentialEventCollisions,
   listCircuitBreakerStatuses,
-} from "./db";
-import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
-import { approveManualReviewEvent, approveManualReviewEvents, expireStaleManualReviewHighlights, getManualReviewMetrics, listManualReviewAuditHistory, listManualReviewEvents, rejectManualReviewEvent, rejectManualReviewEvents, undoManualReviewAction, undoManualReviewActions, updateManualReviewEvent, type ManualReviewEventInput } from "./manual-review";
-import { runDryRun } from "./dry-run";
-import { normalizeJsonForTransport } from "./transport";
-import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
-import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts, getExportJobsMetricsTrend, getExportJobAlertDetail, getExportJobsAlertSettings, updateExportJobsAlertSettings, getExportJobsTrendBucket, getExportJobsAlertEfficiency, compareExportJobsEfficiency, listExportJobsAlertSettingsHistory, recordExportAlertEvaluationSnapshot, listExportAlertEvaluationSnapshots, getExportJobsEfficiencyBucket, getExportJobsAlertEfficiencyTrend } from "./filtered-story-export-jobs";
-import { compareHeartbeatExecutionStats, evaluateHeartbeatHealth, evaluateHeartbeatPerformance, getHeartbeatExecutionStats, getHeartbeatHealthSettings, getHeartbeatExecutionSummary, listHeartbeatExecutionEvents, listHeartbeatHealthSettingsHistory, listHeartbeatIncidentsByRegression, recordHeartbeatExecutionEvent, updateHeartbeatHealthSettings, type HeartbeatEventType, type HeartbeatHealthEnvironment } from "./heartbeat-observability";
+} from "./db.js";
+import { listGeocodingSummary, processPendingGeocoding } from "./geocoding.js";
+import { approveManualReviewEvent, approveManualReviewEvents, expireStaleManualReviewHighlights, getManualReviewMetrics, listManualReviewAuditHistory, listManualReviewEvents, rejectManualReviewEvent, rejectManualReviewEvents, undoManualReviewAction, undoManualReviewActions, updateManualReviewEvent, type ManualReviewEventInput } from "./manual-review.js";
+import { runDryRun } from "./dry-run.js";
+import { normalizeJsonForTransport } from "./transport.js";
+import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings.js";
+import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts, getExportJobsMetricsTrend, getExportJobAlertDetail, getExportJobsAlertSettings, updateExportJobsAlertSettings, getExportJobsTrendBucket, getExportJobsAlertEfficiency, compareExportJobsEfficiency, listExportJobsAlertSettingsHistory, recordExportAlertEvaluationSnapshot, listExportAlertEvaluationSnapshots, getExportJobsEfficiencyBucket, getExportJobsAlertEfficiencyTrend } from "./filtered-story-export-jobs.js";
+import { compareHeartbeatExecutionStats, evaluateHeartbeatHealth, evaluateHeartbeatPerformance, getHeartbeatExecutionStats, getHeartbeatHealthSettings, getHeartbeatExecutionSummary, listHeartbeatExecutionEvents, listHeartbeatHealthSettingsHistory, listHeartbeatIncidentsByRegression, recordHeartbeatExecutionEvent, updateHeartbeatHealthSettings, type HeartbeatEventType, type HeartbeatHealthEnvironment } from "./heartbeat-observability.js";
 
 const safeFilter = (max = 120) => z.string().trim().max(max).optional();
 

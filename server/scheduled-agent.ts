@@ -1,9 +1,9 @@
 import type { Request, Response } from "express";
-import { sdk } from "./_core/sdk";
-import { ingestAgentDocuments, type AgentEventDocument } from "./agent-ingestion";
-import { archiveExpiredSoldOutEvents } from "./db";
+import { sdk } from "./_core/sdk.js";
+import { ingestAgentDocuments, type AgentEventDocument } from "./agent-ingestion.js";
+import { archiveExpiredSoldOutEvents } from "./db.js";
 import { HttpError } from "@shared/_core/errors";
-import { redactError } from "./_core/security";
+import { redactError } from "./_core/security.js";
 
 export async function ingestAgentDocumentsHandler(req: Request, res: Response) {
   const startedAt = new Date().toISOString();

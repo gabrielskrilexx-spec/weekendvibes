@@ -1,8 +1,8 @@
 import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
-import { deleteLocationAlias, deleteEvents, updateEventsPublication } from "./db";
-import { runIngestionSourceChunk } from "./manual-ingestion";
-import { sdk } from "./_core/sdk";
+import { deleteLocationAlias, deleteEvents, updateEventsPublication } from "./db.js";
+import { runIngestionSourceChunk } from "./manual-ingestion.js";
+import { sdk } from "./_core/sdk.js";
 
 const idsInput = z.object({
   ids: z.array(z.number().int().positive()).min(1).max(100),

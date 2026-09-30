@@ -1,12 +1,12 @@
 import { desc, eq, or } from "drizzle-orm";
-import { ingestionRuns } from "../drizzle/schema";
-import { getDb, recordOperationalAlert } from "./db";
-import { listHeartbeatJobs } from "./_core/heartbeat";
-import { notifyOwner } from "./_core/notification";
-import { InstagramIntegrationFailure, runInstagramPipeline } from "./instagram-pipeline";
-import { runFullAgendaRoutine, runPublicAgendaStep, runInstagramAgendaStep, type AgendaProgressUpdate } from "./agenda-routine";
-import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
-import { startAsyncApifyStoriesRun } from "./apify-async";
+import { ingestionRuns } from "../drizzle/schema.js";
+import { getDb, recordOperationalAlert } from "./db.js";
+import { listHeartbeatJobs } from "./_core/heartbeat.js";
+import { notifyOwner } from "./_core/notification.js";
+import { InstagramIntegrationFailure, runInstagramPipeline } from "./instagram-pipeline.js";
+import { runFullAgendaRoutine, runPublicAgendaStep, runInstagramAgendaStep, type AgendaProgressUpdate } from "./agenda-routine.js";
+import { finishIngestionRun, startIngestionRun } from "./ingestion-reports.js";
+import { startAsyncApifyStoriesRun } from "./apify-async.js";
 
 let activeRun: Promise<ManualRoutineResult> | null = null;
 
@@ -171,7 +171,7 @@ export async function runIngestionSourceChunk(input: { sourceKey: string; dryRun
   }
   if (!/^public:[a-z0-9_-]+$/.test(sourceKey)) throw new Error("Fonte de ingestão inválida.");
   if (input.dryRun) {
-    const { runIngestionPipeline } = await import("./ingestion");
+    const { runIngestionPipeline } = await import("./ingestion.js");
     const result = await withChunkTimeout(runIngestionPipeline({ dryRun: true, sourceKey }));
     return { sourceKey, dryRun: true, result };
   }

@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { Request, Response } from "express";
-import { hasValidInternalCronSecret } from "./_core/cron-auth";
-import { sdk } from "./_core/sdk";
+import { hasValidInternalCronSecret } from "./_core/cron-auth.js";
+import { sdk } from "./_core/sdk.js";
 import { HttpError } from "@shared/_core/errors";
-import { redactError } from "./_core/security";
-import { recoverOrphanedExportJobs, purgePersistentExportJobs, evaluateExportJobsOperationalAlerts, listPendingFileDeleteQueue } from "./filtered-story-export-jobs";
-import { evaluateHeartbeatHealth, recordHeartbeatExecutionEvent } from "./heartbeat-observability";
+import { redactError } from "./_core/security.js";
+import { recoverOrphanedExportJobs, purgePersistentExportJobs, evaluateExportJobsOperationalAlerts, listPendingFileDeleteQueue } from "./filtered-story-export-jobs.js";
+import { evaluateHeartbeatHealth, recordHeartbeatExecutionEvent } from "./heartbeat-observability.js";
 
 export async function exportJobsRecoveryHandler(req: Request, res: Response) {
   const startedAt = Date.now();

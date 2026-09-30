@@ -1,6 +1,6 @@
-import { archiveExpiredSoldOutEvents } from "./db";
-import { runIngestionPipeline } from "./ingestion";
-import { getMetaFailureStatus, isGracefullyDegradedMetaFailure, runInstagramPipeline } from "./instagram-pipeline";
+import { archiveExpiredSoldOutEvents } from "./db.js";
+import { runIngestionPipeline } from "./ingestion.js";
+import { getMetaFailureStatus, isGracefullyDegradedMetaFailure, runInstagramPipeline } from "./instagram-pipeline.js";
 
 export class AgendaStepFailure extends Error {
   constructor(
@@ -13,11 +13,11 @@ export class AgendaStepFailure extends Error {
     this.name = "AgendaStepFailure";
   }
 }
-import { processPendingGeocoding } from "./geocoding";
-import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
-import { notifyIngestionSummary } from "./ingestion-failure-alerts";
-import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
-import { reconcileIngestionResult } from "./reconciliation";
+import { processPendingGeocoding } from "./geocoding.js";
+import { finishIngestionRun, startIngestionRun } from "./ingestion-reports.js";
+import { notifyIngestionSummary } from "./ingestion-failure-alerts.js";
+import { shouldUseSandboxMocks } from "./ingestion-preview-settings.js";
+import { reconcileIngestionResult } from "./reconciliation.js";
 
 export type AgendaStepOptions = { archive?: boolean; track?: boolean; sourceKey?: string; runId?: number; trigger?: "manual" | "scheduled" };
 export type AgendaProgressUpdate = {

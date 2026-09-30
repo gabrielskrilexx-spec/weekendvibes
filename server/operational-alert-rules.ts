@@ -1,4 +1,4 @@
-import type { FreshnessState } from "./ingestion-reports";
+import type { FreshnessState } from "./ingestion-reports.js";
 
 export type AutomaticAlert = {
   integration: "pipeline";

@@ -1,4 +1,4 @@
-import { getCircuitBreakerStatus, recordCircuitFailure, recordSource403Failure, recordCircuitSuccess, resetSource403State } from "./db";
+import { getCircuitBreakerStatus, recordCircuitFailure, recordSource403Failure, recordCircuitSuccess, resetSource403State } from "./db.js";
 
 const HTTP_403_ALERT_THRESHOLD = 3;
 

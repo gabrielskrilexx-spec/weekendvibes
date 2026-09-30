@@ -7,7 +7,7 @@ import {
   getApifySyncTimeoutMs,
   runInstagramPipeline,
   type InstagramPost,
-} from "./instagram-pipeline";
+} from "./instagram-pipeline.js";
 import {
   findIngestionRunByApifyActor,
   findIngestionRunById,
@@ -15,10 +15,10 @@ import {
   linkIngestionRunToApifyActor,
   setIngestionRunDetails,
   startIngestionRun,
-} from "./ingestion-reports";
-import { hasValidInternalCronSecret } from "./_core/cron-auth";
-import { redactError } from "./_core/security";
-import { claimApifyDailyRequest, claimApifyProcessedItem, completeApifyProcessedItem, recordOperationalAlert } from "./db";
+} from "./ingestion-reports.js";
+import { hasValidInternalCronSecret } from "./_core/cron-auth.js";
+import { redactError } from "./_core/security.js";
+import { claimApifyDailyRequest, claimApifyProcessedItem, completeApifyProcessedItem, recordOperationalAlert } from "./db.js";
 
 export const DEFAULT_APIFY_STORIES_ACTOR_ID = "zaver.api~instagram-stories-highlights-scraper";
 const ACTOR_ID = process.env.APIFY_STORIES_ACTOR_ID?.trim() || DEFAULT_APIFY_STORIES_ACTOR_ID;

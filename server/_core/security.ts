@@ -1,5 +1,5 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
-import { claimRateLimitRequest } from "../db";
+import { claimRateLimitRequest } from "../db.js";
 
 const LOCAL_ORIGINS = new Set([
   "http://localhost:3000",

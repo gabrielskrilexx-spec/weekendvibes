@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { ENV } from "./_core/env";
+import { ENV } from "./_core/env.js";
 
 const MAPS_LIBRARIES = "marker,places,geocoding,geometry,routes";
 const PUBLIC_MAPS_HOST = "weekendvib-jscaalye.manus.space";

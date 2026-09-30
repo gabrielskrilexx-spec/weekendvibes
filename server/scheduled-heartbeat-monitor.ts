@@ -1,13 +1,13 @@
 import type { Request, Response } from "express";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { ingestionRuns, events } from "../drizzle/schema";
-import { deleteExpiredEvents, getDb, purgeResolvedOperationalAlerts } from "./db";
-import { sdk } from "./_core/sdk";
+import { ingestionRuns, events } from "../drizzle/schema.js";
+import { deleteExpiredEvents, getDb, purgeResolvedOperationalAlerts } from "./db.js";
+import { sdk } from "./_core/sdk.js";
 import { HttpError } from "@shared/_core/errors";
-import { evaluateCriticalFreshnessAlerts, finishIngestionRun, startIngestionRun } from "./ingestion-reports";
-import { redactError } from "./_core/security";
-import { hasValidInternalCronSecret } from "./_core/cron-auth";
-import { runPlatformSanitization } from "./platform-sanitization";
+import { evaluateCriticalFreshnessAlerts, finishIngestionRun, startIngestionRun } from "./ingestion-reports.js";
+import { redactError } from "./_core/security.js";
+import { hasValidInternalCronSecret } from "./_core/cron-auth.js";
+import { runPlatformSanitization } from "./platform-sanitization.js";
 
 const MONITORED_ROUTINES = ["full-agenda", "instagram-agenda", "scheduled-instagram"] as const;
 const MAX_HEARTBEAT_AGE_MS = 26 * 60 * 60 * 1000;

@@ -1,29 +1,29 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { extractOcrText, isGracefullyDegradedMetaFailure } from "./instagram-pipeline";
+import { extractOcrText, isGracefullyDegradedMetaFailure } from "./instagram-pipeline.js";
 import {
   ingestionRuns,
   ingestionStoryAuditLogs,
   operationalAlerts,
   ingestionSources,
-} from "../drizzle/schema";
+} from "../drizzle/schema.js";
 import {
   classifyCriticalMetaReason,
   sendCriticalMetaAlert,
-} from "./meta-alert-webhook";
-import { handleIngestionFailureAlert, notifyConsecutiveFailureWebhook, notifyPerformanceDegradationWebhook } from "./ingestion-failure-alerts";
-import { getDb, recordOperationalAlert } from "./db";
+} from "./meta-alert-webhook.js";
+import { handleIngestionFailureAlert, notifyConsecutiveFailureWebhook, notifyPerformanceDegradationWebhook } from "./ingestion-failure-alerts.js";
+import { getDb, recordOperationalAlert } from "./db.js";
 import {
   buildFreshnessCriticalAlert,
   buildReconciliationDivergenceAlert,
   buildStructuredPersistenceMismatchAlert,
-} from "./operational-alert-rules";
+} from "./operational-alert-rules.js";
 import {
   InstagramIntegrationFailure,
   getMetaFailureStatus,
-} from "./instagram-pipeline";
-import { listHeartbeatJobs } from "./_core/heartbeat";
-import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
+} from "./instagram-pipeline.js";
+import { listHeartbeatJobs } from "./_core/heartbeat.js";
+import { shouldUseSandboxMocks } from "./ingestion-preview-settings.js";
 
 export function isCriticalIngestionFailure(details: unknown) {
   const text =
@@ -1743,7 +1743,7 @@ export async function reprocessIngestionSource(
     );
     if (running) throw new Error("Essa fonte já está em processamento");
     if (sourceKey === "instagram") {
-      const { runInstagramAgendaStep } = await import("./agenda-routine");
+      const { runInstagramAgendaStep } = await import("./agenda-routine.js");
       // O registro precisa existir antes do ACK. Em ambientes serverless, lançar
       // apenas o worker em background antes de inserir o run pode encerrar o
       // processo após a resposta e perder a auditoria da execução.
@@ -1779,7 +1779,7 @@ export async function reprocessIngestionSource(
       });
     }
     runId = await startIngestionRun({ routine: "manual-reprocess", sourceKey });
-    const { runPublicAgendaStep } = await import("./agenda-routine");
+    const { runPublicAgendaStep } = await import("./agenda-routine.js");
     const result = await runPublicAgendaStep();
     const pipeline =
       (result as { result?: Record<string, unknown> }).result ?? {};

@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, isNull, isNotNull, lte, lt, sql } from "drizzle-orm";
-import { events, manualReviewAuditLogs, manualReviewEvents } from "../drizzle/schema";
-import { getDb, saoPauloDayStartUtc, saveEvent } from "./db";
+import { events, manualReviewAuditLogs, manualReviewEvents } from "../drizzle/schema.js";
+import { getDb, saoPauloDayStartUtc, saveEvent } from "./db.js";
 
 export type ManualReviewStatus = "pending" | "approved" | "rejected" | "expired";
 

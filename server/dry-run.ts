@@ -1,5 +1,5 @@
-import { runIngestionPipeline, sanitizeFetchFailure, type IngestionSourceReport } from "./ingestion";
-import { runInstagramPipeline } from "./instagram-pipeline";
+import { runIngestionPipeline, sanitizeFetchFailure, type IngestionSourceReport } from "./ingestion.js";
+import { runInstagramPipeline } from "./instagram-pipeline.js";
 
 export type DryRunSourceReport = IngestionSourceReport & { routine: "public-agenda" | "instagram-agenda" };
 
