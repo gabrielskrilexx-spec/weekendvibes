@@ -13,6 +13,7 @@ vi.mock("@/lib/trpc", () => ({
       statuses: { useQuery: () => ({ data: [
         { sourceKey: "instagram:ativahouse", name: "Ativa House", kind: "instagram", circuitState: "open", circuitFailureCount: 3, circuitOpenedAt: new Date("2026-08-22T12:00:00Z"), circuitNextAttemptAt: new Date("2026-08-23T06:00:00Z"), circuitLastError: "HTTP 403: perfil pausado", lastHttpStatus: 403, lastFailureReason: "403 - Proibido", lastStatus: "failed", lastMessage: "HTTP 403" },
         { sourceKey: "public:ingresse", name: "Ingresse", kind: "public", circuitState: "half_open", circuitFailureCount: 3, circuitOpenedAt: new Date("2026-08-22T12:00:00Z"), circuitNextAttemptAt: new Date("2026-08-23T06:00:00Z"), circuitLastError: null, lastHttpStatus: 502, lastFailureReason: "502 - Erro do provedor", lastStatus: "failed", lastMessage: "HTTP 502" },
+        { sourceKey: "instagram:mimadafesta", name: "Mimada Festa", kind: "instagram", circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: "HTTP 400: Token da Meta Expirado", lastHttpStatus: 400, lastFailureReason: "Token da Meta Expirado — atualize META_INSTAGRAM_TOKEN", lastStatus: "failed", lastMessage: "Token da Meta Expirado" },
       ], isLoading: false, isError: false, isFetching: false, refetch }) },
       resetActive: { useMutation: () => ({ isPending: false, mutate: reset }) },
       reactivateAndTest: { useMutation: () => ({ isPending: false, mutate: reactivate }) },
@@ -52,6 +53,8 @@ describe("AdminCircuitBreakerPanel", () => {
     expect(rendered).toContain("Diagnóstico rápido");
     expect(rendered).toContain("403 - Proibido");
     expect(rendered).toContain("502 - Erro do provedor");
+    expect(rendered).toContain("Atualize a variável");
+    expect(rendered).toContain("META_INSTAGRAM_TOKEN");
   });
 
   it("expõe explicações acessíveis para Open e Half-Open", async () => {

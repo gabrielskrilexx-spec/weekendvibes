@@ -63,7 +63,7 @@ export async function ingestInstagramHandler(req: Request, res: Response) {
       : undefined;
     if (metaStatus === 400) {
       try {
-        await handleIngestionFailureAlert({ routine: "instagram-agenda", sourceKey: "instagram", integration: "meta", status: 400, errorCode: "200", message: "A API da Meta rejeitou credenciais ou permissões.", severity: "CRITICAL" }, { notify: async notification => { await notifyOwner({ title: notification.title, content: notification.message }); } });
+        await handleIngestionFailureAlert({ routine: "instagram-agenda", sourceKey: "instagram", integration: "meta", status: 400, errorCode: "META_TOKEN_EXPIRED", alertType: "meta_token_expired", message: "Token da Meta Expirado — atualize a variável META_INSTAGRAM_TOKEN. A rotina pode continuar em modo degradado.", severity: "WARNING" }, { notify: async notification => { await notifyOwner({ title: notification.title, content: notification.message }); } });
       } catch (alertError) {
         console.warn("[Instagram] Could not persist Meta credential alert", redactError(alertError));
       }

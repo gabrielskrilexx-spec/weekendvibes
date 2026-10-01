@@ -457,6 +457,7 @@ function circuitFailureThreshold() {
 
 function sanitizedFailureReason(status: number | undefined, message: string) {
   const normalized = message.replace(/(token|secret|key|cookie|authorization)=[^\s&]+/gi, "$1=[redacted]").replace(/\s+/g, " ").trim();
+  if (status === 400 && /Token da Meta Expirado|META_INSTAGRAM_TOKEN|Meta Graph API.*credencial/i.test(normalized)) return "Token da Meta Expirado — atualize META_INSTAGRAM_TOKEN";
   if (status === 401 || /session|cookie|credential|authentication/i.test(normalized)) return "Falha de Sessão";
   if (status === 403) return "403 - Proibido";
   if (status !== undefined) return `${status} - ${status >= 500 ? "Erro do provedor" : "Falha HTTP"}`;

@@ -7,7 +7,8 @@ function severeFailureThreshold() {
   return Number.isFinite(configured) ? Math.min(10, Math.max(2, Math.trunc(configured))) : 3;
 }
 
-function isSevereFailure(input: { status?: number; message: string }) {
+export function isSevereCircuitFailure(input: { status?: number; message: string }) {
+  if (input.status === 400 && /Token da Meta Expirado|META_INSTAGRAM_TOKEN|Meta Graph API.*credencial/i.test(input.message)) return false;
   return input.status === 401 || input.status === 403 || /session|cookie|credential|authentication/i.test(input.message);
 }
 
@@ -78,7 +79,7 @@ export async function allowSourceAttempt(sourceKey: string) {
 
 export async function registerSourceFailure(input: { sourceKey: string; routine: string; status?: number; message: string }) {
   const is403 = input.status === 403;
-  const severe = isSevereFailure(input);
+  const severe = isSevereCircuitFailure(input);
   const now = new Date();
   const source403 = is403
     ? await recordSource403Failure(input.sourceKey, severeFailureThreshold(), now)

@@ -640,7 +640,7 @@ export async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, acc
         if (source && !options.dryRun) await registerSourceFailure({ sourceKey: source.sourceKey, routine: "instagram-agenda", status: response.status, message });
         if (!options.dryRun) {
           try {
-            await recordOperationalAlert({ integration: "meta", alertType: "meta_token_expired", severity: "CRITICAL", title: "Token da Meta expirado", message });
+            await recordOperationalAlert({ integration: "meta", alertType: "meta_token_expired", severity: "WARNING", title: "Token da Meta expirado", message: `${message}. A ingestão continuará em modo degradado e a etapa Apify poderá prosseguir.` });
           } catch (alertError) {
             console.warn("[Instagram] Could not persist Meta token alert", { message: normalizeDiagnosticText(alertError instanceof Error ? alertError.message : alertError, 160) });
           }

@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildCircuitOpenedPayload, CircuitBreakerMachine, notifyCircuitOpened } from "./circuit-breaker";
+import { buildCircuitOpenedPayload, CircuitBreakerMachine, isSevereCircuitFailure, notifyCircuitOpened } from "./circuit-breaker";
 
 describe("Circuit Breaker", () => {
+  it("keeps an expired Meta token as an operational warning, while preserving severe provider blocks", () => {
+    expect(isSevereCircuitFailure({ status: 400, message: "Token da Meta Expirado — atualize META_INSTAGRAM_TOKEN" })).toBe(false);
+    expect(isSevereCircuitFailure({ status: 403, message: "Fonte proibida pelo provedor" })).toBe(true);
+    expect(isSevereCircuitFailure({ status: 502, message: "Erro do provedor" })).toBe(false);
+  });
+
   it("opens after three failures, blocks during cooldown, then enters half-open", () => {
     const start = new Date("2026-08-22T12:00:00.000Z");
     const machine = new CircuitBreakerMachine(3, 12 * 60 * 60 * 1000);
