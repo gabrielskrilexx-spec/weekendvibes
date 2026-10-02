@@ -3,7 +3,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { ingestionRuns, events } from "../drizzle/schema.js";
 import { deleteExpiredEvents, getDb, purgeResolvedOperationalAlerts } from "./db.js";
 import { sdk } from "./_core/sdk.js";
-import { HttpError } from "@shared/_core/errors";
+import { HttpError } from "../shared/_core/errors.js";
 import { evaluateCriticalFreshnessAlerts, finishIngestionRun, startIngestionRun } from "./ingestion-reports.js";
 import { redactError } from "./_core/security.js";
 import { hasValidInternalCronSecret } from "./_core/cron-auth.js";

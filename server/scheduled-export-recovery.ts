@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Request, Response } from "express";
 import { hasValidInternalCronSecret } from "./_core/cron-auth.js";
 import { sdk } from "./_core/sdk.js";
-import { HttpError } from "@shared/_core/errors";
+import { HttpError } from "../shared/_core/errors.js";
 import { redactError } from "./_core/security.js";
 import { recoverOrphanedExportJobs, purgePersistentExportJobs, evaluateExportJobsOperationalAlerts, listPendingFileDeleteQueue } from "./filtered-story-export-jobs.js";
 import { evaluateHeartbeatHealth, recordHeartbeatExecutionEvent } from "./heartbeat-observability.js";

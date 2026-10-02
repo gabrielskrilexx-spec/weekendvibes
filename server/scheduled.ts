@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { sdk } from "./_core/sdk.js";
 import * as agendaRoutine from "./agenda-routine.js";
 import * as failureAlerts from "./ingestion-failure-alerts.js";
-import { HttpError } from "@shared/_core/errors";
+import { HttpError } from "../shared/_core/errors.js";
 import { redactError } from "./_core/security.js";
 import { notifyOwner } from "./_core/notification.js";
 import { hasValidInternalCronSecret } from "./_core/cron-auth.js";

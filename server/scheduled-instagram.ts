@@ -5,7 +5,7 @@ import { InstagramIntegrationFailure, isGracefullyDegradedMetaFailure, getMetaFa
 import { OperationalIntegration } from "./db.js";
 import { handleIngestionFailureAlert } from "./ingestion-failure-alerts.js";
 import { AgendaStepFailure, runInstagramAgendaStep } from "./agenda-routine.js";
-import { HttpError } from "@shared/_core/errors";
+import { HttpError } from "../shared/_core/errors.js";
 import { redactError } from "./_core/security.js";
 import { hasValidInternalCronSecret } from "./_core/cron-auth.js";
 
