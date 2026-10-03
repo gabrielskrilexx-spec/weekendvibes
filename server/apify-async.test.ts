@@ -22,7 +22,7 @@ vi.mock("./db", () => ({
   recordOperationalAlert: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { apifyInstagramWebhookHandler, asyncIngestInstagramHandler, getConfiguredApifyStoriesActorId, startAsyncApifyStoriesRun } from "./apify-async";
+import { apifyInstagramWebhookHandler, asyncIngestInstagramHandler, getConfiguredApifyStoriesActorId, serializeApifyWorkerErrorForTest, startAsyncApifyStoriesRun } from "./apify-async";
 
 describe("Apify async Stories", () => {
   beforeEach(() => {
@@ -34,6 +34,15 @@ describe("Apify async Stories", () => {
     process.env.APIFY_API_TOKEN = "test-token";
     process.env.SCHEDULED_TASK_ENDPOINT_BASE = "https://weekendvib-jscaalye.manus.space";
     process.env.INTERNAL_CRON_SECRET = "cron-secret";
+  });
+
+  it("preserva mensagem e stack do worker sem expor tokens ou URLs", () => {
+    const serialized = serializeApifyWorkerErrorForTest(new Error("Falha em https://api.example.test/items?token=secret-token"));
+    expect(serialized.name).toBe("Error");
+    expect(serialized.message).toContain("Falha em [url]");
+    expect(serialized.message).not.toContain("secret-token");
+    expect(serialized.stack).toContain("Error: Falha em [url]");
+    expect(serialized.stack).not.toContain("secret-token");
   });
 
   it("inicia o Actor sem esperar o dataset e vincula o ingestionRun", async () => {

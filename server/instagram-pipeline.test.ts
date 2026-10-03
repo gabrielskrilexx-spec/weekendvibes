@@ -173,8 +173,8 @@ describe("Instagram weekend pipeline", () => {
   });
 
   it("maps the documented Zaver media fields into the internal Story contract", () => {
-    const [item] = normalizeInstagramMediaPayload([{ source_username: "meulugar.bar", item_type: "story", media_type: "video", video_url: "https://cdn.example.com/story.mp4", image_url: "https://cdn.example.com/story.jpg", taken_at: "2026-09-16T20:00:00.000Z", expiring_at: "2026-09-17T20:00:00.000Z", accessibility_caption: "Agenda 22h" }]);
-    expect(item).toMatchObject({ username: "meulugar.bar", mediaType: "story", imageUrl: "https://cdn.example.com/story.jpg", postedAt: "2026-09-16T20:00:00.000Z", expiresAt: "2026-09-17T20:00:00.000Z", ocrText: "Agenda 22h", isVideo: true });
+    const [item] = normalizeInstagramMediaPayload([{ media_id: "zaver-media-1", source_username: "meulugar.bar", item_type: "story", media_type: "video", video_url: "https://cdn.example.com/story.mp4", image_url: "https://cdn.example.com/story.jpg", taken_at: "2026-09-16T20:00:00.000Z", expiring_at: "2026-09-17T20:00:00.000Z", accessibility_caption: "Agenda 22h" }]);
+    expect(item).toMatchObject({ id: "zaver-media-1", username: "meulugar.bar", mediaType: "story", imageUrl: "https://cdn.example.com/story.jpg", postedAt: "2026-09-16T20:00:00.000Z", expiresAt: "2026-09-17T20:00:00.000Z", ocrText: "Agenda 22h", isVideo: true });
   });
 
   it("filters Highlights to agenda titles and normalizes Story media", () => {

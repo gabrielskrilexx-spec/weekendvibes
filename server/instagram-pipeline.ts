@@ -218,9 +218,11 @@ export function normalizeInstagramMediaItem(item: Record<string, unknown>, fallb
   const highlightTitle = String(item.highlightTitle ?? item.highlight_title ?? highlight?.title ?? item.title ?? "");
   if (!imageUrl && !item.caption && !item.text) return null;
   if (normalizedType === "highlight" && !isAgendaHighlightTitle(highlightTitle)) return null;
+  const providerId = item.id ?? item.media_id;
+  const providerShortCode = item.shortCode ?? item.short_code;
   return {
-    id: item.id ? String(item.id) : undefined,
-    shortCode: item.shortCode ? String(item.shortCode) : undefined,
+    id: providerId !== undefined && providerId !== null && String(providerId) !== "" ? String(providerId) : undefined,
+    shortCode: providerShortCode !== undefined && providerShortCode !== null && String(providerShortCode) !== "" ? String(providerShortCode) : undefined,
     url: item.url ? String(item.url) : username ? `https://www.instagram.com/${username.replace(/^@/, "")}/` : undefined,
     permalink: item.permalink ? String(item.permalink) : undefined,
     caption: item.caption ? String(item.caption) : undefined,

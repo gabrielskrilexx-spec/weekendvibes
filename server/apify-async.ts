@@ -118,6 +118,26 @@ function readApifyErrorDetail(payload: Record<string, unknown>) {
   return candidates.find((value): value is string => typeof value === "string" && value.trim().length > 0)?.trim().slice(0, 240) ?? "";
 }
 
+function sanitizeWorkerErrorText(value: unknown, maxLength: number) {
+  return String(value ?? "Falha não especificada")
+    .replace(/https?:\/\/[^\s)]+/gi, "[url]")
+    .replace(/Bearer\s+[^\s]+/gi, "Bearer [redacted]")
+    .replace(/(token|cookie|authorization|x-cron-secret)=?[^\s&]+/gi, "$1=[redacted]")
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+export function serializeApifyWorkerErrorForTest(error: unknown) {
+  const candidate = error instanceof Error ? error : new Error(String(error ?? "Falha não especificada"));
+  return {
+    name: sanitizeWorkerErrorText(candidate.name || "Error", 80),
+    message: sanitizeWorkerErrorText(candidate.message, 1000),
+    stack: candidate.stack ? sanitizeWorkerErrorText(candidate.stack, 3000) : undefined,
+  };
+}
+
 function isSessionCredentialFailure(status: number, detail: string) {
   return [401, 403].includes(status) && /cookie|session|login|checkpoint|authentication|unauthorized|forbidden|token/i.test(detail);
 }
@@ -301,8 +321,9 @@ export async function apifyInstagramWebhookHandler(req: Request, res: Response) 
   const datasetId = resource.defaultDatasetId || String(details.datasetId ?? "");
   if (!tokenValue || !datasetId) return res.status(500).json({ ok: false, error: "DATASET_REFERENCE_MISSING" });
   void processDataset(run, datasetId, resource.id, tokenValue).catch(async error => {
-    console.error("[Apify webhook] dataset worker failed", { runId: run.id, actorRunId: resource.id, error: redactError(error) });
-    await finishIngestionRun(run.id, { status: "failed", failedCount: 1, httpStatus: 500, details: { provider: "apify", actorRunId: resource.id, error: "DATASET_WORKER_FAILED" } });
+    const originalError = serializeApifyWorkerErrorForTest(error);
+    console.error("[Apify webhook] dataset worker failed", { runId: run.id, actorRunId: resource.id, error: redactError(error), original_error: originalError });
+    await finishIngestionRun(run.id, { status: "failed", failedCount: 1, httpStatus: 500, details: { provider: "apify", actorRunId: resource.id, error: "DATASET_WORKER_FAILED", original_error: originalError } });
   });
   return res.status(202).json({ ok: true, accepted: true, status: "PROCESSING" });
 }
@@ -323,8 +344,9 @@ export async function reprocessApifyStoriesDatasetHandler(req: Request, res: Res
   const run = await findIngestionRunById(runId);
   if (!run) return res.status(500).json({ ok: false, error: "INGESTION_RUN_LOOKUP_FAILED" });
   void processDataset(run, datasetId, actorRunId, token).catch(async error => {
-    console.error("[Apify reprocess] dataset worker failed", { runId, actorRunId, error: redactError(error) });
-    await finishIngestionRun(runId, { status: "failed", failedCount: 1, httpStatus: 500, details: { provider: "apify", actorRunId, datasetId, error: "DATASET_WORKER_FAILED" } });
+    const originalError = serializeApifyWorkerErrorForTest(error);
+    console.error("[Apify reprocess] dataset worker failed", { runId, actorRunId, error: redactError(error), original_error: originalError });
+    await finishIngestionRun(runId, { status: "failed", failedCount: 1, httpStatus: 500, details: { provider: "apify", actorRunId, datasetId, error: "DATASET_WORKER_FAILED", original_error: originalError } });
   });
   return res.status(202).json({ ok: true, accepted: true, runId, actorRunId, datasetId, status: "PROCESSING" });
 }
