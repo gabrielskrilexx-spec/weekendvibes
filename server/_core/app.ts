@@ -22,7 +22,7 @@ export function createApp() {
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
   app.use(createStrictCors());
-  app.use((req, res, next) => {
+  app.use((req: Request, res: Response, next: NextFunction) => {
     applySecurityHeaders(req, res);
     next();
   });
@@ -83,7 +83,7 @@ export function createApp() {
   app.use("/api/scheduled", requirePostForScheduledRoute);
   app.use("/api/v2/ingestion/instagram/async", requirePostForScheduledRoute);
 
-  app.post("/api/scheduled/health", noStoreScheduledResponse, requireInternalCron, (_req, res) => res.json({ ok: true }));
+  app.post("/api/scheduled/health", noStoreScheduledResponse, requireInternalCron, (_req: Request, res: Response) => res.json({ ok: true }));
   app.post("/api/scheduled/ingest-events", noStoreScheduledResponse, requireInternalCron, ingestEventsHandler);
   app.post("/api/scheduled/ingest-full-agenda", noStoreScheduledResponse, requireInternalCron, ingestFullAgendaHandler);
   app.post("/api/scheduled/ingest-event-documents", noStoreScheduledResponse, requireInternalCron, ingestAgentDocumentsHandler);
