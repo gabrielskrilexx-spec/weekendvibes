@@ -614,7 +614,19 @@ export async function listTodayEvents(options: { size?: number } = {}) {
   return listEvents({ size: options.size ?? 12, windowStartUtc: window.windowStartUtc, windowEndUtc: window.windowEndUtc, activeAtUtc: window.activeAtUtc });
 }
 
-export async function listEvents(filters: { day?: string; date?: string; startDate?: string; endDate?: string; timeFrom?: string; timeTo?: string; city?: string; category?: string; genre?: string; venue?: string; neighborhood?: string; minPriceCents?: number; maxPriceCents?: number; page?: number; size?: number; windowStartUtc?: Date; windowEndUtc?: Date; activeAtUtc?: Date } = {}) {
+const PUBLIC_EVENT_CACHE_TTL_MS = 15_000;
+const publicEventCache = new Map<string, { expiresAt: number; rows: Event[] }>();
+
+type EventListFilters = { day?: string; date?: string; startDate?: string; endDate?: string; timeFrom?: string; timeTo?: string; city?: string; category?: string; genre?: string; venue?: string; neighborhood?: string; minPriceCents?: number; maxPriceCents?: number; page?: number; size?: number; windowStartUtc?: Date; windowEndUtc?: Date; activeAtUtc?: Date };
+
+function publicEventCacheKey(filters: EventListFilters) {
+  const relevant = Object.entries(filters)
+    .filter(([, value]) => value !== undefined)
+    .sort(([left], [right]) => left.localeCompare(right));
+  return JSON.stringify(relevant, (_, value) => value instanceof Date ? value.toISOString() : value);
+}
+
+export async function listEvents(filters: EventListFilters = {}) {
   const db = await getDb();
   if (!db) return [];
   const dayStartUtc = filters.windowStartUtc ?? saoPauloDayStartUtc();
@@ -637,7 +649,19 @@ export async function listEvents(filters: { day?: string; date?: string; startDa
   if (filters.day === "sabado") conditions.push(sql`DAYOFWEEK(${events.eventDate}) = 7`);
   const page = Math.max(filters.page ?? 1, 1);
   const size = Math.min(Math.max(filters.size ?? 24, 1), 100);
-  return db.select().from(events).where(and(...conditions)).orderBy(asc(events.eventDate)).limit(size).offset((page - 1) * size);
+  const cacheable = process.env.NODE_ENV === "production";
+  const cacheKey = cacheable ? publicEventCacheKey({ ...filters, page, size }) : "";
+  if (cacheable) {
+    const cached = publicEventCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.rows;
+    if (cached) publicEventCache.delete(cacheKey);
+  }
+  const rows = await db.select().from(events).where(and(...conditions)).orderBy(asc(events.eventDate)).limit(size).offset((page - 1) * size);
+  if (cacheable) {
+    publicEventCache.set(cacheKey, { expiresAt: Date.now() + PUBLIC_EVENT_CACHE_TTL_MS, rows });
+    if (publicEventCache.size > 128) publicEventCache.delete(publicEventCache.keys().next().value!);
+  }
+  return rows;
 }
 
 export async function listFavoriteEventIds(userId: number) {
