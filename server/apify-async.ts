@@ -1,5 +1,6 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Request, Response } from "express";
+import * as Sentry from "@sentry/node";
 import {
   buildInstagramStoriesScraperPayload,
   INSTAGRAM_TARGETS,
@@ -136,6 +137,14 @@ export function serializeApifyWorkerErrorForTest(error: unknown) {
     message: sanitizeWorkerErrorText(candidate.message, 1000),
     stack: candidate.stack ? sanitizeWorkerErrorText(candidate.stack, 3000) : undefined,
   };
+}
+
+async function reportApifyWorkerException(error: unknown, context: { operation: string; runId: number | null; actorRunId: string }) {
+  Sentry.captureException(error, {
+    tags: { worker: "apify-instagram", operation: context.operation },
+    extra: { runId: context.runId ?? undefined, actorRunId: context.actorRunId },
+  });
+  await Sentry.flush(2_000).catch(() => undefined);
 }
 
 function isSessionCredentialFailure(status: number, detail: string) {
@@ -323,6 +332,7 @@ export async function apifyInstagramWebhookHandler(req: Request, res: Response) 
   void processDataset(run, datasetId, resource.id, tokenValue).catch(async error => {
     const originalError = serializeApifyWorkerErrorForTest(error);
     console.error("[Apify webhook] dataset worker failed", { runId: run.id, actorRunId: resource.id, error: redactError(error), original_error: originalError });
+    await reportApifyWorkerException(error, { operation: "process_dataset", runId: run.id, actorRunId: resource.id });
     await finishIngestionRun(run.id, { status: "failed", failedCount: 1, httpStatus: 500, details: { provider: "apify", actorRunId: resource.id, error: "DATASET_WORKER_FAILED", original_error: originalError } });
   });
   return res.status(202).json({ ok: true, accepted: true, status: "PROCESSING" });
@@ -346,6 +356,7 @@ export async function reprocessApifyStoriesDatasetHandler(req: Request, res: Res
   void processDataset(run, datasetId, actorRunId, token).catch(async error => {
     const originalError = serializeApifyWorkerErrorForTest(error);
     console.error("[Apify reprocess] dataset worker failed", { runId, actorRunId, error: redactError(error), original_error: originalError });
+    await reportApifyWorkerException(error, { operation: "reprocess_dataset", runId, actorRunId });
     await finishIngestionRun(runId, { status: "failed", failedCount: 1, httpStatus: 500, details: { provider: "apify", actorRunId, datasetId, error: "DATASET_WORKER_FAILED", original_error: originalError } });
   });
   return res.status(202).json({ ok: true, accepted: true, runId, actorRunId, datasetId, status: "PROCESSING" });
@@ -361,6 +372,7 @@ export async function asyncIngestInstagramHandler(req: Request, res: Response) {
     if (candidateIsBudgetGuard(error) || /limite diário|kill switch|orçamento persistido/i.test(message)) {
       return res.status(200).json({ ok: true, accepted: false, status: "SKIPPED", reason: "budget_guard" });
     }
+    await reportApifyWorkerException(error, { operation: "dispatch_actor", runId: null, actorRunId: "" });
     const providerFailure = getApifyDispatchFailure(error);
     if (providerFailure) return res.status(providerFailure.status).json({ ok: false, ...providerFailure });
     return res.status(502).json({ ok: false, error: "APIFY_DISPATCH_FAILED", message: "A execução foi recusada pelo provedor ou não pôde ser agendada." });

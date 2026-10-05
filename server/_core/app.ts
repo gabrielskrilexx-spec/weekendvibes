@@ -1,5 +1,7 @@
 import "dotenv/config";
 import express, { type NextFunction, type Request, type Response } from "express";
+import * as Sentry from "@sentry/node";
+import { nodeProfilingIntegration } from "@sentry/profiling-node";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth.js";
 import { registerStorageProxy } from "./storageProxy.js";
@@ -17,7 +19,22 @@ import { registerAdminRestRoutes } from "../admin-rest.js";
 import { requireInternalCron } from "./cron-auth.js";
 import { recordOperationalAlert } from "../db.js";
 
+let sentryInitialized = false;
+
+function initializeSentry() {
+  const dsn = process.env.SENTRY_DSN?.trim();
+  if (!dsn || sentryInitialized) return;
+  Sentry.init({
+    dsn,
+    environment: process.env.NODE_ENV ?? "development",
+    integrations: [nodeProfilingIntegration()],
+    tracesSampleRate: 0.1,
+  });
+  sentryInitialized = true;
+}
+
 export function createApp() {
+  initializeSentry();
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
@@ -99,6 +116,8 @@ export function createApp() {
     router: appRouter,
     createContext,
   }));
+
+  if (sentryInitialized) Sentry.setupExpressErrorHandler(app);
 
   return app;
 }
