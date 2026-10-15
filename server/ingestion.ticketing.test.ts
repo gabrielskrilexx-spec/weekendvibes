@@ -50,13 +50,13 @@ describe("adapters de ticketeiras oficiais", () => {
     expect(extractPublicEventLinks(html, "https://blackpass.com.br/events")).toEqual(["https://blackpass.com.br/event/700", "https://blackpass.com.br/event/692"]);
   });
 
-  it("mantém o timeout do Ingresse curto e limitado para falhar rápido", () => {
+  it("mantém o timeout do Ingresse limitado para tolerar respostas lentas", () => {
     const previous = process.env.INGRESSE_FETCH_TIMEOUT_MS;
     try {
       delete process.env.INGRESSE_FETCH_TIMEOUT_MS;
-      expect(getIngresseFetchTimeoutMs()).toBe(6_000);
+      expect(getIngresseFetchTimeoutMs()).toBe(15_000);
       process.env.INGRESSE_FETCH_TIMEOUT_MS = "25000";
-      expect(getIngresseFetchTimeoutMs()).toBe(10_000);
+      expect(getIngresseFetchTimeoutMs()).toBe(20_000);
       process.env.INGRESSE_FETCH_TIMEOUT_MS = "1000";
       expect(getIngresseFetchTimeoutMs()).toBe(3_000);
     } finally {

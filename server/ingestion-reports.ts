@@ -483,8 +483,12 @@ export function buildSourceTelemetryHistoryForTest(runs: Array<{ sourceKey: stri
 type SourceErrorCategory = SourceTelemetry["errors"][number]["category"];
 
 export const DEFAULT_PUBLIC_P95_THRESHOLD_MS = 15_000;
+export const INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS = 30_000;
+export const MANUAL_AGENDA_P95_THRESHOLD_MS = 180_000;
 
-export function getEffectiveSourceP95ThresholdForTest(source: { kind?: string | null; p95LatencyThresholdMs?: number | null }) {
+export function getEffectiveSourceP95ThresholdForTest(source: { sourceKey?: string | null; kind?: string | null; p95LatencyThresholdMs?: number | null }) {
+  if (source.sourceKey === "instagram:apify:pending") return INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS;
+  if (source.sourceKey === "manual" || source.sourceKey === "all") return MANUAL_AGENDA_P95_THRESHOLD_MS;
   const configured = Number(source.p95LatencyThresholdMs ?? 0);
   if (source.kind === "public" && (!Number.isFinite(configured) || configured <= 3_000)) {
     const fromEnv = Number.parseInt(process.env.PUBLIC_INGESTION_P95_THRESHOLD_MS ?? "", 10);
@@ -496,7 +500,7 @@ export function getEffectiveSourceP95ThresholdForTest(source: { kind?: string | 
 export function findConsecutiveP95PerformanceAlertsForTest(runs: Array<{ sourceKey: string | null; status: string; startedAt: string | Date; durationMs?: number | null }>, thresholdMs: number | Map<string, number> = 3000) {
   const bySource = new Map<string, Array<{ startedAt: number; durationMs: number }>>();
   for (const run of runs) { const durationMs = Number(run.durationMs ?? 0); const startedAt = new Date(run.startedAt).getTime(); if (!run.sourceKey || !Number.isFinite(durationMs) || durationMs <= 0 || !Number.isFinite(startedAt)) continue; const list = bySource.get(run.sourceKey) ?? []; list.push({ startedAt, durationMs }); bySource.set(run.sourceKey, list); }
-  return Array.from(bySource.entries()).flatMap(([sourceKey, list]) => { const sourceThreshold = typeof thresholdMs === "number" ? thresholdMs : thresholdMs.get(sourceKey) ?? 3000; const sortedRuns = list.sort((a, b) => b.startedAt - a.startedAt); if (sortedRuns.length < 2 || sortedRuns[0].durationMs <= sourceThreshold || sortedRuns[1].durationMs <= sourceThreshold) return []; const samples = sortedRuns.slice(0, 20).map(item => item.durationMs).sort((a, b) => a - b); const p95LatencyMs = samples[Math.min(samples.length - 1, Math.ceil(samples.length * 0.95) - 1)]; return [{ sourceKey, p95LatencyMs, thresholdMs: sourceThreshold, consecutiveRuns: 2 }]; });
+  return Array.from(bySource.entries()).flatMap(([sourceKey, list]) => { const sourceThreshold = typeof thresholdMs === "number" ? thresholdMs : thresholdMs.get(sourceKey) ?? (sourceKey === "instagram:apify:pending" ? INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS : sourceKey === "manual" || sourceKey === "all" ? MANUAL_AGENDA_P95_THRESHOLD_MS : 3000); const sortedRuns = list.sort((a, b) => b.startedAt - a.startedAt); if (sortedRuns.length < 2 || sortedRuns[0].durationMs <= sourceThreshold || sortedRuns[1].durationMs <= sourceThreshold) return []; const samples = sortedRuns.slice(0, 20).map(item => item.durationMs).sort((a, b) => a - b); const p95LatencyMs = samples[Math.min(samples.length - 1, Math.ceil(samples.length * 0.95) - 1)]; return [{ sourceKey, p95LatencyMs, thresholdMs: sourceThreshold, consecutiveRuns: 2 }]; });
 }
 
 

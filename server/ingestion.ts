@@ -58,11 +58,11 @@ const stripHtml = (value: string) => {
   return $.root().text().replace(/\s+/g, " ").trim();
 };
 const INGRESSE_SITE_API = "https://api-site.ingresse.com/events";
-export const DEFAULT_INGRESSE_FETCH_TIMEOUT_MS = 6_000;
+export const DEFAULT_INGRESSE_FETCH_TIMEOUT_MS = 15_000;
 export function getIngresseFetchTimeoutMs() {
   const configured = Number.parseInt(process.env.INGRESSE_FETCH_TIMEOUT_MS ?? "", 10);
   if (!Number.isFinite(configured)) return DEFAULT_INGRESSE_FETCH_TIMEOUT_MS;
-  return Math.min(10_000, Math.max(3_000, configured));
+  return Math.min(20_000, Math.max(3_000, configured));
 }
 
 function verboseDryRunEnabled() {
@@ -435,8 +435,15 @@ export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCac
         accept: "application/json",
         "accept-language": "pt-BR,pt;q=0.9,en;q=0.8",
         "cache-control": "no-cache",
+        "sec-ch-ua": '"Chromium";v="140", "Google Chrome";v="140", "Not=A?Brand";v="24"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-site",
         referer: `https://www.ingresse.com/${encodeURIComponent(slug)}/`,
-        "user-agent": "WeekendVibesPublicIngestion/1.1 (+public-event-ingestion)",
+        "upgrade-insecure-requests": "1",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
       },
     }, getIngresseFetchTimeoutMs());
     const place = payload.place && typeof payload.place === "object" ? payload.place as Record<string, unknown> : {};

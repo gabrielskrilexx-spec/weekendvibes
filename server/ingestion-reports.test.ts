@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv, sortFilteredStoriesForTest, DEFAULT_PUBLIC_P95_THRESHOLD_MS, getEffectiveSourceP95ThresholdForTest, findConsecutiveP95PerformanceAlertsForTest } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv, sortFilteredStoriesForTest, DEFAULT_PUBLIC_P95_THRESHOLD_MS, INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS, MANUAL_AGENDA_P95_THRESHOLD_MS, getEffectiveSourceP95ThresholdForTest, findConsecutiveP95PerformanceAlertsForTest } from "./ingestion-reports";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
 import { sanitizeAgendaStepErrorForTest } from "./agenda-routine";
 
@@ -124,6 +124,10 @@ describe("public ingestion P95 SLA", () => {
     expect(DEFAULT_PUBLIC_P95_THRESHOLD_MS).toBe(15_000);
     expect(getEffectiveSourceP95ThresholdForTest({ kind: "public", p95LatencyThresholdMs: 3_000 })).toBe(15_000);
     expect(getEffectiveSourceP95ThresholdForTest({ kind: "instagram", p95LatencyThresholdMs: 3_000 })).toBe(3_000);
+    expect(INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS).toBe(30_000);
+    expect(MANUAL_AGENDA_P95_THRESHOLD_MS).toBe(180_000);
+    expect(getEffectiveSourceP95ThresholdForTest({ sourceKey: "instagram:apify:pending" })).toBe(30_000);
+    expect(getEffectiveSourceP95ThresholdForTest({ sourceKey: "manual" })).toBe(180_000);
   });
 
   it("does not alert public sources below the 15 second threshold", () => {

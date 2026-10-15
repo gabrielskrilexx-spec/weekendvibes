@@ -1221,7 +1221,7 @@ export const appRouter = router({
           isEnabled: z.boolean(),
           priority: z.number().int().min(1).max(1000),
           frequencyMinutes: z.number().int().min(60).max(525600),
-          p95LatencyThresholdMs: z.number().int().min(500).max(60000).default(3000),
+          p95LatencyThresholdMs: z.number().int().min(500).max(180000).default(3000),
         })
       )
       .output(
@@ -1232,7 +1232,7 @@ export const appRouter = router({
             isEnabled: z.boolean(),
             priority: z.number().int().min(1).max(1000),
             frequencyMinutes: z.number().int().min(60).max(525600),
-            p95LatencyThresholdMs: z.number().int().min(500).max(60000),
+            p95LatencyThresholdMs: z.number().int().min(500).max(180000),
           })
           .strict()
       )
