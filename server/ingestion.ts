@@ -20,6 +20,7 @@ const DEFAULT_SOURCE_URLS = [
   "https://www.sympla.com.br/eventos/santos-sp",
   "https://www.sympla.com.br/eventos/guaruja-sp",
   "https://www.weticket.com.br/",
+  "https://zig.tickets/pt-BR",
 ];
 
 export const TARGET_VENUES = [
@@ -277,22 +278,46 @@ function readMetaTags(html: string) {
   return (key: string) => values.get(key.toLowerCase()) ?? "";
 }
 
+export const ZIG_FETCH_TIMEOUT_MS = 20_000;
+const ZIG_REQUEST_HEADERS = {
+  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+  accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,*/*;q=0.8",
+  "accept-language": "pt-BR,pt;q=0.9,en;q=0.8",
+  "cache-control": "no-cache",
+  pragma: "no-cache",
+  "sec-ch-ua": '"Chromium";v="140", "Google Chrome";v="140", "Not=A?Brand";v="24"',
+  "sec-ch-ua-mobile": "?0",
+  "sec-ch-ua-platform": '"Windows"',
+  "sec-fetch-dest": "document",
+  "sec-fetch-mode": "navigate",
+  "sec-fetch-site": "same-origin",
+  "upgrade-insecure-requests": "1",
+};
+
+function readPriceCents(value: unknown) {
+  if (typeof value !== "string" && typeof value !== "number") return 0;
+  const normalized = String(value).replace(/[^0-9,.-]/g, "").replace(/\.(?=\d{3}(?:\D|$))/g, "").replace(",", ".");
+  const amount = Number(normalized);
+  return Number.isFinite(amount) ? Math.round(amount * 100) : 0;
+}
+
 export function parseZigEventMetadata(html: string, url: string) {
   const jsonLd = readJsonLd(html);
   const location = jsonLd?.location && typeof jsonLd.location === "object" ? jsonLd.location as Record<string, unknown> : {};
   const address = location.address && typeof location.address === "object" ? location.address as Record<string, unknown> : {};
-  const offers = jsonLd?.offers && typeof jsonLd.offers === "object" ? jsonLd.offers as Record<string, unknown> : {};
+  const offers = Array.isArray(jsonLd?.offers) ? (jsonLd.offers.find(item => item && typeof item === "object") as Record<string, unknown> | undefined) ?? {} : jsonLd?.offers && typeof jsonLd.offers === "object" ? jsonLd.offers as Record<string, unknown> : {};
   const meta = readMetaTags(html);
-  const title = typeof jsonLd?.name === "string" ? jsonLd.name : meta("og:title");
+  const text = stripHtml(html);
+  const title = typeof jsonLd?.name === "string" ? jsonLd.name.trim() : meta("og:title").trim();
   const eventDate = typeof jsonLd?.startDate === "string" ? jsonLd.startDate : meta("event:start_time");
-  const locationName = typeof location.name === "string" ? location.name : "";
-  const city = typeof address.addressLocality === "string" ? address.addressLocality : (/guaruj[aá]/i.test(stripHtml(html)) ? "Guarujá" : /santos/i.test(stripHtml(html)) ? "Santos" : "");
+  const locationName = typeof location.name === "string" ? location.name.trim() : typeof jsonLd?.location === "string" ? jsonLd.location.trim() : "";
+  const city = typeof address.addressLocality === "string" ? address.addressLocality.trim() : (/guaruj[aá]/i.test(text) ? "Guarujá" : /santos/i.test(text) ? "Santos" : "");
   const street = typeof address.streetAddress === "string" ? address.streetAddress : "";
-  const priceRaw = typeof offers.price === "number" || typeof offers.price === "string" ? String(offers.price) : "";
-  const priceCents = priceRaw ? Math.round(Number(priceRaw.replace(/[^0-9,.-]/g, "").replace(",", ".")) * 100) : 0;
-  const text = stripHtml(html).replace(/\s+/g, " ").trim();
-  if (!title && !eventDate && !locationName) return undefined;
-  return { title, eventDate, locationName, address: street, city, priceCents, sourceUrl: url, imageUrl: meta("og:image"), text: text.slice(0, 16_000) };
+  const priceCents = readPriceCents(offers.price ?? offers.lowPrice ?? offers.minPrice);
+  const imageUrl = meta("og:image");
+  const sourceText = text.replace(/\s+/g, " ").trim();
+  if (!title || !eventDate || !city) return undefined;
+  return { title, eventDate, locationName, address: street, city, priceCents, sourceUrl: url, imageUrl, text: sourceText.slice(0, 16_000) };
 }
 
 function isBlackPassEventUrl(url: string) {
@@ -640,7 +665,7 @@ type PublicPage = {
   html: string;
   text: string;
   imageUrl: string;
-  adapter?: "blackpass" | "mringressos" | "ingresse" | "sympla" | "weticket" | "generic";
+  adapter?: "blackpass" | "mringressos" | "ingresse" | "sympla" | "weticket" | "zig" | "generic";
   adapterError?: string;
   durationMs?: number;
   structured?: Record<string, string | number>;
@@ -693,6 +718,7 @@ function publicFetchTimeoutMs(url: string) {
   if (sourceKey === "public:articket") return ARTICKET_FETCH_TIMEOUT_MS;
   if (sourceKey === "public:ingresse") return getIngresseFetchTimeoutMs();
   if (sourceKey === "public:sympla") return SYMPLA_FETCH_TIMEOUT_MS;
+  if (sourceKey === "public:zig") return ZIG_FETCH_TIMEOUT_MS;
   return PUBLIC_FETCH_TIMEOUT_MS;
 }
 export const MR_INGRESSOS_RETRY_ATTEMPTS = 3;
@@ -787,6 +813,15 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
     if (!text) throw createFetchError("Sympla retornou conteúdo vazio");
     return { url, html, text: text.slice(0, 16_000), imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter: "sympla", adapterError: structured ? undefined : "Adaptador Sympla não encontrou dados estruturados públicos." };
   }
+  if (new URL(url).hostname.endsWith("zig.tickets")) {
+    const response = await fetchExternal(url, { headers: { ...ZIG_REQUEST_HEADERS, referer: "https://zig.tickets/pt-BR" } }, ZIG_FETCH_TIMEOUT_MS);
+    const html = await readExternalBody(response);
+    const structured = parseZigEventMetadata(html, url);
+    const meta = readMetaTags(html);
+    const text = structured?.text ?? meta("og:description") ?? "";
+    if (!text) throw createFetchError("Zig Tickets retornou conteúdo vazio");
+    return { url, html, text: text.slice(0, 16_000), imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter: "zig", adapterError: structured ? undefined : "Adaptador Zig não encontrou metadados públicos completos." };
+  }
   try {
     const requestInit: RequestInit = {
       headers: {
@@ -810,7 +845,7 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
     const structured = hostname.endsWith("zig.tickets") ? parseZigEventMetadata(html, url) : (isBlackPassEventUrl(url) ? parseBlackPassEventMetadata(html, url) : isMrIngressosEventUrl(url) ? parseMrIngressosEventMetadata(html, url) : undefined);
     const normalizedText = structured?.text.slice(0, 8000) ?? text.slice(0, 8000);
     logPublicResponseDiagnostics({ url, status: response.status, contentType: response.headers.get("content-type"), html, text: normalizedText, structured: Boolean(structured), links: extractPublicEventLinks(html, url).length });
-    const adapter = hostname.endsWith("blackpass.com.br") ? "blackpass" : hostname.endsWith("mringressos.com.br") ? "mringressos" : hostname.includes("ingresse") ? "ingresse" : hostname.includes("sympla.com.br") ? "sympla" : hostname.includes("weticket.com.br") ? "weticket" : "generic";
+    const adapter = hostname.endsWith("blackpass.com.br") ? "blackpass" : hostname.endsWith("mringressos.com.br") ? "mringressos" : hostname.includes("ingresse") ? "ingresse" : hostname.includes("sympla.com.br") ? "sympla" : hostname.includes("weticket.com.br") ? "weticket" : hostname.endsWith("zig.tickets") ? "zig" : "generic";
     const adapterError = (isBlackPassEventUrl(url) || isMrIngressosEventUrl(url)) && !structured ? `Adaptador ${adapter} não encontrou JSON-LD/metadados completos; conteúdo textual encaminhado para a classificação.` : undefined;
     return { url, html, text: normalizedText, imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter, adapterError };
   } catch (error) {
