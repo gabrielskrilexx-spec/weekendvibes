@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BLACKPASS_FETCH_TIMEOUT_MS, containsTargetVenue, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseMrIngressosEventMetadata, parseSymplaEventMetadata, SYMPLA_FETCH_TIMEOUT_MS } from "./ingestion";
+import { BLACKPASS_FETCH_TIMEOUT_MS, containsTargetVenue, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseMrIngressosEventMetadata, parseSymplaEventMetadata, parseWeTicketEventMetadata, SYMPLA_FETCH_TIMEOUT_MS, WETICKET_FETCH_TIMEOUT_MS } from "./ingestion";
 
 describe("adapters de ticketeiras oficiais", () => {
   it("normaliza metadados públicos do Black Pass", () => {
@@ -70,6 +70,13 @@ describe("adapters de ticketeiras oficiais", () => {
   it("descobre links de eventos Sympla em páginas de busca", () => {
     expect(extractPublicEventLinks('<a href="/evento/festa-house/123">Festa</a>', "https://www.sympla.com.br/eventos/santos-sp")).toEqual(["https://www.sympla.com.br/evento/festa-house/123"]);
     expect(SYMPLA_FETCH_TIMEOUT_MS).toBe(20_000);
+  });
+
+  it("normaliza evento WeTicket do O Beco com data em português e lote", () => {
+    const html = `<title>APÊ 22 — Especial Halloween</title><meta property="og:image" content="https://cdn.weticket.com.br/ape22.jpg"><main>APÊ 22 — Especial Halloween O BECO, SANTOS, SP Sexta-feira, 30 de outubro de 2026, às 22:00 horas. Ingressos 1º lote R$ 45,00</main>`;
+    expect(parseWeTicketEventMetadata(html, "https://www.weticket.com.br/ape-22-especial-halloween")).toMatchObject({ title: "APÊ 22 — Especial Halloween", eventDate: "2026-10-30T22:00:00-03:00", locationName: "O BECO", city: "Santos", priceCents: 4500, sourceUrl: "https://www.weticket.com.br/ape-22-especial-halloween" });
+    expect(containsTargetVenue("O BECO, Santos")).toBe(true);
+    expect(WETICKET_FETCH_TIMEOUT_MS).toBe(20_000);
   });
 
   it("mantém o timeout do Ingresse limitado para tolerar respostas lentas", () => {

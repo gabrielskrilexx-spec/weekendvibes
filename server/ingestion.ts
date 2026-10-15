@@ -19,6 +19,7 @@ const DEFAULT_SOURCE_URLS = [
   "https://mringressos.com.br/",
   "https://www.sympla.com.br/eventos/santos-sp",
   "https://www.sympla.com.br/eventos/guaruja-sp",
+  "https://www.weticket.com.br/",
 ];
 
 export const TARGET_VENUES = [
@@ -33,6 +34,7 @@ export const TARGET_VENUES = [
   "meu lugar",
   "goat club",
   "goat dining club",
+  "o beco",
   "laroc club guaruja",
   "laroc guaruja",
   "lucky scope",
@@ -211,9 +213,10 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
       const isBlackPass = url.hostname.endsWith("blackpass.com.br") && /^\/event\/[A-Za-z0-9_-]+/.test(url.pathname);
       const isMrIngressos = url.hostname.endsWith("mringressos.com.br") && /^\/comprar\/[A-Za-z0-9_-]+/.test(url.pathname);
       const isSympla = url.hostname.endsWith("sympla.com.br") && /^\/evento\/[A-Za-z0-9-]+\/[0-9]+/.test(url.pathname);
+      const isWeTicket = url.hostname.endsWith("weticket.com.br") && /^\/[A-Za-z0-9][A-Za-z0-9-]+$/.test(url.pathname) && !["/perguntas-frequentes", "/politica-de-privacidade", "/termos-de-uso"].includes(url.pathname.toLowerCase());
       const anchorText = $(anchor).text().replace(/\s+/g, " ").trim();
       const isZigRegional = !isZig || /santos|guaruj[aá]/i.test(normalizeText(anchorText));
-      if ((isArticket || isBlacktag || isZig || isIngresseEvent || isBlackPass || isMrIngressos || isSympla) && isZigRegional) links.add(url.href);
+      if ((isArticket || isBlacktag || isZig || isIngresseEvent || isBlackPass || isMrIngressos || isSympla || isWeTicket) && isZigRegional) links.add(url.href);
     } catch {
       // Ignore malformed public links.
     }
@@ -302,6 +305,61 @@ function isBlackPassRootUrl(url: string) {
 
 function isSymplaEventUrl(url: string) {
   try { const parsed = new URL(url); return parsed.hostname.endsWith("sympla.com.br") && /^\/evento\/[A-Za-z0-9-]+\/[0-9]+/.test(parsed.pathname); } catch { return false; }
+}
+
+export const WETICKET_FETCH_TIMEOUT_MS = 20_000;
+const WETICKET_REQUEST_HEADERS = {
+  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+  accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,*/*;q=0.8",
+  "accept-language": "pt-BR,pt;q=0.9,en;q=0.8",
+  "cache-control": "no-cache",
+  "sec-ch-ua": '"Chromium";v="140", "Google Chrome";v="140", "Not=A?Brand";v="24"',
+  "sec-ch-ua-mobile": "?0",
+  "sec-ch-ua-platform": '"Windows"',
+  "sec-fetch-dest": "document",
+  "sec-fetch-mode": "navigate",
+  "sec-fetch-site": "none",
+  "upgrade-insecure-requests": "1",
+};
+
+function isWeTicketEventUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.endsWith("weticket.com.br") && /^\/[A-Za-z0-9][A-Za-z0-9-]+$/.test(parsed.pathname) && !["/perguntas-frequentes", "/politica-de-privacidade", "/termos-de-uso"].includes(parsed.pathname.toLowerCase());
+  } catch { return false; }
+}
+
+function parseWeTicketDate(value: string) {
+  const months: Record<string, string> = { janeiro: "01", fevereiro: "02", marco: "03", março: "03", abril: "04", maio: "05", junho: "06", julho: "07", agosto: "08", setembro: "09", outubro: "10", novembro: "11", dezembro: "12" };
+  const match = value.toLowerCase().match(/\b(\d{1,2})\s+de\s+([a-záéç]+)\s+de\s+(\d{4})(?:,?\s+às?\s+(\d{1,2})(?::|h)(\d{2})?)?/i);
+  if (!match) return "";
+  const month = months[normalizeText(match[2])];
+  if (!month) return "";
+  const hour = String(Number(match[4] ?? "0")).padStart(2, "0");
+  const minute = String(Number(match[5] ?? "0")).padStart(2, "0");
+  return `${match[3]}-${month}-${String(Number(match[1])).padStart(2, "0")}T${hour}:${minute}:00-03:00`;
+}
+
+export function parseWeTicketEventMetadata(html: string, url: string) {
+  const jsonLd = readJsonLd(html);
+  const location = jsonLd?.location && typeof jsonLd.location === "object" ? jsonLd.location as Record<string, unknown> : {};
+  const address = location.address && typeof location.address === "object" ? location.address as Record<string, unknown> : {};
+  const meta = readMetaTags(html);
+  const $ = load(html, undefined, false);
+  $("script, style, noscript").remove();
+  const visibleText = $.root().text().replace(/\s+/g, " ").trim();
+  const title = String(jsonLd?.name || meta("og:title") || $("h1").first().text() || $("title").first().text() || "").replace(/\s+/g, " ").trim();
+  const eventDate = typeof jsonLd?.startDate === "string" ? jsonLd.startDate : parseWeTicketDate(visibleText);
+  const locationName = typeof location.name === "string" ? location.name.trim() : (visibleText.match(/(?:O\s+Beco|Casa\s+412|GOAT\s+CLUB|Boteco\s+Almare|Vallum\s+Garden)[^,|]{0,80}/i)?.[0] ?? "").trim();
+  const city = typeof address.addressLocality === "string" ? address.addressLocality : (/guaruj[aá]/i.test(visibleText) ? "Guarujá" : /santos/i.test(visibleText) ? "Santos" : "");
+  const street = typeof address.streetAddress === "string" ? address.streetAddress : "";
+  const priceMatch = visibleText.match(/r\$\s*([\d.]+(?:,\d{2})?)/i);
+  const priceCents = priceMatch ? Math.round(Number(priceMatch[1].replace(/\./g, "").replace(",", ".")) * 100) : 0;
+  const searchable = normalizeText(`${title} ${visibleText}`);
+  const genre = /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : "house_eletronica";
+  const category = /show|festival|concerto|banda/.test(searchable) ? "show" : "balada";
+  if (!title || !eventDate || !locationName || !city) return undefined;
+  return { title, summary: visibleText.slice(0, 4_000), eventDate, locationName, address: street, city, category, genre, priceCents, sourceUrl: url, imageUrl: meta("og:image"), text: visibleText.slice(0, 16_000) };
 }
 
 type SymplaEventState = {
@@ -582,7 +640,7 @@ type PublicPage = {
   html: string;
   text: string;
   imageUrl: string;
-  adapter?: "blackpass" | "mringressos" | "ingresse" | "sympla" | "generic";
+  adapter?: "blackpass" | "mringressos" | "ingresse" | "sympla" | "weticket" | "generic";
   adapterError?: string;
   durationMs?: number;
   structured?: Record<string, string | number>;
@@ -599,6 +657,7 @@ export function publicSourceKey(url: string) {
     if (host.includes("blackpass")) return "public:blackpass";
     if (host.includes("mringressos")) return "public:mringressos";
     if (host.includes("sympla.com.br")) return "public:sympla";
+    if (host.includes("weticket.com.br")) return "public:weticket";
     if (host.includes("articket")) return "public:articket";
     if (host.endsWith("zig.tickets")) return "public:zig";
   } catch {
@@ -708,6 +767,15 @@ export async function fetchWithConcurrency<TItem, TResult>(items: TItem[], worke
 async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}): Promise<PublicPage> {
   if (isIngresseEventUrl(url)) return fetchIngresseEventApi(url, { read: getIngestionPayloadCache, write: saveIngestionPayloadCache }, options);
   if (isBlackPassEventUrl(url)) return fetchBlackPassEventPage(url);
+  if (isWeTicketEventUrl(url)) {
+    const response = await fetchExternal(url, { headers: WETICKET_REQUEST_HEADERS }, WETICKET_FETCH_TIMEOUT_MS);
+    const html = await readExternalBody(response);
+    const structured = parseWeTicketEventMetadata(html, url);
+    const meta = readMetaTags(html);
+    const text = structured?.text ?? meta("og:description") ?? "";
+    if (!text) throw createFetchError("WeTicket retornou conteúdo vazio");
+    return { url, html, text: text.slice(0, 16_000), imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter: "weticket", adapterError: structured ? undefined : "Adaptador WeTicket não encontrou dados estruturados completos." };
+  }
   if (isSymplaEventUrl(url)) {
     const response = await fetchExternal(url, { headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36", accept: "text/html,application/xhtml+xml", "accept-language": "pt-BR,pt;q=0.9,en;q=0.8", "cache-control": "no-cache", "sec-ch-ua": '"Chromium";v="140", "Google Chrome";v="140", "Not=A?Brand";v="24"', "sec-ch-ua-mobile": "?0", "sec-ch-ua-platform": '"Windows"', "sec-fetch-dest": "document", "sec-fetch-mode": "navigate", "sec-fetch-site": "same-origin", "upgrade-insecure-requests": "1" } }, SYMPLA_FETCH_TIMEOUT_MS);
     const html = await readExternalBody(response);
@@ -742,7 +810,7 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
     const structured = hostname.endsWith("zig.tickets") ? parseZigEventMetadata(html, url) : (isBlackPassEventUrl(url) ? parseBlackPassEventMetadata(html, url) : isMrIngressosEventUrl(url) ? parseMrIngressosEventMetadata(html, url) : undefined);
     const normalizedText = structured?.text.slice(0, 8000) ?? text.slice(0, 8000);
     logPublicResponseDiagnostics({ url, status: response.status, contentType: response.headers.get("content-type"), html, text: normalizedText, structured: Boolean(structured), links: extractPublicEventLinks(html, url).length });
-    const adapter = hostname.endsWith("blackpass.com.br") ? "blackpass" : hostname.endsWith("mringressos.com.br") ? "mringressos" : hostname.includes("ingresse") ? "ingresse" : hostname.includes("sympla.com.br") ? "sympla" : "generic";
+    const adapter = hostname.endsWith("blackpass.com.br") ? "blackpass" : hostname.endsWith("mringressos.com.br") ? "mringressos" : hostname.includes("ingresse") ? "ingresse" : hostname.includes("sympla.com.br") ? "sympla" : hostname.includes("weticket.com.br") ? "weticket" : "generic";
     const adapterError = (isBlackPassEventUrl(url) || isMrIngressosEventUrl(url)) && !structured ? `Adaptador ${adapter} não encontrou JSON-LD/metadados completos; conteúdo textual encaminhado para a classificação.` : undefined;
     return { url, html, text: normalizedText, imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter, adapterError };
   } catch (error) {

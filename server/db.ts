@@ -371,6 +371,7 @@ export const DEFAULT_INGESTION_SOURCES = [
   { sourceKey: "public:zig", name: "Zig Tickets", kind: "public" as const, handle: null, url: "https://zig.tickets/" },
   { sourceKey: "public:ingresse", name: "Ingresse", kind: "public" as const, handle: null, url: "https://www.ingresse.com/" },
   { sourceKey: "public:sympla", name: "Sympla", kind: "public" as const, handle: null, url: "https://www.sympla.com.br/eventos/santos-sp" },
+  { sourceKey: "public:weticket", name: "WeTicket", kind: "public" as const, handle: null, url: "https://www.weticket.com.br/" },
 ];
 
 async function ensureDefaultIngestionSources(db: Awaited<ReturnType<typeof getDb>>) {

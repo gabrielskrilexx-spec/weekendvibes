@@ -111,6 +111,7 @@ function sourceKeyForChunk(url: string) {
     if (host.includes("blackpass")) return "public:blackpass";
     if (host.includes("mringressos")) return "public:mringressos";
     if (host.includes("sympla.com.br")) return "public:sympla";
+    if (host.includes("weticket.com.br")) return "public:weticket";
     if (host.includes("articket")) return "public:articket";
     if (host.endsWith("zig.tickets")) return "public:zig";
   } catch {
