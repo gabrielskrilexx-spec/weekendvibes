@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { containsTargetVenue, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseMrIngressosEventMetadata, parseSymplaEventMetadata, SYMPLA_FETCH_TIMEOUT_MS } from "./ingestion";
+import { BLACKPASS_FETCH_TIMEOUT_MS, containsTargetVenue, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseMrIngressosEventMetadata, parseSymplaEventMetadata, SYMPLA_FETCH_TIMEOUT_MS } from "./ingestion";
 
 describe("adapters de ticketeiras oficiais", () => {
   it("normaliza metadados públicos do Black Pass", () => {
@@ -25,6 +25,12 @@ describe("adapters de ticketeiras oficiais", () => {
       poster: { poster_vertical: "/web/events/jungle.jpg" },
     });
     expect(parsed).toMatchObject({ title: "Jungle Room - Pink Edition", locationName: "GOAT CLUB", city: "Santos", latitude: "-23.9325438", longitude: "-46.3318910", sourceUrl: "https://blackpass.com.br/event/700" });
+  });
+
+  it("preserva preço explícito do catálogo e ignora datas inativas", () => {
+    const parsed = parseBlackPassCatalogEvent({ id: 701, name: "Pagode no GOAT CLUB", address_comp: "GOAT CLUB", city: "Santos", price: "75,50", dates: [{ dstart: "2030-09-20T22:00:00.000Z", status: "0" }, { dstart: "2030-09-21T22:00:00.000Z", status: "1" }] });
+    expect(parsed).toMatchObject({ eventDate: "2030-09-21T22:00:00.000Z", priceCents: 7550 });
+    expect(BLACKPASS_FETCH_TIMEOUT_MS).toBe(20_000);
   });
 
   it("normaliza metadados públicos do Mr Ingressos", () => {

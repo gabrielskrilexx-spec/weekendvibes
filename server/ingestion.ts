@@ -367,6 +367,19 @@ export function parseSymplaEventMetadata(html: string, url: string) {
 }
 
 const BLACKPASS_EVENTS_API = "https://api.blackpass.com.br/events/list";
+export const BLACKPASS_FETCH_TIMEOUT_MS = 20_000;
+const BLACKPASS_REQUEST_HEADERS = {
+  accept: "application/json,text/html,application/xhtml+xml",
+  "accept-language": "pt-BR,pt;q=0.9,en;q=0.8",
+  "cache-control": "no-cache",
+  "sec-ch-ua": '"Chromium";v="140", "Google Chrome";v="140", "Not=A?Brand";v="24"',
+  "sec-ch-ua-mobile": "?0",
+  "sec-ch-ua-platform": '"Windows"',
+  "sec-fetch-dest": "empty",
+  "sec-fetch-mode": "cors",
+  "sec-fetch-site": "same-site",
+  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+};
 
 async function fetchPublicAdapterJson<T>(input: string, init: RequestInit = {}, timeoutMs = 12_000, attempts = 2): Promise<T> {
   let lastError: unknown;
@@ -388,7 +401,7 @@ async function fetchPublicAdapterJson<T>(input: string, init: RequestInit = {}, 
   throw lastError instanceof Error ? lastError : new Error("Falha na fonte pública");
 }
 
-type BlackPassCatalogEvent = { id?: string | number; title?: string; name?: string; address?: string; address_comp?: string; city?: string; uf?: string; latlng?: string; dates?: Array<{ dstart?: string; dstop?: string; status?: number }>; poster?: { poster_vertical?: string; poster_horizontal?: string } };
+type BlackPassCatalogEvent = { id?: string | number; title?: string; name?: string; address?: string; address_comp?: string; city?: string; uf?: string; latlng?: string; price?: string | number; min_price?: string | number; lowest_price?: string | number; dates?: Array<{ dstart?: string; dstop?: string; status?: number | string }>; poster?: { poster_vertical?: string; poster_horizontal?: string } };
 
 function blackPassEventUrl(id: string | number) {
   return `https://blackpass.com.br/event/${encodeURIComponent(String(id))}`;
@@ -401,13 +414,15 @@ export function parseBlackPassCatalogEvent(event: BlackPassCatalogEvent) {
   const rawCity = String(event.city ?? "").trim();
   const venueText = normalizeText(`${locationName} ${address}`);
   const city = /goat/.test(venueText) || /santos/i.test(rawCity) ? "Santos" : /guaruja|guarujá/i.test(rawCity) ? "Guarujá" : rawCity;
-  const dateTime = event.dates?.find(item => item.status !== 0)?.dstart ?? event.dates?.[0]?.dstart ?? "";
+  const dateTime = event.dates?.find(item => Number(item.status ?? 1) !== 0)?.dstart ?? event.dates?.[0]?.dstart ?? "";
   const [latitude, longitude] = String(event.latlng ?? "").split(",").map(value => value.trim());
   const imagePath = event.poster?.poster_vertical || event.poster?.poster_horizontal || "";
   const imageUrl = imagePath.startsWith("http") ? imagePath : imagePath ? `https://api.blackpass.com.br${imagePath}` : "";
+  const rawPrice = event.price ?? event.min_price ?? event.lowest_price;
+  const priceCents = typeof rawPrice === "number" ? Math.round(rawPrice * 100) : typeof rawPrice === "string" && rawPrice.trim() ? Math.round(Number(rawPrice.replace(/[^0-9,.-]/g, "").replace(",", ".")) * 100) : 0;
   if (!event.id || !title || !dateTime || !locationName) return undefined;
   const sourceUrl = blackPassEventUrl(event.id);
-  return { title, summary: title, eventDate: dateTime, locationName, address, city, category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl, imageUrl, latitude: latitude ?? "", longitude: longitude ?? "", text: [title, locationName, address, city, dateTime].filter(Boolean).join(" ") };
+  return { title, summary: title, eventDate: dateTime, locationName, address, city, category: "balada", genre: "house_eletronica", priceCents, sourceUrl, imageUrl, latitude: latitude ?? "", longitude: longitude ?? "", text: [title, locationName, address, city, dateTime].filter(Boolean).join(" ") };
 }
 
 function parseBlackPassCatalogPayload(payload: unknown): BlackPassCatalogEvent[] {
@@ -416,9 +431,15 @@ function parseBlackPassCatalogPayload(payload: unknown): BlackPassCatalogEvent[]
   return candidates.filter((item): item is BlackPassCatalogEvent => Boolean(item && typeof item === "object"));
 }
 
+let blackPassCatalogCache: Promise<BlackPassCatalogEvent[]> | undefined;
 async function fetchBlackPassCatalog(): Promise<BlackPassCatalogEvent[]> {
-  const payload = await fetchPublicAdapterJson<unknown>(BLACKPASS_EVENTS_API, { headers: { accept: "application/json" } }, 12_000);
-  return parseBlackPassCatalogPayload(payload);
+  blackPassCatalogCache ??= fetchPublicAdapterJson<unknown>(BLACKPASS_EVENTS_API, { headers: BLACKPASS_REQUEST_HEADERS }, BLACKPASS_FETCH_TIMEOUT_MS).then(parseBlackPassCatalogPayload);
+  try {
+    return await blackPassCatalogCache;
+  } catch (error) {
+    blackPassCatalogCache = undefined;
+    throw error;
+  }
 }
 
 async function fetchBlackPassEventPage(url: string): Promise<PublicPage> {
