@@ -12,6 +12,7 @@ const META_GRAPH_BASE_URL = "https://graph.facebook.com/v26.0";
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
 const LOOKBACK_DAYS = 5;
+const APIFY_PREFILTER_TERMS = ["agenda", "ingresso", "sexta", "sabado", "domingo", "atracao", "dj"] as const;
 export function getInstagramSaoPauloDate(now = new Date()) {
   return saoPauloCalendarDate(now);
 }
@@ -446,6 +447,15 @@ export function hasRegionalHashtag(text: string) {
 function normalizeAgendaText(text: string) {
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
+export function hasRecentApifySignal(posts: ReadonlyArray<InstagramPost>, username: string, now = new Date()) {
+  const normalizedUsername = username.replace(/^@/, "").toLowerCase();
+  return posts.some(post => {
+    const owner = String(post.ownerUsername ?? post.username ?? "").replace(/^@/, "").toLowerCase();
+    if (owner !== normalizedUsername || !isWithinInstagramLookback(post, now)) return false;
+    const text = normalizeAgendaText(`${post.caption ?? ""}\n${post.text ?? ""}`);
+    return APIFY_PREFILTER_TERMS.some(term => text.includes(term));
+  });
+}
 
 /**
  * Gate inicial deliberadamente permissivo: a OpenAI é a autoridade para
@@ -785,14 +795,24 @@ export async function fetchInstagramPostsDetailed(options: { dryRun?: boolean } 
     console.warn("[Instagram] Meta stage isolated; continuing with Apify", { status, reason: message });
     meta = { posts: [], transportFailures: [{ username: "meta-graph", status, kind: "proxy_or_session", message }] };
   }
-  if (options.dryRun) {
-    const supplemental = await fetchApifyStoriesAndHighlights(options);
-    return { posts: [...meta.posts, ...supplemental.posts], transportFailures: [...meta.transportFailures, ...supplemental.transportFailures], apifyDispatch: "sync_dry_run" as const };
-  }
   const failedMetaProfiles = new Set(meta.transportFailures
     .filter(failure => failure.username !== "meta-graph" && failure.username !== "apify-collector" && failure.status > 0)
     .map(failure => failure.username.toLowerCase()));
-  const apifyTargets = INSTAGRAM_TARGETS.filter(target => !failedMetaProfiles.has(target.username.toLowerCase()));
+  const eligibleApifyTargets = INSTAGRAM_TARGETS
+    .filter(target => !failedMetaProfiles.has(target.username.toLowerCase()))
+    .filter(target => hasRecentApifySignal(meta.posts, target.username));
+  if (options.dryRun) {
+    return {
+      posts: meta.posts,
+      transportFailures: meta.transportFailures,
+      apifyDispatch: "dry_run_prefilter" as const,
+      apifyPrefilter: {
+        eligibleUsernames: eligibleApifyTargets.map(target => target.username),
+        skippedUsernames: INSTAGRAM_TARGETS.filter(target => !eligibleApifyTargets.some(candidate => candidate.username === target.username)).map(target => target.username),
+      },
+    };
+  }
+  const apifyTargets = eligibleApifyTargets;
   if (apifyTargets.length === 0) {
     return { posts: meta.posts, transportFailures: meta.transportFailures, apifyDispatch: "skipped_no_eligible_targets" as const };
   }
