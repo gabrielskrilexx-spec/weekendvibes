@@ -100,6 +100,13 @@ export const INSTAGRAM_TARGETS = [
   { name: "Flamingo Bar", username: "flamingomusicbar", directUrl: "https://www.instagram.com/flamingomusicbar/" },
   { name: "Rocket Sea Club", username: "rocketseaclub", directUrl: "https://www.instagram.com/rocketseaclub/" },
   { name: "Ativa House", username: "ativahouse", directUrl: "https://www.instagram.com/ativahouse/" },
+  { name: "Casa 412", username: "casa412santos", directUrl: "https://www.instagram.com/casa412santos/" },
+  { name: "Verilonguinho", username: "verilonguinho", directUrl: "https://www.instagram.com/verilonguinho/" },
+  { name: "Goat Club", username: "goatclubsantos", directUrl: "https://www.instagram.com/goatclubsantos/" },
+  { name: "Praiô", username: "praioguaruja", directUrl: "https://www.instagram.com/praioguaruja/" },
+  { name: "Boteco Almare", username: "botecoalmare", directUrl: "https://www.instagram.com/botecoalmare/" },
+  { name: "Dolores Restaurante e Bar", username: "doloresbarerestaurante", directUrl: "https://www.instagram.com/doloresbarerestaurante/" },
+  { name: "Yellow House", username: "yellowhouse_santos", directUrl: "https://www.instagram.com/yellowhouse_santos/" },
   { name: "Mimada Festa", username: "mimadafesta", directUrl: "https://www.instagram.com/mimadafesta/" },
 ] as const;
 
@@ -778,8 +785,28 @@ export async function fetchInstagramPostsDetailed(options: { dryRun?: boolean } 
     console.warn("[Instagram] Meta stage isolated; continuing with Apify", { status, reason: message });
     meta = { posts: [], transportFailures: [{ username: "meta-graph", status, kind: "proxy_or_session", message }] };
   }
-  const supplemental = await fetchApifyStoriesAndHighlights(options);
-  return { posts: [...meta.posts, ...supplemental.posts], transportFailures: [...meta.transportFailures, ...supplemental.transportFailures] };
+  if (options.dryRun) {
+    const supplemental = await fetchApifyStoriesAndHighlights(options);
+    return { posts: [...meta.posts, ...supplemental.posts], transportFailures: [...meta.transportFailures, ...supplemental.transportFailures], apifyDispatch: "sync_dry_run" as const };
+  }
+  const failedMetaProfiles = new Set(meta.transportFailures
+    .filter(failure => failure.username !== "meta-graph" && failure.username !== "apify-collector" && failure.status > 0)
+    .map(failure => failure.username.toLowerCase()));
+  const apifyTargets = INSTAGRAM_TARGETS.filter(target => !failedMetaProfiles.has(target.username.toLowerCase()));
+  if (apifyTargets.length === 0) {
+    return { posts: meta.posts, transportFailures: meta.transportFailures, apifyDispatch: "skipped_no_eligible_targets" as const };
+  }
+  try {
+    const { startAsyncApifyStoriesRun } = await import("./apify-async");
+    const queued = await startAsyncApifyStoriesRun({ trigger: "automatic", targets: apifyTargets });
+    console.info("[Instagram] Apify Actor dispatched asynchronously", { actorRunId: queued.actorRunId, runId: queued.runId });
+    return { posts: meta.posts, transportFailures: meta.transportFailures, apifyDispatch: "queued" as const, apifyRunId: queued.actorRunId, ingestionRunId: queued.runId };
+  } catch (error) {
+    const message = normalizeDiagnosticText(error instanceof Error ? error.message : error) || "Falha ao despachar o Actor Apify.";
+    const status = error && typeof error === "object" && "apifyStatus" in error ? Number((error as { apifyStatus?: unknown }).apifyStatus) || 0 : 0;
+    console.warn("[Instagram] Apify dispatch failed; Meta results preserved", { message });
+    return { posts: meta.posts, transportFailures: [...meta.transportFailures, { username: "apify-dispatch", status, kind: "proxy_or_session" as const, message }], apifyDispatch: "failed" as const };
+  }
 }
 
 export async function fetchInstagramPosts() {
@@ -1052,6 +1079,9 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     approvedPosts: approvedPosts.length,
     degraded: fetched.transportFailures.length > 0,
     providerIssue: "providerIssue" in fetched ? (fetched as { providerIssue?: InstagramProviderIssue }).providerIssue : undefined,
+    apifyDispatch: "apifyDispatch" in fetched ? fetched.apifyDispatch : undefined,
+    apifyRunId: "apifyRunId" in fetched ? fetched.apifyRunId : undefined,
+    apifyIngestionRunId: "ingestionRunId" in fetched ? fetched.ingestionRunId : undefined,
     quotaExceeded: "providerIssue" in fetched && (fetched as { providerIssue?: InstagramProviderIssue }).providerIssue?.code === "APIFY_QUOTA_EXCEEDED",
     transportFailures: fetched.transportFailures,
     ocrAudit: buildOcrAuditEntries(ocrAuditCandidates),

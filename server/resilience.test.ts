@@ -48,6 +48,19 @@ describe("resiliência dos adaptadores", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it("repete falhas transitórias de rede e retorna no sucesso", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn()
+      .mockRejectedValueOnce(new Error("fetch failed: ECONNRESET"))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+    const promise = fetchMrIngressosWithRetry("https://mringressos.com.br/comprar/1/teste", {}, fetchImpl);
+    await vi.advanceTimersByTimeAsync(MR_INGRESSOS_RETRY_BASE_DELAY_MS);
+    const response = await promise;
+    expect(response.status).toBe(200);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
   it("usa um limiar configurável para pausar uma fonte após falhas severas consecutivas", async () => {
     process.env.INGESTION_CIRCUIT_BREAKER_FAILURE_THRESHOLD = "2";
     process.env.CRITICAL_ALERT_WEBHOOK_URL = "https://alerts.example.test/hook";

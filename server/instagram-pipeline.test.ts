@@ -147,7 +147,8 @@ describe("Instagram weekend pipeline", () => {
   it("keeps all configured accounts as official Meta Business Discovery targets", () => {
     expect(INSTAGRAM_TARGETS.map(target => target.username)).toEqual([
       "mobydicksantos", "projac.bar", "meulugar.bar", "nossoafterguaruja", "curvaosurfhouse",
-      "flamingomusicbar", "rocketseaclub", "ativahouse", "mimadafesta",
+      "flamingomusicbar", "rocketseaclub", "ativahouse", "casa412santos", "verilonguinho",
+      "goatclubsantos", "praioguaruja", "botecoalmare", "doloresbarerestaurante", "yellowhouse_santos", "mimadafesta",
     ]);
     expect(INSTAGRAM_TARGETS.every(target => target.directUrl.startsWith("https://www.instagram.com/"))).toBe(true);
   });

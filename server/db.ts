@@ -360,7 +360,7 @@ export const DEFAULT_INGESTION_SOURCES = [
   { sourceKey: "instagram:casa412santos", name: "Casa 412", kind: "instagram" as const, handle: "casa412santos", url: "https://www.instagram.com/casa412santos/" },
   { sourceKey: "instagram:mimadafesta", name: "Mimada Festa", kind: "instagram" as const, handle: "mimadafesta", url: "https://www.instagram.com/mimadafesta/" },
   { sourceKey: "instagram:verilonguinho", name: "Verilonguinho", kind: "instagram" as const, handle: "verilonguinho", url: "https://www.instagram.com/verilonguinho/?hl=pt" },
-  { sourceKey: "instagram:goatdiningclub", name: "Goat Club", kind: "instagram" as const, handle: "goatdiningclub", url: "https://www.instagram.com/goatdiningclub/" },
+  { sourceKey: "instagram:goatclubsantos", name: "Goat Club", kind: "instagram" as const, handle: "goatclubsantos", url: "https://www.instagram.com/goatclubsantos/" },
   { sourceKey: "instagram:praioguaruja", name: "Praiô", kind: "instagram" as const, handle: "praioguaruja", url: "https://www.instagram.com/praioguaruja/" },
   { sourceKey: "instagram:botecoalmare", name: "Boteco Almare", kind: "instagram" as const, handle: "botecoalmare", url: "https://www.instagram.com/botecoalmare/" },
   { sourceKey: "instagram:doloresbarerestaurante", name: "Dolores Restaurante e Bar", kind: "instagram" as const, handle: "doloresbarerestaurante", url: "https://www.instagram.com/doloresbarerestaurante/?hl=pt" },

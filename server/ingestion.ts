@@ -435,6 +435,7 @@ export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCac
         accept: "application/json",
         "accept-language": "pt-BR,pt;q=0.9,en;q=0.8",
         "cache-control": "no-cache",
+        referer: `https://www.ingresse.com/${encodeURIComponent(slug)}/`,
         "user-agent": "WeekendVibesPublicIngestion/1.1 (+public-event-ingestion)",
       },
     }, getIngresseFetchTimeoutMs());
@@ -546,7 +547,9 @@ export async function fetchMrIngressosWithRetry(url: string, init: RequestInit, 
       return await fetchImpl(url, init);
     } catch (error) {
       lastError = error;
-      if (!isTimeoutFailure(error) || attempt === MR_INGRESSOS_RETRY_ATTEMPTS - 1) throw error;
+      const message = error instanceof Error ? error.message : String(error ?? "");
+      const isTransientNetworkFailure = /fetch failed|econnreset|econnrefused|enotfound|eai_again|network|socket/i.test(message);
+      if ((!isTimeoutFailure(error) && !isTransientNetworkFailure) || attempt === MR_INGRESSOS_RETRY_ATTEMPTS - 1) throw error;
       await new Promise(resolve => setTimeout(resolve, MR_INGRESSOS_RETRY_BASE_DELAY_MS * (2 ** attempt)));
     }
   }

@@ -34,11 +34,11 @@ export type FullAgendaRoutineOptions = { trigger?: "manual" | "scheduled"; runId
 export type RetryAttempt = { attempt: number; startedAt: string; failedAt: string; reason: string; httpStatus: number | null };
 const MAX_SCHEDULED_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 1000;
-export const DEFAULT_INSTAGRAM_AGENDA_TIMEOUT_MS = 3_000;
+export const DEFAULT_INSTAGRAM_AGENDA_TIMEOUT_MS = 30_000;
 export function getInstagramAgendaTimeoutMs() {
   const configured = Number.parseInt(process.env.INSTAGRAM_AGENDA_TIMEOUT_MS ?? "", 10);
   if (!Number.isFinite(configured)) return DEFAULT_INSTAGRAM_AGENDA_TIMEOUT_MS;
-  return Math.min(10_000, Math.max(1_000, configured));
+  return Math.min(30_000, Math.max(1_000, configured));
 }
 
 async function withAgendaTimeout<T>(work: Promise<T>, timeoutMs: number): Promise<T> {

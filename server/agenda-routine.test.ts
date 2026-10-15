@@ -98,9 +98,9 @@ describe("agenda routine composition", () => {
     expect(state.history[1]).toEqual(expect.objectContaining({ attempt: 2, httpStatus: 503 }));
   });
 
-  it("limita o timeout da etapa Instagram a uma faixa fail-fast configurável", () => {
+  it("limita o timeout da etapa Instagram a uma faixa configurável de até 30 segundos", () => {
     vi.stubEnv("INSTAGRAM_AGENDA_TIMEOUT_MS", "30000");
-    expect(getInstagramAgendaTimeoutMs()).toBe(10_000);
+    expect(getInstagramAgendaTimeoutMs()).toBe(30_000);
     vi.stubEnv("INSTAGRAM_AGENDA_TIMEOUT_MS", "500");
     expect(getInstagramAgendaTimeoutMs()).toBe(1_000);
   });

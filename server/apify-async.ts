@@ -124,12 +124,13 @@ function readResource(body: unknown) {
   };
 }
 
-export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | "automatic" } = {}) {
+export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | "automatic"; targets?: ReadonlyArray<{ username: string }> } = {}) {
   const token = process.env.APIFY_API_TOKEN?.trim();
   const baseUrl = getWebhookBaseUrl();
   if (!token) throw new Error("APIFY_API_TOKEN não configurado.");
   if (!baseUrl) throw new Error("SCHEDULED_TASK_ENDPOINT_BASE não configurado.");
-  const budget = await claimApifyDailyRequest({ units: INSTAGRAM_TARGETS.length });
+  const targets = options.targets ?? INSTAGRAM_TARGETS;
+  const budget = await claimApifyDailyRequest({ units: targets.length });
   if (!budget.allowed) {
     const message = budget.blockedReason === "kill_switch"
       ? "Extração Apify bloqueada pelo kill switch operacional; nenhuma chamada paga foi iniciada."
@@ -151,7 +152,7 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
     response = await fetchWithTimeout(`https://api.apify.com/v2/acts/${ACTOR_ID}/runs?${query.toString()}`, {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "WeekendVibes/1.0" },
-      body: JSON.stringify(buildInstagramStoriesScraperPayload(INSTAGRAM_TARGETS)),
+      body: JSON.stringify(buildInstagramStoriesScraperPayload(targets)),
     });
   } catch (error) {
     const actorTimedOut = isApifyTimeoutError(error);
@@ -196,9 +197,9 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
               : "Apify rejeitou o disparo do Actor.",
       },
     });
-    if (sessionFailure) throw new Error("A credencial de sessão do Actor está ausente, inválida ou expirada.");
+    if (sessionFailure) throw Object.assign(new Error("A credencial de sessão do Actor está ausente, inválida ou expirada."), { apifyStatus: response.status });
     if (response.status === 404 || response.status === 400) throw createApifyDispatchFailure(response.status, detail);
-    throw new Error(`Apify não aceitou o disparo assíncrono (HTTP ${response.status}).`);
+    throw Object.assign(new Error(`Apify não aceitou o disparo assíncrono (HTTP ${response.status}).`), { apifyStatus: response.status });
   }
 
   const data = payload.data && typeof payload.data === "object" ? payload.data as Record<string, unknown> : {};
