@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BLACKPASS_FETCH_TIMEOUT_MS, containsTargetVenue, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseMrIngressosEventMetadata, parseSymplaEventMetadata, parseWeTicketEventMetadata, SYMPLA_FETCH_TIMEOUT_MS, WETICKET_FETCH_TIMEOUT_MS } from "./ingestion";
+import { BLACKPASS_FETCH_TIMEOUT_MS, containsTargetVenue, EVENTOS_LITORAL_FETCH_TIMEOUT_MS, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, PARQUE_VALONGO_FETCH_TIMEOUT_MS, parseArticketEventMetadata, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseEventosLitoralOrganizerMetadata, parseMrIngressosEventMetadata, parseParqueValongoEventMetadata, parseSymplaEventMetadata, parseTicketingEventMetadata, parseWeTicketEventMetadata, publicSourceKey, SYMPLA_FETCH_TIMEOUT_MS, WETICKET_FETCH_TIMEOUT_MS } from "./ingestion";
 
 describe("adapters de ticketeiras oficiais", () => {
   it("normaliza metadados públicos do Black Pass", () => {
@@ -98,5 +98,27 @@ describe("adapters de ticketeiras oficiais", () => {
     expect(containsTargetVenue("GOAT CLUB, Santos")).toBe(true);
     expect(containsTargetVenue("Dolores Bar e Restaurante - Guarujá")).toBe(true);
     expect(containsTargetVenue("Sede Vicente - Guarujá")).toBe(false);
+  });
+
+  it("normaliza evento musical estruturado do Parque Valongo", () => {
+    const html = `<script type="application/ld+json">${JSON.stringify({ "@type": "Event", name: "Festival de Música no Parque Valongo", startDate: "2030-10-12T18:00:00-03:00", location: { name: "Parque Valongo", address: { addressLocality: "Santos", streetAddress: "Rua Antônio Prado, s/nº" } } })}</script>`;
+    expect(parseParqueValongoEventMetadata(html, "https://www.turismosantos.com.br/pt-br/eventos/parque-valongo-musica")).toMatchObject({ title: "Festival de Música no Parque Valongo", city: "Santos", locationName: "Parque Valongo", genre: "house_eletronica" });
+    expect(PARQUE_VALONGO_FETCH_TIMEOUT_MS).toBe(20_000);
+  });
+
+  it("reconhece a página pública do produtor Eventos Litoral sem fabricar evento", () => {
+    const parsed = parseEventosLitoralOrganizerMetadata("<title>Eventos Litoral</title><main>Eventos Litoral próximos eventos Articket Santos</main>", "https://articket.com.br/o/58/eventos-litoral");
+    expect(parsed?.text).toContain("Eventos Litoral");
+    expect(parsed?.sourceUrl).toBe("https://articket.com.br/o/58/eventos-litoral");
+    expect(publicSourceKey("https://www.turismosantos.com.br/pt-br/tags/parque-valongo")).toBe("public:parque-valongo");
+    expect(publicSourceKey("https://articket.com.br/o/58/eventos-litoral")).toBe("public:eventos-litoral");
+    expect(EVENTOS_LITORAL_FETCH_TIMEOUT_MS).toBe(20_000);
+  });
+
+  it("normaliza evento Articket associado ao produtor Eventos Litoral", () => {
+    const html = `<script type="application/ld+json">${JSON.stringify({ "@type": "Event", name: "Feijuca no Arcos", startDate: "2030-11-28T20:00:00-03:00", location: { name: "Arcos do Valongo", address: { addressLocality: "Santos", streetAddress: "Rua Antônio Prado, s/nº" } }, offers: { price: "50.00" } })}</script><meta property="og:image" content="https://cdn.example/feijuca.jpg"><main>Feijuca no Arcos Santos samba pagode</main>`;
+    expect(containsTargetVenue("Arcos do Valongo, Santos")).toBe(true);
+    expect(parseArticketEventMetadata(html, "https://articket.com.br/e/7163/feijuca-no-arcos-tiee")).toMatchObject({ title: "Feijuca no Arcos", eventDate: "2030-11-28T20:00:00-03:00", locationName: "Arcos do Valongo", city: "Santos", priceCents: 5000, category: "evento_musical", genre: "samba_pagode" });
+    expect(publicSourceKey("https://articket.com.br/e/7163/feijuca-no-arcos-tiee")).toBe("public:articket");
   });
 });

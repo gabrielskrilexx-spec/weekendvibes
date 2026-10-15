@@ -21,6 +21,8 @@ const DEFAULT_SOURCE_URLS = [
   "https://www.sympla.com.br/eventos/guaruja-sp",
   "https://www.weticket.com.br/",
   "https://zig.tickets/pt-BR",
+  "http://www.turismosantos.com.br/pt-br/tags/parque-valongo",
+  "https://articket.com.br/o/58/eventos-litoral",
 ];
 
 export const TARGET_VENUES = [
@@ -53,6 +55,10 @@ export const TARGET_VENUES = [
   "dolores restaurante e bar",
   "dolores bar e restaurante",
   "arena jequitimar",
+  "parque valongo",
+  "armazém 3",
+  "armazem 3",
+  "arcos do valongo",
 ] as const;
 
 const normalizeSlug = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -320,6 +326,60 @@ export function parseZigEventMetadata(html: string, url: string) {
   return { title, eventDate, locationName, address: street, city, priceCents, sourceUrl: url, imageUrl, text: sourceText.slice(0, 16_000) };
 }
 
+export const PARQUE_VALONGO_FETCH_TIMEOUT_MS = 20_000;
+export const EVENTOS_LITORAL_FETCH_TIMEOUT_MS = 20_000;
+const SANTOS_PUBLIC_REQUEST_HEADERS = {
+  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+  accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "accept-language": "pt-BR,pt;q=0.9,en;q=0.8",
+  "cache-control": "no-cache",
+  pragma: "no-cache",
+  "upgrade-insecure-requests": "1",
+};
+
+function isParqueValongoUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.includes("turismosantos.com.br") && parsed.pathname.includes("parque-valongo");
+  } catch { return false; }
+}
+
+function isEventosLitoralOrganizerUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.endsWith("articket.com.br") && /^\/o\/(?:58|621)(?:\/|$)/.test(parsed.pathname);
+  } catch { return false; }
+}
+
+export function parseParqueValongoEventMetadata(html: string, url: string) {
+  const jsonLd = readJsonLd(html);
+  const location = jsonLd?.location && typeof jsonLd.location === "object" ? jsonLd.location as Record<string, unknown> : {};
+  const address = location.address && typeof location.address === "object" ? location.address as Record<string, unknown> : {};
+  const meta = readMetaTags(html);
+  const $ = load(html, undefined, false);
+  $("script, style, noscript").remove();
+  const visibleText = $.root().text().replace(/\s+/g, " ").trim();
+  const title = typeof jsonLd?.name === "string" ? jsonLd.name.trim() : "";
+  const eventDate = typeof jsonLd?.startDate === "string" ? jsonLd.startDate.trim() : "";
+  const locationName = typeof location.name === "string" && location.name.trim() ? location.name.trim() : "Parque Valongo";
+  const city = typeof address.addressLocality === "string" && address.addressLocality.trim() ? address.addressLocality.trim() : /santos/i.test(visibleText) ? "Santos" : "";
+  const addressLine = typeof address.streetAddress === "string" ? address.streetAddress : "Rua Antônio Prado, s/nº, Centro Histórico";
+  const searchable = normalizeText(`${title} ${visibleText}`);
+  const genre = /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : /show|m[uú]sica|festival|dj|concerto/.test(searchable) ? "house_eletronica" : "";
+  const category = /show|festival|concerto|m[uú]sica|dj/.test(searchable) ? "evento_musical" : "";
+  if (!title || !eventDate || city !== "Santos" || !genre || !category) return undefined;
+  return { title, summary: visibleText.slice(0, 4_000), eventDate, locationName, address: addressLine, city, category, genre, priceCents: 0, sourceUrl: url, imageUrl: meta("og:image"), text: visibleText.slice(0, 16_000) };
+}
+
+export function parseEventosLitoralOrganizerMetadata(html: string, url: string) {
+  const meta = readMetaTags(html);
+  const $ = load(html, undefined, false);
+  $("script, style, noscript").remove();
+  const text = $.root().text().replace(/\s+/g, " ").trim();
+  if (!/eventos litoral/i.test(text) || !text) return undefined;
+  return { sourceUrl: url, imageUrl: meta("og:image"), text: text.slice(0, 16_000) };
+}
+
 function isBlackPassEventUrl(url: string) {
   try { const parsed = new URL(url); return parsed.hostname.endsWith("blackpass.com.br") && /^\/event\//.test(parsed.pathname); } catch { return false; }
 }
@@ -329,7 +389,14 @@ function isBlackPassRootUrl(url: string) {
 }
 
 function isSymplaEventUrl(url: string) {
-  try { const parsed = new URL(url); return parsed.hostname.endsWith("sympla.com.br") && /^\/evento\/[A-Za-z0-9-]+\/[0-9]+/.test(parsed.pathname); } catch { return false; }
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.endsWith("sympla.com.br") && /^\/evento\/[A-Za-z0-9-]+\/[0-9]+/.test(parsed.pathname);
+  } catch { return false; }
+}
+
+function isArticketEventUrl(url: string) {
+  try { const parsed = new URL(url); return parsed.hostname.endsWith("articket.com.br") && /^\/e\/[A-Za-z0-9_-]+/.test(parsed.pathname); } catch { return false; }
 }
 
 export const WETICKET_FETCH_TIMEOUT_MS = 20_000;
@@ -588,6 +655,16 @@ export function parseTicketingEventMetadata(html: string, url: string) {
   return { title, eventDate, locationName, address: street, city, priceCents, sourceUrl: url, imageUrl: meta("og:image"), text: visibleText.slice(0, 16_000) };
 }
 
+export function parseArticketEventMetadata(html: string, url: string) {
+  const parsed = parseTicketingEventMetadata(html, url);
+  if (!parsed) return undefined;
+  if (!parsed.title.trim() || !parsed.eventDate.trim() || !parsed.locationName.trim() || !parsed.city.trim()) return undefined;
+  const searchable = normalizeText(`${parsed.title} ${parsed.text} ${parsed.locationName}`);
+  const genre = /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : /show|festival|m[uú]sica|dj|festa|balada|sertanejo|arrocha|pagode/.test(searchable) ? "house_eletronica" : "";
+  const category = /show|festival|concerto|banda/.test(searchable) ? "show" : genre ? "evento_musical" : "";
+  return { ...parsed, summary: parsed.text.slice(0, 4_000), category, genre };
+}
+
 function isIngresseEventUrl(url: string) {
   try {
     const parsed = new URL(url);
@@ -665,7 +742,7 @@ type PublicPage = {
   html: string;
   text: string;
   imageUrl: string;
-  adapter?: "blackpass" | "mringressos" | "ingresse" | "sympla" | "weticket" | "zig" | "generic";
+  adapter?: "blackpass" | "mringressos" | "ingresse" | "sympla" | "weticket" | "zig" | "articket" | "parque-valongo" | "eventos-litoral" | "generic";
   adapterError?: string;
   durationMs?: number;
   structured?: Record<string, string | number>;
@@ -677,6 +754,8 @@ type PublicPage = {
 export function publicSourceKey(url: string) {
   try {
     const host = new URL(url).hostname.toLowerCase();
+    if (isParqueValongoUrl(url)) return "public:parque-valongo";
+    if (isEventosLitoralOrganizerUrl(url)) return "public:eventos-litoral";
     if (host.includes("ingresse")) return "public:ingresse";
     if (host.includes("blacktag")) return "public:blacktag";
     if (host.includes("blackpass")) return "public:blackpass";
@@ -719,6 +798,8 @@ function publicFetchTimeoutMs(url: string) {
   if (sourceKey === "public:ingresse") return getIngresseFetchTimeoutMs();
   if (sourceKey === "public:sympla") return SYMPLA_FETCH_TIMEOUT_MS;
   if (sourceKey === "public:zig") return ZIG_FETCH_TIMEOUT_MS;
+  if (sourceKey === "public:parque-valongo") return PARQUE_VALONGO_FETCH_TIMEOUT_MS;
+  if (sourceKey === "public:eventos-litoral") return EVENTOS_LITORAL_FETCH_TIMEOUT_MS;
   return PUBLIC_FETCH_TIMEOUT_MS;
 }
 export const MR_INGRESSOS_RETRY_ATTEMPTS = 3;
@@ -822,6 +903,24 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
     if (!text) throw createFetchError("Zig Tickets retornou conteúdo vazio");
     return { url, html, text: text.slice(0, 16_000), imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter: "zig", adapterError: structured ? undefined : "Adaptador Zig não encontrou metadados públicos completos." };
   }
+  if (isParqueValongoUrl(url)) {
+    const response = await fetchExternal(url, { headers: SANTOS_PUBLIC_REQUEST_HEADERS }, PARQUE_VALONGO_FETCH_TIMEOUT_MS);
+    const html = await readExternalBody(response);
+    const meta = readMetaTags(html);
+    const structured = parseParqueValongoEventMetadata(html, url);
+    const $ = load(html, undefined, false);
+    $("script, style, noscript").remove();
+    const text = structured?.text ?? $.root().text().replace(/\s+/g, " ").trim();
+    if (!text) throw createFetchError("Página pública do Parque Valongo retornou conteúdo vazio");
+    return { url, html, text: text.slice(0, 16_000), imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter: "parque-valongo", adapterError: structured ? undefined : "Página do Parque Valongo sem evento JSON-LD completo; conteúdo encaminhado para classificação." };
+  }
+  if (isEventosLitoralOrganizerUrl(url)) {
+    const response = await fetchExternal(url, { headers: SANTOS_PUBLIC_REQUEST_HEADERS }, EVENTOS_LITORAL_FETCH_TIMEOUT_MS);
+    const html = await readExternalBody(response);
+    const metadata = parseEventosLitoralOrganizerMetadata(html, url);
+    if (!metadata) throw createFetchError("Página pública do Eventos Litoral retornou conteúdo vazio ou contrato inesperado");
+    return { url, html, text: metadata.text, imageUrl: metadata.imageUrl, adapter: "eventos-litoral" };
+  }
   try {
     const requestInit: RequestInit = {
       headers: {
@@ -842,10 +941,10 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
     const text = $.root().text().replace(/\s+/g, " ").trim();
     if (!text) throw createFetchError("Fonte pública retornou conteúdo vazio");
     const hostname = new URL(url).hostname;
-    const structured = hostname.endsWith("zig.tickets") ? parseZigEventMetadata(html, url) : (isBlackPassEventUrl(url) ? parseBlackPassEventMetadata(html, url) : isMrIngressosEventUrl(url) ? parseMrIngressosEventMetadata(html, url) : undefined);
+    const structured = hostname.endsWith("zig.tickets") ? parseZigEventMetadata(html, url) : (isBlackPassEventUrl(url) ? parseBlackPassEventMetadata(html, url) : isMrIngressosEventUrl(url) ? parseMrIngressosEventMetadata(html, url) : isArticketEventUrl(url) ? parseArticketEventMetadata(html, url) : undefined);
     const normalizedText = structured?.text.slice(0, 8000) ?? text.slice(0, 8000);
     logPublicResponseDiagnostics({ url, status: response.status, contentType: response.headers.get("content-type"), html, text: normalizedText, structured: Boolean(structured), links: extractPublicEventLinks(html, url).length });
-    const adapter = hostname.endsWith("blackpass.com.br") ? "blackpass" : hostname.endsWith("mringressos.com.br") ? "mringressos" : hostname.includes("ingresse") ? "ingresse" : hostname.includes("sympla.com.br") ? "sympla" : hostname.includes("weticket.com.br") ? "weticket" : hostname.endsWith("zig.tickets") ? "zig" : "generic";
+    const adapter = hostname.endsWith("blackpass.com.br") ? "blackpass" : hostname.endsWith("mringressos.com.br") ? "mringressos" : hostname.includes("ingresse") ? "ingresse" : hostname.includes("sympla.com.br") ? "sympla" : hostname.includes("weticket.com.br") ? "weticket" : hostname.endsWith("zig.tickets") ? "zig" : hostname.endsWith("articket.com.br") ? "articket" : "generic";
     const adapterError = (isBlackPassEventUrl(url) || isMrIngressosEventUrl(url)) && !structured ? `Adaptador ${adapter} não encontrou JSON-LD/metadados completos; conteúdo textual encaminhado para a classificação.` : undefined;
     return { url, html, text: normalizedText, imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter, adapterError };
   } catch (error) {
@@ -1049,7 +1148,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
   const structured = apiStructuredEvents.length > 0 ? { choices: [{ message: { content: JSON.stringify({ events: apiStructuredEvents }) } }] } : await invokeLLM({
     model: "gpt-4o-mini",
     messages: [
-      { role: "system", content: "Extraia somente eventos públicos de música, shows ou baladas nos locais oficiais Vallum Garden, Moby Dick, Ativa House, Casa 412, Verilonguinho, Meu Lugar, Goat Club, Laroc Club Guarujá, Lucky Scope, Curvão Surf House, Guarujá Golf Club, Praiô, Flamingos, Projac Bar, Boteco Almare, Dolores Restaurante e Bar ou Arena Jequitimar, localizados exclusivamente em Santos ou Guarujá. Ignore eventos passados, cidades diferentes, locais fora dessa allowlist e eventos de gastronomia, esporte, teatro ou exposição sem música. Retorne somente JSON no schema. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Se o gênero não puder ser inferido com segurança, descarte o evento. Use o SOURCE_URL correspondente como sourceUrl e IMAGE_URL quando houver." },
+      { role: "system", content: "Extraia somente eventos públicos de música, shows ou baladas nos locais oficiais Vallum Garden, Moby Dick, Ativa House, Casa 412, Verilonguinho, Meu Lugar, Goat Club, Laroc Club Guarujá, Lucky Scope, Curvão Surf House, Guarujá Golf Club, Praiô, Flamingos, Projac Bar, Boteco Almare, Dolores Restaurante e Bar, Arena Jequitimar, Parque Valongo ou Armazém 3, localizados exclusivamente em Santos ou Guarujá. Ignore eventos passados, cidades diferentes, locais fora dessa allowlist e eventos de gastronomia, esporte, teatro ou exposição sem música. Retorne somente JSON no schema. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Se o gênero não puder ser inferido com segurança, descarte o evento. Use o SOURCE_URL correspondente como sourceUrl e IMAGE_URL quando houver." },
       { role: "user", content: rawText },
     ],
     response_format: { type: "json_schema", json_schema: { name: "event_batch", strict: true, schema: { type: "object", properties: { events: { type: "array", items: { type: "object", properties: { title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string" }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "samba_pagode", "rap_trap"] }, priceCents: { type: "integer" }, sourceUrl: { type: "string" }, imageUrl: { type: "string" }, latitude: { type: "string" }, longitude: { type: "string" } }, required: ["title", "summary", "eventDate", "locationName", "address", "city", "category", "genre", "priceCents", "sourceUrl", "imageUrl", "latitude", "longitude"], additionalProperties: false } } }, required: ["events"], additionalProperties: false } } },
