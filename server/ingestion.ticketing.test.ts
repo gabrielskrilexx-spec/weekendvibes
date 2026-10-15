@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BLACKPASS_FETCH_TIMEOUT_MS, containsTargetVenue, EVENTOS_LITORAL_FETCH_TIMEOUT_MS, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, PARQUE_VALONGO_FETCH_TIMEOUT_MS, parseArticketEventMetadata, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseEventosLitoralOrganizerMetadata, parseMrIngressosEventMetadata, parseParqueValongoEventMetadata, parseSymplaEventMetadata, parseTicketingEventMetadata, parseWeTicketEventMetadata, publicSourceKey, SYMPLA_FETCH_TIMEOUT_MS, WETICKET_FETCH_TIMEOUT_MS } from "./ingestion";
+import { BLACKPASS_FETCH_TIMEOUT_MS, BLUE_MED_FETCH_TIMEOUT_MS, containsTargetVenue, EVENTOS_LITORAL_FETCH_TIMEOUT_MS, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, PARQUE_VALONGO_FETCH_TIMEOUT_MS, parseArticketEventMetadata, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseBlueMedAgendaEvents, parseEventosLitoralOrganizerMetadata, parseMrIngressosEventMetadata, parseParqueValongoEventMetadata, parseSymplaEventMetadata, parseTicketingEventMetadata, parseWeTicketEventMetadata, publicSourceKey, SYMPLA_FETCH_TIMEOUT_MS, WETICKET_FETCH_TIMEOUT_MS } from "./ingestion";
 
 describe("adapters de ticketeiras oficiais", () => {
   it("normaliza metadados públicos do Black Pass", () => {
@@ -120,5 +120,16 @@ describe("adapters de ticketeiras oficiais", () => {
     expect(containsTargetVenue("Arcos do Valongo, Santos")).toBe(true);
     expect(parseArticketEventMetadata(html, "https://articket.com.br/e/7163/feijuca-no-arcos-tiee")).toMatchObject({ title: "Feijuca no Arcos", eventDate: "2030-11-28T20:00:00-03:00", locationName: "Arcos do Valongo", city: "Santos", priceCents: 5000, category: "evento_musical", genre: "samba_pagode" });
     expect(publicSourceKey("https://articket.com.br/e/7163/feijuca-no-arcos-tiee")).toBe("public:articket");
+  });
+
+  it("extrai somente eventos musicais futuros elegíveis da agenda Blue Med", () => {
+    const html = `<div class="card-evento"><img src="https://cdn.example/roberto.png"><p class="titulo-evento">SHOW ROBERTO CARLOS</p><p class="data-evento">31/10/2026</p><p class="botao-evento"><a href="https://eventim.com.br/roberto">saiba</a></p></div><div class="card-evento"><p class="titulo-evento">EVENTO FECHADO</p><p class="data-evento">01/11/2026</p></div><div class="card-evento"><p class="titulo-evento">SHOW PAGODIN COM BELO</p><p class="data-evento">23/11/2026</p></div>`;
+    const parsed = parseBlueMedAgendaEvents(html, "https://santosconventioncenter.com.br/agenda-2026/");
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]).toMatchObject({ title: "SHOW PAGODIN COM BELO", city: "Santos", locationName: "Santos Convention Center", genre: "samba_pagode", sourceUrl: "https://santosconventioncenter.com.br/agenda-2026/" });
+    expect(containsTargetVenue("Blue Med Convention Center, Santos")).toBe(true);
+    expect(containsTargetVenue("Mendes Convention Center, Santos")).toBe(true);
+    expect(publicSourceKey("https://santosconventioncenter.com.br/agenda-2026/")).toBe("public:blue-med");
+    expect(BLUE_MED_FETCH_TIMEOUT_MS).toBe(20_000);
   });
 });

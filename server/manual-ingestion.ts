@@ -114,6 +114,7 @@ function sourceKeyForChunk(url: string) {
     if (host.includes("weticket.com.br")) return "public:weticket";
     if (host.includes("turismosantos.com.br") && url.toLowerCase().includes("parque-valongo")) return "public:parque-valongo";
     if (host.endsWith("articket.com.br") && /\/o\/(?:58|621)(?:\/|$)/.test(new URL(url).pathname)) return "public:eventos-litoral";
+    if (host.endsWith("santosconventioncenter.com.br") && /\/agenda(?:-2026)?\/?$/.test(new URL(url).pathname)) return "public:blue-med";
     if (host.includes("articket")) return "public:articket";
     if (host.endsWith("zig.tickets")) return "public:zig";
   } catch {

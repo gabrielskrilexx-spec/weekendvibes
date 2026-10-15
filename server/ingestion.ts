@@ -23,6 +23,7 @@ const DEFAULT_SOURCE_URLS = [
   "https://zig.tickets/pt-BR",
   "http://www.turismosantos.com.br/pt-br/tags/parque-valongo",
   "https://articket.com.br/o/58/eventos-litoral",
+  "https://santosconventioncenter.com.br/agenda-2026/",
 ];
 
 export const TARGET_VENUES = [
@@ -59,6 +60,9 @@ export const TARGET_VENUES = [
   "armazém 3",
   "armazem 3",
   "arcos do valongo",
+  "blue med convention center",
+  "santos convention center",
+  "mendes convention center",
 ] as const;
 
 const normalizeSlug = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -328,6 +332,7 @@ export function parseZigEventMetadata(html: string, url: string) {
 
 export const PARQUE_VALONGO_FETCH_TIMEOUT_MS = 20_000;
 export const EVENTOS_LITORAL_FETCH_TIMEOUT_MS = 20_000;
+export const BLUE_MED_FETCH_TIMEOUT_MS = 20_000;
 const SANTOS_PUBLIC_REQUEST_HEADERS = {
   "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
   accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -349,6 +354,39 @@ function isEventosLitoralOrganizerUrl(url: string) {
     const parsed = new URL(url);
     return parsed.hostname.endsWith("articket.com.br") && /^\/o\/(?:58|621)(?:\/|$)/.test(parsed.pathname);
   } catch { return false; }
+}
+
+function isBlueMedAgendaUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.endsWith("santosconventioncenter.com.br") && /\/agenda(?:-2026)?\/?$/.test(parsed.pathname);
+  } catch { return false; }
+}
+
+function parseBlueMedDate(value: string) {
+  const match = value.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!match) return "";
+  const [, day, month, year] = match;
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T00:00:00-03:00`;
+}
+
+export function parseBlueMedAgendaEvents(html: string, url: string) {
+  const $ = load(html, undefined, false);
+  const events: Array<Record<string, string | number>> = [];
+  $(".card-evento").each((_index, element) => {
+    const card = $(element);
+    const title = card.find(".titulo-evento").first().text().replace(/\s+/g, " ").trim();
+    const dateText = card.find(".data-evento").first().text().replace(/\s+/g, " ").trim();
+    const eventDate = parseBlueMedDate(dateText);
+    const imageUrl = card.find("img").first().attr("src") ?? "";
+    const ticketUrl = card.find(".botao-evento a").first().attr("href") ?? url;
+    const searchable = normalizeText(title);
+    const genre = /pagod|samba/.test(searchable) ? "samba_pagode" : /funk/.test(searchable) ? "funk" : /rap|trap/.test(searchable) ? "rap_trap" : "";
+    const category = genre ? "evento_musical" : "";
+    if (!title || !eventDate || !genre || /^evento fechado$/i.test(title)) return;
+    events.push({ title, summary: `${title} no Santos Convention Center.`, eventDate, locationName: "Santos Convention Center", address: "Praça Almirante Gago Coutinho, 29, Ponta da Praia", city: "Santos", category, genre, priceCents: 0, sourceUrl: ticketUrl, imageUrl, latitude: "", longitude: "", text: `${title} ${dateText} Santos Convention Center Santos` });
+  });
+  return events;
 }
 
 export function parseParqueValongoEventMetadata(html: string, url: string) {
@@ -742,10 +780,10 @@ type PublicPage = {
   html: string;
   text: string;
   imageUrl: string;
-  adapter?: "blackpass" | "mringressos" | "ingresse" | "sympla" | "weticket" | "zig" | "articket" | "parque-valongo" | "eventos-litoral" | "generic";
+  adapter?: "blackpass" | "mringressos" | "ingresse" | "sympla" | "weticket" | "zig" | "articket" | "parque-valongo" | "eventos-litoral" | "blue-med" | "generic";
   adapterError?: string;
   durationMs?: number;
-  structured?: Record<string, string | number>;
+  structured?: Record<string, string | number> | Array<Record<string, string | number>>;
   cacheFallback?: { used: true; status: number | null; message: string };
   fetchFailure?: FetchFailure;
   circuitOpen?: boolean;
@@ -756,6 +794,7 @@ export function publicSourceKey(url: string) {
     const host = new URL(url).hostname.toLowerCase();
     if (isParqueValongoUrl(url)) return "public:parque-valongo";
     if (isEventosLitoralOrganizerUrl(url)) return "public:eventos-litoral";
+    if (isBlueMedAgendaUrl(url)) return "public:blue-med";
     if (host.includes("ingresse")) return "public:ingresse";
     if (host.includes("blacktag")) return "public:blacktag";
     if (host.includes("blackpass")) return "public:blackpass";
@@ -800,6 +839,7 @@ function publicFetchTimeoutMs(url: string) {
   if (sourceKey === "public:zig") return ZIG_FETCH_TIMEOUT_MS;
   if (sourceKey === "public:parque-valongo") return PARQUE_VALONGO_FETCH_TIMEOUT_MS;
   if (sourceKey === "public:eventos-litoral") return EVENTOS_LITORAL_FETCH_TIMEOUT_MS;
+  if (sourceKey === "public:blue-med") return BLUE_MED_FETCH_TIMEOUT_MS;
   return PUBLIC_FETCH_TIMEOUT_MS;
 }
 export const MR_INGRESSOS_RETRY_ATTEMPTS = 3;
@@ -921,6 +961,16 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
     if (!metadata) throw createFetchError("Página pública do Eventos Litoral retornou conteúdo vazio ou contrato inesperado");
     return { url, html, text: metadata.text, imageUrl: metadata.imageUrl, adapter: "eventos-litoral" };
   }
+  if (isBlueMedAgendaUrl(url)) {
+    const response = await fetchExternal(url, { headers: { ...SANTOS_PUBLIC_REQUEST_HEADERS, referer: "https://santosconventioncenter.com.br/" } }, BLUE_MED_FETCH_TIMEOUT_MS);
+    const html = await readExternalBody(response);
+    const structured = parseBlueMedAgendaEvents(html, url);
+    const $ = load(html, undefined, false);
+    $("script, style, noscript").remove();
+    const text = $.root().text().replace(/\s+/g, " ").trim();
+    if (!text) throw createFetchError("Agenda do Blue Med retornou conteúdo vazio");
+    return { url, html, text: text.slice(0, 16_000), imageUrl: "", structured, adapter: "blue-med", adapterError: structured.length ? undefined : "Agenda do Blue Med sem eventos musicais elegíveis." };
+  }
   try {
     const requestInit: RequestInit = {
       headers: {
@@ -942,7 +992,8 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
     if (!text) throw createFetchError("Fonte pública retornou conteúdo vazio");
     const hostname = new URL(url).hostname;
     const structured = hostname.endsWith("zig.tickets") ? parseZigEventMetadata(html, url) : (isBlackPassEventUrl(url) ? parseBlackPassEventMetadata(html, url) : isMrIngressosEventUrl(url) ? parseMrIngressosEventMetadata(html, url) : isArticketEventUrl(url) ? parseArticketEventMetadata(html, url) : undefined);
-    const normalizedText = structured?.text.slice(0, 8000) ?? text.slice(0, 8000);
+    const structuredText = Array.isArray(structured) ? structured.map(item => String(item.text ?? "")).join(" ") : structured?.text;
+    const normalizedText = structuredText?.slice(0, 8000) ?? text.slice(0, 8000);
     logPublicResponseDiagnostics({ url, status: response.status, contentType: response.headers.get("content-type"), html, text: normalizedText, structured: Boolean(structured), links: extractPublicEventLinks(html, url).length });
     const adapter = hostname.endsWith("blackpass.com.br") ? "blackpass" : hostname.endsWith("mringressos.com.br") ? "mringressos" : hostname.includes("ingresse") ? "ingresse" : hostname.includes("sympla.com.br") ? "sympla" : hostname.includes("weticket.com.br") ? "weticket" : hostname.endsWith("zig.tickets") ? "zig" : hostname.endsWith("articket.com.br") ? "articket" : "generic";
     const adapterError = (isBlackPassEventUrl(url) || isMrIngressosEventUrl(url)) && !structured ? `Adaptador ${adapter} não encontrou JSON-LD/metadados completos; conteúdo textual encaminhado para a classificação.` : undefined;
@@ -1138,8 +1189,10 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
     return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: false, discovered: candidateUrls.length, matchedSources: 0, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, reason: "Nenhum evento dos locais-alvo encontrado nas fontes públicas", sourceReports: buildPublicSourceReports({ candidateUrls, pages, matchesTargetVenue }) };
   }
 
-  const apiStructuredEvents = sourcePages
-    .flatMap(page => "structured" in page && page.structured ? [page.structured] : []);
+  const apiStructuredEvents = sourcePages.flatMap(page => {
+    if (!("structured" in page) || !page.structured) return [];
+    return Array.isArray(page.structured) ? page.structured : [page.structured];
+  });
   const rawText = sourcePages
     .map(page => `SOURCE_URL: ${page.url}\nIMAGE_URL: ${page.imageUrl}\nCONTENT: ${page.text}`)
     .join("\n\n")
@@ -1148,7 +1201,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
   const structured = apiStructuredEvents.length > 0 ? { choices: [{ message: { content: JSON.stringify({ events: apiStructuredEvents }) } }] } : await invokeLLM({
     model: "gpt-4o-mini",
     messages: [
-      { role: "system", content: "Extraia somente eventos públicos de música, shows ou baladas nos locais oficiais Vallum Garden, Moby Dick, Ativa House, Casa 412, Verilonguinho, Meu Lugar, Goat Club, Laroc Club Guarujá, Lucky Scope, Curvão Surf House, Guarujá Golf Club, Praiô, Flamingos, Projac Bar, Boteco Almare, Dolores Restaurante e Bar, Arena Jequitimar, Parque Valongo ou Armazém 3, localizados exclusivamente em Santos ou Guarujá. Ignore eventos passados, cidades diferentes, locais fora dessa allowlist e eventos de gastronomia, esporte, teatro ou exposição sem música. Retorne somente JSON no schema. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Se o gênero não puder ser inferido com segurança, descarte o evento. Use o SOURCE_URL correspondente como sourceUrl e IMAGE_URL quando houver." },
+      { role: "system", content: "Extraia somente eventos públicos de música, shows ou baladas nos locais oficiais Vallum Garden, Moby Dick, Ativa House, Casa 412, Verilonguinho, Meu Lugar, Goat Club, Laroc Club Guarujá, Lucky Scope, Curvão Surf House, Guarujá Golf Club, Praiô, Flamingos, Projac Bar, Boteco Almare, Dolores Restaurante e Bar, Arena Jequitimar, Parque Valongo, Armazém 3, Blue Med Convention Center ou Santos Convention Center, localizados exclusivamente em Santos ou Guarujá. Ignore eventos passados, cidades diferentes, locais fora dessa allowlist e eventos de gastronomia, esporte, teatro ou exposição sem música. Retorne somente JSON no schema. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Se o gênero não puder ser inferido com segurança, descarte o evento. Use o SOURCE_URL correspondente como sourceUrl e IMAGE_URL quando houver." },
       { role: "user", content: rawText },
     ],
     response_format: { type: "json_schema", json_schema: { name: "event_batch", strict: true, schema: { type: "object", properties: { events: { type: "array", items: { type: "object", properties: { title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string" }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "samba_pagode", "rap_trap"] }, priceCents: { type: "integer" }, sourceUrl: { type: "string" }, imageUrl: { type: "string" }, latitude: { type: "string" }, longitude: { type: "string" } }, required: ["title", "summary", "eventDate", "locationName", "address", "city", "category", "genre", "priceCents", "sourceUrl", "imageUrl", "latitude", "longitude"], additionalProperties: false } } }, required: ["events"], additionalProperties: false } } },
