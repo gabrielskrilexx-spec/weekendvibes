@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { containsTargetVenue, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseMrIngressosEventMetadata } from "./ingestion";
+import { containsTargetVenue, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseMrIngressosEventMetadata, parseSymplaEventMetadata, SYMPLA_FETCH_TIMEOUT_MS } from "./ingestion";
 
 describe("adapters de ticketeiras oficiais", () => {
   it("normaliza metadados públicos do Black Pass", () => {
@@ -48,6 +48,22 @@ describe("adapters de ticketeiras oficiais", () => {
   it("descobre rotas Black Pass no HTML e em atributos incorporados", () => {
     const html = `<a href="/event/700">Jungle Room</a><div data-url="/event/692"></div>`;
     expect(extractPublicEventLinks(html, "https://blackpass.com.br/events")).toEqual(["https://blackpass.com.br/event/700", "https://blackpass.com.br/event/692"]);
+  });
+
+  it("normaliza o estado JSON público de um evento Sympla", () => {
+    const state = { props: { pageProps: { hydrationData: { eventHydration: { event: {
+      name: "Festa House no GOAT CLUB", logoUrl: "https://images.sympla.com.br/event.jpg",
+      startDateMultiFormat: { ISO8601: "2030-09-22T22:00:00-03:00" },
+      eventsAddress: { name: "GOAT CLUB", address: "Rua Example", addressNum: "100", city: "Santos", state: "SP", geolocation: { latitude: -23.93, longitude: -46.33 } },
+      strippedDetail: "DJ e música house. Ingressos a partir de R$ 80,00",
+    } } } } } };
+    const html = `<meta property="og:title" content="Festa House no GOAT CLUB"><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(state)}</script>`;
+    expect(parseSymplaEventMetadata(html, "https://www.sympla.com.br/evento/festa-house/123")).toMatchObject({ title: "Festa House no GOAT CLUB", eventDate: "2030-09-22T22:00:00-03:00", locationName: "GOAT CLUB", city: "Santos", genre: "house_eletronica", priceCents: 8000, sourceUrl: "https://www.sympla.com.br/evento/festa-house/123" });
+  });
+
+  it("descobre links de eventos Sympla em páginas de busca", () => {
+    expect(extractPublicEventLinks('<a href="/evento/festa-house/123">Festa</a>', "https://www.sympla.com.br/eventos/santos-sp")).toEqual(["https://www.sympla.com.br/evento/festa-house/123"]);
+    expect(SYMPLA_FETCH_TIMEOUT_MS).toBe(20_000);
   });
 
   it("mantém o timeout do Ingresse limitado para tolerar respostas lentas", () => {

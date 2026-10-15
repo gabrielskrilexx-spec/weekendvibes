@@ -67,7 +67,7 @@ describe("public event discovery", () => {
     expect(requestHeaders.get("accept")).toBe("application/json");
     expect(requestHeaders.get("accept-language")).toBe("pt-BR,pt;q=0.9,en;q=0.8");
     expect(requestHeaders.get("cache-control")).toBe("no-cache");
-    expect(requestHeaders.get("user-agent")).toBe("WeekendVibesPublicIngestion/1.1 (+public-event-ingestion)");
+    expect(requestHeaders.get("user-agent")).toContain("Mozilla/5.0");
     expect(page.structured).toMatchObject({
       title: "Laroc Guarujá apresenta: Réveillon 2027 feat. Mau P",
       eventDate: "2026-12-31T23:00:00+00:00",

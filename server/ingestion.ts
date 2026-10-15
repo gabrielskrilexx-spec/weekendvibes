@@ -17,6 +17,8 @@ const DEFAULT_SOURCE_URLS = [
   "https://www.ingresse.com/",
   "https://blackpass.com.br/",
   "https://mringressos.com.br/",
+  "https://www.sympla.com.br/eventos/santos-sp",
+  "https://www.sympla.com.br/eventos/guaruja-sp",
 ];
 
 export const TARGET_VENUES = [
@@ -208,9 +210,10 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
       const isIngresseEvent = url.hostname.includes("ingresse") && url.pathname !== "/" && !url.pathname.startsWith("/search");
       const isBlackPass = url.hostname.endsWith("blackpass.com.br") && /^\/event\/[A-Za-z0-9_-]+/.test(url.pathname);
       const isMrIngressos = url.hostname.endsWith("mringressos.com.br") && /^\/comprar\/[A-Za-z0-9_-]+/.test(url.pathname);
+      const isSympla = url.hostname.endsWith("sympla.com.br") && /^\/evento\/[A-Za-z0-9-]+\/[0-9]+/.test(url.pathname);
       const anchorText = $(anchor).text().replace(/\s+/g, " ").trim();
       const isZigRegional = !isZig || /santos|guaruj[aá]/i.test(normalizeText(anchorText));
-      if ((isArticket || isBlacktag || isZig || isIngresseEvent || isBlackPass || isMrIngressos) && isZigRegional) links.add(url.href);
+      if ((isArticket || isBlacktag || isZig || isIngresseEvent || isBlackPass || isMrIngressos || isSympla) && isZigRegional) links.add(url.href);
     } catch {
       // Ignore malformed public links.
     }
@@ -218,9 +221,14 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
   const collectEmbeddedPath = (value: string) => {
     try {
       const path = value.match(/(?:^|["'\\])((?:\/event\/[A-Za-z0-9_-]+)|(?:\/comprar\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)?))(?:["'\\]|$)/)?.[1];
-      if (!path) return;
-      const url = new URL(path, absoluteBase);
-      if (url.origin === absoluteBase.origin && (url.pathname.startsWith("/event/") || url.pathname.startsWith("/comprar/"))) links.add(url.href);
+      if (path) {
+        const url = new URL(path, absoluteBase);
+        if (url.origin === absoluteBase.origin && (url.pathname.startsWith("/event/") || url.pathname.startsWith("/comprar/"))) links.add(url.href);
+      }
+      for (const match of Array.from(value.matchAll(/(?:https:\/\/www\.sympla\.com\.br)?(\/evento\/[A-Za-z0-9-]+\/[0-9]+)/g))) {
+        const url = new URL(match[1], "https://www.sympla.com.br");
+        if (url.origin === absoluteBase.origin) links.add(url.href);
+      }
     } catch { /* ignore malformed embedded paths */ }
   };
   $("[href], [url], [link], [data-href], [data-url], [data-link]").each((_, element) => {
@@ -290,6 +298,72 @@ function isBlackPassEventUrl(url: string) {
 
 function isBlackPassRootUrl(url: string) {
   try { const parsed = new URL(url); return parsed.hostname.endsWith("blackpass.com.br") && ["", "/", "/events"].includes(parsed.pathname.replace(/\/$/, "")); } catch { return false; }
+}
+
+function isSymplaEventUrl(url: string) {
+  try { const parsed = new URL(url); return parsed.hostname.endsWith("sympla.com.br") && /^\/evento\/[A-Za-z0-9-]+\/[0-9]+/.test(parsed.pathname); } catch { return false; }
+}
+
+type SymplaEventState = {
+  name?: unknown;
+  newUrl?: unknown;
+  logoUrl?: unknown;
+  detail?: unknown;
+  strippedDetail?: unknown;
+  startDateMultiFormat?: { ISO8601?: unknown };
+  startDate?: unknown;
+  eventsAddress?: { name?: unknown; address?: unknown; addressNum?: unknown; neighborhood?: unknown; city?: unknown; state?: unknown; geolocation?: { latitude?: unknown; longitude?: unknown } };
+};
+
+function readSymplaEventState(html: string): SymplaEventState | undefined {
+  const $ = load(html, undefined, false);
+  const raw = $("script#__NEXT_DATA__").contents().text().trim();
+  if (!raw) return undefined;
+  try {
+    const root = JSON.parse(raw) as { props?: { pageProps?: { hydrationData?: { eventHydration?: { event?: unknown } } } } };
+    const event = root.props?.pageProps?.hydrationData?.eventHydration?.event;
+    return event && typeof event === "object" ? event as SymplaEventState : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function parseSymplaEventMetadata(html: string, url: string) {
+  const state = readSymplaEventState(html);
+  const meta = readMetaTags(html);
+  const $ = load(html, undefined, false);
+  $("script, style, noscript").remove();
+  const visibleText = $.root().text().replace(/\s+/g, " ").trim();
+  const address = state?.eventsAddress ?? {};
+  const title = String(state?.name ?? meta("og:title") ?? "").trim();
+  const eventDate = String(state?.startDateMultiFormat?.ISO8601 ?? state?.startDate ?? meta("event:start_time") ?? "").trim();
+  const locationName = String(address.name ?? "").trim();
+  const city = String(address.city ?? "").trim();
+  const addressLine = [address.address, address.addressNum, address.neighborhood, city, address.state].filter(value => typeof value === "string" && value.trim()).join(", ");
+  const detail = typeof state?.strippedDetail === "string" ? state.strippedDetail : typeof state?.detail === "string" ? stripHtml(state.detail) : meta("og:description");
+  const coordinates = address.geolocation ?? {};
+  const searchable = normalizeText(`${title} ${detail} ${locationName}`);
+  const genre = /\bfunk\b/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : /house|eletronic|dj|balada|festa/.test(searchable) ? "house_eletronica" : "";
+  const category = /show|festival|concerto|banda/.test(searchable) ? "show" : /balada|festa|dj|boate/.test(searchable) ? "balada" : genre ? "evento_musical" : "";
+  const priceMatch = `${visibleText} ${detail}`.match(/r\$\s*([\d.]+(?:,\d{2})?)/i);
+  const priceCents = priceMatch ? Math.round(Number(priceMatch[1].replace(/\./g, "").replace(",", ".")) * 100) : 0;
+  if (!title || !eventDate || !city || !locationName) return undefined;
+  return {
+    title,
+    summary: String(detail ?? "").slice(0, 4_000),
+    eventDate,
+    locationName,
+    address: addressLine,
+    city,
+    category,
+    genre,
+    priceCents,
+    sourceUrl: url,
+    imageUrl: String(state?.logoUrl ?? meta("og:image") ?? ""),
+    latitude: String(coordinates.latitude ?? ""),
+    longitude: String(coordinates.longitude ?? ""),
+    text: [title, detail, locationName, addressLine, city].filter(Boolean).join(" ").slice(0, 16_000),
+  };
 }
 
 const BLACKPASS_EVENTS_API = "https://api.blackpass.com.br/events/list";
@@ -487,7 +561,7 @@ type PublicPage = {
   html: string;
   text: string;
   imageUrl: string;
-  adapter?: "blackpass" | "mringressos" | "ingresse" | "generic";
+  adapter?: "blackpass" | "mringressos" | "ingresse" | "sympla" | "generic";
   adapterError?: string;
   durationMs?: number;
   structured?: Record<string, string | number>;
@@ -503,6 +577,7 @@ export function publicSourceKey(url: string) {
     if (host.includes("blacktag")) return "public:blacktag";
     if (host.includes("blackpass")) return "public:blackpass";
     if (host.includes("mringressos")) return "public:mringressos";
+    if (host.includes("sympla.com.br")) return "public:sympla";
     if (host.includes("articket")) return "public:articket";
     if (host.endsWith("zig.tickets")) return "public:zig";
   } catch {
@@ -532,10 +607,12 @@ async function guardedFetchPublicPage(url: string, options: { dryRun?: boolean }
 
 const PUBLIC_FETCH_TIMEOUT_MS = 12_000;
 export const ARTICKET_FETCH_TIMEOUT_MS = 30_000;
+export const SYMPLA_FETCH_TIMEOUT_MS = 20_000;
 function publicFetchTimeoutMs(url: string) {
   const sourceKey = publicSourceKey(url);
   if (sourceKey === "public:articket") return ARTICKET_FETCH_TIMEOUT_MS;
   if (sourceKey === "public:ingresse") return getIngresseFetchTimeoutMs();
+  if (sourceKey === "public:sympla") return SYMPLA_FETCH_TIMEOUT_MS;
   return PUBLIC_FETCH_TIMEOUT_MS;
 }
 export const MR_INGRESSOS_RETRY_ATTEMPTS = 3;
@@ -610,10 +687,21 @@ export async function fetchWithConcurrency<TItem, TResult>(items: TItem[], worke
 async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}): Promise<PublicPage> {
   if (isIngresseEventUrl(url)) return fetchIngresseEventApi(url, { read: getIngestionPayloadCache, write: saveIngestionPayloadCache }, options);
   if (isBlackPassEventUrl(url)) return fetchBlackPassEventPage(url);
+  if (isSymplaEventUrl(url)) {
+    const response = await fetchExternal(url, { headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36", accept: "text/html,application/xhtml+xml", "accept-language": "pt-BR,pt;q=0.9,en;q=0.8", "cache-control": "no-cache", "sec-ch-ua": '"Chromium";v="140", "Google Chrome";v="140", "Not=A?Brand";v="24"', "sec-ch-ua-mobile": "?0", "sec-ch-ua-platform": '"Windows"', "sec-fetch-dest": "document", "sec-fetch-mode": "navigate", "sec-fetch-site": "same-origin", "upgrade-insecure-requests": "1" } }, SYMPLA_FETCH_TIMEOUT_MS);
+    const html = await readExternalBody(response);
+    const structured = parseSymplaEventMetadata(html, url);
+    const meta = readMetaTags(html);
+    const $ = load(html, undefined, false);
+    $("script, style, noscript").remove();
+    const text = structured?.text ?? $.root().text().replace(/\s+/g, " ").trim();
+    if (!text) throw createFetchError("Sympla retornou conteúdo vazio");
+    return { url, html, text: text.slice(0, 16_000), imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter: "sympla", adapterError: structured ? undefined : "Adaptador Sympla não encontrou dados estruturados públicos." };
+  }
   try {
     const requestInit: RequestInit = {
       headers: {
-        "user-agent": "WeekendVibesPublicIngestion/1.1 (+public-event-ingestion)",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
         accept: "text/html,application/xhtml+xml",
         "accept-language": "pt-BR,pt;q=0.9,en;q=0.8",
         "cache-control": "no-cache",
@@ -633,7 +721,7 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
     const structured = hostname.endsWith("zig.tickets") ? parseZigEventMetadata(html, url) : (isBlackPassEventUrl(url) ? parseBlackPassEventMetadata(html, url) : isMrIngressosEventUrl(url) ? parseMrIngressosEventMetadata(html, url) : undefined);
     const normalizedText = structured?.text.slice(0, 8000) ?? text.slice(0, 8000);
     logPublicResponseDiagnostics({ url, status: response.status, contentType: response.headers.get("content-type"), html, text: normalizedText, structured: Boolean(structured), links: extractPublicEventLinks(html, url).length });
-    const adapter = hostname.endsWith("blackpass.com.br") ? "blackpass" : hostname.endsWith("mringressos.com.br") ? "mringressos" : hostname.includes("ingresse") ? "ingresse" : "generic";
+    const adapter = hostname.endsWith("blackpass.com.br") ? "blackpass" : hostname.endsWith("mringressos.com.br") ? "mringressos" : hostname.includes("ingresse") ? "ingresse" : hostname.includes("sympla.com.br") ? "sympla" : "generic";
     const adapterError = (isBlackPassEventUrl(url) || isMrIngressosEventUrl(url)) && !structured ? `Adaptador ${adapter} não encontrou JSON-LD/metadados completos; conteúdo textual encaminhado para a classificação.` : undefined;
     return { url, html, text: normalizedText, imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter, adapterError };
   } catch (error) {
@@ -875,7 +963,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
     if (fuzzyDuplicate) { duplicates += 1; duplicateSourceKeys.push(sourceKey); continue; }
     acceptedEvents.push({ title: String(event.title), eventDate: date, city, sourceKey });
     const sourceHash = crypto.createHash("md5").update(`${normalizeSlug(String(event.sourceUrl))}:${normalizeSlug(String(event.title))}:${date.toISOString().slice(0, 10)}`).digest("hex");
-    const sourceType = sourceUrl.includes("ingresse.com") ? "ingresse" : sourceUrl.includes("blackpass.com.br") ? "blackpass" : sourceUrl.includes("mringressos.com.br") ? "mringressos" : "public_source";
+    const sourceType = sourceUrl.includes("ingresse.com") ? "ingresse" : sourceUrl.includes("blackpass.com.br") ? "blackpass" : sourceUrl.includes("mringressos.com.br") ? "mringressos" : sourceUrl.includes("sympla.com.br") ? "sympla" : "public_source";
     const latitude = String(event.latitude || "");
     const longitude = String(event.longitude || "");
     if (!latitude || !longitude) missingCoordinates += 1;
