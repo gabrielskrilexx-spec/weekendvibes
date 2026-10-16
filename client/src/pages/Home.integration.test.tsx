@@ -64,5 +64,7 @@ describe("Home pública simplificada", () => {
     expect(markup).toContain("Fim de semana");
     expect(markup).toContain("Santos");
     expect(markup).toContain("Guarujá");
+    expect(markup).toContain("Blue Med Convention Center");
+    expect(markup).toContain("Parque Valongo");
   });
 });

@@ -8,6 +8,7 @@ import TodayEvents from "@/components/TodayEvents";
 import { EventGridSkeleton } from "@/components/EventSkeletons";
 import { useTheme } from "@/contexts/ThemeContext";
 import SiteFooter from "@/components/SiteFooter";
+import VenueSpotlight from "@/components/VenueSpotlight";
 
 const days = [{ label: "Todos", value: "" }, { label: "Sexta", value: "sexta" }, { label: "Sábado", value: "sabado" }];
 const quickFilters = [{ label: "Todos", value: "todos" }, { label: "Hoje", value: "hoje" }, { label: "Fim de semana", value: "fim-de-semana" }, { label: "Santos", value: "santos" }, { label: "Guarujá", value: "guaruja" }] as const;
@@ -32,6 +33,7 @@ export default function Home() {
   const [city, setCity] = useState("Todas");
   const [category, setCategory] = useState("Todas");
   const [genre, setGenre] = useState("");
+  const [venue, setVenue] = useState<"blue-med" | "parque-valongo" | "">("");
   const [quickFilter, setQuickFilter] = useState<(typeof quickFilters)[number]["value"]>("todos");
   const todayKey = saoPauloDateKey();
   const quickRange = useMemo(() => {
@@ -47,6 +49,7 @@ export default function Home() {
     city: quickFilter === "santos" ? "Santos" : quickFilter === "guaruja" ? "Guarujá" : city === "Santos" || city === "Guarujá" ? city : undefined,
     category: category === "show" || category === "balada" || category === "evento_musical" ? category : undefined,
     genre: genre === "funk" || genre === "house_eletronica" || genre === "samba_pagode" || genre === "rap_trap" ? genre : undefined,
+    venue: venue === "blue-med" ? "Santos Convention Center" : venue === "parque-valongo" ? "Parque Valongo" : undefined,
     size: 40,
   });
   const events = useMemo(() => eventsQuery.data ?? [], [eventsQuery.data]);
@@ -82,6 +85,8 @@ export default function Home() {
       </section>
 
       <TodayEvents />
+
+      <VenueSpotlight selectedVenue={venue} onSelect={setVenue} events={events} />
 
       <section id="filtros" aria-labelledby="filtros-heading" className="mx-auto max-w-7xl scroll-mt-24 px-4 pt-8 sm:px-6">
         <div className="mb-5"><p className="text-xs font-black uppercase tracking-[0.2em] text-orange-700 dark:text-orange-300">Encontre seu rolê</p><h2 id="filtros-heading" className="mt-1 text-3xl font-black tracking-tight text-zinc-900 dark:text-white">Escolha a vibe</h2></div>
