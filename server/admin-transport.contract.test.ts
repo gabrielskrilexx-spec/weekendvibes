@@ -7,6 +7,7 @@ const maintenanceMocks = vi.hoisted(() => ({
   markIngestionSourceResult: vi.fn().mockResolvedValue(undefined),
   recordIngestionSourceAction: vi.fn().mockResolvedValue(undefined),
   listIngestionSourceOperationalTimeline: vi.fn().mockResolvedValue({ items: [{ id: "action-1", sourceKey: "instagram:mimadafesta", action: "reprocessed", actorOpenId: "admin", details: "Sucesso: 10 eventos lidos, 2 persistidos.", occurredAt: "2026-10-16T12:00:00.000Z" }], page: 1, pageSize: 500, total: 1, hasNextPage: false }),
+  getExecutiveObservabilityReport: vi.fn().mockResolvedValue({ generatedAt: "2026-10-16T12:00:00.000Z", sources: { active: 1, open: 0, waf: 0, meta110: 0, network: 0 }, series: [], trends: { waf: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, meta110: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, network: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, succeeded: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, successRate: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" } } }),
   runIngestionSourceChunk: vi.fn().mockResolvedValue({ sourceKey: "public:ingresse", dryRun: true, result: { read: 1, persisted: 1, filtered: 0, sandboxRestricted: false, previewMock: false } }),
 }));
 
@@ -60,6 +61,7 @@ vi.mock("./db", () => ({
     ]),
   listFilteredIngestionSources: vi.fn().mockResolvedValue([{ id: 1, sourceKey: "public", createdAt: new Date("2026-08-26T12:00:00.000Z") }]),
   getIngestionSourceSummary: vi.fn().mockResolvedValue({ active: 1, open: 0, waf: 0, meta110: 0, network: 0 }),
+  getExecutiveObservabilityReport: vi.fn().mockResolvedValue({ generatedAt: "2026-10-16T12:00:00.000Z", sources: { active: 1, open: 0, waf: 0, meta110: 0, network: 0 }, series: [], trends: { waf: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, meta110: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, network: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, succeeded: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, successRate: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" } } }),
   listIngestionSourceHandleAudit: vi.fn().mockResolvedValue([
     { id: 2, sourceKey: "instagram:mimadafesta", previousHandle: "mimadafesta-old", nextHandle: "mimadafesta", changedAt: new Date("2026-10-16T12:00:00.000Z") },
   ]),

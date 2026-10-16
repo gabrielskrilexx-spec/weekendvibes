@@ -4,6 +4,7 @@ import { toast as sonnerToast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { postAdminJson } from "@/lib/admin-rest";
 import { friendlyAdminErrorMessage } from "@/lib/adminFeedback";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 const frequencyOptions = [
   { value: 1440, label: "Diária" },
@@ -41,6 +42,18 @@ function nextAttemptFor(source: { circuitState: string; circuitNextAttemptAt?: s
 
 function csvCell(value: string | null | undefined) {
   return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+function trendLabel(trend: { percentage: number; direction: "up" | "down" | "flat" } | undefined) {
+  if (!trend) return "Comparativo indisponível";
+  const arrow = trend.direction === "up" ? "↑" : trend.direction === "down" ? "↓" : "→";
+  return `${arrow} ${Math.abs(trend.percentage)}% vs período anterior`;
+}
+
+function trendClass(trend: { direction: "up" | "down" | "flat" } | undefined, inverse = false) {
+  if (!trend || trend.direction === "flat") return "text-zinc-400";
+  const positive = inverse ? trend.direction === "down" : trend.direction === "up";
+  return positive ? "text-emerald-200" : "text-rose-200";
 }
 
 function SourceOperationalTimeline({ sourceKey }: { sourceKey: string }) {
@@ -95,6 +108,7 @@ export default function AdminSourcesPanel() {
   const filterSince = periodFilter === "all" ? undefined : new Date(Date.now() - (periodFilter === "7d" ? 7 : 30) * 24 * 60 * 60 * 1000).toISOString();
   const sources = trpc.ingestionSources.list.useQuery({ openOnly: openOnly || undefined, failureCategory: failureFilter === "all" ? undefined : failureFilter, since: filterSince }, { refetchInterval: 30_000 });
   const sourceSummary = trpc.ingestionSources.summary.useQuery(undefined, { refetchInterval: 30_000 });
+  const executiveReport = trpc.ingestionSources.executiveReport.useQuery(undefined, { refetchInterval: 60_000 });
   const mockSettings = trpc.ingestionReports.mockSettings.useQuery(undefined, { refetchInterval: 30_000 });
   const utils = trpc.useUtils();
   const [pendingSourceId, setPendingSourceId] = useState<number | null>(null);
@@ -221,7 +235,17 @@ export default function AdminSourcesPanel() {
       {sources.isLoading && <p className="mt-5 rounded-2xl border border-white/10 p-5 text-sm text-zinc-400">Carregando fontes...</p>}
       {sources.isError && <p role="alert" className="mt-5 rounded-2xl border border-rose-300/20 bg-rose-400/10 p-5 text-sm text-rose-100">Não foi possível carregar as fontes. Tente atualizar novamente.</p>}
       <div className="mt-5 rounded-2xl border border-violet-300/20 bg-violet-300/5 p-4" data-testid="sandbox-mock-settings"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-black text-violet-100">Permitir Mocks no Sandbox</p><p className="mt-1 text-xs leading-relaxed text-zinc-400">Quando ativo, falhas de rede no preview podem usar eventos simulados marcados. Em produção, esta opção permanece sempre desativada.</p></div><button type="button" role="switch" aria-checked={mockSettings.data?.allowSandboxMocks === true} aria-busy={mockSettingsUpdate.isPending} disabled={mockSettings.isLoading || mockSettingsUpdate.isPending || mockSettings.data?.environment === "production"} onClick={() => mockSettingsUpdate.mutate({ allowSandboxMocks: !(mockSettings.data?.allowSandboxMocks === true) })} className={`inline-flex min-h-11 items-center justify-center rounded-xl border px-4 py-2 text-xs font-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200 disabled:cursor-wait disabled:opacity-50 ${mockSettings.data?.allowSandboxMocks ? "border-violet-200/50 bg-violet-300 text-zinc-950" : "border-white/10 text-zinc-300"}`}>{mockSettingsUpdate.isPending ? <><Loader2 size={14} className="mr-2 animate-spin" /> Salvando...</> : mockSettings.data?.allowSandboxMocks ? "Ativado" : "Desativado"}</button></div></div>
-      <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="Indicadores de governança" data-testid="ingestion-source-kpis"><div className="rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-4"><p className="text-[10px] font-black uppercase tracking-wider text-emerald-200">Fontes ativas</p><p className="mt-2 text-2xl font-black text-white">{sourceSummary.data?.active ?? "—"}</p></div><div className="rounded-2xl border border-rose-300/20 bg-rose-400/10 p-4"><p className="text-[10px] font-black uppercase tracking-wider text-rose-200">OPEN / pausadas</p><p className="mt-2 text-2xl font-black text-white">{sourceSummary.data?.open ?? "—"}</p></div><div className="rounded-2xl border border-sky-300/20 bg-sky-400/10 p-4"><p className="text-[10px] font-black uppercase tracking-wider text-sky-200">Bloqueios WAF</p><p className="mt-2 text-2xl font-black text-white">{sourceSummary.data?.waf ?? "—"}</p></div><div className="rounded-2xl border border-violet-300/20 bg-violet-400/10 p-4"><p className="text-[10px] font-black uppercase tracking-wider text-violet-200">Meta Code 110</p><p className="mt-2 text-2xl font-black text-white">{sourceSummary.data?.meta110 ?? "—"}</p></div><div className="rounded-2xl border border-amber-300/20 bg-amber-400/10 p-4"><p className="text-[10px] font-black uppercase tracking-wider text-amber-200">Rede / timeout</p><p className="mt-2 text-2xl font-black text-white">{sourceSummary.data?.network ?? "—"}</p></div></div>
+      <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="Indicadores de governança" data-testid="ingestion-source-kpis">
+        <div className="rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-4"><p className="text-[10px] font-black uppercase tracking-wider text-emerald-200">Fontes ativas</p><p className="mt-2 text-2xl font-black text-white">{sourceSummary.data?.active ?? "—"}</p><p className="mt-1 text-[10px] text-zinc-400">Estado atual</p></div>
+        <div className="rounded-2xl border border-rose-300/20 bg-rose-400/10 p-4"><p className="text-[10px] font-black uppercase tracking-wider text-rose-200">OPEN / pausadas</p><p className="mt-2 text-2xl font-black text-white">{sourceSummary.data?.open ?? "—"}</p><p className="mt-1 text-[10px] text-zinc-400">Circuit breaker</p></div>
+        <div className="rounded-2xl border border-sky-300/20 bg-sky-400/10 p-4"><p className="text-[10px] font-black uppercase tracking-wider text-sky-200">Bloqueios WAF</p><p className="mt-2 text-2xl font-black text-white">{executiveReport.data?.trends.waf.current ?? sourceSummary.data?.waf ?? "—"}</p><p className={`mt-1 text-[10px] font-bold ${trendClass(executiveReport.data?.trends.waf, true)}`}>{trendLabel(executiveReport.data?.trends.waf)}</p></div>
+        <div className="rounded-2xl border border-violet-300/20 bg-violet-400/10 p-4"><p className="text-[10px] font-black uppercase tracking-wider text-violet-200">Meta Code 110</p><p className="mt-2 text-2xl font-black text-white">{executiveReport.data?.trends.meta110.current ?? sourceSummary.data?.meta110 ?? "—"}</p><p className={`mt-1 text-[10px] font-bold ${trendClass(executiveReport.data?.trends.meta110, true)}`}>{trendLabel(executiveReport.data?.trends.meta110)}</p></div>
+        <div className="rounded-2xl border border-amber-300/20 bg-amber-400/10 p-4"><p className="text-[10px] font-black uppercase tracking-wider text-amber-200">Rede / timeout</p><p className="mt-2 text-2xl font-black text-white">{executiveReport.data?.trends.network.current ?? sourceSummary.data?.network ?? "—"}</p><p className={`mt-1 text-[10px] font-bold ${trendClass(executiveReport.data?.trends.network, true)}`}>{trendLabel(executiveReport.data?.trends.network)}</p></div>
+      </div>
+      <div className="mt-5 rounded-2xl border border-white/10 bg-black/10 p-4" data-testid="telemetry-history-chart" aria-label="Histórico de telemetria">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-black text-white">Histórico de telemetria</p><p className="text-xs text-zinc-500">Últimos 14 dias: falhas por categoria e taxa de sucesso.</p></div><p className={`text-xs font-bold ${trendClass(executiveReport.data?.trends.successRate)}`}>Sucesso {executiveReport.data?.trends.successRate.current ?? "—"}% {trendLabel(executiveReport.data?.trends.successRate)}</p></div>
+        <div className="mt-3 h-64 w-full" role="img" aria-label="Gráfico de linhas de WAF, Meta Code 110, rede e sucesso">{typeof ResizeObserver === "undefined" ? <p className="flex h-full items-center justify-center text-xs text-zinc-500">Gráfico disponível no navegador.</p> : <ResponsiveContainer width="100%" height="100%"><LineChart data={executiveReport.data?.series ?? []} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" /><XAxis dataKey="date" tick={{ fill: "#a1a1aa", fontSize: 10 }} tickFormatter={value => String(value).slice(5)} /><YAxis tick={{ fill: "#a1a1aa", fontSize: 10 }} /><Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8 }} /><Line type="monotone" dataKey="waf" name="WAF" stroke="#38bdf8" strokeWidth={2} dot={false} /><Line type="monotone" dataKey="meta110" name="Meta 110" stroke="#c084fc" strokeWidth={2} dot={false} /><Line type="monotone" dataKey="network" name="Rede/Timeout" stroke="#fbbf24" strokeWidth={2} dot={false} /><Line type="monotone" dataKey="successRate" name="Sucesso %" stroke="#34d399" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer>}</div>
+      </div>
       <div className="mt-5 space-y-3">
         {sources.data?.map(source => {
           const rowPending = update.isPending && pendingSourceId === source.id;

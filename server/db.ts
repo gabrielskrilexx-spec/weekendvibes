@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
+import { buildDailyTelemetrySeries, summarizeTelemetryTrend } from "./observability";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -413,6 +414,16 @@ export async function getIngestionSourceSummary(dbOverride?: Awaited<ReturnType<
     meta110: rows.filter(source => classifyIngestionSourceFailure(source) === "meta110").length,
     network: rows.filter(source => classifyIngestionSourceFailure(source) === "network").length,
   };
+}
+
+export async function getExecutiveObservabilityReport(now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  const sources = await getIngestionSourceSummary(db);
+  if (!db) return { generatedAt: now.toISOString(), sources, series: buildDailyTelemetrySeries([], now), trends: summarizeTelemetryTrend([]) };
+  const since = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 13));
+  const runs = await db.select({ status: ingestionRuns.status, startedAt: ingestionRuns.startedAt, httpStatus: ingestionRuns.httpStatus, details: ingestionRuns.details, counts: ingestionRuns.counts }).from(ingestionRuns).where(gte(ingestionRuns.startedAt, since)).orderBy(asc(ingestionRuns.startedAt));
+  const series = buildDailyTelemetrySeries(runs, now, 14);
+  return { generatedAt: now.toISOString(), sources, series, trends: summarizeTelemetryTrend(series) };
 }
 
 export async function listEnabledInstagramSources(dbOverride?: Awaited<ReturnType<typeof getDb>>) {

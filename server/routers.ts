@@ -30,6 +30,7 @@ import {
   listIngestionSources,
   listFilteredIngestionSources,
   getIngestionSourceSummary,
+  getExecutiveObservabilityReport,
   listIngestionSourceHandleAudit,
   listIngestionSourceActionAudit,
   listIngestionSourceOperationalTimeline,
@@ -1202,6 +1203,8 @@ export const appRouter = router({
       .query(async ({ input }) => normalizeJsonForTransport(await listFilteredIngestionSources({ openOnly: input?.openOnly, failureCategory: input?.failureCategory, since: input?.since ? new Date(input.since) : undefined }))),
     summary: adminOnly
       .query(async () => normalizeJsonForTransport(await getIngestionSourceSummary())),
+    executiveReport: adminOnly
+      .query(async () => normalizeJsonForTransport(await getExecutiveObservabilityReport())),
     auditLog: adminOnly
       .input(z.object({ sourceKey: z.string().trim().min(1).max(120) }).strict())
       .query(async ({ input }) => normalizeJsonForTransport(await listIngestionSourceHandleAudit(input.sourceKey))),
