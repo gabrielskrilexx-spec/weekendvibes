@@ -25,6 +25,7 @@ import {
 } from "./instagram-pipeline";
 import { listHeartbeatJobs } from "./_core/heartbeat";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
+import { isWafBlockedFailure } from "./ingestion";
 
 const monitoredBrandFor = (title: string, sourceType: string | null) => {
   if (sourceType === "weticket" && /ap(?:ê|e)\s*22/i.test(title)) return { brand: "APÊ 22", sourceKey: "public:weticket" } as const;
@@ -60,6 +61,7 @@ export async function getBrandMonitoringMetrics() {
 export function isCriticalIngestionFailure(details: unknown) {
   const text =
     typeof details === "string" ? details : JSON.stringify(details ?? "");
+  if (/(?:bloqueado por waf|cloudflare|akamai|anti.?bot|challenge|access denied)/i.test(text)) return false;
   return /timeout|http\s*5\d{2}|status\s*5\d{2}|\b5\d{2}\b|http\s*200[^\n]*(zero|0)[^\n]*(mídia|media)/i.test(
     text
   );
@@ -478,7 +480,7 @@ export type SourceTelemetry = {
   averageLatencyMs: number;
   p95LatencyMs: number;
   simulatedExecutions: number;
-  errors: { category: "anti_bot" | "proxy" | "timeout_dns" | "sandbox" | "other"; count: number }[];
+  errors: { category: "waf" | "anti_bot" | "proxy" | "timeout_dns" | "sandbox" | "other"; count: number }[];
 };
 
 export type SourceTelemetryHistoryPoint = {
@@ -551,7 +553,8 @@ export function buildSourceTelemetryForTest(runs: Array<{ sourceKey: string | nu
     const status = Number(run.httpStatus ?? 0);
     let category: SourceErrorCategory | "none" = "none";
     if (text.includes("sandbox_restricted") || text.includes("previewmock")) category = "sandbox";
-    else if ([403, 429].includes(status) || /anti.?bot|cloudflare|challenge|waf|forbidden/.test(text)) category = "anti_bot";
+    else if (isWafBlockedFailure(status || null, text) || /bloqueado por waf|cloudflare|akamai|challenge|access denied/.test(text)) category = "waf";
+    else if ([429].includes(status) || /anti.?bot|forbidden/.test(text)) category = "anti_bot";
     else if ([502, 503, 504].includes(status) || /bad gateway|proxy|gateway|server error/.test(text)) category = "proxy";
     else if (/timeout|timed out|enotfound|eai_again|econnrefused|network/.test(text)) category = "timeout_dns";
     else if (run.status === "failed") category = "other";

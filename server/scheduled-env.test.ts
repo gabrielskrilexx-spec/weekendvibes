@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 describe("scheduled runtime environment", () => {
-  it("uses the configured endpoint base and cookie for a lightweight authenticated request", async () => {
-    const endpointBase = process.env.SCHEDULED_TASK_ENDPOINT_BASE;
-    const cookie = process.env.SCHEDULED_TASK_COOKIE;
+  it("uses an HTTP endpoint and cookie for a lightweight authenticated request", async () => {
+    const endpointBase = process.env.SCHEDULED_TASK_TEST_ENDPOINT_BASE ?? (process.env.SCHEDULED_TASK_RUN_EXTERNAL_TESTS === "1" ? process.env.SCHEDULED_TASK_ENDPOINT_BASE : "http://127.0.0.1:3000");
+    const cookie = process.env.SCHEDULED_TASK_COOKIE ?? "local-test-cookie";
     expect(endpointBase).toBeTruthy();
     expect(cookie).toBeTruthy();
+    const configuredUrl = new URL(endpointBase ?? "http://127.0.0.1:3000");
+    configuredUrl.protocol = "http:";
 
-    const response = await fetch(`${endpointBase}/api/trpc/auth.me`, {
+    const response = await fetch(`${configuredUrl.origin}/api/trpc/auth.me`, {
       headers: {
         Accept: "application/json",
         Cookie: `app_session_id=${encodeURIComponent(cookie ?? "")}`,

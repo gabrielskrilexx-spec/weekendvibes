@@ -136,6 +136,15 @@ export function sanitizeFetchFailure(error: unknown): FetchFailure {
   const message = raw.replace(/https?:\/\/[^\s]+/gi, "fonte pública").replace(/Bearer\s+[^\s]+/gi, "Bearer [redacted]").slice(0, 240);
   return { status, message: message || "Falha de coleta da fonte pública" };
 }
+export function isWafBlockedFailure(status: number | null | undefined, message: string) {
+  const normalized = message.toLowerCase();
+  return (status === 403 || status === 503) && (status === 403 || /cloudflare|akamai|waf|anti.?bot|challenge|forbidden|access denied|blocked/i.test(normalized));
+}
+function formatPublicFetchFailure(failure: FetchFailure) {
+  return isWafBlockedFailure(failure.status, failure.message)
+    ? `Bloqueado por WAF (HTTP ${failure.status}): ${failure.message}`
+    : failure.message;
+}
 
 function createFetchError(message: string, statusCode: number | null = null) {
   const error = new Error(message) as Error & { statusCode?: number };
@@ -1151,7 +1160,7 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
         const safeDurationMs = Number.isFinite(durationMs) ? Math.max(0, durationMs) : 0;
         report.durationMs += safeDurationMs;
         report.latencySamples.push(safeDurationMs);
-        report.errors.push({ sourceUrl: url, status: failure.status, message: failure.message });
+        report.errors.push({ sourceUrl: url, status: failure.status, message: formatPublicFetchFailure(failure) });
       }
       return;
     }
@@ -1217,7 +1226,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
     ...circuitOpenPages.map(page => ({ sourceUrl: page.url, status: null, message: "Fonte pausada pelo Circuit Breaker durante o cooldown.", fallbackUsed: false })),
     ...fallbackPages.map(page => ({ sourceUrl: page.url, ...page.cacheFallback, status: page.cacheFallback?.status ?? null })),
     ...rejectedPages.map((result, index) => ({ sourceUrl: candidateUrls[index], ...sanitizeFetchFailure(result.reason) })),
-  ].map(failure => ({ sourceUrl: String(failure.sourceUrl).slice(0, 1000), status: failure.status ?? null, message: String(failure.message).slice(0, 240), fallbackUsed: "used" in failure && failure.used === true }));
+  ].map(failure => ({ sourceUrl: String(failure.sourceUrl).slice(0, 1000), status: failure.status ?? null, message: formatPublicFetchFailure({ status: failure.status ?? null, message: String(failure.message).slice(0, 240) }), fallbackUsed: "used" in failure && failure.used === true }));
   const fetchFailed = fetchFailures.length;
   const outsideTargetVenue = fulfilledPages.filter(page => !matchesTargetContent(page.text)).length;
   const sourcePages = fulfilledPages.filter(page => matchesTargetContent(page.text));

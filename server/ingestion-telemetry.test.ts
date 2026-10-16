@@ -10,9 +10,14 @@ describe("telemetria por fonte", () => {
       { sourceKey: "instagram", status: "failed", httpStatus: 0, durationMs: 80, details: { message: "SANDBOX_RESTRICTED" } },
     ]);
     expect(result).toEqual(expect.arrayContaining([
-      expect.objectContaining({ sourceKey: "blacktag", runs: 3, successes: 1, successRate: 0.3333, averageLatencyMs: 220, errors: expect.arrayContaining([{ category: "anti_bot", count: 1 }, { category: "proxy", count: 1 }]) }),
+      expect.objectContaining({ sourceKey: "blacktag", runs: 3, successes: 1, successRate: 0.3333, averageLatencyMs: 220, errors: expect.arrayContaining([{ category: "waf", count: 1 }, { category: "proxy", count: 1 }]) }),
       expect.objectContaining({ sourceKey: "instagram", runs: 1, successes: 0, simulatedExecutions: 1, successRate: 0, errors: [{ category: "sandbox", count: 1 }] }),
     ]));
+  });
+
+  it("classifica 503 com assinatura Cloudflare como Bloqueado por WAF", () => {
+    const result = buildSourceTelemetryForTest([{ sourceKey: "weticket", status: "failed", httpStatus: 503, durationMs: 180, details: { message: "Cloudflare error 503" } }]);
+    expect(result[0]?.errors).toContainEqual({ category: "waf", count: 1 });
   });
 
   it("separa execuções sandbox da taxa de sucesso real", () => {
