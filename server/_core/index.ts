@@ -12,11 +12,12 @@ import { ingestInstagramHandler } from "../scheduled-instagram";
 import { asyncIngestInstagramHandler, apifyInstagramWebhookHandler, reprocessApifyStoriesDatasetHandler } from "../apify-async";
 import { heartbeatMonitorHandler } from "../scheduled-heartbeat-monitor";
 import { exportJobsRecoveryHandler } from "../scheduled-export-recovery";
+import { ticketingMonitorHandler } from "../scheduled-ticketing-monitor";
 import { serveStatic } from "./static";
 import { applySecurityHeaders, createRateLimit, createStrictCors } from "./security";
 import { registerMapsJavascriptRoute } from "../maps-javascript";
 import { registerAdminRestRoutes } from "../admin-rest";
-import { requireInternalCron } from "./cron-auth";
+import { requireInternalCron, requireVercelCron } from "./cron-auth";
 
 export async function createApp(server?: ReturnType<typeof createServer>) {
   const app = express();
@@ -49,7 +50,8 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
     res.setHeader("Expires", "0");
     next();
   };
-  app.post("/api/scheduled/health", noStoreScheduledResponse, requireInternalCron, (_req, res) => res.json({ ok: true }));
+  app.get("/api/scheduled/health", noStoreScheduledResponse, requireVercelCron, (_req, res) => res.json({ ok: true, service: "weekendvibes-api", checkedAt: new Date().toISOString() }));
+  app.post("/api/scheduled/health", noStoreScheduledResponse, requireInternalCron, (_req, res) => res.json({ ok: true, service: "weekendvibes-api", checkedAt: new Date().toISOString() }));
   app.post("/api/scheduled/ingest-events", noStoreScheduledResponse, requireInternalCron, ingestEventsHandler);
   app.post("/api/scheduled/ingest-full-agenda", noStoreScheduledResponse, requireInternalCron, ingestFullAgendaHandler);
   app.post("/api/scheduled/ingest-event-documents", noStoreScheduledResponse, requireInternalCron, ingestAgentDocumentsHandler);
@@ -60,6 +62,7 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
   app.post("/api/v2/ingestion/instagram/reprocess-dataset", noStoreScheduledResponse, reprocessApifyStoriesDatasetHandler);
   app.post("/api/scheduled/monitor-heartbeat", noStoreScheduledResponse, requireInternalCron, heartbeatMonitorHandler);
   app.post("/api/scheduled/export-jobs-recovery", noStoreScheduledResponse, requireInternalCron, exportJobsRecoveryHandler);
+  app.get("/api/scheduled/ticketing-monitor", noStoreScheduledResponse, requireVercelCron, ticketingMonitorHandler);
   // tRPC API
   app.use(
     "/api/trpc",

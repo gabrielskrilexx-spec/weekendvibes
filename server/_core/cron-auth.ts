@@ -14,6 +14,26 @@ export function hasValidInternalCronSecret(req: Pick<Request, "headers">): boole
   return timingSafeEqual(configuredBytes, receivedBytes);
 }
 
+/** Accepts the native Vercel Cron Authorization header without weakening x-cron-secret validation. */
+export function hasValidVercelCronSecret(req: Pick<Request, "headers">): boolean {
+  if (hasValidInternalCronSecret(req)) return true;
+  const configuredSecret = process.env.CRON_SECRET ?? process.env.INTERNAL_CRON_SECRET;
+  const authorization = req.headers?.authorization;
+  if (!configuredSecret || typeof authorization !== "string" || !/^Bearer\s+/i.test(authorization)) return false;
+  const receivedSecret = authorization.replace(/^Bearer\s+/i, "").trim();
+  const configuredBytes = Buffer.from(configuredSecret, "utf8");
+  const receivedBytes = Buffer.from(receivedSecret, "utf8");
+  return configuredBytes.length === receivedBytes.length && timingSafeEqual(configuredBytes, receivedBytes);
+}
+
+export function requireVercelCron(req: Request, res: Response, next: NextFunction) {
+  if (!hasValidVercelCronSecret(req)) {
+    console.warn("[CronAuth] Vercel Cron authentication rejected", { reason: "invalid_or_missing_secret" });
+    return res.status(401).json({ ok: false, error: "unauthorized" });
+  }
+  return next();
+}
+
 export function cronAuthMode(req: Pick<Request, "headers">): "machine" | "session" {
   return hasValidInternalCronSecret(req) ? "machine" : "session";
 }
