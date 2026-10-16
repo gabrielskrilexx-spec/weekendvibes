@@ -1205,9 +1205,9 @@ export const appRouter = router({
       .input(z.object({ sourceKey: z.string().trim().min(1).max(120) }).strict())
       .query(async ({ input }) => normalizeJsonForTransport(await listIngestionSourceActionAudit(input.sourceKey))),
     operationalTimeline: adminOnly
-      .input(z.object({ sourceKey: z.string().trim().min(1).max(120), page: z.number().int().positive().default(1), pageSize: z.number().int().min(5).max(10).default(10) }).strict())
+      .input(z.object({ sourceKey: z.string().trim().min(1).max(120), page: z.number().int().positive().default(1), pageSize: z.number().int().min(5).max(10).default(10), action: z.enum(["handle_changed", "reactivated", "reprocessed"]).optional() }).strict())
       .output(z.object({ items: z.array(z.object({ id: z.string().min(1).max(64), sourceKey: z.string().min(1).max(120), action: z.enum(["handle_changed", "reactivated", "reprocessed"]), actorOpenId: z.string().max(160).nullable(), details: z.string().max(500).nullable(), occurredAt: z.string().datetime() }).strict()).max(10), page: z.number().int().positive(), pageSize: z.number().int().min(5).max(10), total: z.number().int().nonnegative(), hasNextPage: z.boolean() }).strict())
-      .query(async ({ input }) => normalizeJsonForTransport(await listIngestionSourceOperationalTimeline(input.sourceKey, input.page, input.pageSize))),
+      .query(async ({ input }) => normalizeJsonForTransport(await listIngestionSourceOperationalTimeline(input.sourceKey, input.page, input.pageSize, input.action))),
     operationalTimelineExport: adminOnly
       .input(z.object({ sourceKey: z.string().trim().min(1).max(120) }).strict())
       .output(z.object({ items: z.array(z.object({ id: z.string().min(1).max(64), sourceKey: z.string().min(1).max(120), action: z.enum(["handle_changed", "reactivated", "reprocessed"]), actorOpenId: z.string().max(160).nullable(), details: z.string().max(500).nullable(), occurredAt: z.string().datetime() }).strict()).max(500), total: z.number().int().nonnegative() }).strict())

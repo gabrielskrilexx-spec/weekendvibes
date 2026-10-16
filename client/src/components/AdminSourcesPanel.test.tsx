@@ -22,12 +22,12 @@ vi.mock("@/lib/trpc", () => ({
       operationalTimelineExport: { useQuery: () => ({ data: { items: [], total: 0 }, isFetching: false, refetch: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }) }) },
       create: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { createMutate(input); options?.onSuccess?.(); } }) },
       update: { useMutation: () => ({ isPending: false, mutate }) },
-      reactivate: { useMutation: () => ({ isPending: false, mutate: reactivateMutate }) },
+      reactivate: { useMutation: (options?: { onSuccess?: (result: { reprocess: "succeeded" | "failed" | "skipped" }) => void }) => ({ isPending: false, mutate: (input: unknown) => { reactivateMutate(input); options?.onSuccess?.({ reprocess: "succeeded" }); } }) },
     },
     adminRoutine: {
       status: { invalidate },
     },
-    useUtils: () => ({ ingestionSources: { list: { invalidate } }, ingestionReports: { mockSettings: { invalidate }, logs: { invalidate } }, adminRoutine: { status: { invalidate } } }),
+    useUtils: () => ({ ingestionSources: { list: { invalidate }, operationalTimeline: { invalidate } }, ingestionReports: { mockSettings: { invalidate }, logs: { invalidate } }, adminRoutine: { status: { invalidate } } }),
   },
 }));
 
@@ -116,6 +116,7 @@ describe("AdminSourcesPanel", () => {
     const confirm = tree!.root.findByProps({ children: "Confirmar reativação" });
     await act(async () => { confirm.props.onClick({ preventDefault: vi.fn() }); });
     expect(reactivateMutate).toHaveBeenCalledWith({ sourceKey: "instagram:mobydicksantos", reprocessNow: true });
+    expect(invalidate).toHaveBeenCalled();
   });
 
   it("filtra a listagem para mostrar somente fontes OPEN", async () => {
@@ -177,5 +178,21 @@ describe("AdminSourcesPanel", () => {
     const details = tree!.root.findByProps({ "aria-label": "Ver detalhes de Moby House" });
     await act(async () => { details.props.onClick(); });
     expect(JSON.stringify(tree!.toJSON())).toContain("Exportar Histórico (CSV)");
+  });
+
+  it("mantém modal, filtros e paginação acessíveis em viewport mobile", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const details = tree!.root.findByProps({ "aria-label": "Ver detalhes de Moby House" });
+    await act(async () => { details.props.onClick(); });
+    const modal = tree!.root.findByProps({ "data-testid": "source-details-dialog" });
+    expect(modal.props.className).toContain("max-h-[90vh]");
+    expect(modal.props.className).toContain("max-w-lg");
+    const actionGroup = tree!.root.findByProps({ "aria-label": "Filtrar timeline por ação" });
+    expect(actionGroup.props.className).toContain("flex-wrap");
+    expect(tree!.root.findByProps({ children: "Edição de ID Meta" })).toBeDefined();
+    expect(tree!.root.findByProps({ children: "Próxima" }).props.className).toContain("min-h-10");
+    await act(async () => { tree!.root.findByProps({ children: "Reprocessamentos" }).props.onClick(); });
+    expect(tree!.root.findByProps({ children: "Reprocessamentos" }).props["aria-pressed"]).toBe(true);
   });
 });

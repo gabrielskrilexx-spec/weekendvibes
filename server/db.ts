@@ -451,7 +451,7 @@ export type IngestionSourceTimelineItem = {
   occurredAt: Date;
 };
 
-export async function listIngestionSourceOperationalTimeline(sourceKey: string, page = 1, pageSize = 10, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+export async function listIngestionSourceOperationalTimeline(sourceKey: string, page = 1, pageSize = 10, action?: IngestionSourceTimelineItem["action"], dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   const safePageSize = Math.min(Math.max(Math.trunc(pageSize), 5), 500);
   const safePage = Math.max(1, Math.trunc(page));
@@ -463,7 +463,7 @@ export async function listIngestionSourceOperationalTimeline(sourceKey: string, 
   const timeline: IngestionSourceTimelineItem[] = [
     ...handles.map(item => ({ id: `handle-${item.id}`, sourceKey: item.sourceKey, action: "handle_changed" as const, actorOpenId: item.changedByOpenId, details: `${item.previousHandle ?? "vazio"} → ${item.nextHandle ?? "vazio"}`, occurredAt: item.changedAt })),
     ...actions.map(item => ({ id: `action-${item.id}`, sourceKey: item.sourceKey, action: item.action, actorOpenId: item.operatorOpenId, details: item.details, occurredAt: item.actedAt })),
-  ].sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
+  ].filter(item => !action || item.action === action).sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
   const offset = (safePage - 1) * safePageSize;
   return { items: timeline.slice(offset, offset + safePageSize).map(item => ({ ...item, occurredAt: item.occurredAt.toISOString() })), page: safePage, pageSize: safePageSize, total: timeline.length, hasNextPage: offset + safePageSize < timeline.length };
 }
