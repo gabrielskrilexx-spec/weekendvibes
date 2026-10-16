@@ -396,6 +396,17 @@ export const ingestionSourceActionAuditLogs = mysqlTable("ingestionSourceActionA
 export type IngestionSourceActionAuditLog = typeof ingestionSourceActionAuditLogs.$inferSelect;
 export type InsertIngestionSourceActionAuditLog = typeof ingestionSourceActionAuditLogs.$inferInsert;
 
+export const systemHealthTransitions = mysqlTable("systemHealthTransitions", {
+  id: int("id").autoincrement().primaryKey(),
+  previousStatus: mysqlEnum("previousStatus", ["healthy", "degraded", "critical"]),
+  nextStatus: mysqlEnum("nextStatus", ["healthy", "degraded", "critical"]).notNull(),
+  reason: varchar("reason", { length: 500 }).notNull(),
+  observedAt: timestamp("observedAt").defaultNow().notNull(),
+});
+
+export type SystemHealthTransition = typeof systemHealthTransitions.$inferSelect;
+export type InsertSystemHealthTransition = typeof systemHealthTransitions.$inferInsert;
+
 export const apifyDailyUsage = mysqlTable("apifyDailyUsage", {
   dateKey: varchar("dateKey", { length: 10 }).primaryKey(),
   requestCount: int("requestCount").default(0).notNull(),

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 import { buildDailyTelemetrySeries, calculateSystemHealthStatus, normalizeObservabilityPeriod, summarizeTelemetryTrend } from "./observability";
@@ -443,18 +443,34 @@ export async function getConsolidatedIngestionSourceReport(dbOverride?: Awaited<
   };
 }
 
+export async function listSystemHealthTransitions(limit = 10, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return [];
+  return db.select({ id: systemHealthTransitions.id, previousStatus: systemHealthTransitions.previousStatus, nextStatus: systemHealthTransitions.nextStatus, reason: systemHealthTransitions.reason, observedAt: systemHealthTransitions.observedAt }).from(systemHealthTransitions).orderBy(desc(systemHealthTransitions.observedAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 50));
+}
+
+export async function recordSystemHealthTransition(input: { nextStatus: "healthy" | "degraded" | "critical"; reason: string; observedAt?: Date }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return null;
+  const [latest] = await db.select({ id: systemHealthTransitions.id, nextStatus: systemHealthTransitions.nextStatus }).from(systemHealthTransitions).orderBy(desc(systemHealthTransitions.observedAt)).limit(1);
+  if (latest?.nextStatus === input.nextStatus) return null;
+  const previousStatus = latest?.nextStatus ?? null;
+  await db.insert(systemHealthTransitions).values({ previousStatus, nextStatus: input.nextStatus, reason: input.reason.slice(0, 500), observedAt: input.observedAt ?? new Date() });
+  return { previousStatus, nextStatus: input.nextStatus, reason: input.reason.slice(0, 500), observedAt: input.observedAt ?? new Date() };
+}
+
 export async function getExecutiveObservabilityReport(now = new Date(), days = 14, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const safeDays = normalizeObservabilityPeriod(days);
   const db = dbOverride ?? await getDb();
   const sources = await getIngestionSourceSummary(db);
-  if (!db) return { generatedAt: now.toISOString(), periodDays: safeDays, sources, series: buildDailyTelemetrySeries([], now, safeDays), trends: summarizeTelemetryTrend([]), system_health_status: calculateSystemHealthStatus({ openSources: sources.open, activeSources: sources.active, recentRuns: 0, recentFailures: 0 }) };
+  if (!db) return { generatedAt: now.toISOString(), periodDays: safeDays, sources, series: buildDailyTelemetrySeries([], now, safeDays), trends: summarizeTelemetryTrend([]), system_health_status: calculateSystemHealthStatus({ openSources: sources.open, activeSources: sources.active, recentRuns: 0, recentFailures: 0 }), healthTransitions: [] };
   const since = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - safeDays + 1));
   const runs = await db.select({ status: ingestionRuns.status, startedAt: ingestionRuns.startedAt, httpStatus: ingestionRuns.httpStatus, details: ingestionRuns.details, counts: ingestionRuns.counts }).from(ingestionRuns).where(gte(ingestionRuns.startedAt, since)).orderBy(asc(ingestionRuns.startedAt));
   const series = buildDailyTelemetrySeries(runs, now, safeDays);
   const lastDay = series.at(-1);
   const recentRuns = lastDay?.total ?? 0;
   const recentFailures = recentRuns - (lastDay?.succeeded ?? 0);
-  return { generatedAt: now.toISOString(), periodDays: safeDays, sources, series, trends: summarizeTelemetryTrend(series), system_health_status: calculateSystemHealthStatus({ openSources: sources.open, activeSources: sources.active, recentRuns, recentFailures }) };
+  return { generatedAt: now.toISOString(), periodDays: safeDays, sources, series, trends: summarizeTelemetryTrend(series), system_health_status: calculateSystemHealthStatus({ openSources: sources.open, activeSources: sources.active, recentRuns, recentFailures }), healthTransitions: await listSystemHealthTransitions(10, db) };
 }
 
 export async function listEnabledInstagramSources(dbOverride?: Awaited<ReturnType<typeof getDb>>) {

@@ -14,6 +14,7 @@ import { heartbeatMonitorHandler } from "../scheduled-heartbeat-monitor";
 import { exportJobsRecoveryHandler } from "../scheduled-export-recovery";
 import { ticketingMonitorHandler } from "../scheduled-ticketing-monitor";
 import { executiveObservabilityReportHandler } from "../scheduled-executive-report";
+import { weeklyExecutiveReportHandler } from "../scheduled-weekly-report";
 import { serveStatic } from "./static";
 import { applySecurityHeaders, createRateLimit, createStrictCors } from "./security";
 import { registerMapsJavascriptRoute } from "../maps-javascript";
@@ -65,6 +66,7 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
   app.post("/api/scheduled/export-jobs-recovery", noStoreScheduledResponse, requireInternalCron, exportJobsRecoveryHandler);
   app.get("/api/scheduled/ticketing-monitor", noStoreScheduledResponse, requireVercelCron, ticketingMonitorHandler);
   app.get("/api/scheduled/executive-report", noStoreScheduledResponse, requireInternalCron, executiveObservabilityReportHandler);
+  app.post("/api/scheduled/weekly-executive-report", noStoreScheduledResponse, requireInternalCron, weeklyExecutiveReportHandler);
   // tRPC API
   app.use(
     "/api/trpc",
