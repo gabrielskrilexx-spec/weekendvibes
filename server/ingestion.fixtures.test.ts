@@ -38,6 +38,17 @@ describe("fixtures dos conectores públicos", () => {
     expect(parseArticketEventMetadata(fixture("articket-santos.html"), "https://articket.com.br/e/7163/feijuca-no-arcos-tiee")).toMatchObject({ title: "Feijuca no Arcos", city: "Santos", priceCents: 5000, imageUrl: "https://cdn.example/feijuca.jpg" });
   });
 
+  it("normaliza O Encontro do Articket e corrige a cidade pelo venue oficial", () => {
+    expect(parseArticketEventMetadata(fixture("articket-o-encontro.html"), "https://articket.com.br/e/7160/o-encontro?utm_source=instagram")).toMatchObject({
+      title: "O ENCONTRO",
+      eventDate: "2026-11-28T20:00:00-03:00",
+      locationName: "Santos Convention Center",
+      city: "Santos",
+      priceCents: 6000,
+      imageUrl: "https://cdn.articket.com.br/user_content/event_images/event_image-o-encontro.webp",
+    });
+  });
+
   it("normaliza Black Pass a partir do payload do catálogo", () => {
     expect(parseBlackPassCatalogEvent(JSON.parse(fixture("blackpass-santos.json")))).toMatchObject({ title: "Jungle Room - Pink Edition", city: "Santos", locationName: "GOAT CLUB", priceCents: 7550, imageUrl: "https://api.blackpass.com.br/web/events/jungle.jpg" });
   });
@@ -92,5 +103,7 @@ describe("fixtures dos conectores públicos", () => {
     expect(sunset).toBe(halloween);
     expect(nextEdition).not.toBe(sunset);
     expect(buildPublicEventIdentity("public:zig", "OSUCO Gold Edition", "2031-10-16T22:00:00-03:00", "https://zig.tickets/eventos/osuco-gold")).toBe(buildPublicEventIdentity("public:zig", "OSUCO Sunset", "2031-10-16T22:00:00-03:00", "https://zig.tickets/eventos/osuco-sunset"));
+    expect(buildPublicEventIdentity("public:articket", "O ENCONTRO", "2031-11-28T20:00:00-03:00", "https://articket.com.br/e/7160/o-encontro?utm_source=x")).toBe(buildPublicEventIdentity("public:articket", "O ENCONTRO - nova descrição", "2031-11-28T20:00:00-03:00", "https://articket.com.br/e/7160/o-encontro"));
+    expect(buildPublicEventIdentity("public:articket", "O ENCONTRO", "2031-12-05T20:00:00-03:00", "https://articket.com.br/e/7160/o-encontro")).not.toBe(buildPublicEventIdentity("public:articket", "O ENCONTRO", "2031-11-28T20:00:00-03:00", "https://articket.com.br/e/7160/o-encontro"));
   });
 });

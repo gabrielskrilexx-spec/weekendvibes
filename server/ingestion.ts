@@ -8,6 +8,7 @@ import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 
 const DEFAULT_SOURCE_URLS = [
   "https://articket.com.br/e/6784/plants-happy-hour",
+  "https://articket.com.br/e/7160/o-encontro",
   "https://articket.com.br/",
   "https://blacktag.com.br/",
   "https://www.ingresse.com/reveillon-guaruja-2027/",
@@ -220,7 +221,8 @@ export function matchesTrackedPublicBrand(value: string, sourceKey?: string) {
 export function buildPublicEventIdentity(sourceKey: string, title: string, eventDate: Date | string, sourceUrl: string) {
   const day = new Date(eventDate).toISOString().slice(0, 10);
   const brand = getTrackedPublicBrand(`${title} ${sourceUrl}`, sourceKey);
-  const identity = brand ? `${sourceKey}|${brand}|${day}` : `${normalizeSlug(sourceUrl)}|${normalizeSlug(title)}|${day}`;
+  const articketId = sourceKey === "public:articket" ? sanitizePublicSourceUrl(sourceUrl).match(/\/e\/(\d+)(?:\/|$)/i)?.[1] : undefined;
+  const identity = articketId ? `${sourceKey}|${articketId}|${day}` : brand ? `${sourceKey}|${brand}|${day}` : `${normalizeSlug(sourceUrl)}|${normalizeSlug(title)}|${day}`;
   return crypto.createHash("md5").update(identity).digest("hex");
 }
 
@@ -241,7 +243,8 @@ export function areFuzzyDuplicateEvents(left: { title: string; eventDate: Date; 
 
 export function normalizeVenueCity(locationName: string, address: string, city: string) {
   const venue = normalizeText(`${locationName} ${address}`);
-  return /vallum|valluns/.test(venue) && /garden/.test(venue) ? "Santos" : city;
+  if ((/vallum|valluns/.test(venue) && /garden/.test(venue)) || /santos convention center|blue med convention center|mendes convention center/.test(venue)) return "Santos";
+  return city;
 }
 
 export function extractPublicEventLinks(html: string, baseUrl: string) {
@@ -728,8 +731,9 @@ export function parseTicketingEventMetadata(html: string, url: string) {
   const title = typeof jsonLd?.name === "string" ? jsonLd.name : meta("og:title") || stripHtml(h1Text) || stripHtml(pageTitle);
   const eventDate = typeof jsonLd?.startDate === "string" ? jsonLd.startDate : (meta("event:start_time") || visibleText.match(/(?:sex|sab|dom|seg|ter|qua|qui)[^0-9]{0,20}(\d{1,2})[\/ .-]+([a-záéêç]+|\d{1,2})[^0-9]{0,12}(\d{1,2})h?(\d{2})?/i)?.[0] || "");
   const locationName = typeof location.name === "string" ? location.name : (visibleText.match(/(?:Guarujá|Guaruja|Santos)[^,|]{0,80}/i)?.[0] ?? "").trim();
-  const city = typeof address.addressLocality === "string" ? address.addressLocality : (/guaruj[aá]/i.test(visibleText) ? "Guarujá" : /santos/i.test(visibleText) ? "Santos" : "");
+  const rawCity = typeof address.addressLocality === "string" ? address.addressLocality : (/guaruj[aá]/i.test(visibleText) ? "Guarujá" : /santos/i.test(visibleText) ? "Santos" : "");
   const street = typeof address.streetAddress === "string" ? address.streetAddress : "";
+  const city = normalizeVenueCity(String(locationName), `${street} ${visibleText}`, rawCity);
   const priceRaw = typeof offers.price === "number" || typeof offers.price === "string" ? String(offers.price) : "";
   const priceCents = priceRaw ? Math.round(Number(priceRaw.replace(/[^0-9,.-]/g, "").replace(",", ".")) * 100) : 0;
   if (!title && !eventDate && !locationName) return undefined;
