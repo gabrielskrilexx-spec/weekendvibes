@@ -478,11 +478,11 @@ export type IngestionSourceTimelineItem = {
   occurredAt: Date;
 };
 
-export async function listIngestionSourceOperationalTimeline(sourceKey: string, page = 1, pageSize = 10, action?: IngestionSourceTimelineItem["action"], dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+export async function listIngestionSourceOperationalTimeline(sourceKey: string, page = 1, pageSize = 10, action?: IngestionSourceTimelineItem["action"], from?: Date, to?: Date, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   const safePageSize = Math.min(Math.max(Math.trunc(pageSize), 5), 500);
   const safePage = Math.max(1, Math.trunc(page));
-  if (!db) return { items: [] as Array<Omit<IngestionSourceTimelineItem, "occurredAt"> & { occurredAt: string }>, page: safePage, pageSize: safePageSize, total: 0, hasNextPage: false };
+  if (!db) return { items: [] as Array<Omit<IngestionSourceTimelineItem, "occurredAt"> & { occurredAt: string }>, page: safePage, pageSize: safePageSize, total: 0, hasNextPage: false, actionCounts: { all: 0, handle_changed: 0, reactivated: 0, reprocessed: 0 } };
   const [handles, actions] = await Promise.all([
     db.select({ id: ingestionSourceHandleAuditLogs.id, sourceKey: ingestionSourceHandleAuditLogs.sourceKey, previousHandle: ingestionSourceHandleAuditLogs.previousHandle, nextHandle: ingestionSourceHandleAuditLogs.nextHandle, changedByOpenId: ingestionSourceHandleAuditLogs.changedByOpenId, changedAt: ingestionSourceHandleAuditLogs.changedAt }).from(ingestionSourceHandleAuditLogs).where(eq(ingestionSourceHandleAuditLogs.sourceKey, sourceKey)).limit(200),
     db.select({ id: ingestionSourceActionAuditLogs.id, sourceKey: ingestionSourceActionAuditLogs.sourceKey, action: ingestionSourceActionAuditLogs.action, operatorOpenId: ingestionSourceActionAuditLogs.operatorOpenId, details: ingestionSourceActionAuditLogs.details, actedAt: ingestionSourceActionAuditLogs.actedAt }).from(ingestionSourceActionAuditLogs).where(eq(ingestionSourceActionAuditLogs.sourceKey, sourceKey)).limit(200),
@@ -490,9 +490,11 @@ export async function listIngestionSourceOperationalTimeline(sourceKey: string, 
   const timeline: IngestionSourceTimelineItem[] = [
     ...handles.map(item => ({ id: `handle-${item.id}`, sourceKey: item.sourceKey, action: "handle_changed" as const, actorOpenId: item.changedByOpenId, details: `${item.previousHandle ?? "vazio"} → ${item.nextHandle ?? "vazio"}`, occurredAt: item.changedAt })),
     ...actions.map(item => ({ id: `action-${item.id}`, sourceKey: item.sourceKey, action: item.action, actorOpenId: item.operatorOpenId, details: item.details, occurredAt: item.actedAt })),
-  ].filter(item => !action || item.action === action).sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
+  ].filter(item => (!from || item.occurredAt.getTime() >= from.getTime()) && (!to || item.occurredAt.getTime() <= to.getTime())).sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
+  const actionCounts = { all: timeline.length, handle_changed: timeline.filter(item => item.action === "handle_changed").length, reactivated: timeline.filter(item => item.action === "reactivated").length, reprocessed: timeline.filter(item => item.action === "reprocessed").length };
+  const filteredTimeline = action ? timeline.filter(item => item.action === action) : timeline;
   const offset = (safePage - 1) * safePageSize;
-  return { items: timeline.slice(offset, offset + safePageSize).map(item => ({ ...item, occurredAt: item.occurredAt.toISOString() })), page: safePage, pageSize: safePageSize, total: timeline.length, hasNextPage: offset + safePageSize < timeline.length };
+  return { items: filteredTimeline.slice(offset, offset + safePageSize).map(item => ({ ...item, occurredAt: item.occurredAt.toISOString() })), page: safePage, pageSize: safePageSize, total: filteredTimeline.length, hasNextPage: offset + safePageSize < filteredTimeline.length, actionCounts };
 }
 
 export async function recordIngestionSourceAction(input: { sourceKey: string; action: "reprocessed"; operatorOpenId?: string | null; details?: string | null }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {

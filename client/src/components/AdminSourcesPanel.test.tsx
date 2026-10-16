@@ -19,7 +19,7 @@ vi.mock("@/lib/trpc", () => ({
       summary: { useQuery: () => ({ data: { active: 2, open: 1, waf: 0, meta110: 1, network: 0 }, isLoading: false }) },
       auditLog: { useQuery: () => ({ data: [{ id: 1, previousHandle: "moby-old", nextHandle: "moby-corrigido", changedAt: new Date("2026-08-16T12:00:00Z") }] }) },
       actionAudit: { useQuery: () => ({ data: [{ id: 1, action: "reactivated", operatorOpenId: "admin@example", details: "Reprocessamento imediato solicitado", actedAt: new Date("2026-08-17T12:00:00Z") }] }) },
-      operationalTimeline: { useQuery: (input: { page: number }) => ({ data: { items: input.page === 1 ? [{ id: "handle-1", sourceKey: "instagram:mobydicksantos", action: "handle_changed", actorOpenId: "admin@example", details: "moby-old → moby-corrigido", occurredAt: new Date("2026-08-16T12:00:00Z").toISOString() }, { id: "action-1", sourceKey: "instagram:mobydicksantos", action: "reactivated", actorOpenId: "admin@example", details: "Reprocessamento imediato solicitado", occurredAt: new Date("2026-08-17T12:00:00Z").toISOString() }] : [{ id: "action-2", sourceKey: "instagram:mobydicksantos", action: "reprocessed", actorOpenId: "admin@example", details: "Sucesso: 10 eventos lidos, 2 persistidos.", occurredAt: new Date("2026-08-18T12:00:00Z").toISOString() }], page: input.page, pageSize: 5, total: 6, hasNextPage: input.page === 1 } }) },
+      operationalTimeline: { useQuery: (input: { page: number }) => ({ data: { items: input.page === 1 ? [{ id: "handle-1", sourceKey: "instagram:mobydicksantos", action: "handle_changed", actorOpenId: "admin@example", details: "moby-old → moby-corrigido", occurredAt: new Date("2026-08-16T12:00:00Z").toISOString() }, { id: "action-1", sourceKey: "instagram:mobydicksantos", action: "reactivated", actorOpenId: "admin@example", details: "Reprocessamento imediato solicitado", occurredAt: new Date("2026-08-17T12:00:00Z").toISOString() }] : [{ id: "action-2", sourceKey: "instagram:mobydicksantos", action: "reprocessed", actorOpenId: "admin@example", details: "Sucesso: 10 eventos lidos, 2 persistidos.", occurredAt: new Date("2026-08-18T12:00:00Z").toISOString() }], page: input.page, pageSize: 5, total: 6, hasNextPage: input.page === 1, actionCounts: { all: 6, handle_changed: 2, reactivated: 1, reprocessed: 3 } } }) },
       operationalTimelineExport: { useQuery: () => ({ data: { items: [], total: 0 }, isFetching: false, refetch: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }) }) },
       operationalTimelineJsonExport: { useQuery: () => ({ data: undefined, isFetching: false, refetch: vi.fn().mockResolvedValue({ data: { sourceKey: "instagram:mobydicksantos", exportedAt: "2026-10-16T12:00:00.000Z", total: 1, items: [] } }) }) },
       create: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { createMutate(input); options?.onSuccess?.(); } }) },
@@ -208,9 +208,41 @@ describe("AdminSourcesPanel", () => {
     expect(modal.props.className).toContain("max-w-lg");
     const actionGroup = tree!.root.findByProps({ "aria-label": "Filtrar timeline por ação" });
     expect(actionGroup.props.className).toContain("flex-wrap");
-    expect(tree!.root.findByProps({ children: "Edição de ID Meta" })).toBeDefined();
+    expect(tree!.root.findAllByType("button").some(item => String(item.props["aria-label"] ?? "").startsWith("Edição de ID Meta"))).toBe(true);
     expect(tree!.root.findByProps({ children: "Próxima" }).props.className).toContain("min-h-10");
-    await act(async () => { tree!.root.findByProps({ children: "Reprocessamentos" }).props.onClick(); });
-    expect(tree!.root.findByProps({ children: "Reprocessamentos" }).props["aria-pressed"]).toBe(true);
+    const reprocessFilter = tree!.root.findAllByType("button").find(item => String(item.props["aria-label"] ?? "").startsWith("Reprocessamentos"));
+    await act(async () => { reprocessFilter!.props.onKeyDown({ key: " ", preventDefault: vi.fn() }); });
+    expect(reprocessFilter!.props["aria-pressed"]).toBe(true);
+  });
+
+  it("exibe contadores agregados e aceita intervalo de datas na timeline", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const details = tree!.root.findByProps({ "aria-label": "Ver detalhes de Moby House" });
+    await act(async () => { details.props.onClick(); });
+    expect(JSON.stringify(tree!.toJSON())).toContain("Todas (6)");
+    expect(JSON.stringify(tree!.toJSON())).toContain("Reativações (1)");
+    const start = tree!.root.findByProps({ "aria-label": "Data inicial da timeline" });
+    const end = tree!.root.findByProps({ "aria-label": "Data final da timeline" });
+    await act(async () => {
+      start.props.onChange({ target: { value: "2026-08-01" } });
+      end.props.onChange({ target: { value: "2026-08-31" } });
+    });
+    expect(start.props.value).toBe("2026-08-01");
+    expect(end.props.value).toBe("2026-08-31");
+  });
+
+  it("ativa filtro da timeline com Enter e Space e mantém foco visível", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const details = tree!.root.findByProps({ "aria-label": "Ver detalhes de Moby House" });
+    await act(async () => { details.props.onClick(); });
+    const filter = tree!.root.findAllByType("button").find(item => String(item.props["aria-label"] ?? "").startsWith("Reativações"));
+    const preventDefault = vi.fn();
+    await act(async () => { filter!.props.onKeyDown({ key: "Enter", preventDefault }); });
+    expect(filter!.props["aria-pressed"]).toBe(true);
+    expect(filter!.props.className).toContain("focus-visible:ring-2");
+    await act(async () => { filter!.props.onKeyDown({ key: " ", preventDefault }); });
+    expect(preventDefault).toHaveBeenCalled();
   });
 });
