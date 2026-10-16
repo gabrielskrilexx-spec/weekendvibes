@@ -787,7 +787,10 @@ export async function saveEvent(data: InsertEvent) {
   assertEventDateIsCurrentOrFuture(normalized.eventDate, new Date(), normalized.title);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const existing = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl }).from(events).where(and(sql`${events.sourceUrl} = ${normalized.sourceUrl}`, eq(events.eventDate, normalized.eventDate))).limit(1);
+  const identityCondition = normalized.sourceHash
+    ? or(eq(events.sourceHash, normalized.sourceHash), and(sql`${events.sourceUrl} = ${normalized.sourceUrl}`, eq(events.eventDate, normalized.eventDate)))
+    : and(sql`${events.sourceUrl} = ${normalized.sourceUrl}`, eq(events.eventDate, normalized.eventDate));
+  const existing = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl }).from(events).where(identityCondition).limit(1);
   const dayStartUtc = saoPauloDayStartUtc(normalized.eventDate);
   const nextDayStartUtc = saoPauloNextDayStartUtc(normalized.eventDate);
   const fuzzyCandidates = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl }).from(events).where(and(eq(events.city, normalized.city), gte(events.eventDate, dayStartUtc), sql`${events.eventDate} < ${nextDayStartUtc}`));

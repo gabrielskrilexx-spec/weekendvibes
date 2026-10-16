@@ -187,6 +187,27 @@ export function containsTargetVenue(value: string, aliases: string[] = []) {
   return [...TARGET_VENUES, ...aliases].some(venue => normalized.includes(normalizeText(venue)));
 }
 
+const TRACKED_PUBLIC_BRANDS = [
+  { brand: "APÊ 22", sourceKey: "public:weticket", pattern: /ap(?:ê|e)\s*22/i },
+  { brand: "OSUCO", sourceKey: "public:zig", pattern: /osuco/i },
+] as const;
+
+export function getTrackedPublicBrand(value: string, sourceKey?: string) {
+  const candidate = String(value ?? "");
+  return TRACKED_PUBLIC_BRANDS.find(item => (!sourceKey || item.sourceKey === sourceKey) && item.pattern.test(candidate))?.brand;
+}
+
+export function matchesTrackedPublicBrand(value: string, sourceKey?: string) {
+  return Boolean(getTrackedPublicBrand(value, sourceKey));
+}
+
+export function buildPublicEventIdentity(sourceKey: string, title: string, eventDate: Date | string, sourceUrl: string) {
+  const day = new Date(eventDate).toISOString().slice(0, 10);
+  const brand = getTrackedPublicBrand(`${title} ${sourceUrl}`, sourceKey);
+  const identity = brand ? `${sourceKey}|${brand}|${day}` : `${normalizeSlug(sourceUrl)}|${normalizeSlug(title)}|${day}`;
+  return crypto.createHash("md5").update(identity).digest("hex");
+}
+
 function tokenizeForSimilarity(value: string) {
   return new Set(normalizeSlug(value).split("-").filter(token => token.length > 2));
 }
@@ -1156,6 +1177,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
   const dryRun = options.dryRun === true;
   const activeAliases = await listActiveLocationAliasValues();
   const matchesTargetVenue = (value: string) => containsTargetVenue(value, activeAliases);
+  const matchesTargetContent = (value: string) => matchesTargetVenue(value) || matchesTrackedPublicBrand(value, options.sourceKey);
   const candidateUrls = await discoverCandidatePages(options);
   if (candidateUrls.length === 0) return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: true, reason: "Nenhuma fonte de ingestão configurada", sourceReports: [] as IngestionSourceReport[] };
   const pages = await fetchWithConcurrency(candidateUrls, url => guardedFetchPublicPage(url, options), PUBLIC_FETCH_CONCURRENCY);
@@ -1171,10 +1193,10 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
     ...rejectedPages.map((result, index) => ({ sourceUrl: candidateUrls[index], ...sanitizeFetchFailure(result.reason) })),
   ].map(failure => ({ sourceUrl: String(failure.sourceUrl).slice(0, 1000), status: failure.status ?? null, message: String(failure.message).slice(0, 240), fallbackUsed: "used" in failure && failure.used === true }));
   const fetchFailed = fetchFailures.length;
-  const outsideTargetVenue = fulfilledPages.filter(page => !matchesTargetVenue(page.text)).length;
-  const sourcePages = fulfilledPages.filter(page => matchesTargetVenue(page.text));
+  const outsideTargetVenue = fulfilledPages.filter(page => !matchesTargetContent(page.text)).length;
+  const sourcePages = fulfilledPages.filter(page => matchesTargetContent(page.text));
   const filteredByReason = { fetchFailed, outsideTargetVenue, invalidStructuredEvent: 0, pastEvent: 0, duplicate: 0 };
-  const filteredSourceUrls = pages.flatMap((result, index) => result.status === "rejected" || !matchesTargetVenue(result.status === "fulfilled" ? result.value.text : "") ? [candidateUrls[index]] : []);
+  const filteredSourceUrls = pages.flatMap((result, index) => result.status === "rejected" || !matchesTargetContent(result.status === "fulfilled" ? result.value.text : "") ? [candidateUrls[index]] : []);
 
   if (sourcePages.length === 0) {
     const sandboxFailure = rejectedPages.some(result => isSandboxRestrictedError(result.reason));
@@ -1238,8 +1260,8 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
     const fuzzyDuplicate = acceptedEvents.some(previous => areFuzzyDuplicateEvents(previous, { title: String(event.title), eventDate: date, city }));
     if (fuzzyDuplicate) { duplicates += 1; duplicateSourceKeys.push(sourceKey); continue; }
     acceptedEvents.push({ title: String(event.title), eventDate: date, city, sourceKey });
-    const sourceHash = crypto.createHash("md5").update(`${normalizeSlug(String(event.sourceUrl))}:${normalizeSlug(String(event.title))}:${date.toISOString().slice(0, 10)}`).digest("hex");
-    const sourceType = sourceUrl.includes("ingresse.com") ? "ingresse" : sourceUrl.includes("blackpass.com.br") ? "blackpass" : sourceUrl.includes("mringressos.com.br") ? "mringressos" : sourceUrl.includes("sympla.com.br") ? "sympla" : "public_source";
+    const sourceHash = buildPublicEventIdentity(sourceKey, String(event.title), date, sourceUrl);
+    const sourceType = sourceUrl.includes("ingresse.com") ? "ingresse" : sourceUrl.includes("blackpass.com.br") ? "blackpass" : sourceUrl.includes("mringressos.com.br") ? "mringressos" : sourceUrl.includes("sympla.com.br") ? "sympla" : sourceUrl.includes("weticket.com.br") ? "weticket" : sourceUrl.includes("zig.tickets") ? "zig" : "public_source";
     const latitude = String(event.latitude || "");
     const longitude = String(event.longitude || "");
     if (!latitude || !longitude) missingCoordinates += 1;

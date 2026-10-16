@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   extractPublicEventLinks,
   fetchIngresseEventApi,
+  buildPublicEventIdentity,
   parseArticketEventMetadata,
   parseBlackPassCatalogEvent,
   parseBlueMedAgendaEvents,
@@ -13,6 +14,7 @@ import {
   parseSymplaEventMetadata,
   parseWeTicketEventMetadata,
   parseZigEventMetadata,
+  getTrackedPublicBrand,
 } from "./ingestion";
 
 const fixture = (name: string) => readFileSync(resolve(process.cwd(), "tests/fixtures", name), "utf8");
@@ -67,5 +69,28 @@ describe("fixtures dos conectores públicos", () => {
 
   it("extrai cards musicais futuros da agenda Blue Med", () => {
     expect(parseBlueMedAgendaEvents(fixture("blue-med-santos.html"), "https://santosconventioncenter.com.br/agenda-2026/")).toMatchObject([{ title: "PAGODIN COM BELO", city: "Santos", locationName: "Santos Convention Center", genre: "samba_pagode", sourceUrl: "https://eventim.com.br/pagodin" }]);
+  });
+
+  it("aceita novas edições sem depender do subtítulo da marca", () => {
+    const variants = JSON.parse(fixture("brand-variants.json")) as { weticket: Array<{ title: string; html: string }>; zig: Array<{ title: string; html: string }> };
+    for (const variant of variants.weticket) {
+      const parsed = parseWeTicketEventMetadata(variant.html, `https://www.weticket.com.br/${variant.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`);
+      expect(parsed?.title).toBe(variant.title);
+      expect(getTrackedPublicBrand(`${variant.title} O Beco`, "public:weticket")).toBe("APÊ 22");
+    }
+    for (const variant of variants.zig) {
+      const parsed = parseZigEventMetadata(variant.html, "https://zig.tickets/eventos/osuco-edition");
+      expect(parsed?.title).toBe(variant.title);
+      expect(getTrackedPublicBrand(variant.title, "public:zig")).toBe("OSUCO");
+    }
+  });
+
+  it("deduplica a mesma marca no mesmo dia e cria identidade para nova edição", () => {
+    const sunset = buildPublicEventIdentity("public:weticket", "APÊ 22 — Sunset", "2031-03-12T22:00:00-03:00", "https://www.weticket.com.br/ape-22-sunset");
+    const halloween = buildPublicEventIdentity("public:weticket", "APÊ 22 — Especial Halloween", "2031-03-12T22:00:00-03:00", "https://www.weticket.com.br/ape-22-helloween");
+    const nextEdition = buildPublicEventIdentity("public:weticket", "APÊ 22 — Especial Halloween", "2031-03-19T22:00:00-03:00", "https://www.weticket.com.br/ape-22-helloween");
+    expect(sunset).toBe(halloween);
+    expect(nextEdition).not.toBe(sunset);
+    expect(buildPublicEventIdentity("public:zig", "OSUCO Gold Edition", "2031-10-16T22:00:00-03:00", "https://zig.tickets/eventos/osuco-gold")).toBe(buildPublicEventIdentity("public:zig", "OSUCO Sunset", "2031-10-16T22:00:00-03:00", "https://zig.tickets/eventos/osuco-sunset"));
   });
 });
