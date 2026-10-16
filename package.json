@@ -11,8 +11,8 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "monitor:ticketing": "node scripts/monitor-ticketing-sources.mjs --watch",
-    "monitor:ticketing:once": "node scripts/monitor-ticketing-sources.mjs",
+    "monitor:ticketing": "tsx scripts/monitor-ticketing-sources.mjs --watch",
+    "monitor:ticketing:once": "tsx scripts/monitor-ticketing-sources.mjs",
     "db:push": "drizzle-kit generate && drizzle-kit migrate"
   },
   "dependencies": {

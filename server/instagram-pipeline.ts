@@ -92,6 +92,27 @@ export function isMetaCredentialFailure(status: number, body = "") {
   return status === 401 || (status === 400 && /oauthexception|invalid oauth|access token|expired|token.*invalid|session.*expired/i.test(body));
 }
 
+/** Extrai a mensagem pública da Graph API sem expor token, query string ou payload bruto. */
+export function extractMetaGraphErrorMessage(body: string, status?: number) {
+  let providerMessage = "";
+  let providerType = "";
+  let providerCode: number | undefined;
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: unknown; type?: unknown; code?: unknown } };
+    if (parsed.error && typeof parsed.error === "object") {
+      providerMessage = typeof parsed.error.message === "string" ? parsed.error.message : "";
+      providerType = typeof parsed.error.type === "string" ? parsed.error.type : "";
+      providerCode = Number.isFinite(Number(parsed.error.code)) ? Number(parsed.error.code) : undefined;
+    }
+  } catch {
+    // Fallback below keeps non-JSON upstream responses useful without logging the full body.
+  }
+  const detail = normalizeDiagnosticText(providerMessage || body, 240);
+  const metadata = [providerType, providerCode !== undefined ? `code ${providerCode}` : ""].filter(Boolean).join(", ");
+  const prefix = status ? `Meta Graph API HTTP ${status}` : "Meta Graph API";
+  return `${prefix}: ${detail || "erro sem mensagem"}${metadata ? ` (${metadata})` : ""}`;
+}
+
 export const INSTAGRAM_TARGETS = [
   { name: "Moby House", username: "mobydicksantos", directUrl: "https://www.instagram.com/mobydicksantos/" },
   { name: "Projac Bar", username: "projac.bar", directUrl: "https://www.instagram.com/projac.bar/" },
@@ -652,12 +673,12 @@ export async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, acc
     if (!response.ok) {
       if (source && !options.dryRun) await markIngestionSourceResult(source.sourceKey, { status: "failed", message: `HTTP ${response.status}` });
       if (isMetaCredentialFailure(response.status, responseBody)) {
-        const message = "Token da Meta Expirado - Atualize a variável META_INSTAGRAM_TOKEN";
+        const message = extractMetaGraphErrorMessage(responseBody, response.status);
         resetInstagramSessionForRetry(`meta_credentials_${response.status}`);
         if (source && !options.dryRun) await registerSourceFailure({ sourceKey: source.sourceKey, routine: "instagram-agenda", status: response.status, message });
         if (!options.dryRun) {
           try {
-            await recordOperationalAlert({ integration: "meta", alertType: "meta_token_expired", severity: "CRITICAL", title: "Token da Meta expirado", message });
+            await recordOperationalAlert({ integration: "meta", alertType: "meta_token_expired", severity: "CRITICAL", title: "Falha de credencial/permissão na Graph API da Meta", message });
           } catch (alertError) {
             console.warn("[Instagram] Could not persist Meta token alert", { message: normalizeDiagnosticText(alertError instanceof Error ? alertError.message : alertError, 160) });
           }
@@ -783,7 +804,7 @@ export async function fetchInstagramPostsDetailed(options: { dryRun?: boolean } 
     const statusMatch = rawMessage.match(/\b([45]\d{2})\b/);
     const status = statusMatch ? Number(statusMatch[1]) : 0;
     const message = credentialFailure
-      ? "Token da Meta Expirado - Atualize a variável META_INSTAGRAM_TOKEN"
+      ? extractMetaGraphErrorMessage(rawMessage, status || undefined)
       : `Falha isolada na Graph API da Meta${status ? ` (HTTP ${status})` : ""}; a extração da Apify continuará.`;
     if (credentialFailure && !options.dryRun) {
       try {

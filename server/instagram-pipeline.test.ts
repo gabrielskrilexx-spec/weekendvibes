@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import { eq, or } from "drizzle-orm";
 import { ingestionSources } from "../drizzle/schema";
 import { getDb } from "./db";
-import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, isMetaCredentialFailure, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRecentApifySignal, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest, limitInstagramStoriesForCost, INSTAGRAM_OCR_CONCURRENCY } from "./instagram-pipeline";
+import { createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, isMetaCredentialFailure, extractMetaGraphErrorMessage, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRecentApifySignal, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest, limitInstagramStoriesForCost, INSTAGRAM_OCR_CONCURRENCY } from "./instagram-pipeline";
 
 describe("Instagram weekend pipeline", () => {
   it("mantém a concorrência de OCR limitada para proteger memória e rate limits", () => {
@@ -326,6 +326,11 @@ describe("Instagram weekend pipeline", () => {
     expect(isInstagramTransportFailure(400, "permission denied")).toBe(false);
   });
 
+  it("extrai a mensagem original da Graph API sem presumir token expirado", () => {
+    expect(extractMetaGraphErrorMessage(JSON.stringify({ error: { message: "Unsupported get request for this profile", type: "OAuthException", code: 100 } }), 400))
+      .toBe("Meta Graph API HTTP 400: Unsupported get request for this profile (OAuthException, code 100)");
+  });
+
   it("degrades an expired Meta token without starting Apify in dry-run", async () => {
     const originalFetch = globalThis.fetch;
     const originalMetaToken = process.env.META_INSTAGRAM_TOKEN;
@@ -347,7 +352,7 @@ describe("Instagram weekend pipeline", () => {
       expect(result.posts).toEqual([]);
       expect(result.apifyDispatch).toBe("dry_run_prefilter");
       expect(result.transportFailures).toEqual(expect.arrayContaining([
-        expect.objectContaining({ status: 400, message: "Token da Meta Expirado - Atualize a variável META_INSTAGRAM_TOKEN" }),
+        expect.objectContaining({ status: 400, message: expect.stringContaining("Meta Graph API HTTP 400") }),
       ]));
     } finally {
       globalThis.fetch = originalFetch;
@@ -397,7 +402,7 @@ describe("Instagram weekend pipeline", () => {
       const result = await fetchInstagramPostsDetailed({ dryRun: true });
       expect(result.posts).toEqual([]);
       expect(result.transportFailures).toEqual(expect.arrayContaining([
-        expect.objectContaining({ status: 400, kind: "proxy_or_session", message: "Token da Meta Expirado - Atualize a variável META_INSTAGRAM_TOKEN" }),
+        expect.objectContaining({ status: 400, kind: "proxy_or_session", message: "Meta Graph API HTTP 400: OAuthException: The access token has expired (code 10)" }),
       ]));
     } finally {
       globalThis.fetch = originalFetch;
