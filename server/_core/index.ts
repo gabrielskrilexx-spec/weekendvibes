@@ -21,6 +21,7 @@ import { requireInternalCron } from "./cron-auth";
 export async function createApp(server?: ReturnType<typeof createServer>) {
   const app = express();
   const httpServer = server ?? createServer(app);
+  if (server) server.on("request", app);
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
   app.use(createStrictCors());
