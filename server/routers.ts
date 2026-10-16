@@ -1216,17 +1216,17 @@ export const appRouter = router({
       .output(z.object({ items: z.array(z.object({ id: z.string().min(1).max(64), sourceKey: z.string().min(1).max(120), action: z.enum(["handle_changed", "reactivated", "reprocessed"]), actorOpenId: z.string().max(160).nullable(), details: z.string().max(500).nullable(), occurredAt: z.string().datetime() }).strict()).max(10), page: z.number().int().positive(), pageSize: z.number().int().min(5).max(10), total: z.number().int().nonnegative(), hasNextPage: z.boolean(), actionCounts: z.object({ all: z.number().int().nonnegative(), handle_changed: z.number().int().nonnegative(), reactivated: z.number().int().nonnegative(), reprocessed: z.number().int().nonnegative() }).strict() }).strict())
       .query(async ({ input }) => normalizeJsonForTransport(await listIngestionSourceOperationalTimeline(input.sourceKey, input.page, input.pageSize, input.action, input.from ? new Date(input.from) : undefined, input.to ? new Date(input.to) : undefined))),
     operationalTimelineExport: adminOnly
-      .input(z.object({ sourceKey: z.string().trim().min(1).max(120) }).strict())
+      .input(z.object({ sourceKey: z.string().trim().min(1).max(120), action: z.enum(["handle_changed", "reactivated", "reprocessed"]).optional(), from: z.string().datetime().optional(), to: z.string().datetime().optional(), status: z.enum(["open", "closed"]).optional() }).strict())
       .output(z.object({ items: z.array(z.object({ id: z.string().min(1).max(64), sourceKey: z.string().min(1).max(120), action: z.enum(["handle_changed", "reactivated", "reprocessed"]), actorOpenId: z.string().max(160).nullable(), details: z.string().max(500).nullable(), occurredAt: z.string().datetime() }).strict()).max(500), total: z.number().int().nonnegative() }).strict())
       .query(async ({ input }) => {
-        const result = await listIngestionSourceOperationalTimeline(input.sourceKey, 1, 500);
+        const result = await listIngestionSourceOperationalTimeline(input.sourceKey, 1, 500, input.action, input.from ? new Date(input.from) : undefined, input.to ? new Date(input.to) : undefined, input.status);
         return { items: normalizeJsonForTransport(result.items), total: result.total };
       }),
     operationalTimelineJsonExport: adminOnly
-      .input(z.object({ sourceKey: z.string().trim().min(1).max(120) }).strict())
+      .input(z.object({ sourceKey: z.string().trim().min(1).max(120), action: z.enum(["handle_changed", "reactivated", "reprocessed"]).optional(), from: z.string().datetime().optional(), to: z.string().datetime().optional(), status: z.enum(["open", "closed"]).optional() }).strict())
       .output(z.object({ sourceKey: z.string().min(1).max(120), exportedAt: z.string().datetime(), total: z.number().int().nonnegative(), items: z.array(z.object({ id: z.string().min(1).max(64), sourceKey: z.string().min(1).max(120), action: z.enum(["handle_changed", "reactivated", "reprocessed"]), actorOpenId: z.string().max(160).nullable(), details: z.string().max(500).nullable(), occurredAt: z.string().datetime() }).strict()).max(500) }).strict())
       .query(async ({ input }) => {
-        const result = await listIngestionSourceOperationalTimeline(input.sourceKey, 1, 500);
+        const result = await listIngestionSourceOperationalTimeline(input.sourceKey, 1, 500, input.action, input.from ? new Date(input.from) : undefined, input.to ? new Date(input.to) : undefined, input.status);
         return { sourceKey: input.sourceKey, exportedAt: new Date().toISOString(), total: result.total, items: normalizeJsonForTransport(result.items) };
       }),
     create: adminOnly

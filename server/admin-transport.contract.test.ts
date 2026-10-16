@@ -176,7 +176,12 @@ describe("admin transport contracts", () => {
   it("expõe a exportação completa da timeline como contrato JSON seguro", async () => {
     const result = await appRouter.createCaller(adminContext).ingestionSources.operationalTimelineExport({ sourceKey: "instagram:mimadafesta" });
     expect(result).toEqual({ items: [{ id: "action-1", sourceKey: "instagram:mimadafesta", action: "reprocessed", actorOpenId: "admin", details: "Sucesso: 10 eventos lidos, 2 persistidos.", occurredAt: "2026-10-16T12:00:00.000Z" }], total: 1 });
-    expect(maintenanceMocks.listIngestionSourceOperationalTimeline).toHaveBeenCalledWith("instagram:mimadafesta", 1, 500);
+    expect(maintenanceMocks.listIngestionSourceOperationalTimeline).toHaveBeenCalledWith("instagram:mimadafesta", 1, 500, undefined, undefined, undefined, undefined);
+  });
+
+  it("encaminha ação, datas e estado para a exportação contextual", async () => {
+    await appRouter.createCaller(adminContext).ingestionSources.operationalTimelineJsonExport({ sourceKey: "instagram:mimadafesta", action: "reprocessed", from: "2026-08-01T00:00:00.000Z", to: "2026-08-31T23:59:59.999Z", status: "open" });
+    expect(maintenanceMocks.listIngestionSourceOperationalTimeline).toHaveBeenCalledWith("instagram:mimadafesta", 1, 500, "reprocessed", new Date("2026-08-01T00:00:00.000Z"), new Date("2026-08-31T23:59:59.999Z"), "open");
   });
 
   it("expõe JSON versionado com origem, total e timestamp de exportação", async () => {

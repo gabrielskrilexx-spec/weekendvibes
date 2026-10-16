@@ -3,7 +3,7 @@ import { act, create } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 import AdminSourcesPanel from "./AdminSourcesPanel";
 
-const { refetch, invalidate, mutate, reactivateMutate, createMutate, mockSettingsMutate, fetchMock } = vi.hoisted(() => ({ refetch: vi.fn(), invalidate: vi.fn(), mutate: vi.fn(), reactivateMutate: vi.fn(), createMutate: vi.fn(), mockSettingsMutate: vi.fn(), fetchMock: vi.fn() }));
+const { refetch, invalidate, mutate, reactivateMutate, createMutate, mockSettingsMutate, fetchMock, exportRefetch } = vi.hoisted(() => ({ refetch: vi.fn(), invalidate: vi.fn(), mutate: vi.fn(), reactivateMutate: vi.fn(), createMutate: vi.fn(), mockSettingsMutate: vi.fn(), fetchMock: vi.fn(), exportRefetch: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }) }));
 const source = { id: 1, sourceKey: "instagram:mobydicksantos", name: "Moby House", kind: "instagram", handle: "mobydicksantos", url: "https://www.instagram.com/mobydicksantos/", isEnabled: 1, priority: 10, frequencyMinutes: 10080, p95LatencyThresholdMs: 3000, lastAttemptAt: new Date("2026-08-15T13:00:00Z"), lastSuccessAt: new Date("2026-08-15T12:00:00Z"), lastStatus: "failed", lastMessage: "Meta Graph API HTTP 400: Invalid user id", lastFailureReason: "ID inválido", lastExecutionFeedback: null, lastHttpStatus: 400, circuitNextAttemptAt: new Date("2026-08-16T07:00:00Z"), circuitState: "open", circuitFailureCount: 3 };
 const closedSource = { ...source, id: 2, sourceKey: "public:closed", name: "Fonte Saudável", kind: "public", handle: null, url: "https://example.com/agenda", lastStatus: "succeeded", lastMessage: "Sucesso: 10 eventos lidos, 2 persistidos.", lastExecutionFeedback: "Sucesso: 10 eventos lidos, 2 persistidos.", lastFailureReason: null, lastHttpStatus: 200, circuitNextAttemptAt: null, circuitState: "closed", circuitFailureCount: 0 };
 vi.stubGlobal("fetch", fetchMock);
@@ -21,8 +21,8 @@ vi.mock("@/lib/trpc", () => ({
       auditLog: { useQuery: () => ({ data: [{ id: 1, previousHandle: "moby-old", nextHandle: "moby-corrigido", changedAt: new Date("2026-08-16T12:00:00Z") }] }) },
       actionAudit: { useQuery: () => ({ data: [{ id: 1, action: "reactivated", operatorOpenId: "admin@example", details: "Reprocessamento imediato solicitado", actedAt: new Date("2026-08-17T12:00:00Z") }] }) },
       operationalTimeline: { useQuery: (input: { page: number }) => ({ data: { items: input.page === 1 ? [{ id: "handle-1", sourceKey: "instagram:mobydicksantos", action: "handle_changed", actorOpenId: "admin@example", details: "moby-old → moby-corrigido", occurredAt: new Date("2026-08-16T12:00:00Z").toISOString() }, { id: "action-1", sourceKey: "instagram:mobydicksantos", action: "reactivated", actorOpenId: "admin@example", details: "Reprocessamento imediato solicitado", occurredAt: new Date("2026-08-17T12:00:00Z").toISOString() }] : [{ id: "action-2", sourceKey: "instagram:mobydicksantos", action: "reprocessed", actorOpenId: "admin@example", details: "Sucesso: 10 eventos lidos, 2 persistidos.", occurredAt: new Date("2026-08-18T12:00:00Z").toISOString() }], page: input.page, pageSize: 5, total: 6, hasNextPage: input.page === 1, actionCounts: { all: 6, handle_changed: 2, reactivated: 1, reprocessed: 3 } } }) },
-      operationalTimelineExport: { useQuery: () => ({ data: { items: [], total: 0 }, isFetching: false, refetch: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }) }) },
-      operationalTimelineJsonExport: { useQuery: () => ({ data: undefined, isFetching: false, refetch: vi.fn().mockResolvedValue({ data: { sourceKey: "instagram:mobydicksantos", exportedAt: "2026-10-16T12:00:00.000Z", total: 1, items: [] } }) }) },
+      operationalTimelineExport: { useQuery: (input: unknown) => ({ data: { items: [], total: 0 }, isFetching: false, refetch: () => { exportRefetch(input); return Promise.resolve({ data: { items: [], total: 0 } }); } }) },
+      operationalTimelineJsonExport: { useQuery: (input: unknown) => ({ data: undefined, isFetching: false, refetch: () => { exportRefetch(input); return Promise.resolve({ data: { sourceKey: "instagram:mobydicksantos", exportedAt: "2026-10-16T12:00:00.000Z", total: 1, items: [] } }); } }) },
       create: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { createMutate(input); options?.onSuccess?.(); } }) },
       update: { useMutation: () => ({ isPending: false, mutate }) },
       reactivate: { useMutation: (options?: { onSuccess?: (result: { reprocess: "succeeded" | "failed" | "skipped" }) => void }) => ({ isPending: false, mutate: (input: unknown) => { reactivateMutate(input); options?.onSuccess?.({ reprocess: "succeeded" }); } }) },
@@ -197,6 +197,46 @@ describe("AdminSourcesPanel", () => {
     await act(async () => { details.props.onClick(); });
     expect(JSON.stringify(tree!.toJSON())).toContain("Exportar Histórico (CSV)");
     expect(JSON.stringify(tree!.toJSON())).toContain("Exportar JSON");
+  });
+
+  it("exporta usando ação, datas e status ativos no modal", async () => {
+    exportRefetch.mockClear();
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const details = tree!.root.findByProps({ "aria-label": "Ver detalhes de Moby House" });
+    await act(async () => { details.props.onClick(); });
+    const from = tree!.root.findByProps({ "aria-label": "Data inicial da timeline" });
+    const to = tree!.root.findByProps({ "aria-label": "Data final da timeline" });
+    await act(async () => {
+      from.props.onChange({ target: { value: "2026-08-01" } });
+      to.props.onChange({ target: { value: "2026-08-31" } });
+    });
+    const reprocessed = tree!.root.findByProps({ "aria-label": "Reprocessamentos (3)" });
+    await act(async () => { reprocessed.props.onClick(); });
+    const exportButton = tree!.root.findAllByType("button").find(item => String(item.props.children).includes("Exportar Histórico"));
+    await act(async () => { await exportButton!.props.onClick(); });
+    expect(exportRefetch).toHaveBeenCalledWith(expect.objectContaining({ action: "reprocessed", status: "open", from: "2026-08-01T00:00:00.000Z", to: "2026-08-31T23:59:59.999Z" }));
+  });
+
+  it("limpa datas e ação e move o foco para o primeiro controle ao abrir", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const details = tree!.root.findByProps({ "aria-label": "Ver detalhes de Moby House" });
+    await act(async () => { details.props.onClick(); });
+    const from = tree!.root.findByProps({ "aria-label": "Data inicial da timeline" });
+    const to = tree!.root.findByProps({ "aria-label": "Data final da timeline" });
+    expect(from.props.autoFocus).toBe(true);
+    await act(async () => {
+      from.props.onChange({ target: { value: "2026-08-01" } });
+      to.props.onChange({ target: { value: "2026-08-31" } });
+    });
+    const reprocessed = tree!.root.findByProps({ "aria-label": "Reprocessamentos (3)" });
+    await act(async () => { reprocessed.props.onClick(); });
+    const clear = tree!.root.findByProps({ "aria-label": "Limpar filtros da timeline" });
+    await act(async () => { clear.props.onClick(); });
+    expect(from.props.value).toBe("");
+    expect(to.props.value).toBe("");
+    expect(tree!.root.findByProps({ "aria-label": "Todas (6)" }).props["aria-pressed"]).toBe(true);
   });
 
   it("mantém modal, filtros e paginação acessíveis em viewport mobile", async () => {

@@ -489,11 +489,16 @@ export type IngestionSourceTimelineItem = {
   occurredAt: Date;
 };
 
-export async function listIngestionSourceOperationalTimeline(sourceKey: string, page = 1, pageSize = 10, action?: IngestionSourceTimelineItem["action"], from?: Date, to?: Date, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+export async function listIngestionSourceOperationalTimeline(sourceKey: string, page = 1, pageSize = 10, action?: IngestionSourceTimelineItem["action"], from?: Date, to?: Date, status?: "open" | "closed", dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   const safePageSize = Math.min(Math.max(Math.trunc(pageSize), 5), 500);
   const safePage = Math.max(1, Math.trunc(page));
   if (!db) return { items: [] as Array<Omit<IngestionSourceTimelineItem, "occurredAt"> & { occurredAt: string }>, page: safePage, pageSize: safePageSize, total: 0, hasNextPage: false, actionCounts: { all: 0, handle_changed: 0, reactivated: 0, reprocessed: 0 } };
+  if (status) {
+    const [source] = await db.select({ circuitState: ingestionSources.circuitState }).from(ingestionSources).where(eq(ingestionSources.sourceKey, sourceKey)).limit(1);
+    const matchesStatus = status === "open" ? source?.circuitState === "open" : source?.circuitState !== "open";
+    if (!matchesStatus) return { items: [], page: safePage, pageSize: safePageSize, total: 0, hasNextPage: false, actionCounts: { all: 0, handle_changed: 0, reactivated: 0, reprocessed: 0 } };
+  }
   const [handles, actions] = await Promise.all([
     db.select({ id: ingestionSourceHandleAuditLogs.id, sourceKey: ingestionSourceHandleAuditLogs.sourceKey, previousHandle: ingestionSourceHandleAuditLogs.previousHandle, nextHandle: ingestionSourceHandleAuditLogs.nextHandle, changedByOpenId: ingestionSourceHandleAuditLogs.changedByOpenId, changedAt: ingestionSourceHandleAuditLogs.changedAt }).from(ingestionSourceHandleAuditLogs).where(eq(ingestionSourceHandleAuditLogs.sourceKey, sourceKey)).limit(200),
     db.select({ id: ingestionSourceActionAuditLogs.id, sourceKey: ingestionSourceActionAuditLogs.sourceKey, action: ingestionSourceActionAuditLogs.action, operatorOpenId: ingestionSourceActionAuditLogs.operatorOpenId, details: ingestionSourceActionAuditLogs.details, actedAt: ingestionSourceActionAuditLogs.actedAt }).from(ingestionSourceActionAuditLogs).where(eq(ingestionSourceActionAuditLogs.sourceKey, sourceKey)).limit(200),
