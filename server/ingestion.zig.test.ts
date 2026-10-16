@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractPublicEventLinks, getConfiguredSourceUrls, parseZigEventMetadata, ZIG_FETCH_TIMEOUT_MS } from "./ingestion";
+import { containsTargetVenue, extractPublicEventLinks, getConfiguredSourceUrls, parseZigEventMetadata, sanitizePublicSourceUrl, ZIG_FETCH_TIMEOUT_MS } from "./ingestion";
 
 describe("Zig Tickets adapter", () => {
   it("discovers internal event routes from the catalog HTML", () => {
@@ -56,5 +56,16 @@ describe("Zig Tickets adapter", () => {
   it("mantém a Zig no catálogo padrão e usa timeout de 20 segundos", () => {
     expect(getConfiguredSourceUrls()).toContain("https://zig.tickets/pt-BR");
     expect(ZIG_FETCH_TIMEOUT_MS).toBe(20_000);
+  });
+
+  it("infere Osuco pelo conteúdo quando o JSON-LD não informa venue", () => {
+    const html = `<script type="application/ld+json">${JSON.stringify({ name: "Osuco Gold Edition", startDate: "2030-10-16T22:00:00-03:00", location: { address: { addressLocality: "Santos" } }, offers: { price: "80.00" } })}</script>`;
+    expect(parseZigEventMetadata(html, "https://zig.tickets/eventos/osuco-gold-edition")).toMatchObject({ locationName: "Osuco", city: "Santos" });
+  });
+
+  it("remove rastreadores e aceita aliases oficiais da allowlist", () => {
+    expect(sanitizePublicSourceUrl("https://zig.tickets/eventos/osuco-black-and-white?utm_source=x&fbclid=y#section")).toBe("https://zig.tickets/eventos/osuco-black-and-white");
+    expect(containsTargetVenue("O Beco Bar, Santos")).toBe(true);
+    expect(containsTargetVenue("O Beco Santos")).toBe(true);
   });
 });

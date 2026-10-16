@@ -39,6 +39,8 @@ export const TARGET_VENUES = [
   "goat club",
   "goat dining club",
   "o beco",
+  "o beco santos",
+  "o beco bar",
   "laroc club guaruja",
   "laroc guaruja",
   "lucky scope",
@@ -63,6 +65,7 @@ export const TARGET_VENUES = [
   "blue med convention center",
   "santos convention center",
   "mendes convention center",
+  "osuco",
 ] as const;
 
 const normalizeSlug = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -147,16 +150,16 @@ export function getConfiguredSourceUrls() {
   const focused = process.env.INGESTION_FOCUS_URLS;
   if (focused !== undefined) {
     const focusUrls = focused.split(",").map(value => value.trim()).filter(value => value && value.toUpperCase() !== "DISABLED");
-    if (focusUrls.length > 0) return Array.from(new Set(focusUrls));
+    if (focusUrls.length > 0) return Array.from(new Set(focusUrls.map(sanitizePublicSourceUrl)));
   }
   const configured = process.env.INGESTION_SOURCE_URL ?? process.env.INGESTION_SOURCE_URLS;
   if (configured !== undefined) {
     let configuredUrls: string[];
     try {
       const parsed = JSON.parse(configured);
-      configuredUrls = Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string").map(value => value.trim()).filter(Boolean) : [];
+      configuredUrls = Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string").map(sanitizePublicSourceUrl).filter(Boolean) : [];
     } catch {
-      configuredUrls = configured.split(",").map(value => value.trim()).filter(Boolean);
+      configuredUrls = configured.split(",").map(sanitizePublicSourceUrl).filter(Boolean);
     }
     if (configuredUrls.length === 0) return [];
     return Array.from(new Set([...configuredUrls, ...DEFAULT_SOURCE_URLS]));
@@ -185,6 +188,19 @@ async function getEnabledConfiguredSourceUrls() {
 export function containsTargetVenue(value: string, aliases: string[] = []) {
   const normalized = normalizeText(value);
   return [...TARGET_VENUES, ...aliases].some(venue => normalized.includes(normalizeText(venue)));
+}
+
+export function sanitizePublicSourceUrl(input: string) {
+  try {
+    const parsed = new URL(input.trim());
+    for (const key of Array.from(parsed.searchParams.keys())) {
+      if (/^(utm_[a-z0-9_]+|fbclid|gclid|dclid|msclkid|mc_cid|mc_eid)$/i.test(key)) parsed.searchParams.delete(key);
+    }
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return input.trim();
+  }
 }
 
 const TRACKED_PUBLIC_BRANDS = [
@@ -341,7 +357,13 @@ export function parseZigEventMetadata(html: string, url: string) {
   const text = stripHtml(html);
   const title = typeof jsonLd?.name === "string" ? jsonLd.name.trim() : meta("og:title").trim();
   const eventDate = typeof jsonLd?.startDate === "string" ? jsonLd.startDate : meta("event:start_time");
-  const locationName = typeof location.name === "string" ? location.name.trim() : typeof jsonLd?.location === "string" ? jsonLd.location.trim() : "";
+  const locationName = typeof location.name === "string" && location.name.trim()
+    ? location.name.trim()
+    : typeof jsonLd?.location === "string" && jsonLd.location.trim()
+      ? jsonLd.location.trim()
+      : /osuco/i.test(`${title} ${text} ${url}`)
+        ? "Osuco"
+        : "";
   const city = typeof address.addressLocality === "string" ? address.addressLocality.trim() : (/guaruj[aá]/i.test(text) ? "Guarujá" : /santos/i.test(text) ? "Santos" : "");
   const street = typeof address.streetAddress === "string" ? address.streetAddress : "";
   const priceCents = readPriceCents(offers.price ?? offers.lowPrice ?? offers.minPrice);
