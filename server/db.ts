@@ -388,6 +388,33 @@ export async function listIngestionSources(dbOverride?: Awaited<ReturnType<typeo
   return db.select().from(ingestionSources).orderBy(asc(ingestionSources.kind), asc(ingestionSources.priority), asc(ingestionSources.name));
 }
 
+export type IngestionSourceFailureCategory = "waf" | "meta110" | "network";
+export type IngestionSourceListFilters = { openOnly?: boolean; failureCategory?: IngestionSourceFailureCategory; since?: Date };
+
+export function classifyIngestionSourceFailure(source: Pick<IngestionSource, "lastMessage" | "lastFailureReason" | "lastHttpStatus">): IngestionSourceFailureCategory | null {
+  const text = `${source.lastMessage ?? ""} ${source.lastFailureReason ?? ""}`.toLowerCase();
+  if (source.lastHttpStatus === 403 || /waf|cloudflare|akamai|bloqueado/.test(text)) return "waf";
+  if (/code 110|invalid user id|id inválido|desconectado da meta/.test(text)) return "meta110";
+  if (/timeout|timed out|network|rede|econn|socket|fetch failed/.test(text) || source.lastHttpStatus === 408 || source.lastHttpStatus === 504) return "network";
+  return null;
+}
+
+export async function listFilteredIngestionSources(filters: IngestionSourceListFilters = {}, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const rows = await listIngestionSources(dbOverride);
+  return rows.filter(source => (!filters.openOnly || source.circuitState === "open") && (!filters.failureCategory || classifyIngestionSourceFailure(source) === filters.failureCategory) && (!filters.since || (source.lastAttemptAt ? new Date(source.lastAttemptAt).getTime() >= filters.since.getTime() : false)));
+}
+
+export async function getIngestionSourceSummary(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const rows = await listIngestionSources(dbOverride);
+  return {
+    active: rows.filter(source => source.isEnabled === 1).length,
+    open: rows.filter(source => source.circuitState === "open").length,
+    waf: rows.filter(source => classifyIngestionSourceFailure(source) === "waf").length,
+    meta110: rows.filter(source => classifyIngestionSourceFailure(source) === "meta110").length,
+    network: rows.filter(source => classifyIngestionSourceFailure(source) === "network").length,
+  };
+}
+
 export async function listEnabledInstagramSources(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const rows = await listIngestionSources(dbOverride);
   return rows.filter(source => source.kind === "instagram" && source.isEnabled === 1);

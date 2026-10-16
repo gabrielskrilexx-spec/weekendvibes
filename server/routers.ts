@@ -28,6 +28,8 @@ import {
   setEventReminder,
   listUserReminders,
   listIngestionSources,
+  listFilteredIngestionSources,
+  getIngestionSourceSummary,
   listIngestionSourceHandleAudit,
   listIngestionSourceActionAudit,
   listIngestionSourceOperationalTimeline,
@@ -1195,9 +1197,11 @@ export const appRouter = router({
       }),
   }),
   ingestionSources: router({
-    list: adminOnly.query(async () =>
-      normalizeJsonForTransport(await listIngestionSources())
-    ),
+    list: adminOnly
+      .input(z.object({ openOnly: z.boolean().optional(), failureCategory: z.enum(["waf", "meta110", "network"]).optional(), since: z.string().datetime().optional() }).strict().optional())
+      .query(async ({ input }) => normalizeJsonForTransport(await listFilteredIngestionSources({ openOnly: input?.openOnly, failureCategory: input?.failureCategory, since: input?.since ? new Date(input.since) : undefined }))),
+    summary: adminOnly
+      .query(async () => normalizeJsonForTransport(await getIngestionSourceSummary())),
     auditLog: adminOnly
       .input(z.object({ sourceKey: z.string().trim().min(1).max(120) }).strict())
       .query(async ({ input }) => normalizeJsonForTransport(await listIngestionSourceHandleAudit(input.sourceKey))),
@@ -1214,6 +1218,13 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const result = await listIngestionSourceOperationalTimeline(input.sourceKey, 1, 500);
         return { items: normalizeJsonForTransport(result.items), total: result.total };
+      }),
+    operationalTimelineJsonExport: adminOnly
+      .input(z.object({ sourceKey: z.string().trim().min(1).max(120) }).strict())
+      .output(z.object({ sourceKey: z.string().min(1).max(120), exportedAt: z.string().datetime(), total: z.number().int().nonnegative(), items: z.array(z.object({ id: z.string().min(1).max(64), sourceKey: z.string().min(1).max(120), action: z.enum(["handle_changed", "reactivated", "reprocessed"]), actorOpenId: z.string().max(160).nullable(), details: z.string().max(500).nullable(), occurredAt: z.string().datetime() }).strict()).max(500) }).strict())
+      .query(async ({ input }) => {
+        const result = await listIngestionSourceOperationalTimeline(input.sourceKey, 1, 500);
+        return { sourceKey: input.sourceKey, exportedAt: new Date().toISOString(), total: result.total, items: normalizeJsonForTransport(result.items) };
       }),
     create: adminOnly
       .input(

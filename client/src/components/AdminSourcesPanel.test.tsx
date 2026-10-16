@@ -15,11 +15,13 @@ vi.mock("@/lib/trpc", () => ({
       setMockSettings: { useMutation: () => ({ isPending: false, mutate: mockSettingsMutate }) },
     },
     ingestionSources: {
-      list: { useQuery: () => ({ data: [source, closedSource], isLoading: false, isError: false, isFetching: false, refetch }) },
+      list: { useQuery: (input?: { openOnly?: boolean; failureCategory?: string }) => ({ data: [source, closedSource].filter(item => (!input?.openOnly || item.circuitState === "open") && (!input?.failureCategory || (input.failureCategory === "meta110" && item.lastHttpStatus === 400))), isLoading: false, isError: false, isFetching: false, refetch }) },
+      summary: { useQuery: () => ({ data: { active: 2, open: 1, waf: 0, meta110: 1, network: 0 }, isLoading: false }) },
       auditLog: { useQuery: () => ({ data: [{ id: 1, previousHandle: "moby-old", nextHandle: "moby-corrigido", changedAt: new Date("2026-08-16T12:00:00Z") }] }) },
       actionAudit: { useQuery: () => ({ data: [{ id: 1, action: "reactivated", operatorOpenId: "admin@example", details: "Reprocessamento imediato solicitado", actedAt: new Date("2026-08-17T12:00:00Z") }] }) },
       operationalTimeline: { useQuery: (input: { page: number }) => ({ data: { items: input.page === 1 ? [{ id: "handle-1", sourceKey: "instagram:mobydicksantos", action: "handle_changed", actorOpenId: "admin@example", details: "moby-old → moby-corrigido", occurredAt: new Date("2026-08-16T12:00:00Z").toISOString() }, { id: "action-1", sourceKey: "instagram:mobydicksantos", action: "reactivated", actorOpenId: "admin@example", details: "Reprocessamento imediato solicitado", occurredAt: new Date("2026-08-17T12:00:00Z").toISOString() }] : [{ id: "action-2", sourceKey: "instagram:mobydicksantos", action: "reprocessed", actorOpenId: "admin@example", details: "Sucesso: 10 eventos lidos, 2 persistidos.", occurredAt: new Date("2026-08-18T12:00:00Z").toISOString() }], page: input.page, pageSize: 5, total: 6, hasNextPage: input.page === 1 } }) },
       operationalTimelineExport: { useQuery: () => ({ data: { items: [], total: 0 }, isFetching: false, refetch: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }) }) },
+      operationalTimelineJsonExport: { useQuery: () => ({ data: undefined, isFetching: false, refetch: vi.fn().mockResolvedValue({ data: { sourceKey: "instagram:mobydicksantos", exportedAt: "2026-10-16T12:00:00.000Z", total: 1, items: [] } }) }) },
       create: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { createMutate(input); options?.onSuccess?.(); } }) },
       update: { useMutation: () => ({ isPending: false, mutate }) },
       reactivate: { useMutation: (options?: { onSuccess?: (result: { reprocess: "succeeded" | "failed" | "skipped" }) => void }) => ({ isPending: false, mutate: (input: unknown) => { reactivateMutate(input); options?.onSuccess?.({ reprocess: "succeeded" }); } }) },
@@ -46,6 +48,8 @@ describe("AdminSourcesPanel", () => {
     expect(rendered).toContain("Ativa");
     expect(rendered).toContain("Pausar Ingestão");
     expect(rendered).toContain("Meta Graph API HTTP 400: Invalid user id");
+    expect(rendered).toContain("Fontes ativas");
+    expect(rendered).toContain("Meta Code 110");
   });
 
   it("exibe e alterna o toggle de mocks do sandbox", async () => {
@@ -172,12 +176,26 @@ describe("AdminSourcesPanel", () => {
     expect(JSON.stringify(tree!.toJSON())).toContain("Próxima tentativa automática prevista");
   });
 
+  it("cruza status OPEN, categoria e período nos controles do painel", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const open = tree!.root.findAllByType("input").find(item => item.props.type === "checkbox" && item.props.checked === false);
+    await act(async () => { open!.props.onChange({ target: { checked: true } }); });
+    const failure = tree!.root.findByProps({ "aria-label": "Filtrar por motivo da falha" });
+    await act(async () => { failure.props.onChange({ target: { value: "meta110" } }); });
+    const period = tree!.root.findByProps({ "aria-label": "Filtrar por período" });
+    await act(async () => { period.props.onChange({ target: { value: "7d" } }); });
+    expect(JSON.stringify(tree!.toJSON())).toContain("Moby House");
+    expect(JSON.stringify(tree!.toJSON())).not.toContain("Fonte Saudável");
+  });
+
   it("oferece exportação do histórico em CSV UTF-8", async () => {
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminSourcesPanel />); });
     const details = tree!.root.findByProps({ "aria-label": "Ver detalhes de Moby House" });
     await act(async () => { details.props.onClick(); });
     expect(JSON.stringify(tree!.toJSON())).toContain("Exportar Histórico (CSV)");
+    expect(JSON.stringify(tree!.toJSON())).toContain("Exportar JSON");
   });
 
   it("mantém modal, filtros e paginação acessíveis em viewport mobile", async () => {

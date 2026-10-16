@@ -58,6 +58,8 @@ vi.mock("./db", () => ({
         createdAt: new Date("2026-08-26T12:00:00.000Z"),
       },
     ]),
+  listFilteredIngestionSources: vi.fn().mockResolvedValue([{ id: 1, sourceKey: "public", createdAt: new Date("2026-08-26T12:00:00.000Z") }]),
+  getIngestionSourceSummary: vi.fn().mockResolvedValue({ active: 1, open: 0, waf: 0, meta110: 0, network: 0 }),
   listIngestionSourceHandleAudit: vi.fn().mockResolvedValue([
     { id: 2, sourceKey: "instagram:mimadafesta", previousHandle: "mimadafesta-old", nextHandle: "mimadafesta", changedAt: new Date("2026-10-16T12:00:00.000Z") },
   ]),
@@ -173,6 +175,22 @@ describe("admin transport contracts", () => {
     const result = await appRouter.createCaller(adminContext).ingestionSources.operationalTimelineExport({ sourceKey: "instagram:mimadafesta" });
     expect(result).toEqual({ items: [{ id: "action-1", sourceKey: "instagram:mimadafesta", action: "reprocessed", actorOpenId: "admin", details: "Sucesso: 10 eventos lidos, 2 persistidos.", occurredAt: "2026-10-16T12:00:00.000Z" }], total: 1 });
     expect(maintenanceMocks.listIngestionSourceOperationalTimeline).toHaveBeenCalledWith("instagram:mimadafesta", 1, 500);
+  });
+
+  it("expõe JSON versionado com origem, total e timestamp de exportação", async () => {
+    const result = await appRouter.createCaller(adminContext).ingestionSources.operationalTimelineJsonExport({ sourceKey: "instagram:mimadafesta" });
+    expect(result.sourceKey).toBe("instagram:mimadafesta");
+    expect(result.total).toBe(1);
+    expect(result.exportedAt).toMatch(/^2026-.*Z$/);
+    expect(result.items[0]?.action).toBe("reprocessed");
+  });
+
+  it("expõe KPIs e aceita filtros combinados de fontes", async () => {
+    const caller = appRouter.createCaller(adminContext);
+    const summary = await caller.ingestionSources.summary();
+    const filtered = await caller.ingestionSources.list({ openOnly: true, failureCategory: "waf", since: "2026-10-10T00:00:00.000Z" });
+    expect(summary).toEqual({ active: 1, open: 0, waf: 0, meta110: 0, network: 0 });
+    expect(filtered).toEqual([{ id: 1, sourceKey: "public", createdAt: "2026-08-26T12:00:00.000Z" }]);
   });
 
   it("returns forbidden for maintenance mutations outside admin context", async () => {
