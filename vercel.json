@@ -9,6 +9,12 @@
       "includeFiles": "{dist/**,server/**,drizzle/**,shared/**}"
     }
   },
+  "crons": [
+    {
+      "path": "/api/scheduled/ticketing-monitor",
+      "schedule": "*/15 * * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
