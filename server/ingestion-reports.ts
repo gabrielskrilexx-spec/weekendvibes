@@ -472,6 +472,8 @@ function buildWeeklyTrend(
   return Array.from(buckets.values());
 }
 
+export type SourceErrorCategory = "waf" | "anti_bot" | "proxy" | "timeout_dns" | "meta_invalid_user" | "sandbox" | "other";
+
 export type SourceTelemetry = {
   sourceKey: string;
   runs: number;
@@ -480,10 +482,10 @@ export type SourceTelemetry = {
   averageLatencyMs: number;
   p95LatencyMs: number;
   simulatedExecutions: number;
-  errors: { category: "waf" | "anti_bot" | "proxy" | "timeout_dns" | "sandbox" | "other"; count: number }[];
+  errors: { category: SourceErrorCategory; count: number }[];
 };
 
-export type TelemetryCategory = "success" | "parser" | "waf" | "network";
+export type TelemetryCategory = "success" | "parser" | "waf" | "network" | "meta_invalid_user";
 
 export type WafPersistenceAlert = {
   sourceKey: string;
@@ -496,6 +498,7 @@ export type WafPersistenceAlert = {
 export function classifyIngestionRunCategoryForTest(input: { status: string; httpStatus?: number | null; details?: unknown }): TelemetryCategory {
   const text = JSON.stringify(input.details ?? "").toLowerCase();
   const status = Number(input.httpStatus ?? 0);
+  if (/invalid user id|code\s*110|oauth(?:exception)?[^\n]*(?:110|invalid user)/.test(text)) return "meta_invalid_user";
   if (isWafBlockedFailure(status || null, text) || /bloqueado por waf|cloudflare|akamai|challenge|access denied/.test(text)) return "waf";
   if (/timeout|timed out|enotfound|eai_again|econnrefused|network|fetch failed|socket/.test(text) || [502, 504].includes(status)) return "network";
   if (input.status === "succeeded") return "success";
@@ -579,8 +582,6 @@ export function buildWafProviderHistoryForTest(runs: Array<{ sourceKey: string |
   return Array.from(grouped.values()).sort((a, b) => a.date.localeCompare(b.date) || a.sourceKey.localeCompare(b.sourceKey) || a.provider.localeCompare(b.provider));
 }
 
-type SourceErrorCategory = SourceTelemetry["errors"][number]["category"];
-
 export const DEFAULT_PUBLIC_P95_THRESHOLD_MS = 15_000;
 export const INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS = 30_000;
 export const MANUAL_AGENDA_P95_THRESHOLD_MS = 180_000;
@@ -618,6 +619,7 @@ export function buildSourceTelemetryForTest(runs: Array<{ sourceKey: string | nu
     const status = Number(run.httpStatus ?? 0);
     let category: SourceErrorCategory | "none" = "none";
     if (text.includes("sandbox_restricted") || text.includes("previewmock")) category = "sandbox";
+    else if (/invalid user id|code\s*110|oauth(?:exception)?[^\n]*(?:110|invalid user)/.test(text)) category = "meta_invalid_user";
     else if (isWafBlockedFailure(status || null, text) || /bloqueado por waf|cloudflare|akamai|challenge|access denied/.test(text)) category = "waf";
     else if ([429].includes(status) || /anti.?bot|forbidden/.test(text)) category = "anti_bot";
     else if ([502, 503, 504].includes(status) || /bad gateway|proxy|gateway|server error/.test(text)) category = "proxy";

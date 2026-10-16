@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSourceTelemetryForTest, buildSourceTelemetryHistoryForTest, findConsecutiveP95PerformanceAlertsForTest } from "./ingestion-reports";
+import { buildSourceTelemetryForTest, buildSourceTelemetryHistoryForTest, classifyIngestionRunCategoryForTest, findConsecutiveP95PerformanceAlertsForTest } from "./ingestion-reports";
 
 describe("telemetria por fonte", () => {
   it("agrega sucesso, latência e categorias de bloqueio", () => {
@@ -18,6 +18,11 @@ describe("telemetria por fonte", () => {
   it("classifica 503 com assinatura Cloudflare como Bloqueado por WAF", () => {
     const result = buildSourceTelemetryForTest([{ sourceKey: "weticket", status: "failed", httpStatus: 503, durationMs: 180, details: { message: "Cloudflare error 503" } }]);
     expect(result[0]?.errors).toContainEqual({ category: "waf", count: 1 });
+  });
+
+  it("classifica Meta code 110 como ID inválido/desconectado", () => {
+    expect(classifyIngestionRunCategoryForTest({ status: "failed", httpStatus: 400, details: { message: "Meta Graph API HTTP 400: Invalid user id (OAuthException, code 110)" } })).toBe("meta_invalid_user");
+    expect(buildSourceTelemetryForTest([{ sourceKey: "instagram:mimadafesta", status: "failed", httpStatus: 400, durationMs: 80, details: { message: "Invalid user id", code: 110 } }])[0]?.errors).toContainEqual({ category: "meta_invalid_user", count: 1 });
   });
 
   it("separa execuções sandbox da taxa de sucesso real", () => {

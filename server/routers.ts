@@ -1065,7 +1065,7 @@ export const appRouter = router({
             runId: z.number().int().positive().optional(),
             sourceKey: z.string().trim().max(255).optional(),
             executionKind: z.enum(["all", "real", "simulated"]).optional(),
-            telemetryCategory: z.enum(["success", "parser", "waf", "network"]).optional(),
+            telemetryCategory: z.enum(["success", "parser", "waf", "network", "meta_invalid_user"]).optional(),
           })
           .optional()
       )
