@@ -6,6 +6,7 @@ const maintenanceMocks = vi.hoisted(() => ({
   reactivateIngestionSourceCircuitBreaker: vi.fn().mockResolvedValue(undefined),
   markIngestionSourceResult: vi.fn().mockResolvedValue(undefined),
   recordIngestionSourceAction: vi.fn().mockResolvedValue(undefined),
+  listIngestionSourceOperationalTimeline: vi.fn().mockResolvedValue({ items: [{ id: "action-1", sourceKey: "instagram:mimadafesta", action: "reprocessed", actorOpenId: "admin", details: "Sucesso: 10 eventos lidos, 2 persistidos.", occurredAt: "2026-10-16T12:00:00.000Z" }], page: 1, pageSize: 500, total: 1, hasNextPage: false }),
   runIngestionSourceChunk: vi.fn().mockResolvedValue({ sourceKey: "public:ingresse", dryRun: true, result: { read: 1, persisted: 1, filtered: 0, sandboxRestricted: false, previewMock: false } }),
 }));
 
@@ -71,6 +72,7 @@ vi.mock("./db", () => ({
   reactivateIngestionSourceCircuitBreaker: maintenanceMocks.reactivateIngestionSourceCircuitBreaker,
   markIngestionSourceResult: maintenanceMocks.markIngestionSourceResult,
   recordIngestionSourceAction: maintenanceMocks.recordIngestionSourceAction,
+  listIngestionSourceOperationalTimeline: maintenanceMocks.listIngestionSourceOperationalTimeline,
   deleteEvent: vi.fn(),
   deleteEvents: vi.fn(),
   updateEventsPublication: vi.fn(),
@@ -165,6 +167,12 @@ describe("admin transport contracts", () => {
   it("expõe o histórico de alterações do ID Meta como JSON seguro", async () => {
     const result = await appRouter.createCaller(adminContext).ingestionSources.auditLog({ sourceKey: "instagram:mimadafesta" });
     expect(result).toEqual([{ id: 2, sourceKey: "instagram:mimadafesta", previousHandle: "mimadafesta-old", nextHandle: "mimadafesta", changedAt: "2026-10-16T12:00:00.000Z" }]);
+  });
+
+  it("expõe a exportação completa da timeline como contrato JSON seguro", async () => {
+    const result = await appRouter.createCaller(adminContext).ingestionSources.operationalTimelineExport({ sourceKey: "instagram:mimadafesta" });
+    expect(result).toEqual({ items: [{ id: "action-1", sourceKey: "instagram:mimadafesta", action: "reprocessed", actorOpenId: "admin", details: "Sucesso: 10 eventos lidos, 2 persistidos.", occurredAt: "2026-10-16T12:00:00.000Z" }], total: 1 });
+    expect(maintenanceMocks.listIngestionSourceOperationalTimeline).toHaveBeenCalledWith("instagram:mimadafesta", 1, 500);
   });
 
   it("returns forbidden for maintenance mutations outside admin context", async () => {

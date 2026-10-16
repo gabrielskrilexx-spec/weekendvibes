@@ -453,7 +453,7 @@ export type IngestionSourceTimelineItem = {
 
 export async function listIngestionSourceOperationalTimeline(sourceKey: string, page = 1, pageSize = 10, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
-  const safePageSize = Math.min(Math.max(Math.trunc(pageSize), 5), 10);
+  const safePageSize = Math.min(Math.max(Math.trunc(pageSize), 5), 500);
   const safePage = Math.max(1, Math.trunc(page));
   if (!db) return { items: [] as Array<Omit<IngestionSourceTimelineItem, "occurredAt"> & { occurredAt: string }>, page: safePage, pageSize: safePageSize, total: 0, hasNextPage: false };
   const [handles, actions] = await Promise.all([

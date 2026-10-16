@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, Loader2, Power, RefreshCw, Save, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Download, Loader2, Power, RefreshCw, Save, SlidersHorizontal } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { postAdminJson } from "@/lib/admin-rest";
@@ -21,11 +21,49 @@ function formatTimestamp(value: string | Date | null) {
   return new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
+type FailureFilter = "all" | "waf" | "meta110" | "network";
+
+function classifyFailure(source: { lastMessage?: string | null; lastFailureReason?: string | null; lastHttpStatus?: number | null }) {
+  const text = `${source.lastMessage ?? ""} ${source.lastFailureReason ?? ""}`.toLowerCase();
+  if (source.lastHttpStatus === 403 || /waf|cloudflare|akamai|bloqueado/.test(text)) return "waf" as const;
+  if (/code 110|invalid user id|id inválido|desconectado da meta/.test(text)) return "meta110" as const;
+  if (/timeout|timed out|network|rede|econn|socket|fetch failed/.test(text) || source.lastHttpStatus === 408 || source.lastHttpStatus === 504) return "network" as const;
+  return "all" as const;
+}
+
+function nextAttemptFor(source: { circuitState: string; circuitNextAttemptAt?: string | Date | null; lastAttemptAt?: string | Date | null; frequencyMinutes: number }) {
+  if (source.circuitState !== "open" && source.circuitState !== "half_open") return null;
+  if (source.circuitNextAttemptAt) return new Date(source.circuitNextAttemptAt);
+  if (source.lastAttemptAt) return new Date(new Date(source.lastAttemptAt).getTime() + source.frequencyMinutes * 60_000);
+  return null;
+}
+
+function csvCell(value: string | null | undefined) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
 function SourceOperationalTimeline({ sourceKey }: { sourceKey: string }) {
   const [page, setPage] = useState(1);
   const timeline = trpc.ingestionSources.operationalTimeline.useQuery({ sourceKey, page, pageSize: 5 }, { staleTime: 30_000 });
+  const exportTimeline = trpc.ingestionSources.operationalTimelineExport.useQuery({ sourceKey }, { enabled: false });
   const label = (action: string) => action === "handle_changed" ? "ID Meta alterado" : action === "reactivated" ? "Fonte reativada" : "Reprocessamento imediato";
-  return <div className="mt-4" data-testid={`operational-timeline-${sourceKey}`}><div className="flex items-center justify-between gap-2"><p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Timeline operacional</p>{timeline.data && <span className="text-[10px] text-zinc-500">{timeline.data.total} evento(s)</span>}</div>{timeline.data?.items?.length ? <><ol className="mt-2 space-y-2">{timeline.data.items.map(item => <li key={item.id} className="border-l border-emerald-300/40 pl-3 text-xs text-zinc-300"><strong>{label(item.action)}</strong><time className="ml-2 text-zinc-500" dateTime={item.occurredAt}>{formatTimestamp(item.occurredAt)}</time>{item.actorOpenId && <span className="mt-0.5 block text-[10px] text-zinc-500">Operador: {item.actorOpenId}</span>}{item.details && <span className="mt-0.5 block text-[10px] text-zinc-400">{item.details}</span>}</li>)}</ol><div className="mt-3 flex items-center justify-between gap-2"><button type="button" onClick={() => setPage(value => Math.max(1, value - 1))} disabled={page <= 1} className="min-h-10 rounded-lg border border-white/10 px-3 text-xs font-bold disabled:opacity-40">Anterior</button><span className="text-[10px] text-zinc-500">Página {page}</span><button type="button" onClick={() => setPage(value => value + 1)} disabled={!timeline.data.hasNextPage} className="min-h-10 rounded-lg border border-white/10 px-3 text-xs font-bold disabled:opacity-40">Próxima</button></div></> : <p className="mt-2 text-xs text-zinc-500">Nenhum evento operacional registrado.</p>}</div>;
+  const exportCsv = async () => {
+    try {
+      const result = await exportTimeline.refetch();
+      const items = result.data?.items ?? [];
+      const rows = [["operador", "ação", "data/hora", "motivo"], ...items.map(item => [item.actorOpenId ?? "", label(item.action), item.occurredAt, item.details ?? ""])];
+      const csv = `\uFEFF${rows.map(row => row.map(csvCell).join(",")).join("\r\n")}\r\n`;
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `timeline-operacional-${sourceKey.replace(/[^a-z0-9_-]+/gi, "-")}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      sonnerToast.error("Não foi possível exportar o histórico", { description: friendlyAdminErrorMessage(error, "Tente novamente.") });
+    }
+  };
+  return <div className="mt-4" data-testid={`operational-timeline-${sourceKey}`}><div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center justify-between gap-2"><p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Timeline operacional</p>{timeline.data && <span className="text-[10px] text-zinc-500">{timeline.data.total} evento(s)</span>}</div><button type="button" onClick={() => void exportCsv()} disabled={exportTimeline.isFetching} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-bold text-zinc-300 disabled:cursor-wait disabled:opacity-50" aria-busy={exportTimeline.isFetching}>{exportTimeline.isFetching ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} {exportTimeline.isFetching ? "Gerando CSV..." : "Exportar Histórico (CSV)"}</button></div>{timeline.data?.items?.length ? <><ol className="mt-2 space-y-2">{timeline.data.items.map(item => <li key={item.id} className="border-l border-emerald-300/40 pl-3 text-xs text-zinc-300"><strong>{label(item.action)}</strong><time className="ml-2 text-zinc-500" dateTime={item.occurredAt}>{formatTimestamp(item.occurredAt)}</time>{item.actorOpenId && <span className="mt-0.5 block text-[10px] text-zinc-500">Operador: {item.actorOpenId}</span>}{item.details && <span className="mt-0.5 block text-[10px] text-zinc-400">{item.details}</span>}</li>)}</ol><div className="mt-3 flex items-center justify-between gap-2"><button type="button" onClick={() => setPage(value => Math.max(1, value - 1))} disabled={page <= 1} className="min-h-10 rounded-lg border border-white/10 px-3 text-xs font-bold disabled:opacity-40">Anterior</button><span className="text-[10px] text-zinc-500">Página {page}</span><button type="button" onClick={() => setPage(value => value + 1)} disabled={!timeline.data.hasNextPage} className="min-h-10 rounded-lg border border-white/10 px-3 text-xs font-bold disabled:opacity-40">Próxima</button></div></> : <p className="mt-2 text-xs text-zinc-500">Nenhum evento operacional registrado.</p>}</div>;
 }
 
 export default function AdminSourcesPanel() {
@@ -44,6 +82,7 @@ export default function AdminSourcesPanel() {
   const [newSourceHandle, setNewSourceHandle] = useState("");
   const [newSourceUrl, setNewSourceUrl] = useState("");
   const [openOnly, setOpenOnly] = useState(false);
+  const [failureFilter, setFailureFilter] = useState<FailureFilter>("all");
   const [detailsSource, setDetailsSource] = useState<NonNullable<typeof sources.data>[number] | null>(null);
   const createSource = trpc.ingestionSources.create.useMutation({
     onSuccess: async () => {
@@ -135,6 +174,7 @@ export default function AdminSourcesPanel() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-zinc-300"><input type="checkbox" checked={openOnly} onChange={event => setOpenOnly(event.target.checked)} className="size-4 accent-rose-300" /> Apenas OPEN</label>
+          <label className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-zinc-300">Falha<select aria-label="Filtrar por motivo da falha" value={failureFilter} onChange={event => setFailureFilter(event.target.value as FailureFilter)} className="min-h-9 rounded-lg border border-white/10 bg-zinc-900 px-2 text-xs text-white"><option value="all">Todas</option><option value="waf">WAF / Cloudflare</option><option value="meta110">Meta API (Code 110)</option><option value="network">Timeout / Rede</option></select></label>
           <button type="button" onClick={() => void sources.refetch()} disabled={sources.isFetching} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-zinc-300 hover:border-orange-300/50 hover:text-orange-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:cursor-wait disabled:opacity-50" aria-label="Atualizar fontes" aria-busy={sources.isFetching}><RefreshCw size={14} className={sources.isFetching ? "animate-spin" : ""} /> {sources.isFetching ? "Atualizando..." : "Atualizar"}</button>
           <button type="button" onClick={() => setNewSourceOpen(true)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-orange-300 px-3 py-2 text-xs font-black text-zinc-950 hover:bg-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">Nova Fonte</button>
         </div>
@@ -156,7 +196,7 @@ export default function AdminSourcesPanel() {
       {sources.isError && <p role="alert" className="mt-5 rounded-2xl border border-rose-300/20 bg-rose-400/10 p-5 text-sm text-rose-100">Não foi possível carregar as fontes. Tente atualizar novamente.</p>}
       <div className="mt-5 rounded-2xl border border-violet-300/20 bg-violet-300/5 p-4" data-testid="sandbox-mock-settings"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-black text-violet-100">Permitir Mocks no Sandbox</p><p className="mt-1 text-xs leading-relaxed text-zinc-400">Quando ativo, falhas de rede no preview podem usar eventos simulados marcados. Em produção, esta opção permanece sempre desativada.</p></div><button type="button" role="switch" aria-checked={mockSettings.data?.allowSandboxMocks === true} aria-busy={mockSettingsUpdate.isPending} disabled={mockSettings.isLoading || mockSettingsUpdate.isPending || mockSettings.data?.environment === "production"} onClick={() => mockSettingsUpdate.mutate({ allowSandboxMocks: !(mockSettings.data?.allowSandboxMocks === true) })} className={`inline-flex min-h-11 items-center justify-center rounded-xl border px-4 py-2 text-xs font-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200 disabled:cursor-wait disabled:opacity-50 ${mockSettings.data?.allowSandboxMocks ? "border-violet-200/50 bg-violet-300 text-zinc-950" : "border-white/10 text-zinc-300"}`}>{mockSettingsUpdate.isPending ? <><Loader2 size={14} className="mr-2 animate-spin" /> Salvando...</> : mockSettings.data?.allowSandboxMocks ? "Ativado" : "Desativado"}</button></div></div>
       <div className="mt-5 space-y-3">
-        {sources.data?.filter(source => !openOnly || source.circuitState === "open").map(source => {
+        {sources.data?.filter(source => (!openOnly || source.circuitState === "open") && (failureFilter === "all" || classifyFailure(source) === failureFilter)).map(source => {
           const rowPending = update.isPending && pendingSourceId === source.id;
           return <article key={source.id} className="rounded-2xl border border-white/10 bg-zinc-950/35 p-4" aria-busy={rowPending}>
             {source.circuitState === "open" && <div className="mb-4 flex flex-col gap-2 rounded-xl border border-rose-300/30 bg-rose-400/10 p-3 text-rose-100 sm:flex-row sm:items-center sm:justify-between" role="alert" data-testid={`circuit-open-${source.id}`}><div className="flex items-start gap-2"><AlertTriangle size={17} className="mt-0.5 shrink-0 text-rose-300" aria-hidden="true" /><div><p className="text-xs font-black uppercase tracking-wider">Circuit Breaker OPEN — ingestão pausada</p><p className="mt-1 text-xs text-rose-100/80">{source.circuitFailureCount} falha(s) consecutiva(s). A fonte está protegida até a reativação manual ou a próxima janela permitida.</p></div></div><span className="w-fit rounded-full bg-rose-300/20 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-rose-200">Pausada preventivamente</span></div>}
@@ -178,7 +218,7 @@ export default function AdminSourcesPanel() {
           </article>;
         })}
       </div>
-      {detailsSource && <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 p-4" role="dialog" aria-modal="true" aria-labelledby="source-details-title"><div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-zinc-900 p-5 text-white shadow-2xl sm:p-6"><div className="flex items-start justify-between gap-4"><div><h3 id="source-details-title" className="text-lg font-black">Detalhes da fonte</h3><p className="mt-1 text-sm text-zinc-400">{detailsSource.name}</p></div><button type="button" onClick={() => setDetailsSource(null)} aria-label="Fechar detalhes da fonte" className="rounded-lg px-2 py-1 text-zinc-400 hover:text-white">×</button></div><div className="mt-5 rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100"><strong>Última falha:</strong> {detailsSource.lastMessage || detailsSource.lastFailureReason || "Nenhuma falha registrada."}</div><SourceOperationalTimeline sourceKey={detailsSource.sourceKey} /></div></div>}
+      {detailsSource && <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 p-4" role="dialog" aria-modal="true" aria-labelledby="source-details-title"><div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-zinc-900 p-5 text-white shadow-2xl sm:p-6"><div className="flex items-start justify-between gap-4"><div><h3 id="source-details-title" className="text-lg font-black">Detalhes da fonte</h3><p className="mt-1 text-sm text-zinc-400">{detailsSource.name}</p></div><button type="button" onClick={() => setDetailsSource(null)} aria-label="Fechar detalhes da fonte" className="rounded-lg px-2 py-1 text-zinc-400 hover:text-white">×</button></div><div className="mt-5 rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100"><strong>Última falha:</strong> {detailsSource.lastMessage || detailsSource.lastFailureReason || "Nenhuma falha registrada."}</div>{nextAttemptFor(detailsSource) && <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-400/10 p-3 text-sm text-amber-100"><strong>Próxima tentativa automática prevista:</strong> {formatTimestamp(nextAttemptFor(detailsSource))}<span className="mt-1 block text-xs text-amber-100/70">Calculada pelo cooldown do Circuit Breaker; se não houver backoff persistido, usa a cadência configurada de {detailsSource.frequencyMinutes} minutos.</span></p>}<SourceOperationalTimeline sourceKey={detailsSource.sourceKey} /></div></div>}
     </section>
   );
 }
