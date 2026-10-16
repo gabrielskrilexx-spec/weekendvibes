@@ -21,6 +21,12 @@ function formatTimestamp(value: string | Date | null) {
   return new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
+function SourceHandleHistory({ sourceKey }: { sourceKey: string }) {
+  const audit = trpc.ingestionSources.auditLog.useQuery({ sourceKey }, { staleTime: 30_000 });
+  if (!audit.data?.length) return null;
+  return <div className="mt-2 max-w-xl rounded-xl border border-white/10 bg-zinc-900/60 p-3" data-testid={`handle-audit-${sourceKey}`}><p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Histórico de alterações do ID Meta</p><ol className="mt-2 space-y-2">{audit.data.map(item => <li key={item.id} className="flex flex-col gap-0.5 border-l border-orange-300/40 pl-3 text-xs text-zinc-300"><span><code className="text-zinc-400">{item.previousHandle ?? "vazio"}</code> <span className="text-orange-200">→</span> <code className="text-white">{item.nextHandle ?? "vazio"}</code></span><time dateTime={new Date(item.changedAt).toISOString()} className="text-[10px] text-zinc-500">{formatTimestamp(item.changedAt)}</time></li>)}</ol></div>;
+}
+
 export default function AdminSourcesPanel() {
   const sources = trpc.ingestionSources.list.useQuery(undefined, { refetchInterval: 30_000 });
   const mockSettings = trpc.ingestionReports.mockSettings.useQuery(undefined, { refetchInterval: 30_000 });
@@ -28,6 +34,8 @@ export default function AdminSourcesPanel() {
   const [pendingSourceId, setPendingSourceId] = useState<number | null>(null);
   const [pendingReactivationKey, setPendingReactivationKey] = useState<string | null>(null);
   const [pendingStorySourceId, setPendingStorySourceId] = useState<number | null>(null);
+  const [reactivationTarget, setReactivationTarget] = useState<{ sourceKey: string; name: string } | null>(null);
+  const [reprocessNow, setReprocessNow] = useState(true);
   const [isSyncingStories, setIsSyncingStories] = useState(false);
   const [newSourceOpen, setNewSourceOpen] = useState(false);
   const [newSourceName, setNewSourceName] = useState("");
@@ -55,9 +63,9 @@ export default function AdminSourcesPanel() {
     onSettled: () => setPendingSourceId(null),
   });
   const reactivate = trpc.ingestionSources.reactivate.useMutation({
-    onSuccess: async () => {
+    onSuccess: async result => {
       await utils.ingestionSources.list.invalidate();
-      sonnerToast.success("Fonte reativada", { description: "O bloqueio automático foi limpo; a fonte voltará ao próximo ciclo." });
+      sonnerToast.success(result.reprocess === "succeeded" ? "Fonte reativada e reprocessada" : "Fonte reativada", { description: result.reprocess === "failed" ? "A fonte foi reativada, mas o reprocessamento imediato falhou." : result.reprocess === "succeeded" ? "A execução focada terminou com sucesso." : "O bloqueio automático foi limpo; a fonte voltará ao próximo ciclo." });
     },
     onError: error => sonnerToast.error("Não foi possível reativar a fonte", { description: friendlyAdminErrorMessage(error, "Tente novamente.") }),
     onSettled: () => setPendingReactivationKey(null),
@@ -91,8 +99,15 @@ export default function AdminSourcesPanel() {
   };
   const reactivateSource = (sourceKey: string) => {
     if (reactivate.isPending) return;
-    setPendingReactivationKey(sourceKey);
-    reactivate.mutate({ sourceKey });
+    const source = sources.data?.find(item => item.sourceKey === sourceKey);
+    setReactivationTarget({ sourceKey, name: source?.name ?? sourceKey });
+    setReprocessNow(true);
+  };
+  const confirmReactivation = () => {
+    if (!reactivationTarget || reactivate.isPending) return;
+    setPendingReactivationKey(reactivationTarget.sourceKey);
+    reactivate.mutate({ sourceKey: reactivationTarget.sourceKey, reprocessNow });
+    setReactivationTarget(null);
   };
   const submitNewSource = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -132,6 +147,7 @@ export default function AdminSourcesPanel() {
           <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setNewSourceOpen(false)} disabled={createSource.isPending} className="min-h-11 rounded-xl border border-white/10 px-4 text-xs font-black text-zinc-300 hover:border-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:opacity-50">Cancelar</button><button type="submit" disabled={createSource.isPending} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-orange-300 px-4 text-xs font-black text-zinc-950 hover:bg-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:cursor-wait disabled:opacity-50">{createSource.isPending && <Loader2 size={14} className="animate-spin" />} {createSource.isPending ? "Salvando..." : "Salvar fonte"}</button></div>
         </form>
       </div>}
+      {reactivationTarget && <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 p-4" role="dialog" aria-modal="true" aria-labelledby="reactivation-title"><div className="w-full max-w-lg rounded-2xl border border-white/10 bg-zinc-900 p-5 text-white shadow-2xl sm:p-6"><h3 id="reactivation-title" className="text-lg font-black">Reativar fonte?</h3><p className="mt-2 text-sm text-zinc-300">Tem certeza que deseja reativar <strong>{reactivationTarget.name}</strong>? O Circuit Breaker será resetado.</p><label className="mt-5 flex items-start gap-3 rounded-xl border border-white/10 p-3 text-sm text-zinc-200"><input type="checkbox" checked={reprocessNow} onChange={event => setReprocessNow(event.target.checked)} className="mt-1 size-4 accent-orange-300" /> <span><strong>Reprocessar agora</strong><span className="mt-1 block text-xs text-zinc-400">Executa uma rodada focada imediatamente, sem aguardar o próximo cron.</span></span></label><div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setReactivationTarget(null)} disabled={reactivate.isPending} className="min-h-11 rounded-xl border border-white/10 px-4 text-xs font-black text-zinc-300 disabled:opacity-50">Cancelar</button><button type="button" onClick={confirmReactivation} disabled={reactivate.isPending} className="min-h-11 rounded-xl bg-orange-300 px-4 text-xs font-black text-zinc-950 disabled:opacity-50">{reactivate.isPending ? "Reativando..." : "Confirmar reativação"}</button></div></div></div>}
       {sources.isLoading && <p className="mt-5 rounded-2xl border border-white/10 p-5 text-sm text-zinc-400">Carregando fontes...</p>}
       {sources.isError && <p role="alert" className="mt-5 rounded-2xl border border-rose-300/20 bg-rose-400/10 p-5 text-sm text-rose-100">Não foi possível carregar as fontes. Tente atualizar novamente.</p>}
       <div className="mt-5 rounded-2xl border border-violet-300/20 bg-violet-300/5 p-4" data-testid="sandbox-mock-settings"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-black text-violet-100">Permitir Mocks no Sandbox</p><p className="mt-1 text-xs leading-relaxed text-zinc-400">Quando ativo, falhas de rede no preview podem usar eventos simulados marcados. Em produção, esta opção permanece sempre desativada.</p></div><button type="button" role="switch" aria-checked={mockSettings.data?.allowSandboxMocks === true} aria-busy={mockSettingsUpdate.isPending} disabled={mockSettings.isLoading || mockSettingsUpdate.isPending || mockSettings.data?.environment === "production"} onClick={() => mockSettingsUpdate.mutate({ allowSandboxMocks: !(mockSettings.data?.allowSandboxMocks === true) })} className={`inline-flex min-h-11 items-center justify-center rounded-xl border px-4 py-2 text-xs font-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200 disabled:cursor-wait disabled:opacity-50 ${mockSettings.data?.allowSandboxMocks ? "border-violet-200/50 bg-violet-300 text-zinc-950" : "border-white/10 text-zinc-300"}`}>{mockSettingsUpdate.isPending ? <><Loader2 size={14} className="mr-2 animate-spin" /> Salvando...</> : mockSettings.data?.allowSandboxMocks ? "Ativado" : "Desativado"}</button></div></div>
@@ -143,7 +159,7 @@ export default function AdminSourcesPanel() {
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2"><h3 className="font-black text-white">{source.name}</h3><span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-400">{source.kind === "instagram" ? "Instagram" : "Fonte pública"}</span><span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-wider ${source.isEnabled ? "bg-emerald-400/15 text-emerald-200" : "bg-zinc-700/50 text-zinc-400"}`}>{source.isEnabled ? "Ativa" : "Pausada"}</span></div>
-                {source.kind === "instagram" ? <label className="mt-1 block text-[10px] font-black uppercase tracking-wider text-zinc-500">Username/ID Meta<input aria-label={`Username/ID Meta de ${source.name}`} defaultValue={source.handle ?? ""} disabled={update.isPending} onBlur={event => saveSource(source.id, { isEnabled: source.isEnabled === 1, priority: source.priority, frequencyMinutes: source.frequencyMinutes, p95LatencyThresholdMs: source.p95LatencyThresholdMs ?? 3000, handle: event.currentTarget.value })} className="mt-1 min-h-9 w-full max-w-xs rounded-lg border border-white/10 bg-zinc-900 px-2 text-xs font-bold normal-case tracking-normal text-white outline-none focus:border-orange-300/60 disabled:opacity-50" /></label> : <p className="mt-1 truncate text-xs text-zinc-500">{source.url}</p>}
+                {source.kind === "instagram" ? <><label className="mt-1 block text-[10px] font-black uppercase tracking-wider text-zinc-500">Username/ID Meta<input aria-label={`Username/ID Meta de ${source.name}`} defaultValue={source.handle ?? ""} disabled={update.isPending} onBlur={event => saveSource(source.id, { isEnabled: source.isEnabled === 1, priority: source.priority, frequencyMinutes: source.frequencyMinutes, p95LatencyThresholdMs: source.p95LatencyThresholdMs ?? 3000, handle: event.currentTarget.value })} className="mt-1 min-h-9 w-full max-w-xs rounded-lg border border-white/10 bg-zinc-900 px-2 text-xs font-bold normal-case tracking-normal text-white outline-none focus:border-orange-300/60 disabled:opacity-50" /></label><SourceHandleHistory sourceKey={source.sourceKey} /></> : <p className="mt-1 truncate text-xs text-zinc-500">{source.url}</p>}
                 <div className="mt-2 grid gap-1 text-xs text-zinc-400 sm:grid-cols-2 sm:gap-x-4"><p className="flex items-center gap-2"><Clock3 size={13} className="text-orange-300" /> Última tentativa: {formatTimestamp(source.lastAttemptAt)}</p><p className="flex items-center gap-2"><CheckCircle2 size={13} className="text-emerald-300" /> Último sucesso: {formatLastSuccess(source.lastSuccessAt)}</p></div><p className="mt-1 text-xs"><span className={source.lastStatus === "failed" ? "text-rose-200" : "text-zinc-400"}>Estado da última execução: {source.lastStatus}</span></p>
               </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:min-w-[560px]">

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 
@@ -415,15 +415,25 @@ export async function createIngestionSource(input: { name: string; kind: "instag
   return { id: created.id, sourceKey: created.sourceKey };
 }
 
-export async function updateIngestionSource(id: number, input: { isEnabled: boolean; priority: number; frequencyMinutes: number; p95LatencyThresholdMs?: number; handle?: string | null }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+export async function updateIngestionSource(id: number, input: { isEnabled: boolean; priority: number; frequencyMinutes: number; p95LatencyThresholdMs?: number; handle?: string | null; changedByOpenId?: string | null }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) throw new Error("Database unavailable");
   const priority = Math.min(Math.max(Math.round(input.priority), 1), 1000);
   const frequencyMinutes = Math.min(Math.max(Math.round(input.frequencyMinutes), 60), 525600);
   const p95LatencyThresholdMs = Math.min(Math.max(Math.round(input.p95LatencyThresholdMs ?? 3000), 500), 180000);
   const handle = input.handle === undefined ? undefined : input.handle?.trim().replace(/^@+/, "").replace(/\/$/, "") || null;
+  const [existing] = await db.select({ sourceKey: ingestionSources.sourceKey, handle: ingestionSources.handle }).from(ingestionSources).where(eq(ingestionSources.id, id)).limit(1);
+  if (existing && handle !== undefined && existing.handle !== handle) {
+    await db.insert(ingestionSourceHandleAuditLogs).values({ sourceKey: existing.sourceKey, previousHandle: existing.handle, nextHandle: handle, changedByOpenId: input.changedByOpenId ?? null });
+  }
   await db.update(ingestionSources).set({ isEnabled: input.isEnabled ? 1 : 0, priority, frequencyMinutes, p95LatencyThresholdMs, ...(handle === undefined ? {} : { handle }), updatedAt: new Date() }).where(eq(ingestionSources.id, id));
   return listIngestionSources(db);
+}
+
+export async function listIngestionSourceHandleAudit(sourceKey: string, limit = 20, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return [];
+  return db.select({ id: ingestionSourceHandleAuditLogs.id, sourceKey: ingestionSourceHandleAuditLogs.sourceKey, previousHandle: ingestionSourceHandleAuditLogs.previousHandle, nextHandle: ingestionSourceHandleAuditLogs.nextHandle, changedAt: ingestionSourceHandleAuditLogs.changedAt }).from(ingestionSourceHandleAuditLogs).where(eq(ingestionSourceHandleAuditLogs.sourceKey, sourceKey)).orderBy(desc(ingestionSourceHandleAuditLogs.changedAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 100));
 }
 
 export type CircuitState = "closed" | "open" | "half_open";

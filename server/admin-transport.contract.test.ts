@@ -55,6 +55,9 @@ vi.mock("./db", () => ({
         createdAt: new Date("2026-08-26T12:00:00.000Z"),
       },
     ]),
+  listIngestionSourceHandleAudit: vi.fn().mockResolvedValue([
+    { id: 2, sourceKey: "instagram:mimadafesta", previousHandle: "mimadafesta-old", nextHandle: "mimadafesta", changedAt: new Date("2026-10-16T12:00:00.000Z") },
+  ]),
   listGeocodingSummary: vi.fn(),
   createLocationAlias: vi.fn(),
   updateLocationAlias: vi.fn(),
@@ -145,6 +148,19 @@ describe("admin transport contracts", () => {
     expect(result).toEqual({ success: true, sourceKey: "public:ingresse", status: "reactivated", read: 1, persisted: 1, message: "Teste concluído; fonte reativada para o próximo ciclo." });
     expect(maintenanceMocks.runIngestionSourceChunk).toHaveBeenCalledWith({ sourceKey: "public:ingresse", dryRun: true });
     expect(maintenanceMocks.reactivateIngestionSourceCircuitBreaker).toHaveBeenCalledWith("public:ingresse");
+  });
+
+  it("reativa e dispara reprocessamento imediato somente quando solicitado", async () => {
+    const caller = appRouter.createCaller(adminContext);
+    const result = await caller.ingestionSources.reactivate({ sourceKey: "instagram:mimadafesta", reprocessNow: true });
+    expect(result).toEqual({ ok: true, sourceKey: "instagram:mimadafesta", reprocess: "succeeded" });
+    expect(maintenanceMocks.reactivateIngestionSourceCircuitBreaker).toHaveBeenCalledWith("instagram:mimadafesta");
+    expect(maintenanceMocks.runIngestionSourceChunk).toHaveBeenCalledWith({ sourceKey: "instagram:mimadafesta", dryRun: false });
+  });
+
+  it("expõe o histórico de alterações do ID Meta como JSON seguro", async () => {
+    const result = await appRouter.createCaller(adminContext).ingestionSources.auditLog({ sourceKey: "instagram:mimadafesta" });
+    expect(result).toEqual([{ id: 2, sourceKey: "instagram:mimadafesta", previousHandle: "mimadafesta-old", nextHandle: "mimadafesta", changedAt: "2026-10-16T12:00:00.000Z" }]);
   });
 
   it("returns forbidden for maintenance mutations outside admin context", async () => {

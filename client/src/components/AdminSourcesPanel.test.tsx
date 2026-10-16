@@ -15,6 +15,7 @@ vi.mock("@/lib/trpc", () => ({
     },
     ingestionSources: {
       list: { useQuery: () => ({ data: [source], isLoading: false, isError: false, isFetching: false, refetch }) },
+      auditLog: { useQuery: () => ({ data: [{ id: 1, previousHandle: "moby-old", nextHandle: "moby-corrigido", changedAt: new Date("2026-08-16T12:00:00Z") }] }) },
       create: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { createMutate(input); options?.onSuccess?.(); } }) },
       update: { useMutation: () => ({ isPending: false, mutate }) },
       reactivate: { useMutation: () => ({ isPending: false, mutate: reactivateMutate }) },
@@ -37,6 +38,8 @@ describe("AdminSourcesPanel", () => {
     expect(rendered).toContain("Última tentativa");
     expect(rendered).toContain("15/08/2026");
     expect(rendered).toContain("Circuit Breaker OPEN");
+    expect(rendered).toContain("Histórico de alterações do ID Meta");
+    expect(rendered).toContain("moby-old");
     expect(rendered).toContain("Ativa");
     expect(rendered).toContain("Pausar Ingestão");
   });
@@ -105,6 +108,10 @@ describe("AdminSourcesPanel", () => {
     await act(async () => { tree = create(<AdminSourcesPanel />); });
     const button = tree!.root.findByProps({ "aria-label": "Reativar Fonte Moby House" });
     await act(async () => { button.props.onClick(); });
-    expect(reactivateMutate).toHaveBeenCalledWith({ sourceKey: "instagram:mobydicksantos" });
+    expect(reactivateMutate).not.toHaveBeenCalled();
+    const confirm = tree!.root.findByProps({ children: "Confirmar reativação" });
+    await act(async () => { confirm.props.onClick({ preventDefault: vi.fn() }); });
+    expect(reactivateMutate).toHaveBeenCalledWith({ sourceKey: "instagram:mobydicksantos", reprocessNow: true });
+    expect(JSON.stringify(tree!.toJSON())).toContain("moby-corrigido");
   });
 });

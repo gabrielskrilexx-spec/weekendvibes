@@ -28,6 +28,7 @@ import {
   setEventReminder,
   listUserReminders,
   listIngestionSources,
+  listIngestionSourceHandleAudit,
   createIngestionSource,
   updateIngestionSource,
   getPublicFeedRolloverHour,
@@ -1193,6 +1194,9 @@ export const appRouter = router({
     list: adminOnly.query(async () =>
       normalizeJsonForTransport(await listIngestionSources())
     ),
+    auditLog: adminOnly
+      .input(z.object({ sourceKey: z.string().trim().min(1).max(120) }).strict())
+      .query(async ({ input }) => normalizeJsonForTransport(await listIngestionSourceHandleAudit(input.sourceKey))),
     create: adminOnly
       .input(
         z
@@ -1243,8 +1247,8 @@ export const appRouter = router({
           })
           .strict()
       )
-      .mutation(async ({ input }) => {
-        await updateIngestionSource(input.id, input);
+      .mutation(async ({ input, ctx }) => {
+        await updateIngestionSource(input.id, { ...input, changedByOpenId: ctx.user.openId });
         return {
           ok: true as const,
           id: input.id,
@@ -1255,12 +1259,18 @@ export const appRouter = router({
         };
       }),
     reactivate: adminOnly
-      .input(z.object({ sourceKey: z.string().trim().min(1).max(120) }).strict())
-      .output(z.object({ ok: z.literal(true), sourceKey: z.string().min(1).max(120) }).strict())
+      .input(z.object({ sourceKey: z.string().trim().min(1).max(120), reprocessNow: z.boolean().default(false) }).strict())
+      .output(z.object({ ok: z.literal(true), sourceKey: z.string().min(1).max(120), reprocess: z.enum(["not_requested", "succeeded", "failed"]) }).strict())
       .mutation(async ({ input }) => {
         try {
           await reactivateIngestionSourceCircuitBreaker(input.sourceKey);
-          return { ok: true as const, sourceKey: input.sourceKey };
+          if (!input.reprocessNow) return { ok: true as const, sourceKey: input.sourceKey, reprocess: "not_requested" as const };
+          try {
+            await runIngestionSourceChunk({ sourceKey: input.sourceKey, dryRun: false });
+            return { ok: true as const, sourceKey: input.sourceKey, reprocess: "succeeded" as const };
+          } catch {
+            return { ok: true as const, sourceKey: input.sourceKey, reprocess: "failed" as const };
+          }
         } catch (error) {
           return throwSanitizedAdminMutationError(error, "Não foi possível reativar a fonte.");
         }

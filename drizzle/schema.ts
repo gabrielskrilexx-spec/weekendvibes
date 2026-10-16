@@ -371,6 +371,18 @@ export const ingestionSources = mysqlTable("ingestionSources", {
 export type IngestionSource = typeof ingestionSources.$inferSelect;
 export type InsertIngestionSource = typeof ingestionSources.$inferInsert;
 
+export const ingestionSourceHandleAuditLogs = mysqlTable("ingestionSourceHandleAuditLogs", {
+  id: int("id").autoincrement().primaryKey(),
+  sourceKey: varchar("sourceKey", { length: 120 }).notNull(),
+  previousHandle: varchar("previousHandle", { length: 180 }),
+  nextHandle: varchar("nextHandle", { length: 180 }),
+  changedByOpenId: varchar("changedByOpenId", { length: 160 }),
+  changedAt: timestamp("changedAt").defaultNow().notNull(),
+});
+
+export type IngestionSourceHandleAuditLog = typeof ingestionSourceHandleAuditLogs.$inferSelect;
+export type InsertIngestionSourceHandleAuditLog = typeof ingestionSourceHandleAuditLogs.$inferInsert;
+
 export const apifyDailyUsage = mysqlTable("apifyDailyUsage", {
   dateKey: varchar("dateKey", { length: 10 }).primaryKey(),
   requestCount: int("requestCount").default(0).notNull(),
