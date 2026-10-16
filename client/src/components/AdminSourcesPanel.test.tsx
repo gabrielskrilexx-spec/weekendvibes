@@ -34,6 +34,7 @@ describe("AdminSourcesPanel", () => {
     expect(rendered).toContain("Moby House");
     expect(rendered).toContain("Último sucesso");
     expect(rendered).toContain("Ativa");
+    expect(rendered).toContain("Pausar Ingestão");
   });
 
   it("exibe e alterna o toggle de mocks do sandbox", async () => {

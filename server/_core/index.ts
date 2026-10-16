@@ -12,15 +12,15 @@ import { ingestInstagramHandler } from "../scheduled-instagram";
 import { asyncIngestInstagramHandler, apifyInstagramWebhookHandler, reprocessApifyStoriesDatasetHandler } from "../apify-async";
 import { heartbeatMonitorHandler } from "../scheduled-heartbeat-monitor";
 import { exportJobsRecoveryHandler } from "../scheduled-export-recovery";
-import { serveStatic, setupVite } from "./vite";
+import { serveStatic } from "./static";
 import { applySecurityHeaders, createRateLimit, createStrictCors } from "./security";
 import { registerMapsJavascriptRoute } from "../maps-javascript";
 import { registerAdminRestRoutes } from "../admin-rest";
 import { requireInternalCron } from "./cron-auth";
 
-async function startServer() {
+export async function createApp(server?: ReturnType<typeof createServer>) {
   const app = express();
-  const server = createServer(app);
+  const httpServer = server ?? createServer(app);
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
   app.use(createStrictCors());
@@ -69,18 +69,24 @@ async function startServer() {
   );
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
-    await setupVite(app, server);
+    if (!server) throw new Error("Vite development mode requires an HTTP server instance");
+    const { setupVite } = await import("./vite");
+    await setupVite(app, httpServer);
   } else {
     serveStatic(app);
   }
 
+  return app;
+}
+
+async function startServer() {
+  const server = createServer();
+  const app = await createApp(server);
   const port = Number.parseInt(process.env.PORT || "3000", 10);
   const host = process.env.HOST || "0.0.0.0";
-
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error(`Invalid PORT value: ${process.env.PORT ?? "undefined"}`);
   }
-
   server.listen(port, host, () => {
     console.log(`[boot] WeekendVibes listening on ${host}:${port}`, {
       nodeEnv: process.env.NODE_ENV ?? "undefined",
@@ -88,4 +94,6 @@ async function startServer() {
   });
 }
 
-startServer().catch(console.error);
+if (process.env.VERCEL !== "1") {
+  startServer().catch(console.error);
+}

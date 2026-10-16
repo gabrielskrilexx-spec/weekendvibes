@@ -225,6 +225,15 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     expect(JSON.stringify(tree!.toJSON())).toContain("Limpar Cache");
   });
 
+  it("filtra runs por fonte e WAF ao abrir o drill-down do alerta persistente", async () => {
+    latestReportData = { ...reportData, wafPersistentAlerts: [{ sourceKey: "public:weticket", consecutiveRuns: 3, runIds: [3, 2, 1], latestBlockedAt: "2026-10-16T12:00:00.000Z", lastValidCaptureAt: null }] } as typeof reportData;
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    const button = tree!.root.findByProps({ "data-testid": "waf-history-public:weticket" });
+    await act(async () => { button.props.onClick(); });
+    expect(mocks.summaryInput).toEqual(expect.objectContaining({ sourceKey: "public:weticket", telemetryCategory: "waf" }));
+  });
+
   it("dispara a mutation protegida com a fonte Instagram", async () => {
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminReportsPanel />); });

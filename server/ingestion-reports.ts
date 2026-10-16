@@ -550,6 +550,35 @@ export function buildSourceTelemetryHistoryForTest(runs: Array<{ sourceKey: stri
   }
   return Array.from(grouped.values()).sort((a, b) => a.date.localeCompare(b.date) || a.sourceKey.localeCompare(b.sourceKey)).map(item => ({ date: item.date, label: new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" }).format(new Date(`${item.date}T12:00:00-03:00`)), sourceKey: item.sourceKey, runs: item.runs, successes: item.successes, successRate: item.runs - item.simulatedExecutions > 0 ? Number((item.successes / (item.runs - item.simulatedExecutions)).toFixed(4)) : 0, simulatedExecutions: item.simulatedExecutions, averageLatencyMs: item.latencyCount ? Math.round(item.latencyTotal / item.latencyCount) : 0, p95LatencyMs: item.latencies.length ? item.latencies.sort((a, b) => a - b)[Math.min(item.latencies.length - 1, Math.ceil(item.latencies.length * 0.95) - 1)] : 0 }));
 }
+export type WafProviderHistoryPoint = { date: string; label: string; sourceKey: string; provider: string; blocks: number };
+
+function identifyWafProvider(details: unknown) {
+  const text = JSON.stringify(details ?? "").toLowerCase();
+  if (/cloudflare|cf-ray|checking your browser/.test(text)) return "Cloudflare";
+  if (/akamai|reference\s*#\d+/.test(text)) return "Akamai";
+  if (/imperva|incap_ses|visid_incap/.test(text)) return "Imperva";
+  if (/sucuri/.test(text)) return "Sucuri";
+  if (/fastly/.test(text)) return "Fastly";
+  return "WAF não identificado";
+}
+
+export function buildWafProviderHistoryForTest(runs: Array<{ sourceKey: string | null; status: string; startedAt: string | Date; httpStatus?: number | null; details?: unknown }>): WafProviderHistoryPoint[] {
+  const grouped = new Map<string, WafProviderHistoryPoint>();
+  for (const run of runs) {
+    const startedAt = new Date(run.startedAt);
+    if (!run.sourceKey || Number.isNaN(startedAt.getTime())) continue;
+    const detailsText = JSON.stringify(run.details ?? "");
+    if (!isWafBlockedFailure(run.httpStatus ?? null, detailsText)) continue;
+    const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(startedAt);
+    const provider = identifyWafProvider(run.details);
+    const key = `${date}:${run.sourceKey}:${provider}`;
+    const current = grouped.get(key) ?? { date, label: new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" }).format(new Date(`${date}T12:00:00-03:00`)), sourceKey: run.sourceKey, provider, blocks: 0 };
+    current.blocks += 1;
+    grouped.set(key, current);
+  }
+  return Array.from(grouped.values()).sort((a, b) => a.date.localeCompare(b.date) || a.sourceKey.localeCompare(b.sourceKey) || a.provider.localeCompare(b.provider));
+}
+
 type SourceErrorCategory = SourceTelemetry["errors"][number]["category"];
 
 export const DEFAULT_PUBLIC_P95_THRESHOLD_MS = 15_000;
@@ -1612,6 +1641,7 @@ export async function listIngestionReport(
   const performanceAlerts = findConsecutiveP95PerformanceAlertsForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, durationMs: run.durationMs })), new Map(sourceConfigs.map(source => [source.sourceKey, getEffectiveSourceP95ThresholdForTest(source)])));
   await Promise.all(performanceAlerts.map(async alert => { const message = `Desempenho degradado: P95 de ${Math.round(alert.p95LatencyMs)} ms em ${alert.sourceKey}, acima do limite de ${alert.thresholdMs} ms por ${alert.consecutiveRuns} rodadas consecutivas.`; await handleIngestionFailureAlert({ routine: "performance-monitor", sourceKey: alert.sourceKey, integration: alert.sourceKey.startsWith("instagram") ? "meta" : "public", severity: "WARNING", alertType: "performance_degraded", message }); await notifyPerformanceDegradationWebhook({ ...alert, message }); }));
   const sourceTelemetryHistory = buildSourceTelemetryHistoryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, finishedAt: run.finishedAt, durationMs: run.durationMs, details: run.details })));
+  const wafProviderHistory = buildWafProviderHistoryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, httpStatus: run.httpStatus, details: run.details })));
   const freshness = sourceConfigs.map(source => ({
     sourceKey: source.sourceKey,
     name: source.name,
@@ -1746,6 +1776,7 @@ export async function listIngestionReport(
     sourceMetrics,
     sourceTelemetry,
     sourceTelemetryHistory,
+    wafProviderHistory,
     freshness,
     timeline,
     reconciliationBySource: buildSourceReconciliationForTest(trendRuns),

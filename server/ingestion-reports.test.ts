@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv, sortFilteredStoriesForTest, DEFAULT_PUBLIC_P95_THRESHOLD_MS, INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS, MANUAL_AGENDA_P95_THRESHOLD_MS, getEffectiveSourceP95ThresholdForTest, findConsecutiveP95PerformanceAlertsForTest, classifyIngestionRunCategoryForTest, findConsecutiveWafBlocksForTest } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv, sortFilteredStoriesForTest, DEFAULT_PUBLIC_P95_THRESHOLD_MS, INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS, MANUAL_AGENDA_P95_THRESHOLD_MS, getEffectiveSourceP95ThresholdForTest, findConsecutiveP95PerformanceAlertsForTest, classifyIngestionRunCategoryForTest, findConsecutiveWafBlocksForTest, buildWafProviderHistoryForTest } from "./ingestion-reports";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
 import { sanitizeAgendaStepErrorForTest } from "./agenda-routine";
 
@@ -245,6 +245,18 @@ describe("telemetria WAF persistente", () => {
     expect(classifyIngestionRunCategoryForTest({ status: "succeeded", details: {} })).toBe("success");
   });
 
+  it("agrega bloqueios por fonte e provedor de segurança", () => {
+    const runs = [
+      { sourceKey: "public:weticket", status: "failed", httpStatus: 403, startedAt: "2026-10-16T12:00:00.000Z", details: { message: "Cloudflare challenge" } },
+      { sourceKey: "public:weticket", status: "failed", httpStatus: 403, startedAt: "2026-10-16T13:00:00.000Z", details: { message: "cf-ray access denied" } },
+      { sourceKey: "public:zig", status: "failed", httpStatus: 403, startedAt: "2026-10-16T13:00:00.000Z", details: { message: "Akamai reference #42" } },
+      { sourceKey: "public:articket", status: "failed", httpStatus: 500, startedAt: "2026-10-16T13:00:00.000Z", details: { message: "parser error" } },
+    ];
+    expect(buildWafProviderHistoryForTest(runs)).toEqual([
+      { date: "2026-10-16", label: "16/10", sourceKey: "public:weticket", provider: "Cloudflare", blocks: 2 },
+      { date: "2026-10-16", label: "16/10", sourceKey: "public:zig", provider: "Akamai", blocks: 1 },
+    ]);
+  });
   it("sinaliza três bloqueios consecutivos e preserva a última captura válida", () => {
     const base = new Date("2026-10-16T12:00:00.000Z");
     const run = (id: number, minutesAgo: number, status: string, httpStatus: number | null, details: unknown = {}) => ({ id, sourceKey: "public:weticket", status, httpStatus, details, startedAt: new Date(base.getTime() - minutesAgo * 60_000), finishedAt: new Date(base.getTime() - (minutesAgo - 1) * 60_000) });

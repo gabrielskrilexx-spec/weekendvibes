@@ -4,7 +4,16 @@
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist/public",
   "cleanUrls": true,
+  "functions": {
+    "api/index.ts": {
+      "includeFiles": "{server/**,drizzle/**,shared/**}"
+    }
+  },
   "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api"
+    },
     {
       "source": "/(.*)",
       "destination": "/index.html"
