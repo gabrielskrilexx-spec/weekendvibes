@@ -650,7 +650,15 @@ export async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, acc
     const source = configuredSources.find(item => item.handle?.replace(/^@/, "").toLowerCase() === target.username.toLowerCase());
     if (source && gracefullySkippedHandles.has(target.username.toLowerCase())) {
       const message = "Perfil temporariamente ignorado: Meta Graph API retornou Invalid user id (OAuthException, code 110).";
-      if (source && !options.dryRun) await markIngestionSourceResult(source.sourceKey, { status: "skipped", message });
+      if (!options.dryRun) {
+        const circuit = await allowSourceAttempt(source.sourceKey);
+        if (!circuit.allowed) {
+          transportFailures.push({ username: target.username, status: 0, kind: "circuit_open", message: "Fonte pausada pelo Circuit Breaker após erro Meta code 110." });
+          continue;
+        }
+        await registerSourceFailure({ sourceKey: source.sourceKey, routine: "instagram-agenda", status: 400, message });
+        await markIngestionSourceResult(source.sourceKey, { status: "skipped", message });
+      }
       transportFailures.push({ username: target.username, status: 400, kind: "meta_invalid_user", message });
       continue;
     }
@@ -684,7 +692,10 @@ export async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, acc
     if (!response.ok) {
       if (isMetaInvalidUserError(response.status, responseBody)) {
         const message = extractMetaGraphErrorMessage(responseBody, response.status);
-        if (source && !options.dryRun) await markIngestionSourceResult(source.sourceKey, { status: "skipped", message });
+        if (source && !options.dryRun) {
+          await registerSourceFailure({ sourceKey: source.sourceKey, routine: "instagram-agenda", status: response.status, message });
+          await markIngestionSourceResult(source.sourceKey, { status: "skipped", message });
+        }
         transportFailures.push({ username: target.username, status: response.status, kind: "meta_invalid_user", message });
         console.warn("[Instagram] Meta profile skipped: invalid user id", { username: target.username, status: response.status, reason: message });
         continue;

@@ -7,8 +7,8 @@ function severeFailureThreshold() {
   return Number.isFinite(configured) ? Math.min(10, Math.max(2, Math.trunc(configured))) : 3;
 }
 
-function isSevereFailure(input: { status?: number; message: string }) {
-  return input.status === 401 || input.status === 403 || /session|cookie|credential|authentication/i.test(input.message);
+export function isSevereFailure(input: { status?: number; message: string }) {
+  return input.status === 401 || input.status === 403 || /session|cookie|credential|authentication|invalid user id|code\s*[:=]?\s*110/i.test(input.message);
 }
 
 export type CircuitFailureKind = "proxy_or_session" | "upstream";

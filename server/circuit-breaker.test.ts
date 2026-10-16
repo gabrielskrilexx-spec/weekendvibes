@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildCircuitOpenedPayload, CircuitBreakerMachine, notifyCircuitOpened } from "./circuit-breaker";
+import { buildCircuitOpenedPayload, CircuitBreakerMachine, isSevereFailure, notifyCircuitOpened } from "./circuit-breaker";
 
 describe("Circuit Breaker", () => {
+  it("treats Meta code 110 as a severe source failure", () => {
+    expect(isSevereFailure({ status: 400, message: "Meta Graph API HTTP 400: Invalid user id (OAuthException, code 110)" })).toBe(true);
+    expect(isSevereFailure({ status: 400, message: "Falha HTTP genérica" })).toBe(false);
+  });
+
   it("opens after three failures, blocks during cooldown, then enters half-open", () => {
     const start = new Date("2026-08-22T12:00:00.000Z");
     const machine = new CircuitBreakerMachine(3, 12 * 60 * 60 * 1000);
