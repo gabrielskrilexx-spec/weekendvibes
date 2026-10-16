@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, or, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { extractOcrText, isGracefullyDegradedMetaFailure } from "./instagram-pipeline";
 import {
@@ -6,6 +6,7 @@ import {
   ingestionStoryAuditLogs,
   operationalAlerts,
   ingestionSources,
+  events,
 } from "../drizzle/schema";
 import {
   classifyCriticalMetaReason,
@@ -24,6 +25,37 @@ import {
 } from "./instagram-pipeline";
 import { listHeartbeatJobs } from "./_core/heartbeat";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
+
+const monitoredBrandFor = (title: string, sourceType: string | null) => {
+  if (sourceType === "weticket" && /ap(?:ê|e)\s*22/i.test(title)) return { brand: "APÊ 22", sourceKey: "public:weticket" } as const;
+  if (sourceType === "zig" && /osuco/i.test(title)) return { brand: "OSUCO", sourceKey: "public:zig" } as const;
+  return undefined;
+};
+
+export async function getBrandMonitoringMetrics() {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, sourceType: events.sourceType, createdAt: events.createdAt, updatedAt: events.updatedAt })
+    .from(events)
+    .where(or(eq(events.sourceType, "weticket"), eq(events.sourceType, "zig")))
+    .orderBy(desc(events.updatedAt));
+  const metrics = new Map<string, { brand: string; sourceKey: string; editionsDetected: number; rescrapes: number; latestEditionDate: string | null; lastDetectedAt: string | null }>();
+  for (const row of rows) {
+    const match = monitoredBrandFor(row.title, row.sourceType);
+    if (!match) continue;
+    const current = metrics.get(match.brand) ?? { brand: match.brand, sourceKey: match.sourceKey, editionsDetected: 0, rescrapes: 0, latestEditionDate: null, lastDetectedAt: null };
+    current.editionsDetected += 1;
+    const createdAt = new Date(row.createdAt).getTime();
+    const updatedAt = new Date(row.updatedAt).getTime();
+    if (updatedAt - createdAt > 60_000) current.rescrapes += 1;
+    const editionDate = new Date(row.eventDate).toISOString();
+    if (!current.latestEditionDate || editionDate > current.latestEditionDate) current.latestEditionDate = editionDate;
+    const detectedAt = new Date(row.updatedAt).toISOString();
+    if (!current.lastDetectedAt || detectedAt > current.lastDetectedAt) current.lastDetectedAt = detectedAt;
+    metrics.set(match.brand, current);
+  }
+  return ["APÊ 22", "OSUCO"].map(brand => metrics.get(brand) ?? ({ brand, sourceKey: brand === "APÊ 22" ? "public:weticket" : "public:zig", editionsDetected: 0, rescrapes: 0, latestEditionDate: null, lastDetectedAt: null })).map(item => ({ ...item, latestEditionDate: item.latestEditionDate ?? null, lastDetectedAt: item.lastDetectedAt ?? null }));
+}
 
 export function isCriticalIngestionFailure(details: unknown) {
   const text =

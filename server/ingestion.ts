@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { load } from "cheerio";
 import { invokeLLM } from "./_core/llm";
-import { assertEventDateIsCurrentOrFuture, getIngestionPayloadCache, listActiveLocationAliasValues, listIngestionSources, saveEvent, saveIngestionPayloadCache } from "./db";
+import { assertEventDateIsCurrentOrFuture, getIngestionPayloadCache, listActiveLocationAliasValues, listIngestionSources, recordOperationalAlert, saveEvent, saveIngestionPayloadCache } from "./db";
 import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
 import { fetchExternal, isSandboxRestrictedError, readExternalBody, sanitizeExternalFetchError } from "./external-fetch";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
@@ -1288,6 +1288,19 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
       duplicates += 1;
       duplicateSourceKeys.push(sourceKey);
       sourceOutcomes.push({ sourceKey, created: false, updated: false });
+    }
+    if (saved && typeof saved === "object" && saved.created) {
+      const brand = getTrackedPublicBrand(String(event.title), sourceKey);
+      if (brand) {
+        const editionDate = date.toISOString().slice(0, 10);
+        await recordOperationalAlert({
+          integration: "public",
+          alertType: "brand_new_edition",
+          severity: "INFO",
+          title: `Nova edição ${brand} detectada`,
+          message: `${brand} nova edição em ${editionDate}`,
+        }).catch(error => console.warn("[Brand monitoring] Failed to record discovery alert", error));
+      }
     }
     imported += 1;
   }

@@ -47,6 +47,7 @@ vi.mock("@/lib/trpc", () => ({
   trpc: {
     ingestionReports: {
       summary: { useQuery: (input: unknown) => { mocks.summaryInput = input; return { data: latestReportData, refetch: mocks.reportRefetch }; } },
+      brandMonitoring: { useQuery: () => ({ data: [{ brand: "APÊ 22", sourceKey: "public:weticket", editionsDetected: 2, rescrapes: 1, latestEditionDate: "2026-10-30T22:00:00.000Z", lastDetectedAt: "2026-10-16T03:00:00.000Z" }, { brand: "OSUCO", sourceKey: "public:zig", editionsDetected: 1, rescrapes: 0, latestEditionDate: "2026-10-16T22:00:00.000Z", lastDetectedAt: "2026-10-15T03:00:00.000Z" }], refetch: vi.fn() }) },
       apifyDailyUsage: { useQuery: () => ({ data: mocks.apifyUsageData, isLoading: false, isError: false, refetch: vi.fn() }) },
       setApifyDailyLimit: { useMutation: (options: { onSuccess?: (result: { dailyLimit: number }) => void }) => ({ isPending: false, mutate: vi.fn((input: { dailyLimit: number }) => options.onSuccess?.({ dailyLimit: input.dailyLimit })) }) },
       geocoding: { useQuery: () => ({ data: { pending: 0, processing: 0, succeeded: 0, failed: 0 }, refetch: vi.fn() }) },

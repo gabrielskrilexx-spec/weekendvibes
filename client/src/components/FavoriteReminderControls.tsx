@@ -4,7 +4,7 @@ import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 
-export default function FavoriteReminderControls({ eventId }: { eventId: number }) {
+export default function FavoriteReminderControls({ eventId, favoriteLabel = "Favoritar" }: { eventId: number; favoriteLabel?: string }) {
   const { isAuthenticated } = useAuth();
   const utils = trpc.useUtils();
   const favorites = trpc.events.favoriteIds.useQuery(undefined, { enabled: isAuthenticated, staleTime: 30_000 });
@@ -28,7 +28,7 @@ export default function FavoriteReminderControls({ eventId }: { eventId: number 
   return (
     <div className="flex flex-wrap items-center gap-2" aria-label="Preferência do evento">
       <button type="button" onClick={onFavorite} disabled={toggleFavorite.isPending} aria-busy={toggleFavorite.isPending} aria-label={isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 ${isFavorite ? "border-rose-300/60 bg-rose-400/15 text-rose-200" : "border-white/10 text-zinc-400 hover:border-rose-300/50 hover:text-rose-200"}`}>
-        <Heart size={14} fill={isFavorite ? "currentColor" : "none"} /> {isFavorite ? "Favorito" : "Favoritar"}
+        <Heart size={14} fill={isFavorite ? "currentColor" : "none"} /> {isFavorite ? "Acompanhando" : favoriteLabel}
       </button>
       {isAuthenticated ? (
         <>
