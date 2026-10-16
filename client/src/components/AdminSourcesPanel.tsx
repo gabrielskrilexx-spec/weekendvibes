@@ -110,10 +110,11 @@ export default function AdminSourcesPanel() {
   const [openOnly, setOpenOnly] = useState(false);
   const [failureFilter, setFailureFilter] = useState<FailureFilter>("all");
   const [periodFilter, setPeriodFilter] = useState<"all" | "7d" | "30d">("all");
+  const [graphPeriod, setGraphPeriod] = useState<7 | 14 | 30>(14);
   const filterSince = periodFilter === "all" ? undefined : new Date(Date.now() - (periodFilter === "7d" ? 7 : 30) * 24 * 60 * 60 * 1000).toISOString();
   const sources = trpc.ingestionSources.list.useQuery({ openOnly: openOnly || undefined, failureCategory: failureFilter === "all" ? undefined : failureFilter, since: filterSince }, { refetchInterval: 30_000 });
   const sourceSummary = trpc.ingestionSources.summary.useQuery(undefined, { refetchInterval: 30_000 });
-  const executiveReport = trpc.ingestionSources.executiveReport.useQuery(undefined, { refetchInterval: 60_000 });
+  const executiveReport = trpc.ingestionSources.executiveReport.useQuery({ days: graphPeriod }, { refetchInterval: 60_000 });
   const mockSettings = trpc.ingestionReports.mockSettings.useQuery(undefined, { refetchInterval: 30_000 });
   const utils = trpc.useUtils();
   const [pendingSourceId, setPendingSourceId] = useState<number | null>(null);
@@ -195,6 +196,20 @@ export default function AdminSourcesPanel() {
     reactivate.mutate({ sourceKey: reactivationTarget.sourceKey, reprocessNow });
     setReactivationTarget(null);
   };
+  const downloadTelemetrySeries = (format: "csv" | "json") => {
+    const series = executiveReport.data?.series ?? [];
+    const filename = `telemetria-${graphPeriod}d.${format}`;
+    const content = format === "json"
+      ? JSON.stringify({ periodDays: graphPeriod, series }, null, 2)
+      : `\uFEFFdate,waf,meta110,network,succeeded,total,successRate\n${series.map(point => [point.date, point.waf, point.meta110, point.network, point.succeeded, point.total, point.successRate].join(",")).join("\n")}`;
+    const blob = new Blob([content], { type: format === "json" ? "application/json;charset=utf-8" : "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
   const submitNewSource = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (createSource.isPending) return;
@@ -248,7 +263,7 @@ export default function AdminSourcesPanel() {
         <div className="rounded-2xl border border-amber-300/20 bg-amber-400/10 p-4"><p className="text-[10px] font-black uppercase tracking-wider text-amber-200">Rede / timeout</p><p className="mt-2 text-2xl font-black text-white">{executiveReport.data?.trends.network.current ?? sourceSummary.data?.network ?? "—"}</p><p className={`mt-1 text-[10px] font-bold ${trendClass(executiveReport.data?.trends.network, true)}`}>{trendLabel(executiveReport.data?.trends.network)}</p></div>
       </div>
       <div className="mt-5 rounded-2xl border border-white/10 bg-black/10 p-4" data-testid="telemetry-history-chart" aria-label="Histórico de telemetria">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-black text-white">Histórico de telemetria</p><p className="text-xs text-zinc-500">Últimos 14 dias: falhas por categoria e taxa de sucesso.</p></div><p className={`text-xs font-bold ${trendClass(executiveReport.data?.trends.successRate)}`}>Sucesso {executiveReport.data?.trends.successRate.current ?? "—"}% {trendLabel(executiveReport.data?.trends.successRate)}</p></div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-black text-white">Histórico de telemetria</p><p className="text-xs text-zinc-500">Últimos {graphPeriod} dias: falhas por categoria e taxa de sucesso.</p></div><div className="flex flex-wrap items-center gap-2"><label className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Período<select aria-label="Período do gráfico de telemetria" value={graphPeriod} onChange={event => setGraphPeriod(Number(event.target.value) as 7 | 14 | 30)} className="ml-2 min-h-9 rounded-lg border border-white/10 bg-zinc-900 px-2 text-xs normal-case tracking-normal text-white"><option value="7">7 dias</option><option value="14">14 dias</option><option value="30">30 dias</option></select></label><button type="button" onClick={() => downloadTelemetrySeries("csv")} aria-label="Exportar série de telemetria em CSV" className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-white/10 px-2 text-xs font-bold text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"><Download size={13} aria-hidden="true" /> CSV</button><button type="button" onClick={() => downloadTelemetrySeries("json")} aria-label="Exportar série de telemetria em JSON" className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-white/10 px-2 text-xs font-bold text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"><Download size={13} aria-hidden="true" /> JSON</button></div><p className={`text-xs font-bold ${trendClass(executiveReport.data?.trends.successRate)}`}>Sucesso {executiveReport.data?.trends.successRate.current ?? "—"}% {trendLabel(executiveReport.data?.trends.successRate)}</p></div>
         <div className="mt-3 h-64 w-full" role="img" aria-label="Gráfico de linhas de WAF, Meta Code 110, rede e sucesso">{typeof ResizeObserver === "undefined" ? <p className="flex h-full items-center justify-center text-xs text-zinc-500">Gráfico disponível no navegador.</p> : <ResponsiveContainer width="100%" height="100%"><LineChart data={executiveReport.data?.series ?? []} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" /><XAxis dataKey="date" tick={{ fill: "#a1a1aa", fontSize: 10 }} tickFormatter={value => String(value).slice(5)} /><YAxis tick={{ fill: "#a1a1aa", fontSize: 10 }} /><Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8 }} /><Line type="monotone" dataKey="waf" name="WAF" stroke="#38bdf8" strokeWidth={2} dot={false} /><Line type="monotone" dataKey="meta110" name="Meta 110" stroke="#c084fc" strokeWidth={2} dot={false} /><Line type="monotone" dataKey="network" name="Rede/Timeout" stroke="#fbbf24" strokeWidth={2} dot={false} /><Line type="monotone" dataKey="successRate" name="Sucesso %" stroke="#34d399" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer>}</div>
       </div>
       <div className="mt-5 space-y-3">

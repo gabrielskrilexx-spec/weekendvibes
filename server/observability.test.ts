@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDailyTelemetrySeries, calculateTrend, summarizeTelemetryTrend } from "./observability";
+import { buildDailyTelemetrySeries, calculateSystemHealthStatus, calculateTrend, normalizeObservabilityPeriod, summarizeTelemetryTrend } from "./observability";
 
 describe("observability trends", () => {
   it("calcula comparativo percentual e direção com período anterior", () => {
@@ -20,5 +20,18 @@ describe("observability trends", () => {
     expect(series.at(-7)?.succeeded).toBe(1);
     expect(series.at(-2)?.meta110).toBe(1);
     expect(summarizeTelemetryTrend(series).meta110.current).toBe(1);
+  });
+
+  it("aceita somente períodos analíticos de 7, 14 ou 30 dias", () => {
+    expect(normalizeObservabilityPeriod(7)).toBe(7);
+    expect(normalizeObservabilityPeriod(30)).toBe(30);
+    expect(normalizeObservabilityPeriod(99)).toBe(14);
+    expect(buildDailyTelemetrySeries([], new Date("2026-10-16T12:00:00.000Z"), 30)).toHaveLength(30);
+  });
+
+  it("classifica a saúde global conforme a proporção de fontes abertas ou falhas recentes", () => {
+    expect(calculateSystemHealthStatus({ openSources: 0, activeSources: 10, recentRuns: 10, recentFailures: 1 })).toBe("healthy");
+    expect(calculateSystemHealthStatus({ openSources: 4, activeSources: 10, recentRuns: 10, recentFailures: 1 })).toBe("degraded");
+    expect(calculateSystemHealthStatus({ openSources: 7, activeSources: 10, recentRuns: 10, recentFailures: 1 })).toBe("critical");
   });
 });

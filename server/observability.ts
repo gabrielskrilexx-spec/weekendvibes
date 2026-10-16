@@ -16,6 +16,13 @@ export type TelemetryPoint = {
   successRate: number;
 };
 
+export type ObservabilityPeriod = 7 | 14 | 30;
+export type SystemHealthStatus = "healthy" | "degraded" | "critical";
+
+export function normalizeObservabilityPeriod(value: number): ObservabilityPeriod {
+  return value === 7 || value === 30 ? value : 14;
+}
+
 export function calculateTrend(current: number, previous: number) {
   const delta = current - previous;
   const percentage = previous === 0 ? (current === 0 ? 0 : 100) : Number(((delta / previous) * 100).toFixed(1));
@@ -31,7 +38,7 @@ function classifyRun(run: ObservabilityRun) {
 }
 
 export function buildDailyTelemetrySeries(runs: ObservabilityRun[], now = new Date(), days = 14): TelemetryPoint[] {
-  const safeDays = Math.min(Math.max(Math.trunc(days), 7), 31);
+  const safeDays = normalizeObservabilityPeriod(days);
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - safeDays + 1));
   const points = Array.from({ length: safeDays }, (_, index) => {
     const date = new Date(start.getTime() + index * 86_400_000);
@@ -69,4 +76,13 @@ export function summarizeTelemetryTrend(series: TelemetryPoint[], periodDays = 7
     succeeded: calculateTrend(sum(current, "succeeded"), sum(previous, "succeeded")),
     successRate: calculateTrend(rate(current), rate(previous)),
   };
+}
+
+export function calculateSystemHealthStatus(input: { openSources: number; activeSources: number; recentRuns: number; recentFailures: number }): SystemHealthStatus {
+  const openRate = input.activeSources > 0 ? input.openSources / input.activeSources : 0;
+  const failureRate = input.recentRuns > 0 ? input.recentFailures / input.recentRuns : 0;
+  const rate = Math.max(openRate, failureRate);
+  if (rate >= 0.6) return "critical";
+  if (rate > 0.3) return "degraded";
+  return "healthy";
 }

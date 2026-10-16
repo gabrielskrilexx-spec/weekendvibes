@@ -1204,7 +1204,8 @@ export const appRouter = router({
     summary: adminOnly
       .query(async () => normalizeJsonForTransport(await getIngestionSourceSummary())),
     executiveReport: adminOnly
-      .query(async () => normalizeJsonForTransport(await getExecutiveObservabilityReport())),
+      .input(z.object({ days: z.union([z.literal(7), z.literal(14), z.literal(30)]).default(14) }).strict().optional())
+      .query(async ({ input }) => normalizeJsonForTransport(await getExecutiveObservabilityReport(undefined, input?.days ?? 14))),
     auditLog: adminOnly
       .input(z.object({ sourceKey: z.string().trim().min(1).max(120) }).strict())
       .query(async ({ input }) => normalizeJsonForTransport(await listIngestionSourceHandleAudit(input.sourceKey))),
