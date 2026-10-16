@@ -1228,6 +1228,7 @@ export const appRouter = router({
           priority: z.number().int().min(1).max(1000),
           frequencyMinutes: z.number().int().min(60).max(525600),
           p95LatencyThresholdMs: z.number().int().min(500).max(180000).default(3000),
+          handle: z.string().trim().max(180).nullable().optional(),
         })
       )
       .output(
@@ -1252,6 +1253,17 @@ export const appRouter = router({
           frequencyMinutes: input.frequencyMinutes,
           p95LatencyThresholdMs: input.p95LatencyThresholdMs,
         };
+      }),
+    reactivate: adminOnly
+      .input(z.object({ sourceKey: z.string().trim().min(1).max(120) }).strict())
+      .output(z.object({ ok: z.literal(true), sourceKey: z.string().min(1).max(120) }).strict())
+      .mutation(async ({ input }) => {
+        try {
+          await reactivateIngestionSourceCircuitBreaker(input.sourceKey);
+          return { ok: true as const, sourceKey: input.sourceKey };
+        } catch (error) {
+          return throwSanitizedAdminMutationError(error, "Não foi possível reativar a fonte.");
+        }
       }),
   }),
   events: router({

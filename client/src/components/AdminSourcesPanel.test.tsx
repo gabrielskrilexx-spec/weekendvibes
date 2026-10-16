@@ -3,8 +3,8 @@ import { act, create } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 import AdminSourcesPanel from "./AdminSourcesPanel";
 
-const { refetch, invalidate, mutate, createMutate, mockSettingsMutate, fetchMock } = vi.hoisted(() => ({ refetch: vi.fn(), invalidate: vi.fn(), mutate: vi.fn(), createMutate: vi.fn(), mockSettingsMutate: vi.fn(), fetchMock: vi.fn() }));
-const source = { id: 1, sourceKey: "instagram:mobydicksantos", name: "Moby House", kind: "instagram", handle: "mobydicksantos", url: "https://www.instagram.com/mobydicksantos/", isEnabled: 1, priority: 10, frequencyMinutes: 10080, p95LatencyThresholdMs: 3000, lastSuccessAt: new Date("2026-08-15T12:00:00Z"), lastStatus: "succeeded" };
+const { refetch, invalidate, mutate, reactivateMutate, createMutate, mockSettingsMutate, fetchMock } = vi.hoisted(() => ({ refetch: vi.fn(), invalidate: vi.fn(), mutate: vi.fn(), reactivateMutate: vi.fn(), createMutate: vi.fn(), mockSettingsMutate: vi.fn(), fetchMock: vi.fn() }));
+const source = { id: 1, sourceKey: "instagram:mobydicksantos", name: "Moby House", kind: "instagram", handle: "mobydicksantos", url: "https://www.instagram.com/mobydicksantos/", isEnabled: 1, priority: 10, frequencyMinutes: 10080, p95LatencyThresholdMs: 3000, lastSuccessAt: new Date("2026-08-15T12:00:00Z"), lastStatus: "succeeded", circuitState: "open" };
 vi.stubGlobal("fetch", fetchMock);
 
 vi.mock("@/lib/trpc", () => ({
@@ -17,6 +17,7 @@ vi.mock("@/lib/trpc", () => ({
       list: { useQuery: () => ({ data: [source], isLoading: false, isError: false, isFetching: false, refetch }) },
       create: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { createMutate(input); options?.onSuccess?.(); } }) },
       update: { useMutation: () => ({ isPending: false, mutate }) },
+      reactivate: { useMutation: () => ({ isPending: false, mutate: reactivateMutate }) },
     },
     adminRoutine: {
       status: { invalidate },
@@ -86,5 +87,21 @@ describe("AdminSourcesPanel", () => {
     const button = tree!.root.findAllByType("button").find(item => item.props["aria-pressed"] === true);
     await act(async () => { button?.props.onClick(); });
     expect(mutate).toHaveBeenCalledWith({ id: 1, isEnabled: false, priority: 10, frequencyMinutes: 10080, p95LatencyThresholdMs: 3000 });
+  });
+
+  it("permite corrigir o username/ID Meta", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const input = tree!.root.findByProps({ "aria-label": "Username/ID Meta de Moby House" });
+    await act(async () => { input.props.onBlur({ currentTarget: { value: "@moby-corrigido" } }); });
+    expect(mutate).toHaveBeenCalledWith({ id: 1, isEnabled: true, priority: 10, frequencyMinutes: 10080, p95LatencyThresholdMs: 3000, handle: "@moby-corrigido" });
+  });
+
+  it("oferece reativação quando o circuito está aberto", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const button = tree!.root.findByProps({ "aria-label": "Reativar Fonte Moby House" });
+    await act(async () => { button.props.onClick(); });
+    expect(reactivateMutate).toHaveBeenCalledWith({ sourceKey: "instagram:mobydicksantos" });
   });
 });

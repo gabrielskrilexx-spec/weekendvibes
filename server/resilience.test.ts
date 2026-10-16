@@ -7,6 +7,7 @@ const dbMocks = vi.hoisted(() => ({
   recordSource403Failure: vi.fn().mockResolvedValue({ count: 0, shouldAlert: false }),
   resetSource403State: vi.fn().mockResolvedValue(undefined),
   recordCircuitSuccess: vi.fn().mockResolvedValue(undefined),
+  recordOperationalAlert: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("./db", () => dbMocks);
 
@@ -92,5 +93,12 @@ describe("resiliência dos adaptadores", () => {
     const body = JSON.parse(String(webhook.mock.calls[0][1]?.body));
     expect(body).toMatchObject({ type: "source_http_403_blocked", sourceKey, failureCount: 3 });
     expect(JSON.stringify(body)).not.toContain("token");
+  });
+
+  it("persiste alerta específico quando Meta code 110 pausa a fonte", async () => {
+    const sourceKey = `instagram:mimadafesta-${Date.now()}`;
+    dbMocks.recordCircuitFailure.mockResolvedValue({ openedNow: true, failureCount: 3, nextAttemptAt: new Date("2026-09-12T02:00:00.000Z") });
+    await circuit.registerSourceFailure({ sourceKey, routine: "instagram-agenda", status: 400, message: "Meta Graph API HTTP 400: Invalid user id (OAuthException, code 110)" });
+    expect(dbMocks.recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ integration: "meta", alertType: "meta_invalid_user_paused", severity: "WARNING", title: "Fonte Instagram pausada: ID inválido na Meta", message: expect.stringContaining(sourceKey) }));
   });
 });

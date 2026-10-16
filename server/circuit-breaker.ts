@@ -1,4 +1,4 @@
-import { getCircuitBreakerStatus, recordCircuitFailure, recordSource403Failure, recordCircuitSuccess, resetSource403State } from "./db";
+import { getCircuitBreakerStatus, recordCircuitFailure, recordSource403Failure, recordCircuitSuccess, resetSource403State, recordOperationalAlert } from "./db";
 
 const HTTP_403_ALERT_THRESHOLD = 3;
 
@@ -89,13 +89,24 @@ export async function registerSourceFailure(input: { sourceKey: string; routine:
   if (result.openedNow && result.nextAttemptAt) {
     const payload = buildCircuitOpenedPayload({ sourceKey: input.sourceKey, routine: input.routine, nextAttemptAt: result.nextAttemptAt, failureCount: result.failureCount, message: input.message });
     await notifyCircuitOpened(payload);
+    if (isMetaInvalidUserFailure(input)) {
+      await recordOperationalAlert({
+        integration: "meta",
+        alertType: "meta_invalid_user_paused",
+        severity: "WARNING",
+        title: "Fonte Instagram pausada: ID inválido na Meta",
+        message: `A fonte ${input.sourceKey} foi pausada automaticamente após ${result.failureCount} falhas com Meta code 110 (Invalid user id). Corrija o username/ID da conta no painel e reative a fonte.`,
+      });
+    }
   }
   if (is403 && source403.shouldAlert) {
     await notifyCircuitOpened({ type: "source_http_403_blocked", routine: input.routine.slice(0, 64), sourceKey: input.sourceKey.slice(0, 120), failureCount: source403.count, nextAttemptAt: new Date().toISOString(), message: `A fonte ${input.sourceKey} respondeu HTTP 403 em ${source403.count} falhas consecutivas.` });
   }
   return result;
 }
-
+function isMetaInvalidUserFailure(input: { status?: number; message: string }) {
+  return input.status === 400 && /invalid user id|code\s*[:=]?\s*110/i.test(input.message);
+}
 export async function registerSourceSuccess(sourceKey: string) {
   await resetSource403State(sourceKey);
   await recordCircuitSuccess(sourceKey);

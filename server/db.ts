@@ -415,13 +415,14 @@ export async function createIngestionSource(input: { name: string; kind: "instag
   return { id: created.id, sourceKey: created.sourceKey };
 }
 
-export async function updateIngestionSource(id: number, input: { isEnabled: boolean; priority: number; frequencyMinutes: number; p95LatencyThresholdMs?: number }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+export async function updateIngestionSource(id: number, input: { isEnabled: boolean; priority: number; frequencyMinutes: number; p95LatencyThresholdMs?: number; handle?: string | null }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) throw new Error("Database unavailable");
   const priority = Math.min(Math.max(Math.round(input.priority), 1), 1000);
   const frequencyMinutes = Math.min(Math.max(Math.round(input.frequencyMinutes), 60), 525600);
   const p95LatencyThresholdMs = Math.min(Math.max(Math.round(input.p95LatencyThresholdMs ?? 3000), 500), 180000);
-  await db.update(ingestionSources).set({ isEnabled: input.isEnabled ? 1 : 0, priority, frequencyMinutes, p95LatencyThresholdMs, updatedAt: new Date() }).where(eq(ingestionSources.id, id));
+  const handle = input.handle === undefined ? undefined : input.handle?.trim().replace(/^@+/, "").replace(/\/$/, "") || null;
+  await db.update(ingestionSources).set({ isEnabled: input.isEnabled ? 1 : 0, priority, frequencyMinutes, p95LatencyThresholdMs, ...(handle === undefined ? {} : { handle }), updatedAt: new Date() }).where(eq(ingestionSources.id, id));
   return listIngestionSources(db);
 }
 

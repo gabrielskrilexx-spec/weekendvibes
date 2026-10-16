@@ -21,6 +21,7 @@ export default function AdminSourcesPanel() {
   const mockSettings = trpc.ingestionReports.mockSettings.useQuery(undefined, { refetchInterval: 30_000 });
   const utils = trpc.useUtils();
   const [pendingSourceId, setPendingSourceId] = useState<number | null>(null);
+  const [pendingReactivationKey, setPendingReactivationKey] = useState<string | null>(null);
   const [pendingStorySourceId, setPendingStorySourceId] = useState<number | null>(null);
   const [isSyncingStories, setIsSyncingStories] = useState(false);
   const [newSourceOpen, setNewSourceOpen] = useState(false);
@@ -48,6 +49,14 @@ export default function AdminSourcesPanel() {
     onError: error => sonnerToast.error("Não foi possível salvar a fonte", { description: friendlyAdminErrorMessage(error, "Tente novamente.") }),
     onSettled: () => setPendingSourceId(null),
   });
+  const reactivate = trpc.ingestionSources.reactivate.useMutation({
+    onSuccess: async () => {
+      await utils.ingestionSources.list.invalidate();
+      sonnerToast.success("Fonte reativada", { description: "O bloqueio automático foi limpo; a fonte voltará ao próximo ciclo." });
+    },
+    onError: error => sonnerToast.error("Não foi possível reativar a fonte", { description: friendlyAdminErrorMessage(error, "Tente novamente.") }),
+    onSettled: () => setPendingReactivationKey(null),
+  });
   const mockSettingsUpdate = trpc.ingestionReports.setMockSettings.useMutation({
     onSuccess: async result => {
       await utils.ingestionReports.mockSettings.invalidate();
@@ -70,10 +79,15 @@ export default function AdminSourcesPanel() {
       setIsSyncingStories(false);
     }
   };
-  const saveSource = (sourceId: number, input: { isEnabled: boolean; priority: number; frequencyMinutes: number; p95LatencyThresholdMs: number }) => {
+  const saveSource = (sourceId: number, input: { isEnabled: boolean; priority: number; frequencyMinutes: number; p95LatencyThresholdMs: number; handle?: string | null }) => {
     if (update.isPending) return;
     setPendingSourceId(sourceId);
     update.mutate({ id: sourceId, ...input });
+  };
+  const reactivateSource = (sourceKey: string) => {
+    if (reactivate.isPending) return;
+    setPendingReactivationKey(sourceKey);
+    reactivate.mutate({ sourceKey });
   };
   const submitNewSource = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -123,13 +137,13 @@ export default function AdminSourcesPanel() {
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2"><h3 className="font-black text-white">{source.name}</h3><span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-400">{source.kind === "instagram" ? "Instagram" : "Fonte pública"}</span><span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-wider ${source.isEnabled ? "bg-emerald-400/15 text-emerald-200" : "bg-zinc-700/50 text-zinc-400"}`}>{source.isEnabled ? "Ativa" : "Pausada"}</span></div>
-                <p className="mt-1 truncate text-xs text-zinc-500">{source.handle ? `@${source.handle}` : source.url}</p>
+                {source.kind === "instagram" ? <label className="mt-1 block text-[10px] font-black uppercase tracking-wider text-zinc-500">Username/ID Meta<input aria-label={`Username/ID Meta de ${source.name}`} defaultValue={source.handle ?? ""} disabled={update.isPending} onBlur={event => saveSource(source.id, { isEnabled: source.isEnabled === 1, priority: source.priority, frequencyMinutes: source.frequencyMinutes, p95LatencyThresholdMs: source.p95LatencyThresholdMs ?? 3000, handle: event.currentTarget.value })} className="mt-1 min-h-9 w-full max-w-xs rounded-lg border border-white/10 bg-zinc-900 px-2 text-xs font-bold normal-case tracking-normal text-white outline-none focus:border-orange-300/60 disabled:opacity-50" /></label> : <p className="mt-1 truncate text-xs text-zinc-500">{source.url}</p>}
                 <p className="mt-2 flex items-center gap-2 text-xs text-zinc-400"><Clock3 size={13} className="text-orange-300" /> Último sucesso: {formatLastSuccess(source.lastSuccessAt)} <span aria-hidden="true">·</span> <span className={source.lastStatus === "failed" ? "text-rose-200" : "text-zinc-400"}>{source.lastStatus}</span></p>
               </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:min-w-[560px]">
                 <label className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Prioridade<input aria-label={`Prioridade de ${source.name}`} type="number" min={1} max={1000} defaultValue={source.priority} disabled={update.isPending} onBlur={event => saveSource(source.id, { isEnabled: source.isEnabled === 1, priority: Number(event.currentTarget.value), frequencyMinutes: source.frequencyMinutes, p95LatencyThresholdMs: source.p95LatencyThresholdMs ?? 3000 })} className="mt-1 min-h-10 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 text-sm font-bold text-white outline-none focus:border-orange-300/60 disabled:cursor-wait disabled:opacity-50" /></label>
                 <label className="text-[11px] font-black uppercase tracking-wider text-zinc-500">P95 máximo (ms)<input aria-label={`Limite P95 de ${source.name}`} type="number" min={500} max={60000} step={100} defaultValue={source.p95LatencyThresholdMs ?? 3000} disabled={update.isPending} onBlur={event => saveSource(source.id, { isEnabled: source.isEnabled === 1, priority: source.priority, frequencyMinutes: source.frequencyMinutes, p95LatencyThresholdMs: Number(event.currentTarget.value) || 3000 })} className="mt-1 min-h-10 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 text-sm font-bold text-white outline-none focus:border-orange-300/60 disabled:cursor-wait disabled:opacity-50" /></label><label className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Frequência<select aria-label={`Frequência de ${source.name}`} defaultValue={source.frequencyMinutes} disabled={update.isPending} onChange={event => saveSource(source.id, { isEnabled: source.isEnabled === 1, priority: source.priority, frequencyMinutes: Number(event.currentTarget.value), p95LatencyThresholdMs: source.p95LatencyThresholdMs ?? 3000 })} className="mt-1 min-h-10 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 text-sm font-bold text-white outline-none focus:border-orange-300/60 disabled:cursor-wait disabled:opacity-50">{frequencyOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-                <button type="button" onClick={() => saveSource(source.id, { isEnabled: source.isEnabled !== 1, priority: source.priority, frequencyMinutes: source.frequencyMinutes, p95LatencyThresholdMs: source.p95LatencyThresholdMs ?? 3000 })} disabled={update.isPending || isSyncingStories} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-white/10 px-3 text-xs font-black text-zinc-200 hover:border-orange-300/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:cursor-wait disabled:opacity-50" aria-pressed={source.isEnabled === 1} aria-busy={rowPending}><Power size={14} /> {rowPending ? <><Loader2 size={14} className="animate-spin" /> Salvando...</> : source.isEnabled ? "Pausar Ingestão" : "Retomar Ingestão"}</button>{source.kind === "instagram" && <button type="button" onClick={() => { if (isSyncingStories) return; void syncStories(source.id, source.sourceKey); }} disabled={isSyncingStories || !source.isEnabled} aria-busy={isSyncingStories && pendingStorySourceId === source.id} aria-label={`Sincronizar Stories de ${source.name}`} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-fuchsia-300/25 px-3 text-xs font-black text-fuchsia-100 hover:border-fuchsia-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300 disabled:cursor-wait disabled:opacity-50">{isSyncingStories && pendingStorySourceId === source.id ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}{isSyncingStories && pendingStorySourceId === source.id ? "Sincronizando..." : "Sincronizar Stories"}</button>}
+                <button type="button" onClick={() => saveSource(source.id, { isEnabled: source.isEnabled !== 1, priority: source.priority, frequencyMinutes: source.frequencyMinutes, p95LatencyThresholdMs: source.p95LatencyThresholdMs ?? 3000 })} disabled={update.isPending || isSyncingStories} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-white/10 px-3 text-xs font-black text-zinc-200 hover:border-orange-300/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:cursor-wait disabled:opacity-50" aria-pressed={source.isEnabled === 1} aria-busy={rowPending}><Power size={14} /> {rowPending ? <><Loader2 size={14} className="animate-spin" /> Salvando...</> : source.isEnabled ? "Pausar Ingestão" : "Retomar Ingestão"}</button>{source.circuitState === "open" && <button type="button" onClick={() => reactivateSource(source.sourceKey)} disabled={reactivate.isPending} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-amber-300/30 px-3 text-xs font-black text-amber-100 hover:border-amber-200/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:cursor-wait disabled:opacity-50" aria-label={`Reativar Fonte ${source.name}`}>{pendingReactivationKey === source.sourceKey ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} {pendingReactivationKey === source.sourceKey ? "Reativando..." : "Reativar Fonte"}</button>}{source.kind === "instagram" && <button type="button" onClick={() => { if (isSyncingStories) return; void syncStories(source.id, source.sourceKey); }} disabled={isSyncingStories || !source.isEnabled} aria-busy={isSyncingStories && pendingStorySourceId === source.id} aria-label={`Sincronizar Stories de ${source.name}`} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-fuchsia-300/25 px-3 text-xs font-black text-fuchsia-100 hover:border-fuchsia-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300 disabled:cursor-wait disabled:opacity-50">{isSyncingStories && pendingStorySourceId === source.id ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}{isSyncingStories && pendingStorySourceId === source.id ? "Sincronizando..." : "Sincronizar Stories"}</button>}
               </div>
             </div>
             {rowPending && <p className="mt-3 flex items-center gap-2 text-xs text-orange-200" role="status"><Save size={13} /> Salvando configuração...</p>}
