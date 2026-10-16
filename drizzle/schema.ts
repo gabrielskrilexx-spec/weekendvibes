@@ -355,6 +355,7 @@ export const ingestionSources = mysqlTable("ingestionSources", {
   lastSuccessAt: timestamp("lastSuccessAt"),
   lastStatus: mysqlEnum("lastStatus", ["never", "succeeded", "failed", "skipped"]).default("never").notNull(),
   lastMessage: text("lastMessage"),
+  lastExecutionFeedback: varchar("lastExecutionFeedback", { length: 1000 }),
   lastHttpStatus: int("lastHttpStatus"),
   lastFailureReason: varchar("lastFailureReason", { length: 500 }),
   circuitState: mysqlEnum("circuitState", ["closed", "open", "half_open"]).default("closed").notNull(),
@@ -386,7 +387,7 @@ export type InsertIngestionSourceHandleAuditLog = typeof ingestionSourceHandleAu
 export const ingestionSourceActionAuditLogs = mysqlTable("ingestionSourceActionAuditLogs", {
   id: int("id").autoincrement().primaryKey(),
   sourceKey: varchar("sourceKey", { length: 120 }).notNull(),
-  action: mysqlEnum("action", ["reactivated"]).notNull(),
+  action: mysqlEnum("action", ["reactivated", "reprocessed"]).notNull(),
   operatorOpenId: varchar("operatorOpenId", { length: 160 }),
   details: varchar("details", { length: 500 }),
   actedAt: timestamp("actedAt").defaultNow().notNull(),

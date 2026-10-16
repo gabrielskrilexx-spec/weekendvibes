@@ -4,6 +4,8 @@ const maintenanceMocks = vi.hoisted(() => ({
   resolveOperationalAlertsBefore: vi.fn().mockResolvedValue({ resolvedCount: 3, before: "2026-08-20T15:00:00.000Z" }),
   resetActiveIngestionSourceCircuitBreakers: vi.fn().mockResolvedValue({ resetCount: 2, sourceKeys: ["instagram:bar", "public:agenda"] }),
   reactivateIngestionSourceCircuitBreaker: vi.fn().mockResolvedValue(undefined),
+  markIngestionSourceResult: vi.fn().mockResolvedValue(undefined),
+  recordIngestionSourceAction: vi.fn().mockResolvedValue(undefined),
   runIngestionSourceChunk: vi.fn().mockResolvedValue({ sourceKey: "public:ingresse", dryRun: true, result: { read: 1, persisted: 1, filtered: 0, sandboxRestricted: false, previewMock: false } }),
 }));
 
@@ -67,6 +69,8 @@ vi.mock("./db", () => ({
   resolveOperationalAlertsBefore: maintenanceMocks.resolveOperationalAlertsBefore,
   resetActiveIngestionSourceCircuitBreakers: maintenanceMocks.resetActiveIngestionSourceCircuitBreakers,
   reactivateIngestionSourceCircuitBreaker: maintenanceMocks.reactivateIngestionSourceCircuitBreaker,
+  markIngestionSourceResult: maintenanceMocks.markIngestionSourceResult,
+  recordIngestionSourceAction: maintenanceMocks.recordIngestionSourceAction,
   deleteEvent: vi.fn(),
   deleteEvents: vi.fn(),
   updateEventsPublication: vi.fn(),

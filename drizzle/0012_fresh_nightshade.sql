@@ -1,0 +1,1 @@
+ALTER TABLE `ingestionSourceActionAuditLogs` MODIFY COLUMN `action` enum('reactivated','reprocessed') NOT NULL;

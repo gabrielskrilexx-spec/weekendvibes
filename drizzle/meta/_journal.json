@@ -85,6 +85,20 @@
       "when": 1792176600275,
       "tag": "0011_tiresome_yellow_claw",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1792178275474,
+      "tag": "0012_fresh_nightshade",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1792178537576,
+      "tag": "0013_ambiguous_shaman",
+      "breakpoints": true
     }
   ]
 }

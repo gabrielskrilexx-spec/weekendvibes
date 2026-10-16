@@ -30,6 +30,9 @@ import {
   listIngestionSources,
   listIngestionSourceHandleAudit,
   listIngestionSourceActionAudit,
+  listIngestionSourceOperationalTimeline,
+  recordIngestionSourceAction,
+  markIngestionSourceResult,
   createIngestionSource,
   updateIngestionSource,
   getPublicFeedRolloverHour,
@@ -1201,6 +1204,10 @@ export const appRouter = router({
     actionAudit: adminOnly
       .input(z.object({ sourceKey: z.string().trim().min(1).max(120) }).strict())
       .query(async ({ input }) => normalizeJsonForTransport(await listIngestionSourceActionAudit(input.sourceKey))),
+    operationalTimeline: adminOnly
+      .input(z.object({ sourceKey: z.string().trim().min(1).max(120), page: z.number().int().positive().default(1), pageSize: z.number().int().min(5).max(10).default(10) }).strict())
+      .output(z.object({ items: z.array(z.object({ id: z.string().min(1).max(64), sourceKey: z.string().min(1).max(120), action: z.enum(["handle_changed", "reactivated", "reprocessed"]), actorOpenId: z.string().max(160).nullable(), details: z.string().max(500).nullable(), occurredAt: z.string().datetime() }).strict()).max(10), page: z.number().int().positive(), pageSize: z.number().int().min(5).max(10), total: z.number().int().nonnegative(), hasNextPage: z.boolean() }).strict())
+      .query(async ({ input }) => normalizeJsonForTransport(await listIngestionSourceOperationalTimeline(input.sourceKey, input.page, input.pageSize))),
     create: adminOnly
       .input(
         z
@@ -1270,9 +1277,19 @@ export const appRouter = router({
           await reactivateIngestionSourceCircuitBreaker(input.sourceKey, ctx.user.openId, input.reprocessNow ? "Reprocessamento imediato solicitado" : "Reativação sem reprocessamento imediato");
           if (!input.reprocessNow) return { ok: true as const, sourceKey: input.sourceKey, reprocess: "not_requested" as const };
           try {
-            await runIngestionSourceChunk({ sourceKey: input.sourceKey, dryRun: false });
+            const focused = await runIngestionSourceChunk({ sourceKey: input.sourceKey, dryRun: false });
+            const result = focused && typeof focused === "object" && "result" in focused ? (focused as { result?: unknown }).result : focused;
+            const summary = result && typeof result === "object" ? result as Record<string, unknown> : {};
+            const nestedResult = summary.result && typeof summary.result === "object" ? summary.result as Record<string, unknown> : {};
+            const read = Number(summary.read ?? summary.readCount ?? summary.received ?? nestedResult.read ?? nestedResult.readCount ?? nestedResult.received ?? 0) || 0;
+            const persisted = Number(summary.persisted ?? summary.persistedCount ?? summary.added ?? summary.imported ?? nestedResult.persisted ?? nestedResult.persistedCount ?? nestedResult.added ?? nestedResult.imported ?? 0) || 0;
+            const feedback = `Sucesso: ${read} eventos lidos, ${persisted} persistidos.`;
+            await markIngestionSourceResult(input.sourceKey, { status: "succeeded", message: feedback, executionFeedback: feedback });
+            await recordIngestionSourceAction({ sourceKey: input.sourceKey, action: "reprocessed", operatorOpenId: ctx.user.openId, details: `Reprocessamento imediato concluído: ${read} eventos lidos, ${persisted} persistidos.` });
             return { ok: true as const, sourceKey: input.sourceKey, reprocess: "succeeded" as const };
           } catch {
+            await markIngestionSourceResult(input.sourceKey, { status: "failed", message: "Erro no reprocessamento imediato; consulte os detalhes da última execução.", executionFeedback: "Falha no reprocessamento imediato; consulte o motivo da última execução." });
+            await recordIngestionSourceAction({ sourceKey: input.sourceKey, action: "reprocessed", operatorOpenId: ctx.user.openId, details: "Reprocessamento imediato falhou; consulte o motivo da última execução." });
             return { ok: true as const, sourceKey: input.sourceKey, reprocess: "failed" as const };
           }
         } catch (error) {

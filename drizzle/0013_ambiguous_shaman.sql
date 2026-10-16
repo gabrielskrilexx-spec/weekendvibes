@@ -1,0 +1,1 @@
+ALTER TABLE `ingestionSources` ADD `lastExecutionFeedback` varchar(1000);

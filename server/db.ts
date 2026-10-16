@@ -442,6 +442,38 @@ export async function listIngestionSourceActionAudit(sourceKey: string, limit = 
   return db.select({ id: ingestionSourceActionAuditLogs.id, sourceKey: ingestionSourceActionAuditLogs.sourceKey, action: ingestionSourceActionAuditLogs.action, operatorOpenId: ingestionSourceActionAuditLogs.operatorOpenId, details: ingestionSourceActionAuditLogs.details, actedAt: ingestionSourceActionAuditLogs.actedAt }).from(ingestionSourceActionAuditLogs).where(eq(ingestionSourceActionAuditLogs.sourceKey, sourceKey)).orderBy(desc(ingestionSourceActionAuditLogs.actedAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 100));
 }
 
+export type IngestionSourceTimelineItem = {
+  id: string;
+  sourceKey: string;
+  action: "handle_changed" | "reactivated" | "reprocessed";
+  actorOpenId: string | null;
+  details: string | null;
+  occurredAt: Date;
+};
+
+export async function listIngestionSourceOperationalTimeline(sourceKey: string, page = 1, pageSize = 10, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  const safePageSize = Math.min(Math.max(Math.trunc(pageSize), 5), 10);
+  const safePage = Math.max(1, Math.trunc(page));
+  if (!db) return { items: [] as Array<Omit<IngestionSourceTimelineItem, "occurredAt"> & { occurredAt: string }>, page: safePage, pageSize: safePageSize, total: 0, hasNextPage: false };
+  const [handles, actions] = await Promise.all([
+    db.select({ id: ingestionSourceHandleAuditLogs.id, sourceKey: ingestionSourceHandleAuditLogs.sourceKey, previousHandle: ingestionSourceHandleAuditLogs.previousHandle, nextHandle: ingestionSourceHandleAuditLogs.nextHandle, changedByOpenId: ingestionSourceHandleAuditLogs.changedByOpenId, changedAt: ingestionSourceHandleAuditLogs.changedAt }).from(ingestionSourceHandleAuditLogs).where(eq(ingestionSourceHandleAuditLogs.sourceKey, sourceKey)).limit(200),
+    db.select({ id: ingestionSourceActionAuditLogs.id, sourceKey: ingestionSourceActionAuditLogs.sourceKey, action: ingestionSourceActionAuditLogs.action, operatorOpenId: ingestionSourceActionAuditLogs.operatorOpenId, details: ingestionSourceActionAuditLogs.details, actedAt: ingestionSourceActionAuditLogs.actedAt }).from(ingestionSourceActionAuditLogs).where(eq(ingestionSourceActionAuditLogs.sourceKey, sourceKey)).limit(200),
+  ]);
+  const timeline: IngestionSourceTimelineItem[] = [
+    ...handles.map(item => ({ id: `handle-${item.id}`, sourceKey: item.sourceKey, action: "handle_changed" as const, actorOpenId: item.changedByOpenId, details: `${item.previousHandle ?? "vazio"} → ${item.nextHandle ?? "vazio"}`, occurredAt: item.changedAt })),
+    ...actions.map(item => ({ id: `action-${item.id}`, sourceKey: item.sourceKey, action: item.action, actorOpenId: item.operatorOpenId, details: item.details, occurredAt: item.actedAt })),
+  ].sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
+  const offset = (safePage - 1) * safePageSize;
+  return { items: timeline.slice(offset, offset + safePageSize).map(item => ({ ...item, occurredAt: item.occurredAt.toISOString() })), page: safePage, pageSize: safePageSize, total: timeline.length, hasNextPage: offset + safePageSize < timeline.length };
+}
+
+export async function recordIngestionSourceAction(input: { sourceKey: string; action: "reprocessed"; operatorOpenId?: string | null; details?: string | null }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return;
+  await db.insert(ingestionSourceActionAuditLogs).values({ sourceKey: input.sourceKey.slice(0, 120), action: input.action, operatorOpenId: input.operatorOpenId?.slice(0, 160) ?? null, details: input.details?.slice(0, 500) ?? null });
+}
+
 export type CircuitState = "closed" | "open" | "half_open";
 
 function circuitCooldownMs() {
@@ -542,11 +574,11 @@ export async function resetActiveIngestionSourceCircuitBreakers(dbOverride?: Awa
   return { resetCount: activeSources.length, sourceKeys: activeSources.map(source => source.sourceKey) };
 }
 
-export async function markIngestionSourceResult(sourceKey: string, result: { status: "succeeded" | "failed" | "skipped"; message?: string }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+export async function markIngestionSourceResult(sourceKey: string, result: { status: "succeeded" | "failed" | "skipped"; message?: string; executionFeedback?: string | null }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) return;
   const now = new Date();
-  await db.update(ingestionSources).set({ lastAttemptAt: now, lastStatus: result.status, lastSuccessAt: result.status === "succeeded" ? now : undefined, lastMessage: result.message?.slice(0, 1000) ?? null, updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
+  await db.update(ingestionSources).set({ lastAttemptAt: now, lastStatus: result.status, lastSuccessAt: result.status === "succeeded" ? now : undefined, lastMessage: result.message?.slice(0, 1000) ?? null, ...(result.executionFeedback !== undefined ? { lastExecutionFeedback: result.executionFeedback?.slice(0, 1000) ?? null } : {}), updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
 }
 
 export async function getIngestionPayloadCache(cacheKey: string, dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<IngestionPayloadCache | undefined> {
