@@ -154,7 +154,7 @@ describe("admin transport contracts", () => {
     const caller = appRouter.createCaller(adminContext);
     const result = await caller.ingestionSources.reactivate({ sourceKey: "instagram:mimadafesta", reprocessNow: true });
     expect(result).toEqual({ ok: true, sourceKey: "instagram:mimadafesta", reprocess: "succeeded" });
-    expect(maintenanceMocks.reactivateIngestionSourceCircuitBreaker).toHaveBeenCalledWith("instagram:mimadafesta");
+    expect(maintenanceMocks.reactivateIngestionSourceCircuitBreaker).toHaveBeenCalledWith("instagram:mimadafesta", "admin", "Reprocessamento imediato solicitado");
     expect(maintenanceMocks.runIngestionSourceChunk).toHaveBeenCalledWith({ sourceKey: "instagram:mimadafesta", dryRun: false });
   });
 

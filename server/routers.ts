@@ -29,6 +29,7 @@ import {
   listUserReminders,
   listIngestionSources,
   listIngestionSourceHandleAudit,
+  listIngestionSourceActionAudit,
   createIngestionSource,
   updateIngestionSource,
   getPublicFeedRolloverHour,
@@ -1197,6 +1198,9 @@ export const appRouter = router({
     auditLog: adminOnly
       .input(z.object({ sourceKey: z.string().trim().min(1).max(120) }).strict())
       .query(async ({ input }) => normalizeJsonForTransport(await listIngestionSourceHandleAudit(input.sourceKey))),
+    actionAudit: adminOnly
+      .input(z.object({ sourceKey: z.string().trim().min(1).max(120) }).strict())
+      .query(async ({ input }) => normalizeJsonForTransport(await listIngestionSourceActionAudit(input.sourceKey))),
     create: adminOnly
       .input(
         z
@@ -1261,9 +1265,9 @@ export const appRouter = router({
     reactivate: adminOnly
       .input(z.object({ sourceKey: z.string().trim().min(1).max(120), reprocessNow: z.boolean().default(false) }).strict())
       .output(z.object({ ok: z.literal(true), sourceKey: z.string().min(1).max(120), reprocess: z.enum(["not_requested", "succeeded", "failed"]) }).strict())
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         try {
-          await reactivateIngestionSourceCircuitBreaker(input.sourceKey);
+          await reactivateIngestionSourceCircuitBreaker(input.sourceKey, ctx.user.openId, input.reprocessNow ? "Reprocessamento imediato solicitado" : "Reativação sem reprocessamento imediato");
           if (!input.reprocessNow) return { ok: true as const, sourceKey: input.sourceKey, reprocess: "not_requested" as const };
           try {
             await runIngestionSourceChunk({ sourceKey: input.sourceKey, dryRun: false });

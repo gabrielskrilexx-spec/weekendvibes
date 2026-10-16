@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import AdminSourcesPanel from "./AdminSourcesPanel";
 
 const { refetch, invalidate, mutate, reactivateMutate, createMutate, mockSettingsMutate, fetchMock } = vi.hoisted(() => ({ refetch: vi.fn(), invalidate: vi.fn(), mutate: vi.fn(), reactivateMutate: vi.fn(), createMutate: vi.fn(), mockSettingsMutate: vi.fn(), fetchMock: vi.fn() }));
-const source = { id: 1, sourceKey: "instagram:mobydicksantos", name: "Moby House", kind: "instagram", handle: "mobydicksantos", url: "https://www.instagram.com/mobydicksantos/", isEnabled: 1, priority: 10, frequencyMinutes: 10080, p95LatencyThresholdMs: 3000, lastAttemptAt: new Date("2026-08-15T13:00:00Z"), lastSuccessAt: new Date("2026-08-15T12:00:00Z"), lastStatus: "succeeded", circuitState: "open", circuitFailureCount: 3 };
+const source = { id: 1, sourceKey: "instagram:mobydicksantos", name: "Moby House", kind: "instagram", handle: "mobydicksantos", url: "https://www.instagram.com/mobydicksantos/", isEnabled: 1, priority: 10, frequencyMinutes: 10080, p95LatencyThresholdMs: 3000, lastAttemptAt: new Date("2026-08-15T13:00:00Z"), lastSuccessAt: new Date("2026-08-15T12:00:00Z"), lastStatus: "failed", lastMessage: "Meta Graph API HTTP 400: Invalid user id", lastFailureReason: "ID inválido", circuitState: "open", circuitFailureCount: 3 };
+const closedSource = { ...source, id: 2, sourceKey: "public:closed", name: "Fonte Saudável", kind: "public", handle: null, url: "https://example.com/agenda", lastStatus: "succeeded", lastMessage: null, lastFailureReason: null, circuitState: "closed", circuitFailureCount: 0 };
 vi.stubGlobal("fetch", fetchMock);
 
 vi.mock("@/lib/trpc", () => ({
@@ -14,8 +15,9 @@ vi.mock("@/lib/trpc", () => ({
       setMockSettings: { useMutation: () => ({ isPending: false, mutate: mockSettingsMutate }) },
     },
     ingestionSources: {
-      list: { useQuery: () => ({ data: [source], isLoading: false, isError: false, isFetching: false, refetch }) },
+      list: { useQuery: () => ({ data: [source, closedSource], isLoading: false, isError: false, isFetching: false, refetch }) },
       auditLog: { useQuery: () => ({ data: [{ id: 1, previousHandle: "moby-old", nextHandle: "moby-corrigido", changedAt: new Date("2026-08-16T12:00:00Z") }] }) },
+      actionAudit: { useQuery: () => ({ data: [{ id: 1, action: "reactivated", operatorOpenId: "admin@example", details: "Reprocessamento imediato solicitado", actedAt: new Date("2026-08-17T12:00:00Z") }] }) },
       create: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { createMutate(input); options?.onSuccess?.(); } }) },
       update: { useMutation: () => ({ isPending: false, mutate }) },
       reactivate: { useMutation: () => ({ isPending: false, mutate: reactivateMutate }) },
@@ -42,6 +44,7 @@ describe("AdminSourcesPanel", () => {
     expect(rendered).toContain("moby-old");
     expect(rendered).toContain("Ativa");
     expect(rendered).toContain("Pausar Ingestão");
+    expect(rendered).toContain("Meta Graph API HTTP 400: Invalid user id");
   });
 
   it("exibe e alterna o toggle de mocks do sandbox", async () => {
@@ -113,5 +116,27 @@ describe("AdminSourcesPanel", () => {
     await act(async () => { confirm.props.onClick({ preventDefault: vi.fn() }); });
     expect(reactivateMutate).toHaveBeenCalledWith({ sourceKey: "instagram:mobydicksantos", reprocessNow: true });
     expect(JSON.stringify(tree!.toJSON())).toContain("moby-corrigido");
+  });
+
+  it("filtra a listagem para mostrar somente fontes OPEN", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const checkbox = tree!.root.findAllByType("input").find(item => item.props.type === "checkbox" && item.props.checked === false);
+    expect(checkbox).toBeDefined();
+    await act(async () => { checkbox!.props.onChange({ target: { checked: true } }); });
+    const rendered = JSON.stringify(tree!.toJSON());
+    expect(rendered).toContain("Moby House");
+    expect(rendered).not.toContain("Fonte Saudável");
+  });
+
+  it("exibe a auditoria de reativação no modal de detalhes", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const details = tree!.root.findByProps({ "aria-label": "Ver detalhes de Moby House" });
+    await act(async () => { details.props.onClick(); });
+    const rendered = JSON.stringify(tree!.toJSON());
+    expect(rendered).toContain("Histórico de intervenções");
+    expect(rendered).toContain("Fonte reativada");
+    expect(rendered).toContain("admin@example");
   });
 });

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 
@@ -436,6 +436,12 @@ export async function listIngestionSourceHandleAudit(sourceKey: string, limit = 
   return db.select({ id: ingestionSourceHandleAuditLogs.id, sourceKey: ingestionSourceHandleAuditLogs.sourceKey, previousHandle: ingestionSourceHandleAuditLogs.previousHandle, nextHandle: ingestionSourceHandleAuditLogs.nextHandle, changedAt: ingestionSourceHandleAuditLogs.changedAt }).from(ingestionSourceHandleAuditLogs).where(eq(ingestionSourceHandleAuditLogs.sourceKey, sourceKey)).orderBy(desc(ingestionSourceHandleAuditLogs.changedAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 100));
 }
 
+export async function listIngestionSourceActionAudit(sourceKey: string, limit = 20, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return [];
+  return db.select({ id: ingestionSourceActionAuditLogs.id, sourceKey: ingestionSourceActionAuditLogs.sourceKey, action: ingestionSourceActionAuditLogs.action, operatorOpenId: ingestionSourceActionAuditLogs.operatorOpenId, details: ingestionSourceActionAuditLogs.details, actedAt: ingestionSourceActionAuditLogs.actedAt }).from(ingestionSourceActionAuditLogs).where(eq(ingestionSourceActionAuditLogs.sourceKey, sourceKey)).orderBy(desc(ingestionSourceActionAuditLogs.actedAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 100));
+}
+
 export type CircuitState = "closed" | "open" | "half_open";
 
 function circuitCooldownMs() {
@@ -518,10 +524,12 @@ export async function recordCircuitSuccess(sourceKey: string, now = new Date(), 
   await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, lastAttemptAt: now, lastStatus: "succeeded", lastSuccessAt: now, lastHttpStatus: 200, lastFailureReason: null, consecutive403Count: 0, last403AlertedAt: null, updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
 }
 
-export async function reactivateIngestionSourceCircuitBreaker(sourceKey: string, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+export async function reactivateIngestionSourceCircuitBreaker(sourceKey: string, operatorOpenId?: string | null, details?: string, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) throw new Error("Database unavailable");
-  await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, consecutive403Count: 0, last403AlertedAt: null, updatedAt: new Date() }).where(eq(ingestionSources.sourceKey, sourceKey));
+  const now = new Date();
+  await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, consecutive403Count: 0, last403AlertedAt: null, updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
+  await db.insert(ingestionSourceActionAuditLogs).values({ sourceKey, action: "reactivated", operatorOpenId: operatorOpenId ?? null, details: details?.slice(0, 500) ?? null, actedAt: now });
 }
 
 export async function resetActiveIngestionSourceCircuitBreakers(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
