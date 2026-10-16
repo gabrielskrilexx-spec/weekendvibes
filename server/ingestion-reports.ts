@@ -483,6 +483,42 @@ export type SourceTelemetry = {
   errors: { category: "waf" | "anti_bot" | "proxy" | "timeout_dns" | "sandbox" | "other"; count: number }[];
 };
 
+export type TelemetryCategory = "success" | "parser" | "waf" | "network";
+
+export type WafPersistenceAlert = {
+  sourceKey: string;
+  consecutiveRuns: number;
+  runIds: number[];
+  latestBlockedAt: string;
+  lastValidCaptureAt: string | null;
+};
+
+export function classifyIngestionRunCategoryForTest(input: { status: string; httpStatus?: number | null; details?: unknown }): TelemetryCategory {
+  const text = JSON.stringify(input.details ?? "").toLowerCase();
+  const status = Number(input.httpStatus ?? 0);
+  if (isWafBlockedFailure(status || null, text) || /bloqueado por waf|cloudflare|akamai|challenge|access denied/.test(text)) return "waf";
+  if (/timeout|timed out|enotfound|eai_again|econnrefused|network|fetch failed|socket/.test(text) || [502, 504].includes(status)) return "network";
+  if (input.status === "succeeded") return "success";
+  return "parser";
+}
+
+export function findConsecutiveWafBlocksForTest(runs: Array<{ id: number; sourceKey: string | null; status: string; startedAt: string | Date; finishedAt?: string | Date | null; httpStatus?: number | null; details?: unknown }>, minimum = 3): WafPersistenceAlert[] {
+  const bySource = new Map<string, typeof runs>();
+  for (const run of runs) {
+    if (!run.sourceKey) continue;
+    const list = bySource.get(run.sourceKey) ?? [];
+    list.push(run);
+    bySource.set(run.sourceKey, list);
+  }
+  return Array.from(bySource.entries()).flatMap(([sourceKey, sourceRuns]) => {
+    const ordered = [...sourceRuns].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+    const blocked = ordered.slice(0, minimum);
+    if (blocked.length < minimum || blocked.some(run => classifyIngestionRunCategoryForTest(run) !== "waf")) return [];
+    const lastValid = ordered.slice(minimum).find(run => classifyIngestionRunCategoryForTest(run) === "success");
+    return [{ sourceKey, consecutiveRuns: blocked.length, runIds: blocked.map(run => Number(run.id)), latestBlockedAt: new Date(blocked[0].finishedAt ?? blocked[0].startedAt).toISOString(), lastValidCaptureAt: lastValid ? new Date(lastValid.finishedAt ?? lastValid.startedAt).toISOString() : null }];
+  });
+}
+
 export type SourceTelemetryHistoryPoint = {
   date: string;
   label: string;
@@ -628,6 +664,7 @@ export function serializeIngestionRunForTest(
     httpStatus: run.httpStatus == null ? null : Number(run.httpStatus),
     counts: run.counts == null ? null : String(run.counts),
     details: run.details == null ? null : String(run.details),
+    telemetryCategory: classifyIngestionRunCategoryForTest({ status: String(run.status), httpStatus: run.httpStatus, details: run.details }),
     startedAt: new Date(run.startedAt).toISOString(),
     finishedAt:
       run.finishedAt == null ? null : new Date(run.finishedAt).toISOString(),
@@ -1370,6 +1407,7 @@ export type IngestionReportFilters = {
   runId?: number;
     sourceKey?: string;
   executionKind?: "all" | "real" | "simulated";
+  telemetryCategory?: TelemetryCategory;
 };
 function isSandboxExecution(details: unknown) {
   return /sandbox_restricted|previewmock/i.test(JSON.stringify(parseDetails(details) ?? ""));
@@ -1441,6 +1479,7 @@ export async function listIngestionReport(
       alerts: [],
       criticalAlerts: [],
       consecutiveFailures: [],
+      wafPersistentAlerts: [],
       sourceMetrics: [],
       sourceTelemetry: [],
       freshness: [],
@@ -1490,7 +1529,8 @@ export async function listIngestionReport(
   const runs = runsRaw
     .filter(
       run => (!filters.trigger || runTrigger(run.details) === filters.trigger) &&
-        (filters.executionKind === "all" || !filters.executionKind || (filters.executionKind === "simulated" ? isSandboxExecution(run.details) : !isSandboxExecution(run.details)))
+        (filters.executionKind === "all" || !filters.executionKind || (filters.executionKind === "simulated" ? isSandboxExecution(run.details) : !isSandboxExecution(run.details))) &&
+        (!filters.telemetryCategory || classifyIngestionRunCategoryForTest({ status: String(run.status), httpStatus: run.httpStatus, details: run.details }) === filters.telemetryCategory)
     )
     .slice(0, safeSize);
   const trendRunsRaw = await db
@@ -1567,6 +1607,8 @@ export async function listIngestionReport(
     realCoverage: value.runs > 0 ? Number((value.realSuccesses / value.runs).toFixed(4)) : 0,
   }));
   const sourceTelemetry = buildSourceTelemetryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), durationMs: run.durationMs, httpStatus: run.httpStatus, details: run.details })));
+  const wafPersistentAlerts = findConsecutiveWafBlocksForTest(trendRuns.map(run => ({ id: Number(run.id), sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, finishedAt: run.finishedAt, httpStatus: run.httpStatus, details: run.details })));
+  await Promise.all(wafPersistentAlerts.map(alert => handleIngestionFailureAlert({ routine: "waf-monitor", sourceKey: alert.sourceKey, integration: alert.sourceKey.startsWith("instagram") ? "meta" : "public", status: 403, severity: "CRITICAL", alertType: "waf_persistent", runId: alert.runIds[0], message: `Fonte ${alert.sourceKey} permanece bloqueada por WAF há ${alert.consecutiveRuns} execuções consecutivas. Última captura válida: ${alert.lastValidCaptureAt ?? "não registrada"}.` })));
   const performanceAlerts = findConsecutiveP95PerformanceAlertsForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, durationMs: run.durationMs })), new Map(sourceConfigs.map(source => [source.sourceKey, getEffectiveSourceP95ThresholdForTest(source)])));
   await Promise.all(performanceAlerts.map(async alert => { const message = `Desempenho degradado: P95 de ${Math.round(alert.p95LatencyMs)} ms em ${alert.sourceKey}, acima do limite de ${alert.thresholdMs} ms por ${alert.consecutiveRuns} rodadas consecutivas.`; await handleIngestionFailureAlert({ routine: "performance-monitor", sourceKey: alert.sourceKey, integration: alert.sourceKey.startsWith("instagram") ? "meta" : "public", severity: "WARNING", alertType: "performance_degraded", message }); await notifyPerformanceDegradationWebhook({ ...alert, message }); }));
   const sourceTelemetryHistory = buildSourceTelemetryHistoryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, finishedAt: run.finishedAt, durationMs: run.durationMs, details: run.details })));
@@ -1575,6 +1617,7 @@ export async function listIngestionReport(
     name: source.name,
     kind: source.kind,
     lastSuccessAt: source.lastSuccessAt?.toISOString() ?? null,
+    lastValidCaptureAt: source.lastSuccessAt?.toISOString() ?? null,
     expectedMinutes: source.frequencyMinutes,
     state: getFreshnessState(source.lastSuccessAt, source.frequencyMinutes),
   }));
@@ -1593,6 +1636,9 @@ export async function listIngestionReport(
       ? new Date(
           feedLastSuccess.finishedAt ?? feedLastSuccess.startedAt
         ).toISOString()
+      : null,
+    lastValidCaptureAt: feedLastSuccess
+      ? new Date(feedLastSuccess.finishedAt ?? feedLastSuccess.startedAt).toISOString()
       : null,
     expectedMinutes: 1440,
     state: getFreshnessState(
@@ -1696,6 +1742,7 @@ export async function listIngestionReport(
     alerts: serializableAlerts,
     criticalAlerts,
     consecutiveFailures,
+    wafPersistentAlerts,
     sourceMetrics,
     sourceTelemetry,
     sourceTelemetryHistory,

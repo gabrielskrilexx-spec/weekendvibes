@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fuzzyTitleSimilarity, isFuzzyDuplicateEventForTest } from "./db";
+import { classifyEventChanges, fuzzyTitleSimilarity, isFuzzyDuplicateEventForTest } from "./db";
 
 const base = {
   eventDate: new Date("2026-10-24T22:00:00-03:00"),
@@ -33,5 +33,11 @@ describe("deduplicação fuzzy de eventos", () => {
     expect(isFuzzyDuplicateEventForTest(event, { ...event, city: "Guarujá" })).toBe(false);
     expect(isFuzzyDuplicateEventForTest(event, { ...event, locationName: "Laroc Club Guarujá" })).toBe(false);
     expect(isFuzzyDuplicateEventForTest(event, { ...event, eventDate: new Date("2026-10-25T22:00:00-03:00") })).toBe(false);
+  });
+
+  it("classifica mudança de preço, lote, horário e local durante o re-scrape", () => {
+    const previous = { eventDate: new Date("2030-12-12T18:00:00-03:00"), locationName: "Parque Valongo", city: "Santos" as const, priceCents: 5000, priceNote: "1º Lote" };
+    const incoming = { ...previous, eventDate: new Date("2030-12-13T19:00:00-03:00"), locationName: "Armazém 3", priceCents: 7500, priceNote: "2º Lote" };
+    expect(classifyEventChanges(previous, incoming)).toEqual({ priceChanged: true, lotChanged: true, dateChanged: true, locationChanged: true });
   });
 });

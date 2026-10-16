@@ -130,6 +130,21 @@ export const events = mysqlTable("events", {
 export type Event = typeof events.$inferSelect;
 export type InsertEvent = typeof events.$inferInsert;
 
+/** Immutable snapshots captured when a public ticketing price or lot changes. */
+export const eventPriceHistory = mysqlTable("eventPriceHistory", {
+  id: int("id").autoincrement().primaryKey(),
+  eventId: int("eventId").notNull(),
+  priceCents: int("priceCents").notNull(),
+  priceNote: varchar("priceNote", { length: 255 }),
+  sourceUrl: varchar("sourceUrl", { length: 1000 }),
+  capturedAt: timestamp("capturedAt").defaultNow().notNull(),
+}, table => ({
+  eventCapturedIdx: index("eventPriceHistory_event_captured_idx").on(table.eventId, table.capturedAt),
+}));
+
+export type EventPriceHistory = typeof eventPriceHistory.$inferSelect;
+export type InsertEventPriceHistory = typeof eventPriceHistory.$inferInsert;
+
 export const manualReviewEvents = mysqlTable("manualReviewEvents", {
   id: int("id").autoincrement().primaryKey(),
   sourceUrl: varchar("sourceUrl", { length: 1000 }),

@@ -730,7 +730,9 @@ export function parseTicketingEventMetadata(html: string, url: string) {
   const jsonLd = readJsonLd(html);
   const location = jsonLd?.location && typeof jsonLd.location === "object" ? jsonLd.location as Record<string, unknown> : {};
   const address = location.address && typeof location.address === "object" ? location.address as Record<string, unknown> : {};
-  const offers = jsonLd?.offers && typeof jsonLd.offers === "object" ? jsonLd.offers as Record<string, unknown> : {};
+  const offers = Array.isArray(jsonLd?.offers)
+    ? jsonLd.offers.filter((offer): offer is Record<string, unknown> => Boolean(offer && typeof offer === "object"))[0] ?? {}
+    : jsonLd?.offers && typeof jsonLd.offers === "object" ? jsonLd.offers as Record<string, unknown> : {};
   const meta = readMetaTags(html);
   const $ = load(html, undefined, false);
   $("script, style, noscript").remove();
@@ -745,8 +747,11 @@ export function parseTicketingEventMetadata(html: string, url: string) {
   const city = normalizeVenueCity(String(locationName), `${street} ${visibleText}`, rawCity);
   const priceRaw = typeof offers.price === "number" || typeof offers.price === "string" ? String(offers.price) : "";
   const priceCents = priceRaw ? Math.round(Number(priceRaw.replace(/[^0-9,.-]/g, "").replace(",", ".")) * 100) : 0;
+  const offerNote = [offers.name, offers.description].filter((value): value is string => typeof value === "string" && value.trim().length > 0).join(" — ").trim();
+  const lotNote = visibleText.match(/(?:\d{1,2}[º°o]?|primeiro|segundo|terceiro)\s*lote[^.;|]{0,120}/i)?.[0]?.trim() ?? "";
+  const priceNote = (offerNote || lotNote || undefined)?.slice(0, 255);
   if (!title && !eventDate && !locationName) return undefined;
-  return { title, eventDate, locationName, address: street, city, priceCents, sourceUrl: url, imageUrl: meta("og:image"), text: visibleText.slice(0, 16_000) };
+  return { title, eventDate, locationName, address: street, city, priceCents, priceNote, sourceUrl: url, imageUrl: meta("og:image"), text: visibleText.slice(0, 16_000) };
 }
 
 export function parseArticketEventMetadata(html: string, url: string) {
@@ -839,7 +844,7 @@ type PublicPage = {
   adapter?: "blackpass" | "mringressos" | "ingresse" | "sympla" | "weticket" | "zig" | "articket" | "parque-valongo" | "eventos-litoral" | "blue-med" | "generic";
   adapterError?: string;
   durationMs?: number;
-  structured?: Record<string, string | number> | Array<Record<string, string | number>>;
+  structured?: Record<string, string | number | undefined> | Array<Record<string, string | number | undefined>>;
   cacheFallback?: { used: true; status: number | null; message: string };
   fetchFailure?: FetchFailure;
   circuitOpen?: boolean;
@@ -1296,7 +1301,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
     if (fuzzyDuplicate) { duplicates += 1; duplicateSourceKeys.push(sourceKey); continue; }
     acceptedEvents.push({ title: String(event.title), eventDate: date, city, sourceKey });
     const sourceHash = buildPublicEventIdentity(sourceKey, String(event.title), date, sourceUrl);
-    const sourceType = sourceUrl.includes("ingresse.com") ? "ingresse" : sourceUrl.includes("blackpass.com.br") ? "blackpass" : sourceUrl.includes("mringressos.com.br") ? "mringressos" : sourceUrl.includes("sympla.com.br") ? "sympla" : sourceUrl.includes("weticket.com.br") ? "weticket" : sourceUrl.includes("zig.tickets") ? "zig" : "public_source";
+    const sourceType = sourceUrl.includes("ingresse.com") ? "ingresse" : sourceUrl.includes("blackpass.com.br") ? "blackpass" : sourceUrl.includes("mringressos.com.br") ? "mringressos" : sourceUrl.includes("sympla.com.br") ? "sympla" : sourceUrl.includes("weticket.com.br") ? "weticket" : sourceUrl.includes("zig.tickets") ? "zig" : sourceUrl.includes("articket.com.br") ? "articket" : "public_source";
     const latitude = String(event.latitude || "");
     const longitude = String(event.longitude || "");
     if (!latitude || !longitude) missingCoordinates += 1;
@@ -1309,7 +1314,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
       dryRunAcceptedEvents += 1;
       continue;
     }
-    const saved = await saveEvent({ title: String(event.title), slug: `${normalizeSlug(String(event.title))}-${date.getTime()}`, description: String(event.summary), eventDate: date, locationName: String(event.locationName), address: String(event.address), city, category: category as "show" | "balada" | "evento_musical", genre, priceCents: Number(event.priceCents) || 0, sourceUrl, sourceType, imageUrl: String(event.imageUrl || ""), latitude, longitude, sourceHash, isPublished: 1 });
+    const saved = await saveEvent({ title: String(event.title), slug: `${normalizeSlug(String(event.title))}-${date.getTime()}`, description: String(event.summary), eventDate: date, locationName: String(event.locationName), address: String(event.address), city, category: category as "show" | "balada" | "evento_musical", genre, priceCents: Number(event.priceCents) || 0, priceNote: event.priceNote === undefined ? undefined : String(event.priceNote).slice(0, 255), sourceUrl, sourceType, imageUrl: String(event.imageUrl || ""), latitude, longitude, sourceHash, isPublished: 1 });
     if (!saved || typeof saved !== "object") {
       added += 1;
       sourceOutcomes.push({ sourceKey, created: true, updated: false });

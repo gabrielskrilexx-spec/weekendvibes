@@ -121,6 +121,10 @@ describe("adapters de ticketeiras oficiais", () => {
     expect(parseArticketEventMetadata(html, "https://articket.com.br/e/7163/feijuca-no-arcos-tiee")).toMatchObject({ title: "Feijuca no Arcos", eventDate: "2030-11-28T20:00:00-03:00", locationName: "Arcos do Valongo", city: "Santos", priceCents: 5000, category: "evento_musical", genre: "samba_pagode" });
     expect(publicSourceKey("https://articket.com.br/e/7163/feijuca-no-arcos-tiee")).toBe("public:articket");
   });
+  it("captura dinamicamente a virada de lote da página Articket", () => {
+    const html = `<script type="application/ld+json">${JSON.stringify({ "@type": "Event", name: "O Encontro — Edição Sunset", startDate: "2030-12-12T18:00:00-03:00", location: { name: "Parque Valongo", address: { addressLocality: "Santos", streetAddress: "Rua Antônio Prado" } }, offers: { name: "2º Lote", price: "75.00", description: "Ingresso inteiro" } })}</script><main>O Encontro — Edição Sunset 2º Lote R$ 75,00 Parque Valongo Santos</main>`;
+    expect(parseArticketEventMetadata(html, "https://articket.com.br/e/7160/o-encontro")).toMatchObject({ title: "O Encontro — Edição Sunset", priceCents: 7500, priceNote: "2º Lote — Ingresso inteiro", locationName: "Parque Valongo", city: "Santos" });
+  });
 
   it("extrai somente eventos musicais futuros elegíveis da agenda Blue Med", () => {
     const html = `<div class="card-evento"><img src="https://cdn.example/roberto.png"><p class="titulo-evento">SHOW ROBERTO CARLOS</p><p class="data-evento">31/10/2026</p><p class="botao-evento"><a href="https://eventim.com.br/roberto">saiba</a></p></div><div class="card-evento"><p class="titulo-evento">EVENTO FECHADO</p><p class="data-evento">01/11/2026</p></div><div class="card-evento"><p class="titulo-evento">SHOW PAGODIN COM BELO</p><p class="data-evento">23/11/2026</p></div>`;

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 
@@ -781,32 +781,97 @@ function eventQuality(event: Pick<InsertEvent, "priceCents" | "imageUrl" | "lati
   return (Number(event.priceCents ?? 0) > 0 ? 2 : 0) + (event.imageUrl ? 1 : 0) + (event.latitude && event.longitude ? 1 : 0) + (event.description ? 1 : 0);
 }
 
+export function classifyEventChanges(previous: Pick<Event, "eventDate" | "locationName" | "city" | "priceCents" | "priceNote">, incoming: Pick<InsertEvent, "eventDate" | "locationName" | "city" | "priceCents" | "priceNote">) {
+  const previousDate = new Date(previous.eventDate).getTime();
+  const incomingDate = new Date(incoming.eventDate).getTime();
+  const previousNote = String(previous.priceNote ?? "").trim();
+  const incomingNote = String(incoming.priceNote ?? "").trim();
+  return {
+    priceChanged: Number(previous.priceCents ?? 0) !== Number(incoming.priceCents ?? 0),
+    lotChanged: previousNote !== incomingNote && Boolean(previousNote || incomingNote),
+    dateChanged: previousDate !== incomingDate,
+    locationChanged: previous.locationName.trim() !== incoming.locationName.trim() || previous.city !== incoming.city,
+  };
+}
+
+function isArticketEvent(data: Pick<InsertEvent, "sourceType" | "sourceUrl">) {
+  return data.sourceType === "articket" || data.sourceUrl?.toLowerCase().includes("articket.com.br/e/") === true;
+}
+
+async function recordEventTicketSnapshot(eventId: number, data: Pick<InsertEvent, "priceCents" | "priceNote" | "sourceUrl">, db: Awaited<ReturnType<typeof getDb>>) {
+  if (!db || !isArticketEvent(data)) return;
+  await db.insert(eventPriceHistory).values({
+    eventId,
+    priceCents: Number(data.priceCents ?? 0),
+    priceNote: data.priceNote?.trim().slice(0, 255) || null,
+    sourceUrl: data.sourceUrl?.slice(0, 1000) || null,
+  });
+}
+
+async function recordEventChangeAlerts(eventId: number, previous: Pick<Event, "eventDate" | "locationName" | "city" | "priceCents" | "priceNote">, incoming: InsertEvent, db: Awaited<ReturnType<typeof getDb>>) {
+  if (!db || !isArticketEvent(incoming)) return;
+  const changes = classifyEventChanges(previous, incoming);
+  if (changes.priceChanged || changes.lotChanged) {
+    await recordOperationalAlert({
+      dbOverride: db,
+      integration: "public",
+      alertType: changes.lotChanged && !changes.priceChanged ? "ticket_lot_changed" : "ticket_price_changed",
+      severity: "INFO",
+      title: "Preço/lote de ingresso atualizado",
+      message: `Evento #${eventId}: preço ${previous.priceCents} → ${incoming.priceCents} centavos${changes.lotChanged ? `; lote: ${String(previous.priceNote ?? "não informado")} → ${String(incoming.priceNote ?? "não informado")}` : ""}.`,
+    });
+  }
+  const criticalChanges: string[] = [];
+  if (changes.dateChanged) criticalChanges.push(`data/horário ${new Date(previous.eventDate).toISOString()} → ${new Date(incoming.eventDate).toISOString()}`);
+  if (changes.locationChanged) criticalChanges.push(`local ${previous.locationName}, ${previous.city} → ${incoming.locationName}, ${incoming.city}`);
+  if (criticalChanges.length > 0) {
+    await recordOperationalAlert({
+      dbOverride: db,
+      integration: "public",
+      alertType: "event_structure_changed",
+      severity: "WARNING",
+      title: "Alteração crítica no evento detectada",
+      message: `Evento #${eventId}: ${criticalChanges.join("; ")}.`,
+    });
+  }
+}
+
 export async function saveEvent(data: InsertEvent) {
   const normalized = normalizeEventLocation(data);
   if (!ALLOWED_CITIES.includes(normalized.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos em Santos e Guarujá");
   assertEventDateIsCurrentOrFuture(normalized.eventDate, new Date(), normalized.title);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const identityCondition = normalized.sourceHash
-    ? or(eq(events.sourceHash, normalized.sourceHash), and(sql`${events.sourceUrl} = ${normalized.sourceUrl}`, eq(events.eventDate, normalized.eventDate)))
-    : and(sql`${events.sourceUrl} = ${normalized.sourceUrl}`, eq(events.eventDate, normalized.eventDate));
-  const existing = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl }).from(events).where(identityCondition).limit(1);
+  const stableSourceUrl = isArticketEvent(normalized);
+  const identityCondition = stableSourceUrl
+    ? sql`${events.sourceUrl} = ${normalized.sourceUrl}`
+    : normalized.sourceHash
+      ? or(eq(events.sourceHash, normalized.sourceHash), and(sql`${events.sourceUrl} = ${normalized.sourceUrl}`, eq(events.eventDate, normalized.eventDate)))
+      : and(sql`${events.sourceUrl} = ${normalized.sourceUrl}`, eq(events.eventDate, normalized.eventDate));
+  const existing = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, priceNote: events.priceNote, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl }).from(events).where(identityCondition).limit(1);
   const dayStartUtc = saoPauloDayStartUtc(normalized.eventDate);
   const nextDayStartUtc = saoPauloNextDayStartUtc(normalized.eventDate);
-  const fuzzyCandidates = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl }).from(events).where(and(eq(events.city, normalized.city), gte(events.eventDate, dayStartUtc), sql`${events.eventDate} < ${nextDayStartUtc}`));
+  const fuzzyCandidates = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, priceNote: events.priceNote, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl }).from(events).where(and(eq(events.city, normalized.city), gte(events.eventDate, dayStartUtc), sql`${events.eventDate} < ${nextDayStartUtc}`));
   const duplicate = existing[0] ?? fuzzyCandidates.find(candidate => isFuzzyDuplicateEventForTest(normalized, candidate as InsertEvent));
   if (duplicate) {
-    const keepIncoming = eventQuality(normalized) > eventQuality(duplicate);
+    const identityMatch = Boolean(existing[0]);
+    const keepIncoming = identityMatch || eventQuality(normalized) > eventQuality(duplicate);
     if (keepIncoming) {
       const merged = { ...normalized, latitude: normalized.latitude || duplicate.latitude, longitude: normalized.longitude || duplicate.longitude, imageUrl: normalized.imageUrl || duplicate.imageUrl, description: normalized.description || duplicate.description, updatedAt: new Date() };
+      await recordEventChangeAlerts(duplicate.id, duplicate, normalized, db);
       await db.update(events).set(merged).where(eq(events.id, duplicate.id));
+      const changes = classifyEventChanges(duplicate, normalized);
+      if (changes.priceChanged || changes.lotChanged) await recordEventTicketSnapshot(duplicate.id, normalized, db);
       await queueGeocoding(duplicate.id, merged, db);
     }
     return { created: false, id: duplicate.id, duplicate: true, updated: keepIncoming };
   }
   const inserted = await db.insert(events).values(normalized).onDuplicateKeyUpdate({ set: { ...normalized, updatedAt: new Date() } });
   const eventId = Number(inserted[0]?.insertId ?? 0);
-  if (eventId > 0) await queueGeocoding(eventId, normalized, db);
+  if (eventId > 0) {
+    await recordEventTicketSnapshot(eventId, normalized, db);
+    await queueGeocoding(eventId, normalized, db);
+  }
   return { created: eventId > 0, id: eventId > 0 ? eventId : undefined, updated: false };
 }
 

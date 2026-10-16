@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv, sortFilteredStoriesForTest, DEFAULT_PUBLIC_P95_THRESHOLD_MS, INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS, MANUAL_AGENDA_P95_THRESHOLD_MS, getEffectiveSourceP95ThresholdForTest, findConsecutiveP95PerformanceAlertsForTest } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv, sortFilteredStoriesForTest, DEFAULT_PUBLIC_P95_THRESHOLD_MS, INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS, MANUAL_AGENDA_P95_THRESHOLD_MS, getEffectiveSourceP95ThresholdForTest, findConsecutiveP95PerformanceAlertsForTest, classifyIngestionRunCategoryForTest, findConsecutiveWafBlocksForTest } from "./ingestion-reports";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
 import { sanitizeAgendaStepErrorForTest } from "./agenda-routine";
 
@@ -234,5 +234,20 @@ describe("Meta integration status", () => {
   it("distinguishes degraded and never-synchronized states", () => {
     expect(buildMetaIntegrationStatusForTest([{ status: "partial", startedAt: base }]).status).toBe("degraded");
     expect(buildMetaIntegrationStatusForTest([])).toEqual({ status: "never", lastSuccessfulSync: null, lastAttempt: null });
+  });
+});
+
+describe("telemetria WAF persistente", () => {
+  it("classifica WAF, rede e parser sem misturar as categorias", () => {
+    expect(classifyIngestionRunCategoryForTest({ status: "failed", httpStatus: 403, details: { message: "Cloudflare access denied" } })).toBe("waf");
+    expect(classifyIngestionRunCategoryForTest({ status: "failed", httpStatus: 504, details: { message: "timeout" } })).toBe("network");
+    expect(classifyIngestionRunCategoryForTest({ status: "failed", details: { message: "Zod validation failed" } })).toBe("parser");
+    expect(classifyIngestionRunCategoryForTest({ status: "succeeded", details: {} })).toBe("success");
+  });
+
+  it("sinaliza três bloqueios consecutivos e preserva a última captura válida", () => {
+    const base = new Date("2026-10-16T12:00:00.000Z");
+    const run = (id: number, minutesAgo: number, status: string, httpStatus: number | null, details: unknown = {}) => ({ id, sourceKey: "public:weticket", status, httpStatus, details, startedAt: new Date(base.getTime() - minutesAgo * 60_000), finishedAt: new Date(base.getTime() - (minutesAgo - 1) * 60_000) });
+    expect(findConsecutiveWafBlocksForTest([run(4, 240, "succeeded", null), run(3, 30, "failed", 403, { message: "WAF" }), run(2, 20, "failed", 403, { message: "Cloudflare" }), run(1, 10, "failed", 403, { message: "access denied" })])).toEqual([{ sourceKey: "public:weticket", consecutiveRuns: 3, runIds: [1, 2, 3], latestBlockedAt: "2026-10-16T11:51:00.000Z", lastValidCaptureAt: "2026-10-16T08:01:00.000Z" }]);
   });
 });
