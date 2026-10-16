@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import AdminSourcesPanel from "./AdminSourcesPanel";
 
 const { refetch, invalidate, mutate, reactivateMutate, createMutate, mockSettingsMutate, fetchMock } = vi.hoisted(() => ({ refetch: vi.fn(), invalidate: vi.fn(), mutate: vi.fn(), reactivateMutate: vi.fn(), createMutate: vi.fn(), mockSettingsMutate: vi.fn(), fetchMock: vi.fn() }));
-const source = { id: 1, sourceKey: "instagram:mobydicksantos", name: "Moby House", kind: "instagram", handle: "mobydicksantos", url: "https://www.instagram.com/mobydicksantos/", isEnabled: 1, priority: 10, frequencyMinutes: 10080, p95LatencyThresholdMs: 3000, lastSuccessAt: new Date("2026-08-15T12:00:00Z"), lastStatus: "succeeded", circuitState: "open" };
+const source = { id: 1, sourceKey: "instagram:mobydicksantos", name: "Moby House", kind: "instagram", handle: "mobydicksantos", url: "https://www.instagram.com/mobydicksantos/", isEnabled: 1, priority: 10, frequencyMinutes: 10080, p95LatencyThresholdMs: 3000, lastAttemptAt: new Date("2026-08-15T13:00:00Z"), lastSuccessAt: new Date("2026-08-15T12:00:00Z"), lastStatus: "succeeded", circuitState: "open", circuitFailureCount: 3 };
 vi.stubGlobal("fetch", fetchMock);
 
 vi.mock("@/lib/trpc", () => ({
@@ -34,6 +34,9 @@ describe("AdminSourcesPanel", () => {
     expect(rendered).toContain("Fontes monitoradas");
     expect(rendered).toContain("Moby House");
     expect(rendered).toContain("Último sucesso");
+    expect(rendered).toContain("Última tentativa");
+    expect(rendered).toContain("15/08/2026");
+    expect(rendered).toContain("Circuit Breaker OPEN");
     expect(rendered).toContain("Ativa");
     expect(rendered).toContain("Pausar Ingestão");
   });

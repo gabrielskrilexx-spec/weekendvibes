@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CheckCircle2, Clock3, Loader2, Power, RefreshCw, Save, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Loader2, Power, RefreshCw, Save, SlidersHorizontal } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { postAdminJson } from "@/lib/admin-rest";
@@ -13,6 +13,11 @@ const frequencyOptions = [
 
 function formatLastSuccess(value: string | Date | null) {
   if (!value) return "Ainda não executada";
+  return new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+function formatTimestamp(value: string | Date | null) {
+  if (!value) return "Ainda não registrada";
   return new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
@@ -134,11 +139,12 @@ export default function AdminSourcesPanel() {
         {sources.data?.map(source => {
           const rowPending = update.isPending && pendingSourceId === source.id;
           return <article key={source.id} className="rounded-2xl border border-white/10 bg-zinc-950/35 p-4" aria-busy={rowPending}>
+            {source.circuitState === "open" && <div className="mb-4 flex flex-col gap-2 rounded-xl border border-rose-300/30 bg-rose-400/10 p-3 text-rose-100 sm:flex-row sm:items-center sm:justify-between" role="alert" data-testid={`circuit-open-${source.id}`}><div className="flex items-start gap-2"><AlertTriangle size={17} className="mt-0.5 shrink-0 text-rose-300" aria-hidden="true" /><div><p className="text-xs font-black uppercase tracking-wider">Circuit Breaker OPEN — ingestão pausada</p><p className="mt-1 text-xs text-rose-100/80">{source.circuitFailureCount} falha(s) consecutiva(s). A fonte está protegida até a reativação manual ou a próxima janela permitida.</p></div></div><span className="w-fit rounded-full bg-rose-300/20 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-rose-200">Pausada preventivamente</span></div>}
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2"><h3 className="font-black text-white">{source.name}</h3><span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-400">{source.kind === "instagram" ? "Instagram" : "Fonte pública"}</span><span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-wider ${source.isEnabled ? "bg-emerald-400/15 text-emerald-200" : "bg-zinc-700/50 text-zinc-400"}`}>{source.isEnabled ? "Ativa" : "Pausada"}</span></div>
                 {source.kind === "instagram" ? <label className="mt-1 block text-[10px] font-black uppercase tracking-wider text-zinc-500">Username/ID Meta<input aria-label={`Username/ID Meta de ${source.name}`} defaultValue={source.handle ?? ""} disabled={update.isPending} onBlur={event => saveSource(source.id, { isEnabled: source.isEnabled === 1, priority: source.priority, frequencyMinutes: source.frequencyMinutes, p95LatencyThresholdMs: source.p95LatencyThresholdMs ?? 3000, handle: event.currentTarget.value })} className="mt-1 min-h-9 w-full max-w-xs rounded-lg border border-white/10 bg-zinc-900 px-2 text-xs font-bold normal-case tracking-normal text-white outline-none focus:border-orange-300/60 disabled:opacity-50" /></label> : <p className="mt-1 truncate text-xs text-zinc-500">{source.url}</p>}
-                <p className="mt-2 flex items-center gap-2 text-xs text-zinc-400"><Clock3 size={13} className="text-orange-300" /> Último sucesso: {formatLastSuccess(source.lastSuccessAt)} <span aria-hidden="true">·</span> <span className={source.lastStatus === "failed" ? "text-rose-200" : "text-zinc-400"}>{source.lastStatus}</span></p>
+                <div className="mt-2 grid gap-1 text-xs text-zinc-400 sm:grid-cols-2 sm:gap-x-4"><p className="flex items-center gap-2"><Clock3 size={13} className="text-orange-300" /> Última tentativa: {formatTimestamp(source.lastAttemptAt)}</p><p className="flex items-center gap-2"><CheckCircle2 size={13} className="text-emerald-300" /> Último sucesso: {formatLastSuccess(source.lastSuccessAt)}</p></div><p className="mt-1 text-xs"><span className={source.lastStatus === "failed" ? "text-rose-200" : "text-zinc-400"}>Estado da última execução: {source.lastStatus}</span></p>
               </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:min-w-[560px]">
                 <label className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Prioridade<input aria-label={`Prioridade de ${source.name}`} type="number" min={1} max={1000} defaultValue={source.priority} disabled={update.isPending} onBlur={event => saveSource(source.id, { isEnabled: source.isEnabled === 1, priority: Number(event.currentTarget.value), frequencyMinutes: source.frequencyMinutes, p95LatencyThresholdMs: source.p95LatencyThresholdMs ?? 3000 })} className="mt-1 min-h-10 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 text-sm font-bold text-white outline-none focus:border-orange-300/60 disabled:cursor-wait disabled:opacity-50" /></label>
@@ -156,4 +162,3 @@ export default function AdminSourcesPanel() {
 }
 
 export { frequencyOptions };
-

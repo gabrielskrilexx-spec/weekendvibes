@@ -351,6 +351,7 @@ export const ingestionSources = mysqlTable("ingestionSources", {
   frequencyMinutes: int("frequencyMinutes").default(10080).notNull(),
   p95LatencyThresholdMs: int("p95LatencyThresholdMs").default(3000).notNull(),
   scheduleTaskUid: varchar("scheduleTaskUid", { length: 65 }),
+  lastAttemptAt: timestamp("lastAttemptAt"),
   lastSuccessAt: timestamp("lastSuccessAt"),
   lastStatus: mysqlEnum("lastStatus", ["never", "succeeded", "failed", "skipped"]).default("never").notNull(),
   lastMessage: text("lastMessage"),
