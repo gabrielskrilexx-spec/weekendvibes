@@ -3,10 +3,13 @@ import { act, create } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 import AdminSourcesPanel from "./AdminSourcesPanel";
 
-const { refetch, invalidate, mutate, reactivateMutate, createMutate, mockSettingsMutate, fetchMock, exportRefetch, reportQueryInputs } = vi.hoisted(() => ({ refetch: vi.fn(), invalidate: vi.fn(), mutate: vi.fn(), reactivateMutate: vi.fn(), createMutate: vi.fn(), mockSettingsMutate: vi.fn(), fetchMock: vi.fn(), exportRefetch: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }), reportQueryInputs: [] as unknown[] }));
+const { refetch, invalidate, mutate, reactivateMutate, createMutate, mockSettingsMutate, fetchMock, exportRefetch, reportQueryInputs, downloadAnchors, createObjectUrl } = vi.hoisted(() => ({ refetch: vi.fn(), invalidate: vi.fn(), mutate: vi.fn(), reactivateMutate: vi.fn(), createMutate: vi.fn(), mockSettingsMutate: vi.fn(), fetchMock: vi.fn(), exportRefetch: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }), reportQueryInputs: [] as unknown[], downloadAnchors: [] as Array<{ download?: string; click: () => void }>, createObjectUrl: vi.fn(() => "blob:test") }));
 const source = { id: 1, sourceKey: "instagram:mobydicksantos", name: "Moby House", kind: "instagram", handle: "mobydicksantos", url: "https://www.instagram.com/mobydicksantos/", isEnabled: 1, priority: 10, frequencyMinutes: 10080, p95LatencyThresholdMs: 3000, lastAttemptAt: new Date("2026-08-15T13:00:00Z"), lastSuccessAt: new Date("2026-08-15T12:00:00Z"), lastStatus: "failed", lastMessage: "Meta Graph API HTTP 400: Invalid user id", lastFailureReason: "ID inválido", lastExecutionFeedback: null, lastHttpStatus: 400, circuitNextAttemptAt: new Date("2026-08-16T07:00:00Z"), circuitState: "open", circuitFailureCount: 3 };
 const closedSource = { ...source, id: 2, sourceKey: "public:closed", name: "Fonte Saudável", kind: "public", handle: null, url: "https://example.com/agenda", lastStatus: "succeeded", lastMessage: "Sucesso: 10 eventos lidos, 2 persistidos.", lastExecutionFeedback: "Sucesso: 10 eventos lidos, 2 persistidos.", lastFailureReason: null, lastHttpStatus: 200, circuitNextAttemptAt: null, circuitState: "closed", circuitFailureCount: 0 };
 vi.stubGlobal("fetch", fetchMock);
+vi.stubGlobal("Blob", class TestBlob { constructor(public parts: unknown[], public options: unknown) {} });
+vi.stubGlobal("URL", { createObjectURL: createObjectUrl, revokeObjectURL: vi.fn() });
+vi.stubGlobal("document", { createElement: vi.fn(() => { const anchor = { download: "", href: "", click: vi.fn() }; downloadAnchors.push(anchor); return anchor; }) });
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
@@ -17,6 +20,7 @@ vi.mock("@/lib/trpc", () => ({
     ingestionSources: {
       list: { useQuery: (input?: { openOnly?: boolean; failureCategory?: string }) => ({ data: [source, closedSource].filter(item => (!input?.openOnly || item.circuitState === "open") && (!input?.failureCategory || (input.failureCategory === "meta110" && item.lastHttpStatus === 400))), isLoading: false, isError: false, isFetching: false, refetch }) },
       summary: { useQuery: () => ({ data: { active: 2, open: 1, waf: 0, meta110: 1, network: 0 }, isLoading: false }) },
+      consolidatedReport: { useQuery: () => ({ data: undefined, isFetching: false, refetch: () => Promise.resolve({ data: { generatedAt: "2026-10-16T12:00:00.000Z", totalSources: 2, activeSources: 1, pausedSources: 1, sources: [] } }) }) },
       executiveReport: { useQuery: (input: unknown) => { reportQueryInputs.push(input); return { data: { generatedAt: "2026-10-16T12:00:00.000Z", periodDays: 14, system_health_status: "degraded", sources: { active: 2, open: 1, waf: 0, meta110: 1, network: 0 }, series: [{ date: "2026-10-16", waf: 2, meta110: 1, network: 0, succeeded: 4, total: 5, successRate: 80 }], trends: { waf: { current: 2, previous: 3, delta: -1, percentage: -33.3, direction: "down" }, meta110: { current: 1, previous: 0, delta: 1, percentage: 100, direction: "up" }, network: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, succeeded: { current: 4, previous: 3, delta: 1, percentage: 33.3, direction: "up" }, successRate: { current: 80, previous: 60, delta: 20, percentage: 33.3, direction: "up" } } }, isLoading: false }; } },
       auditLog: { useQuery: () => ({ data: [{ id: 1, previousHandle: "moby-old", nextHandle: "moby-corrigido", changedAt: new Date("2026-08-16T12:00:00Z") }] }) },
       actionAudit: { useQuery: () => ({ data: [{ id: 1, action: "reactivated", operatorOpenId: "admin@example", details: "Reprocessamento imediato solicitado", actedAt: new Date("2026-08-17T12:00:00Z") }] }) },
@@ -210,6 +214,29 @@ describe("AdminSourcesPanel", () => {
     expect(JSON.stringify(tree!.toJSON())).toContain("Últimos 30 dias");
     expect(tree!.root.findByProps({ "aria-label": "Exportar série de telemetria em CSV" })).toBeTruthy();
     expect(tree!.root.findByProps({ "aria-label": "Exportar série de telemetria em JSON" })).toBeTruthy();
+  });
+
+  it("simula o clique de download e entrega Blob com nome contextual", async () => {
+    downloadAnchors.length = 0;
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const failure = tree!.root.findByProps({ "aria-label": "Filtrar por motivo da falha" });
+    const period = tree!.root.findByProps({ "aria-label": "Período do gráfico de telemetria" });
+    await act(async () => {
+      failure.props.onChange({ target: { value: "meta110" } });
+      period.props.onChange({ target: { value: "7" } });
+    });
+    const csv = tree!.root.findByProps({ "aria-label": "Exportar série de telemetria em CSV" });
+    await act(async () => { csv.props.onClick(); });
+    expect(createObjectUrl).toHaveBeenCalled();
+    expect(downloadAnchors.at(-1)?.download).toMatch(/^auditoria_meta110_7dias_\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(downloadAnchors.at(-1)?.click).toHaveBeenCalled();
+  });
+
+  it("oferece a exportação global do catálogo consolidado", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    expect(tree!.root.findByProps({ "aria-label": "Exportar Catálogo Consolidado" })).toBeTruthy();
   });
 
   it("exporta usando ação, datas e status ativos no modal", async () => {

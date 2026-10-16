@@ -80,7 +80,9 @@ function SourceOperationalTimeline({ sourceKey, sourceStatus }: { sourceKey: str
       const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
       const link = document.createElement("a");
       link.href = url;
-      link.download = `timeline-operacional-${sourceKey.replace(/[^a-z0-9_-]+/gi, "-")}.csv`;
+      const actionName = actionFilter === "all" ? "todas" : actionFilter;
+      const dateName = fromDate || toDate ? `${fromDate || "inicio"}_${toDate || "fim"}` : "todas-datas";
+      link.download = `auditoria_${actionName}_${dateName}_${new Date().toISOString().slice(0, 10)}.csv`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -94,7 +96,9 @@ function SourceOperationalTimeline({ sourceKey, sourceStatus }: { sourceKey: str
       const url = URL.createObjectURL(new Blob([payload], { type: "application/json;charset=utf-8" }));
       const link = document.createElement("a");
       link.href = url;
-      link.download = `timeline-operacional-${sourceKey.replace(/[^a-z0-9_-]+/gi, "-")}.json`;
+      const actionName = actionFilter === "all" ? "todas" : actionFilter;
+      const dateName = fromDate || toDate ? `${fromDate || "inicio"}_${toDate || "fim"}` : "todas-datas";
+      link.download = `auditoria_${actionName}_${dateName}_${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -114,6 +118,7 @@ export default function AdminSourcesPanel() {
   const filterSince = periodFilter === "all" ? undefined : new Date(Date.now() - (periodFilter === "7d" ? 7 : 30) * 24 * 60 * 60 * 1000).toISOString();
   const sources = trpc.ingestionSources.list.useQuery({ openOnly: openOnly || undefined, failureCategory: failureFilter === "all" ? undefined : failureFilter, since: filterSince }, { refetchInterval: 30_000 });
   const sourceSummary = trpc.ingestionSources.summary.useQuery(undefined, { refetchInterval: 30_000 });
+  const consolidatedReport = trpc.ingestionSources.consolidatedReport.useQuery(undefined, { enabled: false });
   const executiveReport = trpc.ingestionSources.executiveReport.useQuery({ days: graphPeriod }, { refetchInterval: 60_000 });
   const mockSettings = trpc.ingestionReports.mockSettings.useQuery(undefined, { refetchInterval: 30_000 });
   const utils = trpc.useUtils();
@@ -198,7 +203,9 @@ export default function AdminSourcesPanel() {
   };
   const downloadTelemetrySeries = (format: "csv" | "json") => {
     const series = executiveReport.data?.series ?? [];
-    const filename = `telemetria-${graphPeriod}d.${format}`;
+    const category = failureFilter === "all" ? "geral" : failureFilter;
+    const today = new Date().toISOString().slice(0, 10);
+    const filename = `auditoria_${category}_${graphPeriod}dias_${today}.${format}`;
     const content = format === "json"
       ? JSON.stringify({ periodDays: graphPeriod, series }, null, 2)
       : `\uFEFFdate,waf,meta110,network,succeeded,total,successRate\n${series.map(point => [point.date, point.waf, point.meta110, point.network, point.succeeded, point.total, point.successRate].join(",")).join("\n")}`;
@@ -209,6 +216,20 @@ export default function AdminSourcesPanel() {
     link.download = filename;
     link.click();
     URL.revokeObjectURL(url);
+  };
+  const downloadConsolidatedCatalog = async () => {
+    try {
+      const result = await consolidatedReport.refetch();
+      const payload = JSON.stringify(result.data ?? { generatedAt: new Date().toISOString(), totalSources: 0, activeSources: 0, pausedSources: 0, sources: [] }, null, 2);
+      const url = URL.createObjectURL(new Blob([payload], { type: "application/json;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `catalogo_consolidado_${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      sonnerToast.error("Não foi possível exportar o catálogo consolidado", { description: friendlyAdminErrorMessage(error, "Tente novamente.") });
+    }
   };
   const submitNewSource = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -232,6 +253,7 @@ export default function AdminSourcesPanel() {
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-zinc-400">Ative ou pause perfis, ajuste a prioridade e defina a cadência desejada. A rotina existente continua sendo a responsável pelo disparo, evitando schedules duplicados.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => void downloadConsolidatedCatalog()} disabled={consolidatedReport.isFetching} aria-busy={consolidatedReport.isFetching} aria-label="Exportar Catálogo Consolidado" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-orange-300/30 bg-orange-300/10 px-3 text-xs font-black text-orange-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:opacity-50"><Download size={14} aria-hidden="true" /> {consolidatedReport.isFetching ? "Gerando catálogo..." : "Exportar Catálogo Consolidado"}</button>
           <label className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-zinc-300"><input type="checkbox" checked={openOnly} onChange={event => setOpenOnly(event.target.checked)} className="size-4 accent-rose-300" /> Apenas OPEN</label>
           <label className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-zinc-300">Falha<select aria-label="Filtrar por motivo da falha" value={failureFilter} onChange={event => setFailureFilter(event.target.value as FailureFilter)} className="min-h-9 rounded-lg border border-white/10 bg-zinc-900 px-2 text-xs text-white"><option value="all">Todas</option><option value="waf">WAF / Cloudflare</option><option value="meta110">Meta API (Code 110)</option><option value="network">Timeout / Rede</option></select></label>
           <label className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-zinc-300">Período<select aria-label="Filtrar por período" value={periodFilter} onChange={event => setPeriodFilter(event.target.value as typeof periodFilter)} className="min-h-9 rounded-lg border border-white/10 bg-zinc-900 px-2 text-xs text-white"><option value="all">Todos</option><option value="7d">Últimos 7 dias</option><option value="30d">Últimos 30 dias</option></select></label>

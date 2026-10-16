@@ -416,6 +416,33 @@ export async function getIngestionSourceSummary(dbOverride?: Awaited<ReturnType<
   };
 }
 
+export async function getConsolidatedIngestionSourceReport(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const rows = await listIngestionSources(dbOverride);
+  return {
+    generatedAt: new Date().toISOString(),
+    totalSources: rows.length,
+    activeSources: rows.filter(source => source.isEnabled === 1).length,
+    pausedSources: rows.filter(source => source.circuitState === "open" || source.isEnabled !== 1).length,
+    sources: rows.map(source => ({
+      sourceKey: source.sourceKey,
+      name: source.name,
+      kind: source.kind,
+      handle: source.handle,
+      url: source.url,
+      isEnabled: source.isEnabled === 1,
+      lastStatus: source.lastStatus,
+      lastAttemptAt: source.lastAttemptAt,
+      lastSuccessAt: source.lastSuccessAt,
+      lastFailureReason: source.lastFailureReason,
+      lastHttpStatus: source.lastHttpStatus,
+      circuitState: source.circuitState,
+      circuitFailureCount: source.circuitFailureCount,
+      circuitNextAttemptAt: source.circuitNextAttemptAt,
+      consecutive403Count: source.consecutive403Count,
+    })),
+  };
+}
+
 export async function getExecutiveObservabilityReport(now = new Date(), days = 14, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const safeDays = normalizeObservabilityPeriod(days);
   const db = dbOverride ?? await getDb();
