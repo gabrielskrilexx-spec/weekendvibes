@@ -26,7 +26,8 @@ import {
 import { listHeartbeatJobs } from "./_core/heartbeat";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import { isWafBlockedFailure } from "./ingestion";
-
+import { serializeIngestionCounts, serializeIngestionDetails, parseJsonObjectColumn } from "./json-contracts";
+import type { RunStatus } from "../shared/domain";
 const monitoredBrandFor = (title: string, sourceType: string | null) => {
   if (sourceType === "weticket" && /ap(?:ê|e)\s*22/i.test(title)) return { brand: "APÊ 22", sourceKey: "public:weticket" } as const;
   if (sourceType === "zig" && /osuco/i.test(title)) return { brand: "OSUCO", sourceKey: "public:zig" } as const;
@@ -927,7 +928,7 @@ export async function approveFilteredInstagramStory(input: { runId: number; stor
   const [row] = await db.select({ details: ingestionRuns.details }).from(ingestionRuns).where(eq(ingestionRuns.id, input.runId)).limit(1);
   if (!row) throw new Error("Execução de ingestão não encontrada.");
   let details: unknown = {};
-  try { details = row.details ? JSON.parse(row.details) : {}; } catch { throw new Error("Detalhes da execução estão inválidos."); }
+  try { details = parseJsonObjectColumn(row.details, "Detalhes da execução"); } catch { throw new Error("Detalhes da execução estão inválidos."); }
   if (!details || typeof details !== "object" || Array.isArray(details)) throw new Error("Detalhes da execução estão inválidos.");
   const root = details as Record<string, unknown>;
   const instagram = root.instagram && typeof root.instagram === "object" && !Array.isArray(root.instagram) ? root.instagram as Record<string, unknown> : null;
@@ -949,7 +950,7 @@ export async function updateIngestionRunOcrText(input: { runId: number; entryInd
   const [row] = await db.select({ details: ingestionRuns.details }).from(ingestionRuns).where(eq(ingestionRuns.id, input.runId)).limit(1);
   if (!row) throw new Error("Execução de ingestão não encontrada.");
   let details: unknown = {};
-  try { details = row.details ? JSON.parse(row.details) : {}; } catch { throw new Error("Detalhes da execução estão inválidos."); }
+  try { details = parseJsonObjectColumn(row.details, "Detalhes da execução"); } catch { throw new Error("Detalhes da execução estão inválidos."); }
   if (!details || typeof details !== "object" || Array.isArray(details)) throw new Error("Detalhes da execução estão inválidos.");
   const root = details as Record<string, unknown>;
   const instagram = root.instagram && typeof root.instagram === "object" && !Array.isArray(root.instagram) ? root.instagram as Record<string, unknown> : null;
@@ -973,7 +974,7 @@ export async function reprocessIngestionRunOcr(input: { runId: number; entryInde
   const [row] = await db.select({ details: ingestionRuns.details }).from(ingestionRuns).where(eq(ingestionRuns.id, input.runId)).limit(1);
   if (!row) throw new Error("Execução de ingestão não encontrada.");
   let details: unknown = {};
-  try { details = row.details ? JSON.parse(row.details) : {}; } catch { throw new Error("Detalhes da execução estão inválidos."); }
+  try { details = parseJsonObjectColumn(row.details, "Detalhes da execução"); } catch { throw new Error("Detalhes da execução estão inválidos."); }
   if (!details || typeof details !== "object" || Array.isArray(details)) throw new Error("Detalhes da execução estão inválidos.");
   const root = details as Record<string, unknown>;
   const instagram = root.instagram && typeof root.instagram === "object" && !Array.isArray(root.instagram) ? root.instagram as Record<string, unknown> : null;
@@ -1117,7 +1118,7 @@ function normalizeCounts(input: {
 export async function setIngestionRunDetails(runId: number, details: Record<string, unknown>) {
   const db = await getDb();
   if (!db) return false;
-  await db.update(ingestionRuns).set({ details: JSON.stringify(details).slice(0, 20000) }).where(eq(ingestionRuns.id, runId));
+  await db.update(ingestionRuns).set({ details: serializeIngestionDetails(details).slice(0, 20000) }).where(eq(ingestionRuns.id, runId));
   return true;
 }
 
@@ -1145,7 +1146,7 @@ export async function findIngestionRunById(runId: number) {
 export async function finishIngestionRun(
   id: number | undefined,
   input: {
-    status: "succeeded" | "failed" | "partial";
+    status: Exclude<RunStatus, "running">;
     importedCount?: number;
     failedCount?: number;
     details?: unknown;
@@ -1176,10 +1177,10 @@ export async function finishIngestionRun(
       )
     );
     const counts = normalizeCounts(input);
-    const serializedCounts = JSON.stringify(counts);
+    const serializedCounts = serializeIngestionCounts(counts);
     const serializedDetails =
       input.details !== undefined
-        ? JSON.stringify(input.details).slice(0, 20000)
+        ? serializeIngestionDetails(typeof input.details === "string" ? JSON.parse(input.details) : input.details).slice(0, 20000)
         : null;
     await db
       .update(ingestionRuns)

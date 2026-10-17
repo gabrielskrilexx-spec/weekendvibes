@@ -5,6 +5,8 @@ import { trpc } from "@/lib/trpc";
 import { postAdminJson } from "@/lib/admin-rest";
 import { friendlyAdminErrorMessage } from "@/lib/adminFeedback";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import OperationalTimelineDialog from "./OperationalTimelineDialog";
+import { useAdminSources, type FailureFilter } from "@/hooks/useAdminSources";
 
 const frequencyOptions = [
   { value: 1440, label: "Diária" },
@@ -22,9 +24,6 @@ function formatTimestamp(value: string | Date | null) {
   return new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
-type FailureFilter = "all" | "waf" | "meta110" | "network";
-type TimelineActionFilter = "all" | "handle_changed" | "reactivated" | "reprocessed";
-
 function classifyFailure(source: { lastMessage?: string | null; lastFailureReason?: string | null; lastHttpStatus?: number | null }) {
   const text = `${source.lastMessage ?? ""} ${source.lastFailureReason ?? ""}`.toLowerCase();
   if (source.lastHttpStatus === 403 || /waf|cloudflare|akamai|bloqueado/.test(text)) return "waf" as const;
@@ -40,10 +39,6 @@ function nextAttemptFor(source: { circuitState: string; circuitNextAttemptAt?: s
   return null;
 }
 
-function csvCell(value: string | null | undefined) {
-  return `"${String(value ?? "").replace(/"/g, '""')}"`;
-}
-
 function trendLabel(trend: { percentage: number; direction: "up" | "down" | "flat" } | undefined) {
   if (!trend) return "Comparativo indisponível";
   const arrow = trend.direction === "up" ? "↑" : trend.direction === "down" ? "↓" : "→";
@@ -56,72 +51,8 @@ function trendClass(trend: { direction: "up" | "down" | "flat" } | undefined, in
   return positive ? "text-emerald-200" : "text-rose-200";
 }
 
-function SourceOperationalTimeline({ sourceKey, sourceStatus }: { sourceKey: string; sourceStatus: string }) {
-  const [page, setPage] = useState(1);
-  const [actionFilter, setActionFilter] = useState<TimelineActionFilter>("all");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
-  const from = fromDate ? new Date(`${fromDate}T00:00:00.000Z`).toISOString() : undefined;
-  const to = toDate ? new Date(`${toDate}T23:59:59.999Z`).toISOString() : undefined;
-  const status: "open" | "closed" = sourceStatus === "open" ? "open" : "closed";
-  const firstControlRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { firstControlRef.current?.focus(); }, []);
-  const timeline = trpc.ingestionSources.operationalTimeline.useQuery({ sourceKey, page, pageSize: 5, action: actionFilter === "all" ? undefined : actionFilter, from, to }, { staleTime: 30_000, refetchInterval: 30_000 });
-  const exportInput = { sourceKey, action: actionFilter === "all" ? undefined : actionFilter, from, to, status };
-  const exportTimeline = trpc.ingestionSources.operationalTimelineExport.useQuery(exportInput, { enabled: false });
-  const exportJsonTimeline = trpc.ingestionSources.operationalTimelineJsonExport.useQuery(exportInput, { enabled: false });
-  const label = (action: string) => action === "handle_changed" ? "ID Meta alterado" : action === "reactivated" ? "Fonte reativada" : "Reprocessamento imediato";
-  const exportCsv = async () => {
-    try {
-      const result = await exportTimeline.refetch();
-      const items = result.data?.items ?? [];
-      const rows = [["operador", "ação", "data/hora", "motivo"], ...items.map(item => [item.actorOpenId ?? "", label(item.action), item.occurredAt, item.details ?? ""])];
-      const csv = `\uFEFF${rows.map(row => row.map(csvCell).join(",")).join("\r\n")}\r\n`;
-      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-      const link = document.createElement("a");
-      link.href = url;
-      const actionName = actionFilter === "all" ? "todas" : actionFilter;
-      const dateName = fromDate || toDate ? `${fromDate || "inicio"}_${toDate || "fim"}` : "todas-datas";
-      link.download = `auditoria_${actionName}_${dateName}_${new Date().toISOString().slice(0, 10)}.csv`;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      sonnerToast.error("Não foi possível exportar o histórico", { description: friendlyAdminErrorMessage(error, "Tente novamente.") });
-    }
-  };
-  const exportJson = async () => {
-    try {
-      const result = await exportJsonTimeline.refetch();
-      const payload = JSON.stringify(result.data ?? { sourceKey, exportedAt: new Date().toISOString(), total: 0, items: [] }, null, 2);
-      const url = URL.createObjectURL(new Blob([payload], { type: "application/json;charset=utf-8" }));
-      const link = document.createElement("a");
-      link.href = url;
-      const actionName = actionFilter === "all" ? "todas" : actionFilter;
-      const dateName = fromDate || toDate ? `${fromDate || "inicio"}_${toDate || "fim"}` : "todas-datas";
-      link.download = `auditoria_${actionName}_${dateName}_${new Date().toISOString().slice(0, 10)}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      sonnerToast.error("Não foi possível exportar o JSON", { description: friendlyAdminErrorMessage(error, "Tente novamente.") });
-    }
-  };
-  const counts = timeline.data?.actionCounts ?? { all: 0, handle_changed: 0, reactivated: 0, reprocessed: 0 };
-  const clearFilters = () => { setFromDate(""); setToDate(""); setActionFilter("all"); setPage(1); };
-  return <div className="mt-4" data-testid={`operational-timeline-${sourceKey}`}><div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center justify-between gap-2"><p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Timeline operacional</p>{timeline.data && <span className="text-[10px] text-zinc-500">{timeline.data.total} evento(s)</span>}</div><div className="flex flex-wrap gap-2"><button type="button" onClick={() => void exportCsv()} disabled={exportTimeline.isFetching} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-bold text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:cursor-wait disabled:opacity-50" aria-busy={exportTimeline.isFetching}>{exportTimeline.isFetching ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} {exportTimeline.isFetching ? "Gerando CSV..." : "Exportar Histórico (CSV)"}</button><button type="button" onClick={() => void exportJson()} disabled={exportJsonTimeline.isFetching} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-bold text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:cursor-wait disabled:opacity-50" aria-busy={exportJsonTimeline.isFetching} aria-label="Exportar timeline em JSON">{exportJsonTimeline.isFetching ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} {exportJsonTimeline.isFetching ? "Gerando JSON..." : "Exportar JSON"}</button><button type="button" onClick={clearFilters} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-bold text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300" aria-label="Limpar filtros da timeline">Limpar filtros</button></div></div><div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2"><label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">Data inicial<input ref={firstControlRef} autoFocus aria-label="Data inicial da timeline" type="date" value={fromDate} onChange={event => { setFromDate(event.target.value); setPage(1); }} className="min-h-10 rounded-lg border border-white/10 bg-zinc-950 px-2 text-xs normal-case tracking-normal text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300" /></label><label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">Data final<input aria-label="Data final da timeline" type="date" value={toDate} onChange={event => { setToDate(event.target.value); setPage(1); }} className="min-h-10 rounded-lg border border-white/10 bg-zinc-950 px-2 text-xs normal-case tracking-normal text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300" /></label></div><div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Filtrar timeline por ação">{([ ["all", `Todas (${counts.all})`], ["handle_changed", `Edição de ID Meta (${counts.handle_changed})`], ["reactivated", `Reativações (${counts.reactivated})`], ["reprocessed", `Reprocessamentos (${counts.reprocessed})`] ] as const).map(([value, text]) => <button key={value} type="button" onClick={() => { setActionFilter(value); setPage(1); }} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setActionFilter(value); setPage(1); } }} aria-label={text} aria-pressed={actionFilter === value} className={`min-h-10 rounded-lg border px-3 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 ${actionFilter === value ? "border-orange-300/60 bg-orange-300/10 text-orange-100" : "border-white/10 text-zinc-400"}`}>{text}</button>)}</div>{timeline.data?.items?.length ? <><ol className="mt-2 space-y-2">{timeline.data.items.map(item => <li key={item.id} className="border-l border-emerald-300/40 pl-3 text-xs text-zinc-300"><strong>{label(item.action)}</strong><time className="ml-2 text-zinc-500" dateTime={item.occurredAt}>{formatTimestamp(item.occurredAt)}</time>{item.actorOpenId && <span className="mt-0.5 block text-[10px] text-zinc-500">Operador: {item.actorOpenId}</span>}{item.details && <span className="mt-0.5 block text-[10px] text-zinc-400">{item.details}</span>}</li>)}</ol><div className="mt-3 flex items-center justify-between gap-2"><button type="button" onClick={() => setPage(value => Math.max(1, value - 1))} disabled={page <= 1} aria-label="Página anterior da timeline" className="min-h-10 rounded-lg border border-white/10 px-3 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:opacity-40">Anterior</button><span className="text-[10px] text-zinc-500" aria-live="polite">Página {page}</span><button type="button" onClick={() => setPage(value => value + 1)} disabled={!timeline.data.hasNextPage} aria-label="Próxima página da timeline" className="min-h-10 rounded-lg border border-white/10 px-3 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:opacity-40">Próxima</button></div></> : <p className="mt-2 text-xs text-zinc-500">Nenhum evento operacional registrado.</p>}</div>;
-}
-
 export default function AdminSourcesPanel() {
-  const [openOnly, setOpenOnly] = useState(false);
-  const [failureFilter, setFailureFilter] = useState<FailureFilter>("all");
-  const [periodFilter, setPeriodFilter] = useState<"all" | "7d" | "30d">("all");
-  const [graphPeriod, setGraphPeriod] = useState<7 | 14 | 30>(14);
-  const filterSince = periodFilter === "all" ? undefined : new Date(Date.now() - (periodFilter === "7d" ? 7 : 30) * 24 * 60 * 60 * 1000).toISOString();
-  const sources = trpc.ingestionSources.list.useQuery({ openOnly: openOnly || undefined, failureCategory: failureFilter === "all" ? undefined : failureFilter, since: filterSince }, { refetchInterval: 30_000 });
-  const sourceSummary = trpc.ingestionSources.summary.useQuery(undefined, { refetchInterval: 30_000 });
-  const consolidatedReport = trpc.ingestionSources.consolidatedReport.useQuery(undefined, { enabled: false });
-  const consolidatedCsvExport = trpc.ingestionSources.consolidatedCsvExport.useQuery(undefined, { enabled: false });
-  const executiveReport = trpc.ingestionSources.executiveReport.useQuery({ days: graphPeriod }, { refetchInterval: 60_000 });
-  const mockSettings = trpc.ingestionReports.mockSettings.useQuery(undefined, { refetchInterval: 30_000 });
+  const { openOnly, setOpenOnly, failureFilter, setFailureFilter, periodFilter, setPeriodFilter, graphPeriod, setGraphPeriod, sources, sourceSummary, consolidatedReport, consolidatedCsvExport, executiveReport, mockSettings } = useAdminSources();
   const utils = trpc.useUtils();
   const runObservabilityNow = trpc.ingestionSources.runObservabilityNow.useMutation({
     onSuccess: async result => {
@@ -334,7 +265,7 @@ export default function AdminSourcesPanel() {
           </article>;
         })}
       </div>
-      {detailsSource && <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 p-4" role="dialog" aria-modal="true" aria-labelledby="source-details-title"><div data-testid="source-details-dialog" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-zinc-900 p-5 text-white shadow-2xl sm:p-6"><div className="flex items-start justify-between gap-4"><div><h3 id="source-details-title" className="text-lg font-black">Detalhes da fonte</h3><p className="mt-1 text-sm text-zinc-400">{detailsSource.name}</p></div><button type="button" onClick={() => setDetailsSource(null)} aria-label="Fechar detalhes da fonte" className="rounded-lg px-2 py-1 text-zinc-400 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">×</button></div><div className="mt-5 rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100"><strong>Última falha:</strong> {detailsSource.lastMessage || detailsSource.lastFailureReason || "Nenhuma falha registrada."}</div>{nextAttemptFor(detailsSource) && <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-400/10 p-3 text-sm text-amber-100"><strong>Próxima tentativa automática prevista:</strong> {formatTimestamp(nextAttemptFor(detailsSource))}<span className="mt-1 block text-xs text-amber-100/70">Calculada pelo cooldown do Circuit Breaker; se não houver backoff persistido, usa a cadência configurada de {detailsSource.frequencyMinutes} minutos.</span></p>}<SourceOperationalTimeline sourceKey={detailsSource.sourceKey} sourceStatus={detailsSource.circuitState} /></div></div>}
+      {detailsSource && <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 p-4" role="dialog" aria-modal="true" aria-labelledby="source-details-title"><div data-testid="source-details-dialog" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-zinc-900 p-5 text-white shadow-2xl sm:p-6"><div className="flex items-start justify-between gap-4"><div><h3 id="source-details-title" className="text-lg font-black">Detalhes da fonte</h3><p className="mt-1 text-sm text-zinc-400">{detailsSource.name}</p></div><button type="button" onClick={() => setDetailsSource(null)} aria-label="Fechar detalhes da fonte" className="rounded-lg px-2 py-1 text-zinc-400 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">×</button></div><div className="mt-5 rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100"><strong>Última falha:</strong> {detailsSource.lastMessage || detailsSource.lastFailureReason || "Nenhuma falha registrada."}</div>{nextAttemptFor(detailsSource) && <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-400/10 p-3 text-sm text-amber-100"><strong>Próxima tentativa automática prevista:</strong> {formatTimestamp(nextAttemptFor(detailsSource))}<span className="mt-1 block text-xs text-amber-100/70">Calculada pelo cooldown do Circuit Breaker; se não houver backoff persistido, usa a cadência configurada de {detailsSource.frequencyMinutes} minutos.</span></p>}<OperationalTimelineDialog sourceKey={detailsSource.sourceKey} sourceStatus={detailsSource.circuitState} /></div></div>}
     </section>
   );
 }

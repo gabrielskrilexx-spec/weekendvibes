@@ -4,6 +4,7 @@ import { invokeLLM } from "./_core/llm";
 import { assertEventDateIsCurrentOrFuture, getIngestionPayloadCache, listActiveLocationAliasValues, listIngestionSources, recordOperationalAlert, saveEvent, saveIngestionPayloadCache } from "./db";
 import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
 import { fetchExternal, isSandboxRestrictedError, readExternalBody, sanitizeExternalFetchError } from "./external-fetch";
+import { parsePayloadJsonColumn } from "./json-contracts";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 
 const DEFAULT_SOURCE_URLS = [
@@ -825,7 +826,7 @@ export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCac
     const cached = await cacheStore.read(ingresseCacheKey(url)).catch(() => undefined);
     if (cached) {
       try {
-        const structured = JSON.parse(cached.payload) as Record<string, string | number>;
+        const structured = parsePayloadJsonColumn(cached.payload) as Record<string, string | number>;
         const text = Object.values(structured).filter(value => typeof value === "string").join(" ");
         return { url, html: "", text: text.slice(0, 16_000), imageUrl: String(structured.imageUrl ?? ""), structured, cacheFallback: { used: true as const, status: failure.status, message: failure.message }, fetchFailure: failure };
       } catch {

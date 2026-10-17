@@ -7,6 +7,8 @@ import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from
 import { ENV } from './_core/env';
 import { buildDailyTelemetrySeries, calculateSystemHealthStatus, normalizeObservabilityPeriod, summarizeTelemetryTrend } from "./observability";
 import { upsert } from "./pg-upsert";
+import { serializePayloadJson } from "./json-contracts";
+import type { CircuitState, FailureCategory } from "../shared/domain";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -416,7 +418,7 @@ export async function listIngestionSources(dbOverride?: Awaited<ReturnType<typeo
   return db.select().from(ingestionSources).orderBy(asc(ingestionSources.kind), asc(ingestionSources.priority), asc(ingestionSources.name));
 }
 
-export type IngestionSourceFailureCategory = "waf" | "meta110" | "network";
+export type IngestionSourceFailureCategory = Extract<FailureCategory, "waf" | "meta110" | "network">;
 export type IngestionSourceListFilters = { openOnly?: boolean; failureCategory?: IngestionSourceFailureCategory; since?: Date };
 
 export function classifyIngestionSourceFailure(source: Pick<IngestionSource, "lastMessage" | "lastFailureReason" | "lastHttpStatus">): IngestionSourceFailureCategory | null {
@@ -487,7 +489,7 @@ export async function createCatalogSnapshot(report?: Awaited<ReturnType<typeof g
   const db = dbOverride ?? await getDb();
   if (!db) return null;
   const payload = report ?? await getConsolidatedIngestionSourceReport(db);
-  const payloadJson = JSON.stringify(payload);
+  const payloadJson = serializePayloadJson(payload);
   const snapshotHash = createHash("sha256").update(payloadJson).digest("hex");
   const generatedAt = new Date(payload.generatedAt);
   const [inserted] = await db.insert(catalogSnapshots).values({ snapshotHash, generatedAt, sourceCount: payload.totalSources, payloadJson }).returning({ id: catalogSnapshots.id });
@@ -726,7 +728,7 @@ export async function recordIngestionSourceAction(input: { sourceKey: string; ac
   await db.insert(ingestionSourceActionAuditLogs).values({ sourceKey: input.sourceKey.slice(0, 120), action: input.action, operatorOpenId: input.operatorOpenId?.slice(0, 160) ?? null, details: input.details?.slice(0, 500) ?? null });
 }
 
-export type CircuitState = "closed" | "open" | "half_open";
+export type { CircuitState } from "../shared/domain";
 
 function circuitCooldownMs() {
   const configuredHours = Number(process.env.INGESTION_CIRCUIT_COOLDOWN_HOURS ?? 18);
@@ -843,7 +845,7 @@ export async function getIngestionPayloadCache(cacheKey: string, dbOverride?: Aw
 export async function saveIngestionPayloadCache(input: { cacheKey: string; sourceKey: string; sourceUrl: string; payload: unknown; latitude?: string; longitude?: string }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) return;
-  const serialized = JSON.stringify(input.payload).slice(0, 60000);
+  const serialized = serializePayloadJson(input.payload).slice(0, 60000);
   await upsert(db.insert(ingestionPayloadCache).values({ cacheKey: input.cacheKey.slice(0, 255), sourceKey: input.sourceKey.slice(0, 120), sourceUrl: input.sourceUrl.slice(0, 1000), payload: serialized, latitude: input.latitude?.slice(0, 32) ?? null, longitude: input.longitude?.slice(0, 32) ?? null, lastGoodAt: new Date() }), ingestionPayloadCache.cacheKey, { sourceKey: input.sourceKey.slice(0, 120), sourceUrl: input.sourceUrl.slice(0, 1000), payload: serialized, latitude: input.latitude?.slice(0, 32) ?? null, longitude: input.longitude?.slice(0, 32) ?? null, lastGoodAt: new Date(), updatedAt: new Date() });
 }
 
