@@ -21,6 +21,7 @@ vi.mock("@/lib/trpc", () => ({
       list: { useQuery: (input?: { openOnly?: boolean; failureCategory?: string }) => ({ data: [source, closedSource].filter(item => (!input?.openOnly || item.circuitState === "open") && (!input?.failureCategory || (input.failureCategory === "meta110" && item.lastHttpStatus === 400))), isLoading: false, isError: false, isFetching: false, refetch }) },
       summary: { useQuery: () => ({ data: { active: 2, open: 1, waf: 0, meta110: 1, network: 0 }, isLoading: false }) },
       consolidatedReport: { useQuery: () => ({ data: undefined, isFetching: false, refetch: () => Promise.resolve({ data: { generatedAt: "2026-10-16T12:00:00.000Z", totalSources: 2, activeSources: 1, pausedSources: 1, sources: [] } }) }) },
+      consolidatedCsvExport: { useQuery: () => ({ data: undefined, isFetching: false, refetch: () => Promise.resolve({ data: { filename: "catalogo_consolidado_2026-10-16.csv", contentType: "text/csv;charset=utf-8", csv: "\uFEFFsourceKey,nome\r\n\"public:agenda\",\"Agenda \"\"Litoral\"\"\"\r\n" } }) }) },
       executiveReport: { useQuery: (input: unknown) => { reportQueryInputs.push(input); return { data: { generatedAt: "2026-10-16T12:00:00.000Z", periodDays: 14, system_health_status: "degraded", sources: { active: 2, open: 1, waf: 0, meta110: 1, network: 0 }, healthTransitions: [{ id: 1, previousStatus: "healthy", nextStatus: "degraded", reason: "1 fonte OPEN", observedAt: "2026-10-16T12:00:00.000Z" }], series: [{ date: "2026-10-16", waf: 2, meta110: 1, network: 0, succeeded: 4, total: 5, successRate: 80 }], trends: { waf: { current: 2, previous: 3, delta: -1, percentage: -33.3, direction: "down" }, meta110: { current: 1, previous: 0, delta: 1, percentage: 100, direction: "up" }, network: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, succeeded: { current: 4, previous: 3, delta: 1, percentage: 33.3, direction: "up" }, successRate: { current: 80, previous: 60, delta: 20, percentage: 33.3, direction: "up" } } }, isLoading: false }; } },
       auditLog: { useQuery: () => ({ data: [{ id: 1, previousHandle: "moby-old", nextHandle: "moby-corrigido", changedAt: new Date("2026-08-16T12:00:00Z") }] }) },
       actionAudit: { useQuery: () => ({ data: [{ id: 1, action: "reactivated", operatorOpenId: "admin@example", details: "Reprocessamento imediato solicitado", actedAt: new Date("2026-08-17T12:00:00Z") }] }) },
@@ -236,7 +237,22 @@ describe("AdminSourcesPanel", () => {
   it("oferece a exportação global do catálogo consolidado", async () => {
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminSourcesPanel />); });
-    expect(tree!.root.findByProps({ "aria-label": "Exportar Catálogo Consolidado" })).toBeTruthy();
+    expect(tree!.root.findByProps({ "aria-label": "Exportar Catálogo Consolidado em JSON" })).toBeTruthy();
+    expect(tree!.root.findByProps({ "aria-label": "Exportar Catálogo Consolidado em CSV" })).toBeTruthy();
+  });
+
+  it("exporta o catálogo consolidado em CSV UTF-8 com nome do backend", async () => {
+    downloadAnchors.length = 0;
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const csvButton = tree!.root.findByProps({ "aria-label": "Exportar Catálogo Consolidado em CSV" });
+    await act(async () => { await csvButton.props.onClick(); });
+    expect(downloadAnchors.at(-1)?.download).toBe("catalogo_consolidado_2026-10-16.csv");
+    const lastCall = createObjectUrl.mock.calls.at(-1) as unknown as unknown[] | undefined;
+    const blob = lastCall?.[0] as { parts: unknown[] } | undefined;
+    expect(blob).toBeDefined();
+    expect(String(blob?.parts[0])).toContain("\uFEFF");
+    expect(String(blob?.parts[0])).toContain("\"Agenda \"\"Litoral\"\"\"");
   });
 
   it("exporta usando ação, datas e status ativos no modal", async () => {

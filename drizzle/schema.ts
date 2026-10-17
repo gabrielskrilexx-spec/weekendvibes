@@ -407,6 +407,18 @@ export const systemHealthTransitions = mysqlTable("systemHealthTransitions", {
 export type SystemHealthTransition = typeof systemHealthTransitions.$inferSelect;
 export type InsertSystemHealthTransition = typeof systemHealthTransitions.$inferInsert;
 
+export const catalogSnapshots = mysqlTable("catalogSnapshots", {
+  id: int("id").autoincrement().primaryKey(),
+  snapshotHash: varchar("snapshotHash", { length: 64 }).notNull(),
+  generatedAt: timestamp("generatedAt").notNull(),
+  sourceCount: int("sourceCount").notNull(),
+  payloadJson: text("payloadJson").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CatalogSnapshot = typeof catalogSnapshots.$inferSelect;
+export type InsertCatalogSnapshot = typeof catalogSnapshots.$inferInsert;
+
 export const apifyDailyUsage = mysqlTable("apifyDailyUsage", {
   dateKey: varchar("dateKey", { length: 10 }).primaryKey(),
   requestCount: int("requestCount").default(0).notNull(),

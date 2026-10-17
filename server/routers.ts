@@ -31,6 +31,7 @@ import {
   listFilteredIngestionSources,
   getIngestionSourceSummary,
   getConsolidatedIngestionSourceReport,
+  listCatalogSnapshots,
   getExecutiveObservabilityReport,
   listIngestionSourceHandleAudit,
   listIngestionSourceActionAudit,
@@ -81,6 +82,7 @@ import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
 import { approveManualReviewEvent, approveManualReviewEvents, expireStaleManualReviewHighlights, getManualReviewMetrics, listManualReviewAuditHistory, listManualReviewEvents, rejectManualReviewEvent, rejectManualReviewEvents, undoManualReviewAction, undoManualReviewActions, updateManualReviewEvent, type ManualReviewEventInput } from "./manual-review";
 import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
+import { consolidatedCatalogFilename, consolidatedCatalogToCsv } from "./consolidated-export";
 import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts, getExportJobsMetricsTrend, getExportJobAlertDetail, getExportJobsAlertSettings, updateExportJobsAlertSettings, getExportJobsTrendBucket, getExportJobsAlertEfficiency, compareExportJobsEfficiency, listExportJobsAlertSettingsHistory, recordExportAlertEvaluationSnapshot, listExportAlertEvaluationSnapshots, getExportJobsEfficiencyBucket, getExportJobsAlertEfficiencyTrend } from "./filtered-story-export-jobs";
 import { compareHeartbeatExecutionStats, evaluateHeartbeatHealth, evaluateHeartbeatPerformance, getHeartbeatExecutionStats, getHeartbeatHealthSettings, getHeartbeatExecutionSummary, listHeartbeatExecutionEvents, listHeartbeatHealthSettingsHistory, listHeartbeatIncidentsByRegression, recordHeartbeatExecutionEvent, updateHeartbeatHealthSettings, type HeartbeatEventType, type HeartbeatHealthEnvironment } from "./heartbeat-observability";
@@ -1206,6 +1208,15 @@ export const appRouter = router({
       .query(async () => normalizeJsonForTransport(await getIngestionSourceSummary())),
     consolidatedReport: adminOnly
       .query(async () => normalizeJsonForTransport(await getConsolidatedIngestionSourceReport())),
+    consolidatedCsvExport: adminOnly
+      .output(z.object({ filename: z.string().min(1).max(180), contentType: z.literal("text/csv;charset=utf-8"), csv: z.string() }).strict())
+      .query(async () => {
+        const report = await getConsolidatedIngestionSourceReport();
+        return { filename: consolidatedCatalogFilename(new Date(), "csv"), contentType: "text/csv;charset=utf-8" as const, csv: consolidatedCatalogToCsv(report) };
+      }),
+    snapshots: adminOnly
+      .input(z.object({ limit: z.number().int().positive().max(100).default(20) }).strict().optional())
+      .query(async ({ input }) => normalizeJsonForTransport(await listCatalogSnapshots(input?.limit ?? 20))),
     executiveReport: adminOnly
       .input(z.object({ days: z.union([z.literal(7), z.literal(14), z.literal(30)]).default(14) }).strict().optional())
       .query(async ({ input }) => normalizeJsonForTransport(await getExecutiveObservabilityReport(undefined, input?.days ?? 14))),

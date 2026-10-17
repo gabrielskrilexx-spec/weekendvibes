@@ -61,6 +61,8 @@ vi.mock("./db", () => ({
     ]),
   listFilteredIngestionSources: vi.fn().mockResolvedValue([{ id: 1, sourceKey: "public", createdAt: new Date("2026-08-26T12:00:00.000Z") }]),
   getIngestionSourceSummary: vi.fn().mockResolvedValue({ active: 1, open: 0, waf: 0, meta110: 0, network: 0 }),
+  getConsolidatedIngestionSourceReport: vi.fn().mockResolvedValue({ generatedAt: "2026-10-16T12:00:00.000Z", totalSources: 1, activeSources: 1, pausedSources: 0, sources: [{ sourceKey: "public", name: "Agenda \"Litoral\"", kind: "public", handle: null, url: "https://example.test", isEnabled: true, lastStatus: "succeeded", lastAttemptAt: null, lastSuccessAt: new Date("2026-10-16T12:00:00.000Z"), lastFailureReason: null, lastHttpStatus: 200, circuitState: "closed", circuitFailureCount: 0, circuitNextAttemptAt: null, consecutive403Count: 0 }] }),
+  listCatalogSnapshots: vi.fn().mockResolvedValue([{ id: 1, snapshotHash: "a".repeat(64), generatedAt: new Date("2026-10-16T12:00:00.000Z"), sourceCount: 1, createdAt: new Date("2026-10-16T12:00:00.000Z") }]),
   getExecutiveObservabilityReport: vi.fn().mockResolvedValue({ generatedAt: "2026-10-16T12:00:00.000Z", sources: { active: 1, open: 0, waf: 0, meta110: 0, network: 0 }, series: [], trends: { waf: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, meta110: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, network: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, succeeded: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, successRate: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" } } }),
   listIngestionSourceHandleAudit: vi.fn().mockResolvedValue([
     { id: 2, sourceKey: "instagram:mimadafesta", previousHandle: "mimadafesta-old", nextHandle: "mimadafesta", changedAt: new Date("2026-10-16T12:00:00.000Z") },
@@ -177,6 +179,18 @@ describe("admin transport contracts", () => {
     const result = await appRouter.createCaller(adminContext).ingestionSources.operationalTimelineExport({ sourceKey: "instagram:mimadafesta" });
     expect(result).toEqual({ items: [{ id: "action-1", sourceKey: "instagram:mimadafesta", action: "reprocessed", actorOpenId: "admin", details: "Sucesso: 10 eventos lidos, 2 persistidos.", occurredAt: "2026-10-16T12:00:00.000Z" }], total: 1 });
     expect(maintenanceMocks.listIngestionSourceOperationalTimeline).toHaveBeenCalledWith("instagram:mimadafesta", 1, 500, undefined, undefined, undefined, undefined);
+  });
+
+  it("expõe catálogo consolidado em CSV UTF-8 e snapshots versionados", async () => {
+    const caller = appRouter.createCaller(adminContext);
+    const csv = await caller.ingestionSources.consolidatedCsvExport();
+    const snapshots = await caller.ingestionSources.snapshots({ limit: 10 });
+    expect(csv.filename).toMatch(/\.csv$/);
+    expect(csv.contentType).toBe("text/csv;charset=utf-8");
+    expect(csv.csv.startsWith("\uFEFF")).toBe(true);
+    expect(csv.csv).toContain("Agenda \"\"Litoral\"\"");
+    expect(snapshots[0]?.snapshotHash).toHaveLength(64);
+    expect(snapshots[0]?.generatedAt).toBe("2026-10-16T12:00:00.000Z");
   });
 
   it("encaminha ação, datas e estado para a exportação contextual", async () => {

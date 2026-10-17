@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { notifyHealthTransition, notifyWeeklyExecutiveReport } from "./alert-webhook";
+import { notifyHealthTransition, notifyObservabilityReport, notifyWeeklyExecutiveReport } from "./alert-webhook";
 
 describe("alert webhook", () => {
   afterEach(() => {
     delete process.env.ALERT_WEBHOOK_URL;
+    delete process.env.OBSERVABILITY_WEBHOOK_URL;
     vi.restoreAllMocks();
   });
 
@@ -30,5 +31,13 @@ describe("alert webhook", () => {
     await notifyWeeklyExecutiveReport({ system_health_status: "healthy", periodDays: 30 }, fetchMock);
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     expect(body).toEqual({ event: "weekly_executive_report", report: { system_health_status: "healthy", periodDays: 30 } });
+  });
+
+  it("envia resumo global pelo dispatcher de observabilidade", async () => {
+    process.env.OBSERVABILITY_WEBHOOK_URL = "https://hooks.example.test/observability";
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 202 }));
+    await notifyObservabilityReport({ generatedAt: "2026-10-17T12:00:00.000Z", system_health_status: "critical", sources: { active: 8, open: 4, waf: 3, meta110: 1, network: 2 } }, { previousStatus: "degraded", nextStatus: "critical", reason: "Circuit breakers em massa", observedAt: "2026-10-17T12:00:00.000Z" }, fetchMock);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body).toMatchObject({ event: "observability_health_alert", system_health_status: "critical", summary: { open_sources: 4, waf_failures: 3, meta_code_110: 1 } });
   });
 });

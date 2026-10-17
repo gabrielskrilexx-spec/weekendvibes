@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 import { buildDailyTelemetrySeries, calculateSystemHealthStatus, normalizeObservabilityPeriod, summarizeTelemetryTrend } from "./observability";
@@ -441,6 +441,23 @@ export async function getConsolidatedIngestionSourceReport(dbOverride?: Awaited<
       consecutive403Count: source.consecutive403Count,
     })),
   };
+}
+
+export async function createCatalogSnapshot(report?: Awaited<ReturnType<typeof getConsolidatedIngestionSourceReport>>, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return null;
+  const payload = report ?? await getConsolidatedIngestionSourceReport(db);
+  const payloadJson = JSON.stringify(payload);
+  const snapshotHash = createHash("sha256").update(payloadJson).digest("hex");
+  const generatedAt = new Date(payload.generatedAt);
+  const [inserted] = await db.insert(catalogSnapshots).values({ snapshotHash, generatedAt, sourceCount: payload.totalSources, payloadJson });
+  return { id: Number((inserted as unknown as { insertId?: number }).insertId ?? 0), snapshotHash, generatedAt: generatedAt.toISOString(), sourceCount: payload.totalSources };
+}
+
+export async function listCatalogSnapshots(limit = 20, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return [];
+  return db.select({ id: catalogSnapshots.id, snapshotHash: catalogSnapshots.snapshotHash, generatedAt: catalogSnapshots.generatedAt, sourceCount: catalogSnapshots.sourceCount, createdAt: catalogSnapshots.createdAt }).from(catalogSnapshots).orderBy(desc(catalogSnapshots.createdAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 100));
 }
 
 export async function listSystemHealthTransitions(limit = 10, dbOverride?: Awaited<ReturnType<typeof getDb>>) {

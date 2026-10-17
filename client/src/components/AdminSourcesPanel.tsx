@@ -119,6 +119,7 @@ export default function AdminSourcesPanel() {
   const sources = trpc.ingestionSources.list.useQuery({ openOnly: openOnly || undefined, failureCategory: failureFilter === "all" ? undefined : failureFilter, since: filterSince }, { refetchInterval: 30_000 });
   const sourceSummary = trpc.ingestionSources.summary.useQuery(undefined, { refetchInterval: 30_000 });
   const consolidatedReport = trpc.ingestionSources.consolidatedReport.useQuery(undefined, { enabled: false });
+  const consolidatedCsvExport = trpc.ingestionSources.consolidatedCsvExport.useQuery(undefined, { enabled: false });
   const executiveReport = trpc.ingestionSources.executiveReport.useQuery({ days: graphPeriod }, { refetchInterval: 60_000 });
   const mockSettings = trpc.ingestionReports.mockSettings.useQuery(undefined, { refetchInterval: 30_000 });
   const utils = trpc.useUtils();
@@ -217,14 +218,24 @@ export default function AdminSourcesPanel() {
     link.click();
     URL.revokeObjectURL(url);
   };
-  const downloadConsolidatedCatalog = async () => {
+  const downloadConsolidatedCatalog = async (format: "json" | "csv" = "json") => {
     try {
-      const result = await consolidatedReport.refetch();
-      const payload = JSON.stringify(result.data ?? { generatedAt: new Date().toISOString(), totalSources: 0, activeSources: 0, pausedSources: 0, sources: [] }, null, 2);
-      const url = URL.createObjectURL(new Blob([payload], { type: "application/json;charset=utf-8" }));
+      let content: string;
+      let filename: string;
+      if (format === "csv") {
+        const result = await consolidatedCsvExport.refetch();
+        content = result.data?.csv ?? "\uFEFF";
+        filename = result.data?.filename ?? `catalogo_consolidado_${new Date().toISOString().slice(0, 10)}.csv`;
+      } else {
+        const result = await consolidatedReport.refetch();
+        const fallback = { generatedAt: new Date().toISOString(), totalSources: 0, activeSources: 0, pausedSources: 0, sources: [] };
+        content = JSON.stringify(result.data ?? fallback, null, 2);
+        filename = `catalogo_consolidado_${new Date().toISOString().slice(0, 10)}.json`;
+      }
+      const url = URL.createObjectURL(new Blob([content], { type: format === "csv" ? "text/csv;charset=utf-8" : "application/json;charset=utf-8" }));
       const link = document.createElement("a");
       link.href = url;
-      link.download = `catalogo_consolidado_${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = filename;
       link.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -253,7 +264,7 @@ export default function AdminSourcesPanel() {
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-zinc-400">Ative ou pause perfis, ajuste a prioridade e defina a cadência desejada. A rotina existente continua sendo a responsável pelo disparo, evitando schedules duplicados.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => void downloadConsolidatedCatalog()} disabled={consolidatedReport.isFetching} aria-busy={consolidatedReport.isFetching} aria-label="Exportar Catálogo Consolidado" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-orange-300/30 bg-orange-300/10 px-3 text-xs font-black text-orange-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:opacity-50"><Download size={14} aria-hidden="true" /> {consolidatedReport.isFetching ? "Gerando catálogo..." : "Exportar Catálogo Consolidado"}</button>
+          <div className="flex flex-wrap items-center gap-2" aria-label="Exportar Catálogo Consolidado"><button type="button" onClick={() => void downloadConsolidatedCatalog("json")} disabled={consolidatedReport.isFetching || consolidatedCsvExport.isFetching} aria-busy={consolidatedReport.isFetching} aria-label="Exportar Catálogo Consolidado em JSON" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-orange-300/30 bg-orange-300/10 px-3 text-xs font-black text-orange-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:opacity-50"><Download size={14} aria-hidden="true" /> {consolidatedReport.isFetching ? "Gerando JSON..." : "Catálogo JSON"}</button><button type="button" onClick={() => void downloadConsolidatedCatalog("csv")} disabled={consolidatedReport.isFetching || consolidatedCsvExport.isFetching} aria-busy={consolidatedCsvExport.isFetching} aria-label="Exportar Catálogo Consolidado em CSV" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-3 text-xs font-black text-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:opacity-50"><Download size={14} aria-hidden="true" /> {consolidatedCsvExport.isFetching ? "Gerando CSV..." : "Catálogo CSV"}</button></div>
           <label className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-zinc-300"><input type="checkbox" checked={openOnly} onChange={event => setOpenOnly(event.target.checked)} className="size-4 accent-rose-300" /> Apenas OPEN</label>
           <label className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-zinc-300">Falha<select aria-label="Filtrar por motivo da falha" value={failureFilter} onChange={event => setFailureFilter(event.target.value as FailureFilter)} className="min-h-9 rounded-lg border border-white/10 bg-zinc-900 px-2 text-xs text-white"><option value="all">Todas</option><option value="waf">WAF / Cloudflare</option><option value="meta110">Meta API (Code 110)</option><option value="network">Timeout / Rede</option></select></label>
           <label className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-zinc-300">Período<select aria-label="Filtrar por período" value={periodFilter} onChange={event => setPeriodFilter(event.target.value as typeof periodFilter)} className="min-h-9 rounded-lg border border-white/10 bg-zinc-900 px-2 text-xs text-white"><option value="all">Todos</option><option value="7d">Últimos 7 dias</option><option value="30d">Últimos 30 dias</option></select></label>
