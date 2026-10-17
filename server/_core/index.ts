@@ -26,7 +26,9 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
   const httpServer = server ?? createServer(app);
   if (server) server.on("request", app);
   app.disable("x-powered-by");
-  app.set("trust proxy", 1);
+  // A Vercel coloca um único proxy confiável na frente da função; não aceitar
+  // uma cadeia arbitrária evita que o cliente escolha qual hop será usado no req.ip.
+  app.set("trust proxy", (_ip: string, hop: number) => hop === 0);
   app.use((req, res, next) => {
     const rawLength = req.headers["content-length"];
     const contentLength = typeof rawLength === "string" ? Number(rawLength) : Array.isArray(rawLength) ? Number(rawLength[0]) : 0;

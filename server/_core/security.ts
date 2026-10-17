@@ -101,8 +101,10 @@ export function applySecurityHeaders(req: Request, res: Response): void {
   const analyticsOrigin = getOrigin(process.env.VITE_ANALYTICS_ENDPOINT);
   const mapsProxyOrigin = getOrigin(process.env.VITE_FRONTEND_FORGE_API_URL);
   const connectSources = ["'self'", "https://maps.googleapis.com", "https://maps.gstatic.com"];
+  const imageSources = ["'self'", "data:", "blob:", "https://*.cdninstagram.com", "https://*.fbcdn.net", "https://images.unsplash.com"];
   if (analyticsOrigin) connectSources.push(analyticsOrigin);
   if (mapsProxyOrigin) connectSources.push(mapsProxyOrigin);
+  for (const origin of getConfiguredOrigins(process.env.CSP_IMAGE_ORIGINS)) imageSources.push(origin);
 
   const policy = [
     "default-src 'self'",
@@ -113,7 +115,7 @@ export function applySecurityHeaders(req: Request, res: Response): void {
     `script-src 'self' blob: https://maps.googleapis.com https://maps.gstatic.com${mapsProxyOrigin ? ` ${mapsProxyOrigin}` : ""}`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
-    "img-src 'self' data: blob: https:",
+    `img-src ${imageSources.join(" ")}`,
     `connect-src ${connectSources.join(" ")}`,
   ].join("; ");
 
@@ -160,6 +162,11 @@ function getOrigin(value: string | undefined): string | null {
   } catch {
     return null;
   }
+}
+
+function getConfiguredOrigins(value: string | undefined): string[] {
+  if (!value) return [];
+  return value.split(",").map(item => getOrigin(item.trim())).filter((origin): origin is string => Boolean(origin));
 }
 
 export function redactError(error: unknown): { name: string; code: string } {

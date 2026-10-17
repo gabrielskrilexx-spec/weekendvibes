@@ -433,7 +433,20 @@ export async function listFilteredIngestionSources(filters: IngestionSourceListF
 }
 
 export async function getIngestionSourceSummary(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
-  const rows = await listIngestionSources(dbOverride);
+  const db = dbOverride ?? await getDb();
+  if (db && typeof (db as unknown as { execute?: unknown }).execute === "function") {
+    const result = await db.execute(sql`
+      SELECT count(*) FILTER (WHERE "isEnabled" = 1)::int AS active_total,
+        count(*) FILTER (WHERE "circuitState" = 'open')::int AS open_total,
+        count(*) FILTER (WHERE "lastHttpStatus" = 403 OR lower(coalesce("lastMessage", '') || ' ' || coalesce("lastFailureReason", '')) ~ 'waf|cloudflare|akamai|bloqueado')::int AS waf_total,
+        count(*) FILTER (WHERE lower(coalesce("lastMessage", '') || ' ' || coalesce("lastFailureReason", '')) ~ 'code[[:space:]]*110|invalid user id|id inválido|desconectado da meta')::int AS meta110_total,
+        count(*) FILTER (WHERE "lastHttpStatus" IN (408, 504) OR lower(coalesce("lastMessage", '') || ' ' || coalesce("lastFailureReason", '')) ~ 'timeout|timed out|network|rede|econn|socket|fetch failed')::int AS network_total
+      FROM "ingestionSources"
+    `);
+    const row = (result as unknown as Array<Record<string, unknown>>)[0] ?? {};
+    return { active: Number(row.active_total ?? 0), open: Number(row.open_total ?? 0), waf: Number(row.waf_total ?? 0), meta110: Number(row.meta110_total ?? 0), network: Number(row.network_total ?? 0) };
+  }
+  const rows = await listIngestionSources(db);
   return {
     active: rows.filter(source => source.isEnabled === 1).length,
     open: rows.filter(source => source.circuitState === "open").length,
@@ -545,12 +558,36 @@ export async function getExecutiveObservabilityReport(now = new Date(), days = 1
   const sources = await getIngestionSourceSummary(db);
   if (!db) return { generatedAt: now.toISOString(), periodDays: safeDays, sources, series: buildDailyTelemetrySeries([], now, safeDays), trends: summarizeTelemetryTrend([]), system_health_status: calculateSystemHealthStatus({ openSources: sources.open, activeSources: sources.active, recentRuns: 0, recentFailures: 0 }), healthTransitions: [] };
   const since = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - safeDays + 1));
-  const runs = await db.select({ status: ingestionRuns.status, startedAt: ingestionRuns.startedAt, httpStatus: ingestionRuns.httpStatus, details: ingestionRuns.details, counts: ingestionRuns.counts }).from(ingestionRuns).where(gte(ingestionRuns.startedAt, since)).orderBy(asc(ingestionRuns.startedAt));
-  const series = buildDailyTelemetrySeries(runs, now, safeDays);
+  const series = typeof (db as unknown as { execute?: unknown }).execute === "function"
+    ? await buildDailyTelemetrySeriesFromPostgres(db, since, safeDays)
+    : buildDailyTelemetrySeries(await db.select({ status: ingestionRuns.status, startedAt: ingestionRuns.startedAt, httpStatus: ingestionRuns.httpStatus, details: ingestionRuns.details, counts: ingestionRuns.counts }).from(ingestionRuns).where(gte(ingestionRuns.startedAt, since)).orderBy(asc(ingestionRuns.startedAt)), now, safeDays);
   const lastDay = series.at(-1);
   const recentRuns = lastDay?.total ?? 0;
   const recentFailures = recentRuns - (lastDay?.succeeded ?? 0);
   return { generatedAt: now.toISOString(), periodDays: safeDays, sources, series, trends: summarizeTelemetryTrend(series), system_health_status: calculateSystemHealthStatus({ openSources: sources.open, activeSources: sources.active, recentRuns, recentFailures }), healthTransitions: await listSystemHealthTransitions(10, db) };
+}
+
+async function buildDailyTelemetrySeriesFromPostgres(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, since: Date, days: number) {
+  const result = await db.execute(sql`
+    SELECT to_char(date_trunc('day', "startedAt" AT TIME ZONE 'America/Sao_Paulo'), 'YYYY-MM-DD') AS date,
+      count(*)::int AS total,
+      count(*) FILTER (WHERE "status" = 'succeeded')::int AS succeeded,
+      count(*) FILTER (WHERE "httpStatus" = 403 OR lower(coalesce("details", '') || ' ' || coalesce("counts", '')) ~ 'waf|cloudflare|akamai|bloqueado')::int AS waf,
+      count(*) FILTER (WHERE lower(coalesce("details", '') || ' ' || coalesce("counts", '')) ~ 'code[[:space:]]*110|invalid user id|id inválido')::int AS meta110,
+      count(*) FILTER (WHERE "httpStatus" IN (408, 504) OR lower(coalesce("details", '') || ' ' || coalesce("counts", '')) ~ 'timeout|timed out|network|rede|econn|socket|fetch failed')::int AS network
+    FROM "ingestionRuns"
+    WHERE "startedAt" >= ${since.toISOString()}
+    GROUP BY 1
+    ORDER BY 1
+  `);
+  const byDate = new Map((result as unknown as Array<Record<string, unknown>>).map(row => [String(row.date), row]));
+  return Array.from({ length: days }, (_, index) => {
+    const date = new Date(since.getTime() + index * 86_400_000).toISOString().slice(0, 10);
+    const row = byDate.get(date);
+    const total = Number(row?.total ?? 0);
+    const succeeded = Number(row?.succeeded ?? 0);
+    return { date, waf: Number(row?.waf ?? 0), meta110: Number(row?.meta110 ?? 0), network: Number(row?.network ?? 0), succeeded, total, successRate: total ? Number(((succeeded / total) * 100).toFixed(1)) : 0 };
+  });
 }
 
 export async function listEnabledInstagramSources(dbOverride?: Awaited<ReturnType<typeof getDb>>) {

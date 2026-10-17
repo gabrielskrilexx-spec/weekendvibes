@@ -262,6 +262,7 @@ export const ingestionRuns = pgTable("ingestionRuns", {
   finishedAt: timestamp("finishedAt"),
 }, table => ({
   routineStartedIdx: index("ingestionRuns_routine_started_idx").on(table.routine, table.startedAt),
+  sourceStartedIdx: index("ingestionRuns_source_started_idx").on(table.sourceKey, table.startedAt),
 }));
 
 export type IngestionRun = typeof ingestionRuns.$inferSelect;
@@ -392,7 +393,9 @@ export const ingestionSourceHandleAuditLogs = pgTable("ingestionSourceHandleAudi
   nextHandle: varchar("nextHandle", { length: 180 }),
   changedByOpenId: varchar("changedByOpenId", { length: 160 }),
   changedAt: timestamp("changedAt").defaultNow().notNull(),
-});
+}, table => ({
+  sourceChangedIdx: index("ingestionSourceHandleAuditLogs_source_changed_idx").on(table.sourceKey, table.changedAt),
+}));
 
 export type IngestionSourceHandleAuditLog = typeof ingestionSourceHandleAuditLogs.$inferSelect;
 export type InsertIngestionSourceHandleAuditLog = typeof ingestionSourceHandleAuditLogs.$inferInsert;
@@ -404,7 +407,9 @@ export const ingestionSourceActionAuditLogs = pgTable("ingestionSourceActionAudi
   operatorOpenId: varchar("operatorOpenId", { length: 160 }),
   details: varchar("details", { length: 500 }),
   actedAt: timestamp("actedAt").defaultNow().notNull(),
-});
+}, table => ({
+  sourceActedIdx: index("ingestionSourceActionAuditLogs_source_acted_idx").on(table.sourceKey, table.actedAt),
+}));
 
 export type IngestionSourceActionAuditLog = typeof ingestionSourceActionAuditLogs.$inferSelect;
 export type InsertIngestionSourceActionAuditLog = typeof ingestionSourceActionAuditLogs.$inferInsert;
@@ -415,7 +420,9 @@ export const systemHealthTransitions = pgTable("systemHealthTransitions", {
   nextStatus: enumText("nextStatus", ["healthy", "degraded", "critical"]).notNull(),
   reason: varchar("reason", { length: 500 }).notNull(),
   observedAt: timestamp("observedAt").defaultNow().notNull(),
-});
+}, table => ({
+  observedIdx: index("systemHealthTransitions_observed_idx").on(table.observedAt),
+}));
 
 export type SystemHealthTransition = typeof systemHealthTransitions.$inferSelect;
 export type InsertSystemHealthTransition = typeof systemHealthTransitions.$inferInsert;
@@ -427,7 +434,9 @@ export const catalogSnapshots = pgTable("catalogSnapshots", {
   sourceCount: integer("sourceCount").notNull(),
   payloadJson: text("payloadJson").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, table => ({
+  createdIdx: index("catalogSnapshots_created_idx").on(table.createdAt),
+}));
 
 export type CatalogSnapshot = typeof catalogSnapshots.$inferSelect;
 export type InsertCatalogSnapshot = typeof catalogSnapshots.$inferInsert;
