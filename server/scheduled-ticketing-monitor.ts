@@ -2,8 +2,7 @@ import type { Request, Response } from "express";
 import { runTicketingMonitorOnce, ticketingMonitorHealthy } from "./ticketing-monitor";
 import { redactError } from "./_core/security";
 import { maybeSendWeeklyExecutiveReport } from "./scheduled-weekly-report";
-import { createCatalogSnapshot, getConsolidatedIngestionSourceReport } from "./db";
-import { runExecutiveObservabilityCycle } from "./scheduled-executive-report";
+import { runObservabilitySnapshotMaintenance } from "./scheduled-observability-maintenance";
 
 export async function ticketingMonitorHandler(_req: Request, res: Response) {
   try {
@@ -12,8 +11,9 @@ export async function ticketingMonitorHandler(_req: Request, res: Response) {
     let observability: unknown = null;
     let snapshot: unknown = null;
     try {
-      observability = await runExecutiveObservabilityCycle(14);
-      snapshot = await createCatalogSnapshot(await getConsolidatedIngestionSourceReport());
+      const maintenance = await runObservabilitySnapshotMaintenance();
+      observability = { systemHealthStatus: maintenance.systemHealthStatus, observedAt: maintenance.observedAt };
+      snapshot = { ...maintenance.snapshot, deletedSnapshots: maintenance.deletedSnapshots };
     } catch (error) {
       console.error("[TicketingMonitor] observability snapshot failed", redactError(error));
     }

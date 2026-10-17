@@ -84,6 +84,7 @@ import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
 import { consolidatedCatalogFilename, consolidatedCatalogToCsv } from "./consolidated-export";
 import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
+import { runObservabilitySnapshotMaintenance } from "./scheduled-observability-maintenance";
 import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts, getExportJobsMetricsTrend, getExportJobAlertDetail, getExportJobsAlertSettings, updateExportJobsAlertSettings, getExportJobsTrendBucket, getExportJobsAlertEfficiency, compareExportJobsEfficiency, listExportJobsAlertSettingsHistory, recordExportAlertEvaluationSnapshot, listExportAlertEvaluationSnapshots, getExportJobsEfficiencyBucket, getExportJobsAlertEfficiencyTrend } from "./filtered-story-export-jobs";
 import { compareHeartbeatExecutionStats, evaluateHeartbeatHealth, evaluateHeartbeatPerformance, getHeartbeatExecutionStats, getHeartbeatHealthSettings, getHeartbeatExecutionSummary, listHeartbeatExecutionEvents, listHeartbeatHealthSettingsHistory, listHeartbeatIncidentsByRegression, recordHeartbeatExecutionEvent, updateHeartbeatHealthSettings, type HeartbeatEventType, type HeartbeatHealthEnvironment } from "./heartbeat-observability";
 
@@ -1217,6 +1218,16 @@ export const appRouter = router({
     snapshots: adminOnly
       .input(z.object({ limit: z.number().int().positive().max(100).default(20) }).strict().optional())
       .query(async ({ input }) => normalizeJsonForTransport(await listCatalogSnapshots(input?.limit ?? 20))),
+    runObservabilityNow: adminOnly
+      .output(z.object({ ok: z.literal(true), systemHealthStatus: z.enum(["healthy", "degraded", "critical"]), observedAt: z.string().datetime(), deletedSnapshots: z.number().int().nonnegative(), snapshot: z.object({ id: z.number().int().nonnegative(), snapshotHash: z.string().length(64), generatedAt: z.string().datetime(), sourceCount: z.number().int().nonnegative() }).strict().nullable() }).strict())
+      .mutation(async () => {
+        try {
+          const result = await runObservabilitySnapshotMaintenance();
+          return { ok: true as const, ...result };
+        } catch (error) {
+          return throwSanitizedAdminMutationError(error, "Não foi possível executar a rotina de observabilidade agora.");
+        }
+      }),
     executiveReport: adminOnly
       .input(z.object({ days: z.union([z.literal(7), z.literal(14), z.literal(30)]).default(14) }).strict().optional())
       .query(async ({ input }) => normalizeJsonForTransport(await getExecutiveObservabilityReport(undefined, input?.days ?? 14))),

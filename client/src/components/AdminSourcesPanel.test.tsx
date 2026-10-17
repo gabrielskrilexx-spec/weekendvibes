@@ -3,7 +3,7 @@ import { act, create } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 import AdminSourcesPanel from "./AdminSourcesPanel";
 
-const { refetch, invalidate, mutate, reactivateMutate, createMutate, mockSettingsMutate, fetchMock, exportRefetch, reportQueryInputs, downloadAnchors, createObjectUrl } = vi.hoisted(() => ({ refetch: vi.fn(), invalidate: vi.fn(), mutate: vi.fn(), reactivateMutate: vi.fn(), createMutate: vi.fn(), mockSettingsMutate: vi.fn(), fetchMock: vi.fn(), exportRefetch: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }), reportQueryInputs: [] as unknown[], downloadAnchors: [] as Array<{ download?: string; click: () => void }>, createObjectUrl: vi.fn(() => "blob:test") }));
+const { refetch, invalidate, mutate, reactivateMutate, createMutate, mockSettingsMutate, runNowMutate, fetchMock, exportRefetch, reportQueryInputs, downloadAnchors, createObjectUrl } = vi.hoisted(() => ({ refetch: vi.fn(), invalidate: vi.fn(), mutate: vi.fn(), reactivateMutate: vi.fn(), createMutate: vi.fn(), mockSettingsMutate: vi.fn(), runNowMutate: vi.fn(), fetchMock: vi.fn(), exportRefetch: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }), reportQueryInputs: [] as unknown[], downloadAnchors: [] as Array<{ download?: string; click: () => void }>, createObjectUrl: vi.fn(() => "blob:test") }));
 const source = { id: 1, sourceKey: "instagram:mobydicksantos", name: "Moby House", kind: "instagram", handle: "mobydicksantos", url: "https://www.instagram.com/mobydicksantos/", isEnabled: 1, priority: 10, frequencyMinutes: 10080, p95LatencyThresholdMs: 3000, lastAttemptAt: new Date("2026-08-15T13:00:00Z"), lastSuccessAt: new Date("2026-08-15T12:00:00Z"), lastStatus: "failed", lastMessage: "Meta Graph API HTTP 400: Invalid user id", lastFailureReason: "ID inválido", lastExecutionFeedback: null, lastHttpStatus: 400, circuitNextAttemptAt: new Date("2026-08-16T07:00:00Z"), circuitState: "open", circuitFailureCount: 3 };
 const closedSource = { ...source, id: 2, sourceKey: "public:closed", name: "Fonte Saudável", kind: "public", handle: null, url: "https://example.com/agenda", lastStatus: "succeeded", lastMessage: "Sucesso: 10 eventos lidos, 2 persistidos.", lastExecutionFeedback: "Sucesso: 10 eventos lidos, 2 persistidos.", lastFailureReason: null, lastHttpStatus: 200, circuitNextAttemptAt: null, circuitState: "closed", circuitFailureCount: 0 };
 vi.stubGlobal("fetch", fetchMock);
@@ -22,6 +22,7 @@ vi.mock("@/lib/trpc", () => ({
       summary: { useQuery: () => ({ data: { active: 2, open: 1, waf: 0, meta110: 1, network: 0 }, isLoading: false }) },
       consolidatedReport: { useQuery: () => ({ data: undefined, isFetching: false, refetch: () => Promise.resolve({ data: { generatedAt: "2026-10-16T12:00:00.000Z", totalSources: 2, activeSources: 1, pausedSources: 1, sources: [] } }) }) },
       consolidatedCsvExport: { useQuery: () => ({ data: undefined, isFetching: false, refetch: () => Promise.resolve({ data: { filename: "catalogo_consolidado_2026-10-16.csv", contentType: "text/csv;charset=utf-8", csv: "\uFEFFsourceKey,nome\r\n\"public:agenda\",\"Agenda \"\"Litoral\"\"\"\r\n" } }) }) },
+      runObservabilityNow: { useMutation: (options?: { onSuccess?: (result: { deletedSnapshots: number }) => void }) => ({ isPending: false, mutate: () => { runNowMutate(); options?.onSuccess?.({ deletedSnapshots: 2 }); } }) },
       executiveReport: { useQuery: (input: unknown) => { reportQueryInputs.push(input); return { data: { generatedAt: "2026-10-16T12:00:00.000Z", periodDays: 14, system_health_status: "degraded", sources: { active: 2, open: 1, waf: 0, meta110: 1, network: 0 }, healthTransitions: [{ id: 1, previousStatus: "healthy", nextStatus: "degraded", reason: "1 fonte OPEN", observedAt: "2026-10-16T12:00:00.000Z" }], series: [{ date: "2026-10-16", waf: 2, meta110: 1, network: 0, succeeded: 4, total: 5, successRate: 80 }], trends: { waf: { current: 2, previous: 3, delta: -1, percentage: -33.3, direction: "down" }, meta110: { current: 1, previous: 0, delta: 1, percentage: 100, direction: "up" }, network: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, succeeded: { current: 4, previous: 3, delta: 1, percentage: 33.3, direction: "up" }, successRate: { current: 80, previous: 60, delta: 20, percentage: 33.3, direction: "up" } } }, isLoading: false }; } },
       auditLog: { useQuery: () => ({ data: [{ id: 1, previousHandle: "moby-old", nextHandle: "moby-corrigido", changedAt: new Date("2026-08-16T12:00:00Z") }] }) },
       actionAudit: { useQuery: () => ({ data: [{ id: 1, action: "reactivated", operatorOpenId: "admin@example", details: "Reprocessamento imediato solicitado", actedAt: new Date("2026-08-17T12:00:00Z") }] }) },
@@ -35,7 +36,7 @@ vi.mock("@/lib/trpc", () => ({
     adminRoutine: {
       status: { invalidate },
     },
-    useUtils: () => ({ ingestionSources: { list: { invalidate }, operationalTimeline: { invalidate } }, ingestionReports: { mockSettings: { invalidate }, logs: { invalidate } }, adminRoutine: { status: { invalidate } } }),
+      useUtils: () => ({ ingestionSources: { list: { invalidate }, summary: { invalidate }, consolidatedReport: { invalidate }, snapshots: { invalidate }, executiveReport: { invalidate }, operationalTimeline: { invalidate } }, ingestionReports: { mockSettings: { invalidate }, logs: { invalidate } }, adminRoutine: { status: { invalidate } } }),
   },
 }));
 
@@ -253,6 +254,18 @@ describe("AdminSourcesPanel", () => {
     expect(blob).toBeDefined();
     expect(String(blob?.parts[0])).toContain("\uFEFF");
     expect(String(blob?.parts[0])).toContain("\"Agenda \"\"Litoral\"\"\"");
+  });
+
+  it("permite forçar o cron de observabilidade e atualiza os dados do painel", async () => {
+    runNowMutate.mockClear();
+    invalidate.mockClear();
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const trigger = tree!.root.findByProps({ "aria-label": "Forçar execução do cron de observabilidade" });
+    expect(trigger.props.disabled).toBe(false);
+    await act(async () => { trigger.props.onClick(); });
+    expect(runNowMutate).toHaveBeenCalledTimes(1);
+    expect(invalidate).toHaveBeenCalled();
   });
 
   it("exporta usando ação, datas e status ativos no modal", async () => {

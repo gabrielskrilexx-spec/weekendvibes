@@ -9,6 +9,7 @@ const maintenanceMocks = vi.hoisted(() => ({
   listIngestionSourceOperationalTimeline: vi.fn().mockResolvedValue({ items: [{ id: "action-1", sourceKey: "instagram:mimadafesta", action: "reprocessed", actorOpenId: "admin", details: "Sucesso: 10 eventos lidos, 2 persistidos.", occurredAt: "2026-10-16T12:00:00.000Z" }], page: 1, pageSize: 500, total: 1, hasNextPage: false }),
   getExecutiveObservabilityReport: vi.fn().mockResolvedValue({ generatedAt: "2026-10-16T12:00:00.000Z", sources: { active: 1, open: 0, waf: 0, meta110: 0, network: 0 }, series: [], trends: { waf: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, meta110: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, network: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, succeeded: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, successRate: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" } } }),
   runIngestionSourceChunk: vi.fn().mockResolvedValue({ sourceKey: "public:ingresse", dryRun: true, result: { read: 1, persisted: 1, filtered: 0, sandboxRestricted: false, previewMock: false } }),
+  runObservabilitySnapshotMaintenance: vi.fn().mockResolvedValue({ systemHealthStatus: "healthy", observedAt: "2026-10-17T12:00:00.000Z", snapshot: { id: 4, snapshotHash: "b".repeat(64), generatedAt: "2026-10-17T12:00:00.000Z", sourceCount: 12 }, deletedSnapshots: 2 }),
 }));
 
 vi.mock("./db", () => ({
@@ -124,6 +125,7 @@ vi.mock("./geocoding", () => ({
     .mockResolvedValue({ processed: 0, succeeded: 0, failed: 0, pending: 0 }),
 }));
 vi.mock("./dry-run", () => ({ runDryRun: vi.fn() }));
+vi.mock("./scheduled-observability-maintenance", () => ({ runObservabilitySnapshotMaintenance: maintenanceMocks.runObservabilitySnapshotMaintenance }));
 
 import { appRouter } from "./routers";
 import { reprocessIngestionSource } from "./ingestion-reports";
@@ -191,6 +193,12 @@ describe("admin transport contracts", () => {
     expect(csv.csv).toContain("Agenda \"\"Litoral\"\"");
     expect(snapshots[0]?.snapshotHash).toHaveLength(64);
     expect(snapshots[0]?.generatedAt).toBe("2026-10-16T12:00:00.000Z");
+  });
+
+  it("dispara manualmente a rotina completa de observabilidade com autorização admin", async () => {
+    const result = await appRouter.createCaller(adminContext).ingestionSources.runObservabilityNow();
+    expect(result).toMatchObject({ ok: true, systemHealthStatus: "healthy", deletedSnapshots: 2, snapshot: { id: 4, sourceCount: 12 } });
+    expect(maintenanceMocks.runObservabilitySnapshotMaintenance).toHaveBeenCalledTimes(1);
   });
 
   it("encaminha ação, datas e estado para a exportação contextual", async () => {

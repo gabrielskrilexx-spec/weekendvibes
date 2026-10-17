@@ -460,6 +460,18 @@ export async function listCatalogSnapshots(limit = 20, dbOverride?: Awaited<Retu
   return db.select({ id: catalogSnapshots.id, snapshotHash: catalogSnapshots.snapshotHash, generatedAt: catalogSnapshots.generatedAt, sourceCount: catalogSnapshots.sourceCount, createdAt: catalogSnapshots.createdAt }).from(catalogSnapshots).orderBy(desc(catalogSnapshots.createdAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 100));
 }
 
+export function catalogSnapshotRetentionCutoff(days = 30, now = new Date()) {
+  const safeDays = Math.min(Math.max(Math.trunc(days), 1), 3650);
+  return new Date(now.getTime() - safeDays * 24 * 60 * 60 * 1000);
+}
+
+export async function deleteCatalogSnapshotsOlderThan(days = 30, now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return 0;
+  const result = await db.delete(catalogSnapshots).where(lt(catalogSnapshots.createdAt, catalogSnapshotRetentionCutoff(days, now)));
+  return Number((result as { affectedRows?: number }).affectedRows ?? 0);
+}
+
 export async function listSystemHealthTransitions(limit = 10, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) return [];
