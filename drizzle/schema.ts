@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { index, integer, pgTable, serial, text, timestamp, varchar, uniqueIndex } from "drizzle-orm/pg-core";
 
 /** PostgreSQL text-backed enum helper. The literal union remains available to TypeScript. */
@@ -462,7 +463,7 @@ export const filteredStoryExportJobs = pgTable("filteredStoryExportJobs", {
   leaseExpiresAt: timestamp("leaseExpiresAt"),
   recoveryAttempts: integer("recoveryAttempts").default(0).notNull(),
   lastRecoveredAt: timestamp("lastRecoveredAt"),
-  fileDeletePending: integer("fileDeletePending").$type<boolean>().default(false).notNull(),
+  fileDeletePending: integer("fileDeletePending").$type<boolean>().default(sql`0`).notNull(),
   fileDeletedAt: timestamp("fileDeletedAt"),
 }, table => ({
   statusUpdatedIdx: index("filteredStoryExportJobs_status_updated_idx").on(table.status, table.updatedAt),

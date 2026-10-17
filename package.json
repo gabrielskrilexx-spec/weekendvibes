@@ -4,16 +4,18 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "dev": "NODE_ENV=development tsx watch server/_core/index.ts",
-    "build": "vite build && esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --external:./vite --outdir=dist",
+    "predev": "docker compose up -d",
+    "dev": "cross-env DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes NODE_ENV=development tsx watch server/_core/index.ts",
+    "build": "cross-env DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes vite build && cross-env DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --external:./vite --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
-    "test": "vitest run",
+    "pretest": "docker compose up -d",
+    "test": "cross-env DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes vitest run --maxWorkers=1 --minWorkers=1",
     "test:e2e": "playwright test",
     "monitor:ticketing": "tsx scripts/monitor-ticketing-sources.mjs --watch",
     "monitor:ticketing:once": "tsx scripts/monitor-ticketing-sources.mjs",
-    "db:push": "drizzle-kit generate && drizzle-kit migrate"
+    "db:push": "cross-env DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes drizzle-kit generate && cross-env DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes drizzle-kit migrate"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",
@@ -100,6 +102,7 @@
     "@vitejs/plugin-react": "^5.0.4",
     "add": "^2.0.6",
     "autoprefixer": "^10.4.20",
+    "cross-env": "^10.0.0",
     "drizzle-kit": "^0.31.4",
     "esbuild": "^0.25.0",
     "pnpm": "^10.15.1",

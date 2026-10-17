@@ -23,6 +23,7 @@ import { claimApifyDailyRequest, claimApifyProcessedItem, completeApifyProcessed
 export const DEFAULT_APIFY_STORIES_ACTOR_ID = "zaver.api~instagram-stories-highlights-scraper";
 const ACTOR_ID = process.env.APIFY_STORIES_ACTOR_ID?.trim() || DEFAULT_APIFY_STORIES_ACTOR_ID;
 const DATASET_TIMEOUT_MS = 30_000;
+const DATASET_PAGE_SIZE = 100;
 
 type ApifyDispatchFailure = Error & {
   apifyStatus?: number;
@@ -228,28 +229,88 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
 
 async function processDataset(run: Awaited<ReturnType<typeof findIngestionRunByApifyActor>>, datasetId: string, actorRunId: string, token: string) {
   if (!run) return;
-  const response = await fetchWithTimeout(`https://api.apify.com/v2/datasets/${encodeURIComponent(datasetId)}/items?token=${encodeURIComponent(token)}&clean=true`, { headers: { Accept: "application/json", "User-Agent": "WeekendVibes/1.0" } }, DATASET_TIMEOUT_MS);
-  const payload = await readJson(response);
-  if (!response.ok || !Array.isArray(payload)) {
-    await finishIngestionRun(run.id, { status: "failed", failedCount: 1, httpStatus: response.status || 502, details: { provider: "apify", actorRunId, error: "DATASET_READ_FAILED", status: response.status || 502 } });
-    return;
+  type DatasetResult = Awaited<ReturnType<typeof runInstagramPipeline>>;
+  const aggregate: Record<string, any> = {
+    dryRun: false,
+    durationMs: 0,
+    sourceReports: [],
+    receivedPosts: 0,
+    approvedPosts: 0,
+    degraded: false,
+    transportFailures: [],
+    ocrAudit: [],
+    filteredStories: [],
+    manualReviewInserted: 0,
+    structuredEvents: 0,
+    imported: 0,
+    persisted: 0,
+    added: 0,
+    updated: 0,
+    ignored: 0,
+    filtered: 0,
+    duplicates: 0,
+    missingCoordinates: 0,
+    outOfBoundsCoordinates: 0,
+    rejectedEvents: [],
+    rejectionReasons: {},
+    persistedEventIds: [],
+    dateFilterValidation: { timezone: "America/Sao_Paulo", today: new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date()), structuredEvents: 0, pastEventsRejected: 0, acceptedTodayOrFuture: 0 },
+  };
+  const startedAt = Date.now();
+  for (let offset = 0; ; offset += DATASET_PAGE_SIZE) {
+    const response = await fetchWithTimeout(`https://api.apify.com/v2/datasets/${encodeURIComponent(datasetId)}/items?token=${encodeURIComponent(token)}&clean=true&limit=${DATASET_PAGE_SIZE}&offset=${offset}`, { headers: { Accept: "application/json", "User-Agent": "WeekendVibes/1.0" } }, DATASET_TIMEOUT_MS);
+    const payload = await readJson(response);
+    if (!response.ok || !Array.isArray(payload)) {
+      await finishIngestionRun(run.id, { status: "failed", failedCount: 1, httpStatus: response.status || 502, details: { provider: "apify", actorRunId, error: "DATASET_READ_FAILED", status: response.status || 502, offset } });
+      return;
+    }
+    if (payload.length === 0) break;
+    const candidates = normalizeInstagramMediaPayload(payload).filter((post: InstagramPost) => post.mediaType === "story" || post.mediaType === "highlight");
+    const posts: InstagramPost[] = [];
+    const fingerprints: string[] = [];
+    for (const post of candidates) {
+      const mediaUrl = String(post.displayUrl ?? post.imageUrl ?? post.media_url ?? post.thumbnailUrl ?? "").trim();
+      const providerItemId = String(post.id ?? post.shortCode ?? "").trim();
+      const fingerprint = createHash("sha256")
+        .update(["instagram-stories-async", providerItemId, post.ownerUsername ?? post.username ?? "", mediaUrl, post.timestamp ?? post.takenAt ?? ""].join("\u001f"))
+        .digest("hex");
+      const claimed = await claimApifyProcessedItem({ fingerprint, providerItemId, routine: "instagram-stories-async", mediaUrl, actorRunId });
+      if (!claimed) continue;
+      posts.push(post);
+      fingerprints.push(fingerprint);
+    }
+    if (posts.length > 0) {
+      const result = await runInstagramPipeline({ storiesOnly: true, dryRun: false, postsOverride: posts });
+      aggregate.receivedPosts += result.receivedPosts;
+      aggregate.approvedPosts += result.approvedPosts;
+      aggregate.degraded ||= result.degraded;
+      aggregate.transportFailures.push(...result.transportFailures);
+      aggregate.ocrAudit.push(...result.ocrAudit);
+      aggregate.filteredStories.push(...(result.filteredStories ?? []));
+      aggregate.manualReviewInserted += Number(result.manualReviewInserted ?? 0);
+      aggregate.structuredEvents += result.structuredEvents;
+      aggregate.imported += result.imported;
+      aggregate.persisted += result.persisted;
+      aggregate.added += result.added;
+      aggregate.updated += result.updated;
+      aggregate.ignored += result.ignored;
+      aggregate.filtered += result.filtered;
+      aggregate.duplicates += result.duplicates;
+      aggregate.missingCoordinates += result.missingCoordinates;
+      aggregate.outOfBoundsCoordinates += result.outOfBoundsCoordinates;
+      aggregate.rejectedEvents.push(...result.rejectedEvents);
+      for (const [key, value] of Object.entries(result.rejectionReasons)) aggregate.rejectionReasons[key] = (aggregate.rejectionReasons[key] ?? 0) + Number(value ?? 0);
+      aggregate.persistedEventIds.push(...result.persistedEventIds);
+      aggregate.sourceReports.push(...result.sourceReports);
+      aggregate.dateFilterValidation.structuredEvents += result.dateFilterValidation.structuredEvents;
+      aggregate.dateFilterValidation.pastEventsRejected += result.dateFilterValidation.pastEventsRejected;
+      aggregate.dateFilterValidation.acceptedTodayOrFuture += result.dateFilterValidation.acceptedTodayOrFuture;
+      await Promise.all(fingerprints.map(fingerprint => completeApifyProcessedItem(fingerprint)));
+    }
+    if (payload.length < DATASET_PAGE_SIZE) break;
   }
-  const candidates = normalizeInstagramMediaPayload(payload).filter((post: InstagramPost) => post.mediaType === "story" || post.mediaType === "highlight");
-  const posts: InstagramPost[] = [];
-  const fingerprints: string[] = [];
-  for (const post of candidates) {
-    const mediaUrl = String(post.displayUrl ?? post.imageUrl ?? post.media_url ?? post.thumbnailUrl ?? "").trim();
-    const providerItemId = String(post.id ?? post.shortCode ?? "").trim();
-    const fingerprint = createHash("sha256")
-      .update(["instagram-stories-async", providerItemId, post.ownerUsername ?? post.username ?? "", mediaUrl, post.timestamp ?? post.takenAt ?? ""].join("\u001f"))
-      .digest("hex");
-    const claimed = await claimApifyProcessedItem({ fingerprint, providerItemId, routine: "instagram-stories-async", mediaUrl, actorRunId });
-    if (!claimed) continue;
-    posts.push(post);
-    fingerprints.push(fingerprint);
-  }
-  const result = await runInstagramPipeline({ storiesOnly: true, dryRun: false, postsOverride: posts });
-  await Promise.all(fingerprints.map(fingerprint => completeApifyProcessedItem(fingerprint)));
+  aggregate.durationMs = Date.now() - startedAt;
+  const result = aggregate;
   const status = result.degraded ? "partial" : "succeeded";
   await finishIngestionRun(run.id, {
     status,

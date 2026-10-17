@@ -474,7 +474,7 @@ export async function recordExportAlertEvaluationSnapshot(input: {
 }) {
   const db = await getDb();
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
-  const insertResult = await db.insert(exportAlertEvaluationSnapshots).values({
+  const insertBuilder = db.insert(exportAlertEvaluationSnapshots).values({
     environment: input.environment,
     windowStartedAt: input.windowStartedAt,
     windowEndedAt: input.windowEndedAt,
@@ -492,8 +492,13 @@ export async function recordExportAlertEvaluationSnapshot(input: {
     heartbeatExecutionId: input.heartbeatExecutionId ? input.heartbeatExecutionId.slice(0, 160) : null,
     evaluatedAt: new Date(),
   });
-  const inserted = Array.isArray(insertResult) ? insertResult[0] : insertResult;
-  return { snapshotId: String((inserted as { insertId?: number } | undefined)?.insertId ?? "0") };
+  const returning = (insertBuilder as unknown as { returning?: (fields: { id: unknown }) => Promise<Array<{ id?: number }>> }).returning;
+  if (typeof returning === "function") {
+    const insertResult = await returning.call(insertBuilder, { id: exportAlertEvaluationSnapshots.id });
+    return { snapshotId: String(insertResult[0]?.id ?? "0") };
+  }
+  const insertResult = await insertBuilder as unknown as { insertId?: number };
+  return { snapshotId: String(insertResult.insertId ?? "0") };
 }
 
 export async function listExportAlertEvaluationSnapshots(input: {

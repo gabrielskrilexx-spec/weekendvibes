@@ -499,6 +499,30 @@ export async function deleteCatalogSnapshotsOlderThan(days = 30, now = new Date(
   return Number((result as { affectedRows?: number }).affectedRows ?? 0);
 }
 
+export function ingestionRetentionCutoff(days = 30, now = new Date()) {
+  const safeDays = Math.min(Math.max(Math.trunc(days), 1), 3650);
+  return new Date(now.getTime() - safeDays * 24 * 60 * 60 * 1000);
+}
+
+function deletedRowCount(result: unknown) {
+  const value = result as { count?: number; affectedRows?: number };
+  return Number(value.count ?? value.affectedRows ?? 0);
+}
+
+export async function deleteExpiredIngestionRecords(days = 30, now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return { ingestionRuns: 0, actionAuditLogs: 0, handleAuditLogs: 0, healthTransitions: 0, total: 0 };
+  const cutoff = ingestionRetentionCutoff(days, now);
+  const [runs, actions, handles, transitions] = await Promise.all([
+    db.delete(ingestionRuns).where(lt(ingestionRuns.startedAt, cutoff)),
+    db.delete(ingestionSourceActionAuditLogs).where(lt(ingestionSourceActionAuditLogs.actedAt, cutoff)),
+    db.delete(ingestionSourceHandleAuditLogs).where(lt(ingestionSourceHandleAuditLogs.changedAt, cutoff)),
+    db.delete(systemHealthTransitions).where(lt(systemHealthTransitions.observedAt, cutoff)),
+  ]);
+  const counts = { ingestionRuns: deletedRowCount(runs), actionAuditLogs: deletedRowCount(actions), handleAuditLogs: deletedRowCount(handles), healthTransitions: deletedRowCount(transitions) };
+  return { ...counts, total: counts.ingestionRuns + counts.actionAuditLogs + counts.handleAuditLogs + counts.healthTransitions };
+}
+
 export async function listSystemHealthTransitions(limit = 10, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) return [];
@@ -602,18 +626,61 @@ export async function listIngestionSourceOperationalTimeline(sourceKey: string, 
     const matchesStatus = status === "open" ? source?.circuitState === "open" : source?.circuitState !== "open";
     if (!matchesStatus) return { items: [], page: safePage, pageSize: safePageSize, total: 0, hasNextPage: false, actionCounts: { all: 0, handle_changed: 0, reactivated: 0, reprocessed: 0 } };
   }
-  const [handles, actions] = await Promise.all([
-    db.select({ id: ingestionSourceHandleAuditLogs.id, sourceKey: ingestionSourceHandleAuditLogs.sourceKey, previousHandle: ingestionSourceHandleAuditLogs.previousHandle, nextHandle: ingestionSourceHandleAuditLogs.nextHandle, changedByOpenId: ingestionSourceHandleAuditLogs.changedByOpenId, changedAt: ingestionSourceHandleAuditLogs.changedAt }).from(ingestionSourceHandleAuditLogs).where(eq(ingestionSourceHandleAuditLogs.sourceKey, sourceKey)).limit(200),
-    db.select({ id: ingestionSourceActionAuditLogs.id, sourceKey: ingestionSourceActionAuditLogs.sourceKey, action: ingestionSourceActionAuditLogs.action, operatorOpenId: ingestionSourceActionAuditLogs.operatorOpenId, details: ingestionSourceActionAuditLogs.details, actedAt: ingestionSourceActionAuditLogs.actedAt }).from(ingestionSourceActionAuditLogs).where(eq(ingestionSourceActionAuditLogs.sourceKey, sourceKey)).limit(200),
-  ]);
-  const timeline: IngestionSourceTimelineItem[] = [
-    ...handles.map(item => ({ id: `handle-${item.id}`, sourceKey: item.sourceKey, action: "handle_changed" as const, actorOpenId: item.changedByOpenId, details: `${item.previousHandle ?? "vazio"} → ${item.nextHandle ?? "vazio"}`, occurredAt: item.changedAt })),
-    ...actions.map(item => ({ id: `action-${item.id}`, sourceKey: item.sourceKey, action: item.action, actorOpenId: item.operatorOpenId, details: item.details, occurredAt: item.actedAt })),
-  ].filter(item => (!from || item.occurredAt.getTime() >= from.getTime()) && (!to || item.occurredAt.getTime() <= to.getTime())).sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
-  const actionCounts = { all: timeline.length, handle_changed: timeline.filter(item => item.action === "handle_changed").length, reactivated: timeline.filter(item => item.action === "reactivated").length, reprocessed: timeline.filter(item => item.action === "reprocessed").length };
-  const filteredTimeline = action ? timeline.filter(item => item.action === action) : timeline;
+  const combined = sql`
+    SELECT concat('handle-', "id"::text) AS "id", "sourceKey", 'handle_changed'::text AS "action",
+      "changedByOpenId" AS "actorOpenId", concat(coalesce("previousHandle", 'vazio'), ' → ', coalesce("nextHandle", 'vazio')) AS "details", "changedAt" AS "occurredAt"
+    FROM "ingestionSourceHandleAuditLogs"
+    WHERE "sourceKey" = ${sourceKey}
+    UNION ALL
+    SELECT concat('action-', "id"::text) AS "id", "sourceKey", "action"::text AS "action",
+      "operatorOpenId" AS "actorOpenId", "details", "actedAt" AS "occurredAt"
+    FROM "ingestionSourceActionAuditLogs"
+    WHERE "sourceKey" = ${sourceKey}
+  `;
+  const dateFilters = [
+    ...(from ? [sql`"occurredAt" >= ${from}`] : []),
+    ...(to ? [sql`"occurredAt" <= ${to}`] : []),
+  ];
+  const datePredicate = dateFilters.length > 0 ? sql`WHERE ${sql.join(dateFilters, sql` AND `)}` : sql``;
+  const filteredFilters = [...dateFilters, ...(action ? [sql`"action" = ${action}`] : [])];
+  const filteredPredicate = filteredFilters.length > 0 ? sql`WHERE ${sql.join(filteredFilters, sql` AND `)}` : sql``;
   const offset = (safePage - 1) * safePageSize;
-  return { items: filteredTimeline.slice(offset, offset + safePageSize).map(item => ({ ...item, occurredAt: item.occurredAt.toISOString() })), page: safePage, pageSize: safePageSize, total: filteredTimeline.length, hasNextPage: offset + safePageSize < filteredTimeline.length, actionCounts };
+  const [countResult, rowsResult] = await Promise.all([
+    db.execute(sql`
+      WITH combined AS (${combined})
+      SELECT count(*)::int AS "all",
+        count(*) FILTER (WHERE "action" = 'handle_changed')::int AS "handle_changed",
+        count(*) FILTER (WHERE "action" = 'reactivated')::int AS "reactivated",
+        count(*) FILTER (WHERE "action" = 'reprocessed')::int AS "reprocessed"
+      FROM combined ${datePredicate}
+    `),
+    db.execute(sql`
+      WITH combined AS (${combined}), filtered AS (
+        SELECT * FROM combined ${filteredPredicate}
+      )
+      SELECT "id", "sourceKey", "action", "actorOpenId", "details", "occurredAt"
+      FROM filtered
+      ORDER BY "occurredAt" DESC, "id" DESC
+      LIMIT ${safePageSize} OFFSET ${offset}
+    `),
+  ]);
+  const countRow = (countResult as unknown as Array<Record<string, unknown>>)[0] ?? {};
+  const actionCounts = {
+    all: Number(countRow.all ?? 0),
+    handle_changed: Number(countRow.handle_changed ?? 0),
+    reactivated: Number(countRow.reactivated ?? 0),
+    reprocessed: Number(countRow.reprocessed ?? 0),
+  };
+  const filteredTotal = action ? actionCounts[action] : actionCounts.all;
+  const rows = rowsResult as unknown as Array<Record<string, unknown>>;
+  return {
+    items: rows.map(item => ({ id: String(item.id), sourceKey: String(item.sourceKey), action: String(item.action) as IngestionSourceTimelineItem["action"], actorOpenId: item.actorOpenId == null ? null : String(item.actorOpenId), details: item.details == null ? null : String(item.details), occurredAt: new Date(item.occurredAt as string | Date).toISOString() })),
+    page: safePage,
+    pageSize: safePageSize,
+    total: filteredTotal,
+    hasNextPage: offset + safePageSize < filteredTotal,
+    actionCounts,
+  };
 }
 
 export async function recordIngestionSourceAction(input: { sourceKey: string; action: "reprocessed"; operatorOpenId?: string | null; details?: string | null }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
@@ -829,13 +896,13 @@ export async function listEvents(filters: { day?: string; date?: string; startDa
   if (filters.neighborhood?.trim()) { conditions.push(like(events.neighborhood, `%${filters.neighborhood.trim()}%`)); }
   if (filters.minPriceCents !== undefined) conditions.push(sql`${events.priceCents} >= ${filters.minPriceCents}`);
   if (filters.maxPriceCents !== undefined) conditions.push(sql`${events.priceCents} <= ${filters.maxPriceCents}`);
-  if (filters.date) conditions.push(sql`DATE(${events.eventDate}) = ${filters.date}`);
-  if (filters.startDate) conditions.push(sql`DATE(${events.eventDate}) >= ${filters.startDate}`);
-  if (filters.endDate) conditions.push(sql`DATE(${events.eventDate}) <= ${filters.endDate}`);
-  if (filters.timeFrom) conditions.push(sql`TIME(${events.eventDate}) >= ${`${filters.timeFrom}:00`}`);
-  if (filters.timeTo) conditions.push(sql`TIME(${events.eventDate}) <= ${`${filters.timeTo}:59`}`);
-  if (filters.day === "sexta") conditions.push(sql`DAYOFWEEK(${events.eventDate}) = 6`);
-  if (filters.day === "sabado") conditions.push(sql`DAYOFWEEK(${events.eventDate}) = 7`);
+  if (filters.date) conditions.push(sql`${events.eventDate}::date = ${filters.date}`);
+  if (filters.startDate) conditions.push(sql`${events.eventDate}::date >= ${filters.startDate}`);
+  if (filters.endDate) conditions.push(sql`${events.eventDate}::date <= ${filters.endDate}`);
+  if (filters.timeFrom) conditions.push(sql`${events.eventDate}::time >= ${`${filters.timeFrom}:00`}`);
+  if (filters.timeTo) conditions.push(sql`${events.eventDate}::time <= ${`${filters.timeTo}:59`}`);
+  if (filters.day === "sexta") conditions.push(sql`EXTRACT(ISODOW FROM ${events.eventDate}) = 5`);
+  if (filters.day === "sabado") conditions.push(sql`EXTRACT(ISODOW FROM ${events.eventDate}) = 6`);
   const page = Math.max(filters.page ?? 1, 1);
   const size = Math.min(Math.max(filters.size ?? 24, 1), 100);
   return db.select().from(events).where(and(...conditions)).orderBy(asc(events.eventDate)).limit(size).offset((page - 1) * size);
@@ -1159,7 +1226,7 @@ export async function deleteEvent(id: number) {
 export async function deleteExpiredEvents(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) throw new Error("Database unavailable");
-  const result = await db.delete(events).where(sql`${events.eventDate} < UTC_TIMESTAMP()`);
+  const result = await db.delete(events).where(sql`${events.eventDate} < CURRENT_TIMESTAMP`);
   return Number((result as { affectedRows?: number }).affectedRows ?? 0);
 }
 
