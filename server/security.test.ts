@@ -42,6 +42,26 @@ describe("security boundaries", () => {
     expect(JSON.stringify(response.body)).not.toContain("token");
   });
 
+  it("fails closed with 503 when persistence is unavailable for a sensitive limiter", async () => {
+    claimRateLimitRequest.mockResolvedValueOnce(null);
+    const middleware = createRateLimit({ windowMs: 60_000, max: 10, name: "admin", failClosed: true });
+    const response = createResponse();
+    let nextCalls = 0;
+    await middleware({ ip: "203.0.113.11" } as any, response as any, () => { nextCalls += 1; });
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toEqual({ error: "rate_limit_unavailable" });
+    expect(nextCalls).toBe(0);
+  });
+
+  it("fails closed when the rate-limit store throws a database error", async () => {
+    claimRateLimitRequest.mockRejectedValueOnce(new Error("database unavailable"));
+    const middleware = createRateLimit({ windowMs: 60_000, max: 10, name: "oauth", failClosed: true });
+    const response = createResponse();
+    await middleware({ ip: "203.0.113.12" } as any, response as any, vi.fn());
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toEqual({ error: "rate_limit_unavailable" });
+  });
+
   it("allows only configured or local origins and rejects wildcard CORS", () => {
     const middleware = createStrictCors();
     const allowed = createResponse();

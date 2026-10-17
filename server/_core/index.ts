@@ -27,6 +27,15 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
   if (server) server.on("request", app);
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
+  app.use((req, res, next) => {
+    const rawLength = req.headers["content-length"];
+    const contentLength = typeof rawLength === "string" ? Number(rawLength) : Array.isArray(rawLength) ? Number(rawLength[0]) : 0;
+    if (contentLength > 5 * 1024 * 1024 || !Number.isFinite(contentLength) || contentLength < 0) {
+      res.status(413).json({ error: "payload_too_large" });
+      return;
+    }
+    next();
+  });
   app.use(createStrictCors());
   app.use((req, res, next) => {
     applySecurityHeaders(req, res);
@@ -34,10 +43,11 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
   });
   app.use(express.json({ limit: "5mb" }));
   app.use(express.urlencoded({ limit: "1mb", extended: true }));
-  app.use("/api/oauth", createRateLimit({ windowMs: 15 * 60 * 1000, max: 30, name: "oauth" }));
+  app.use("/api/oauth", createRateLimit({ windowMs: 15 * 60 * 1000, max: 30, name: "oauth", failClosed: true }));
   app.use("/api/trpc", createRateLimit({
     windowMs: 60 * 1000,
     name: "trpc",
+    failClosed: true,
     max: req => /(?:adminRoutine|ingestionReports|circuitBreaker|operationalAlerts)/i.test(String(req.query.path ?? "")) ? 60 : 120,
   }));
   app.use("/manus-storage", createRateLimit({ windowMs: 60 * 1000, max: 120, name: "storage" }));

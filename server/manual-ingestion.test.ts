@@ -6,11 +6,13 @@ const mocks = vi.hoisted(() => ({
   runInstagramPipeline: vi.fn().mockResolvedValue({ imported: 1 }),
   listHeartbeatJobs: vi.fn(),
   getDb: vi.fn().mockResolvedValue(null),
+  acquireIngestionLease: vi.fn().mockResolvedValue({ acquired: true, holderId: "holder-1" }),
+  releaseIngestionLease: vi.fn().mockResolvedValue(true),
   startIngestionRun: vi.fn().mockResolvedValue(9001),
   finishIngestionRun: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("./db", () => ({ archiveExpiredSoldOutEvents: mocks.archiveExpiredSoldOutEvents, recordOperationalAlert: vi.fn(), getDb: mocks.getDb }));
+vi.mock("./db", () => ({ archiveExpiredSoldOutEvents: mocks.archiveExpiredSoldOutEvents, recordOperationalAlert: vi.fn(), getDb: mocks.getDb, acquireIngestionLease: mocks.acquireIngestionLease, releaseIngestionLease: mocks.releaseIngestionLease }));
 vi.mock("./ingestion", () => ({ runIngestionPipeline: mocks.runIngestionPipeline }));
 vi.mock("./instagram-pipeline", () => ({ InstagramIntegrationFailure: class InstagramIntegrationFailure extends Error {}, runInstagramPipeline: mocks.runInstagramPipeline }));
 vi.mock("./_core/notification", () => ({ notifyOwner: vi.fn() }));
@@ -76,10 +78,11 @@ describe("manual Wednesday routine", () => {
     expect(status.runMode).toBeNull();
   });
 
-  it("compartilha a execução em andamento e não dispara duas coletas", async () => {
+  it("usa lease persistido para impedir duas coletas concorrentes", async () => {
+    mocks.acquireIngestionLease.mockResolvedValueOnce({ acquired: true, holderId: "holder-1" }).mockResolvedValueOnce({ acquired: false, holderId: null });
     const first = runWednesdayRoutineNow();
     const second = runWednesdayRoutineNow();
-    expect(first).toBe(second);
+    await expect(second).rejects.toThrow("execução manual em andamento");
     await first;
     expect(mocks.archiveExpiredSoldOutEvents).toHaveBeenCalledTimes(1);
     expect(mocks.runIngestionPipeline).toHaveBeenCalledTimes(1);

@@ -11,6 +11,7 @@ export interface RateLimitOptions {
   windowMs: number;
   max: number | ((req: Request) => number);
   name?: string;
+  failClosed?: boolean;
 }
 
 export function createRateLimit(options: RateLimitOptions): RequestHandler {
@@ -20,8 +21,23 @@ export function createRateLimit(options: RateLimitOptions): RequestHandler {
     const now = Date.now();
     const key = `${name}:${req.ip || "unknown"}`;
     const max = typeof options.max === "function" ? options.max(req) : options.max;
-    const bucket = await claimRateLimitRequest({ key, windowMs: options.windowMs });
+    let bucket;
+    try {
+      bucket = await claimRateLimitRequest({ key, windowMs: options.windowMs });
+    } catch (error) {
+      if (options.failClosed) {
+        res.status(503).json({ error: "rate_limit_unavailable" });
+        return;
+      }
+      console.warn(`[RateLimit:${name}] persistence unavailable`, error instanceof Error ? error.message : "unknown error");
+      next();
+      return;
+    }
     if (!bucket) {
+      if (options.failClosed) {
+        res.status(503).json({ error: "rate_limit_unavailable" });
+        return;
+      }
       next();
       return;
     }

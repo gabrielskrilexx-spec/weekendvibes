@@ -37,4 +37,22 @@ describe("external fetch hardening", () => {
     Object.defineProperty(response, "text", { value: vi.fn().mockRejectedValue(new Error("socket closed")) });
     await expect(readExternalBody(response)).rejects.toMatchObject({ code: "NETWORK_ERROR", statusCode: 200 });
   });
+
+  it("aborts the underlying fetch when the caller signal is cancelled", async () => {
+    const fetchMock = vi.fn().mockImplementation((_input: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => {
+        const error = new Error("aborted");
+        error.name = "AbortError";
+        reject(error);
+      }, { once: true });
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+    const request = fetchExternal("https://public.example/events", {}, 10_000, false, controller.signal);
+    controller.abort();
+    await expect(request).rejects.toMatchObject({ code: "TIMEOUT" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(controller.signal.aborted).toBe(true);
+    vi.unstubAllGlobals();
+  });
 });

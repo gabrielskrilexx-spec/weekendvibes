@@ -376,6 +376,14 @@ export const ingestionSources = pgTable("ingestionSources", {
 export type IngestionSource = typeof ingestionSources.$inferSelect;
 export type InsertIngestionSource = typeof ingestionSources.$inferInsert;
 
+export const ingestionLeases = pgTable("ingestionLeases", {
+  lockKey: varchar("lockKey", { length: 160 }).primaryKey(),
+  holderId: varchar("holderId", { length: 120 }).notNull(),
+  leaseUntil: timestamp("leaseUntil").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
 export const ingestionSourceHandleAuditLogs = pgTable("ingestionSourceHandleAuditLogs", {
   id: serial("id").primaryKey(),
   sourceKey: varchar("sourceKey", { length: 120 }).notNull(),

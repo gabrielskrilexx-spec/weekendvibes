@@ -525,10 +525,10 @@ async function openAiChat(body: Record<string, unknown>) {
   }
 }
 
-export async function prepareImageForOcr(imageUrl: string) {
+export async function prepareImageForOcr(imageUrl: string, signal?: AbortSignal) {
   if (!imageUrl) return "";
   if (imageUrl.startsWith("data:image/")) return imageUrl;
-  const response = await fetchExternal(imageUrl, { headers: { Accept: "image/*", "User-Agent": "WeekendVibes/1.0" } }, 8_000, false);
+  const response = await fetchExternal(imageUrl, { headers: { Accept: "image/*", "User-Agent": "WeekendVibes/1.0" } }, 8_000, false, signal);
   if (!response.ok) throw new Error(`Instagram image download failed with ${response.status}`);
   const contentType = response.headers.get("content-type")?.split(";")[0] || "image/jpeg";
   if (!contentType.startsWith("image/")) throw new Error(`Instagram image returned unsupported content type: ${contentType}`);
@@ -632,7 +632,7 @@ function logInstagramResponseDiagnostics(input: { username: string; status: numb
   });
 }
 
-export async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId: string, options: { dryRun?: boolean } = {}): Promise<{ posts: InstagramPost[]; transportFailures: InstagramTransportFailure[] }> {
+export async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId: string, options: { dryRun?: boolean; signal?: AbortSignal } = {}): Promise<{ posts: InstagramPost[]; transportFailures: InstagramTransportFailure[] }> {
   const posts: InstagramPost[] = [];
   const transportFailures: InstagramTransportFailure[] = [];
   const configuredSources = (await listEnabledInstagramSources()) ?? [];
@@ -675,7 +675,7 @@ export async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, acc
     }
     const fields = `business_discovery.username(${target.username}){username,media.limit(25){id,caption,timestamp,permalink,media_url,media_type}}`;
     const url = `${META_GRAPH_BASE_URL}/${accountId}?${new URLSearchParams({ fields, access_token: token }).toString()}`;
-    const response = await fetchExternal(url, { headers: { Accept: "application/json" } }, 12_000, true);
+    const response = await fetchExternal(url, { headers: { Accept: "application/json" } }, 12_000, true, options.signal);
     const responseBody = await readExternalBody(response);
     let parsedBody: unknown = null;
     let parsed = false;
@@ -764,7 +764,7 @@ export async function claimApifyBudgetOrReport(input: { units?: number; allowIso
   return { ...budget, blockedMessage: message };
 }
 
-export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean; targets?: ReadonlyArray<{ username: string }>; allowIsolatedManualRun?: boolean } = {}) {
+export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean; targets?: ReadonlyArray<{ username: string }>; allowIsolatedManualRun?: boolean; signal?: AbortSignal } = {}) {
   const token = process.env.APIFY_API_TOKEN?.trim();
   if (!token) return { posts: [] as InstagramPost[], transportFailures: [] as InstagramTransportFailure[] };
   const targets = options.targets ?? INSTAGRAM_TARGETS;
@@ -776,7 +776,7 @@ export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean
     const payload = buildInstagramStoriesScraperPayload(targets);
   try {
     const timeoutMs = getApifySyncTimeoutMs();
-    const response = await fetchExternal(`https://api.apify.com/v2/acts/${encodeURIComponent(getConfiguredApifyStoriesActorId())}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}&timeout=30`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "WeekendVibes/1.0" }, body: JSON.stringify(payload) }, timeoutMs, true);
+    const response = await fetchExternal(`https://api.apify.com/v2/acts/${encodeURIComponent(getConfiguredApifyStoriesActorId())}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}&timeout=30`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "WeekendVibes/1.0" }, body: JSON.stringify(payload) }, timeoutMs, true, options.signal);
     const body = await readExternalBody(response);
     if (!response.ok) {
       let providerMessage = "";
@@ -822,7 +822,7 @@ export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean
   }
 }
 
-export async function fetchInstagramPostsDetailed(options: { dryRun?: boolean } = {}) {
+export async function fetchInstagramPostsDetailed(options: { dryRun?: boolean; signal?: AbortSignal } = {}) {
   const token = requiredEnv("META_INSTAGRAM_TOKEN");
   const accountId = requiredEnv("META_INSTAGRAM_ACCOUNT_ID");
   let meta: { posts: InstagramPost[]; transportFailures: InstagramTransportFailure[] } = { posts: [], transportFailures: [] };
@@ -972,7 +972,7 @@ export async function extractStructuredEventsForTest(referenceDate: string, appr
   return extractStructuredEvents(referenceDate, approvedPosts);
 }
 
-export type InstagramPipelineOptions = { dryRun?: boolean; storiesOnly?: boolean; postsOverride?: InstagramPost[]; persistIncompleteToManualReview?: boolean };
+export type InstagramPipelineOptions = { dryRun?: boolean; storiesOnly?: boolean; postsOverride?: InstagramPost[]; persistIncompleteToManualReview?: boolean; signal?: AbortSignal };
 
 export async function runInstagramPipeline(options: InstagramPipelineOptions = {}) {
   const pipelineStartedAt = Date.now();
@@ -984,8 +984,8 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   const fetched = options.postsOverride
     ? { posts: options.postsOverride, transportFailures: [] as InstagramTransportFailure[] }
     : storiesOnly
-      ? await fetchApifyStoriesAndHighlights({ dryRun })
-      : await fetchInstagramPostsDetailed({ dryRun });
+      ? await fetchApifyStoriesAndHighlights({ dryRun, signal: options.signal })
+      : await fetchInstagramPostsDetailed({ dryRun, signal: options.signal });
   const sandboxRestricted = process.env.NODE_ENV !== "production" && fetched.posts.length === 0 && (fetched.transportFailures.length === 0 && storiesOnly ? !process.env.APIFY_API_TOKEN : fetched.transportFailures.length > 0 && fetched.transportFailures.every(failure => failure.status === 0 || failure.status === 403 || failure.status === 502 || failure.status === 503 || failure.status === 504 || isSandboxRestrictedError(new Error(failure.message))));
   if (sandboxRestricted && shouldUseSandboxMocks()) {
     const durationMs = Math.max(1, Date.now() - pipelineStartedAt);

@@ -1,14 +1,12 @@
 import { desc, eq, or } from "drizzle-orm";
 import { ingestionRuns } from "../drizzle/schema";
-import { getDb, recordOperationalAlert } from "./db";
+import { acquireIngestionLease, getDb, recordOperationalAlert, releaseIngestionLease } from "./db";
 import { listHeartbeatJobs } from "./_core/heartbeat";
 import { notifyOwner } from "./_core/notification";
 import { InstagramIntegrationFailure, runInstagramPipeline } from "./instagram-pipeline";
 import { runFullAgendaRoutine, runPublicAgendaStep, runInstagramAgendaStep, type AgendaProgressUpdate } from "./agenda-routine";
 import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
 import { startAsyncApifyStoriesRun } from "./apify-async";
-
-let activeRun: Promise<ManualRoutineResult> | null = null;
 
 type ManualProgressSource = { sourceKey: "public" | "instagram"; status: "pending" | "running" | "succeeded" | "failed"; read: number; added: number; updated: number; ignored: number; error: string | null };
 export type ManualRoutineProgress = { isRunning: boolean; runId: number | null; phase: AgendaProgressUpdate["phase"]; step: number; totalSteps: number; message: string; startedAt: string | null; updatedAt: string; error: string | null; sources: ManualProgressSource[] };
@@ -85,13 +83,19 @@ async function executeRoutine(): Promise<ManualRoutineResult> {
 }
 
 export function runWednesdayRoutineNow() {
-  if (activeRun) return activeRun;
-  activeRun = executeRoutine().finally(() => { activeRun = null; });
-  return activeRun;
+  return (async () => {
+    const lease = await acquireIngestionLease("manual-agenda", 10 * 60_000);
+    if (!lease.acquired || !lease.holderId) throw new Error("Já existe uma execução manual em andamento.");
+    try {
+      return await executeRoutine();
+    } finally {
+      await releaseIngestionLease("manual-agenda", lease.holderId);
+    }
+  })();
 }
 
 export function isWednesdayRoutineRunning() {
-  return activeRun !== null;
+  return manualProgress.isRunning;
 }
 
 function configuredSourceUrlsForChunks() {
@@ -150,13 +154,14 @@ export function getInstagramManualConfigIssue(options: { storiesOnly?: boolean }
   return null;
 }
 
-export async function withChunkTimeout<T>(work: Promise<T>, timeoutMs = CHUNK_TIMEOUT_MS): Promise<T> {
+export async function withChunkTimeout<T>(work: Promise<T> | ((signal: AbortSignal) => Promise<T>), timeoutMs = CHUNK_TIMEOUT_MS): Promise<T> {
+  const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      work,
+      typeof work === "function" ? work(controller.signal) : work,
       new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new Error("Tempo limite de 8 segundos excedido para esta fonte.")), timeoutMs);
+        timer = setTimeout(() => { controller.abort(); reject(new Error("Tempo limite de 8 segundos excedido para esta fonte.")); }, timeoutMs);
       }),
     ]);
   } finally {
@@ -169,18 +174,18 @@ export async function runIngestionSourceChunk(input: { sourceKey: string; dryRun
   if (sourceKey === "instagram") {
     if (input.dryRun) {
       const timeoutMs = input.storiesOnly === true ? 75_000 : CHUNK_TIMEOUT_MS;
-      return { sourceKey, dryRun: true, result: await withChunkTimeout(runInstagramPipeline({ dryRun: true, storiesOnly: input.storiesOnly === true }), timeoutMs) };
+      return { sourceKey, dryRun: true, result: await withChunkTimeout(signal => runInstagramPipeline({ dryRun: true, storiesOnly: input.storiesOnly === true, signal }), timeoutMs) };
     }
     if (input.storiesOnly) return { sourceKey, dryRun: false, result: await startAsyncApifyStoriesRun({ trigger: "manual" }) };
-    return { sourceKey, dryRun: false, result: await withChunkTimeout(runInstagramAgendaStep({ archive: false, trigger: "manual" })) };
+    return { sourceKey, dryRun: false, result: await withChunkTimeout(signal => runInstagramAgendaStep({ archive: false, trigger: "manual", signal })) };
   }
   if (!/^public:[a-z0-9_-]+$/.test(sourceKey)) throw new Error("Fonte de ingestão inválida.");
   if (input.dryRun) {
     const { runIngestionPipeline } = await import("./ingestion");
-    const result = await withChunkTimeout(runIngestionPipeline({ dryRun: true, sourceKey }));
+    const result = await withChunkTimeout(signal => runIngestionPipeline({ dryRun: true, sourceKey, signal }));
     return { sourceKey, dryRun: true, result };
   }
-  return { sourceKey, dryRun: false, result: await withChunkTimeout(runPublicAgendaStep({ archive: false, sourceKey, trigger: "manual" })) };
+  return { sourceKey, dryRun: false, result: await withChunkTimeout(signal => runPublicAgendaStep({ archive: false, sourceKey, trigger: "manual", signal })) };
 }
 
 function messageForProgress(error: unknown) {

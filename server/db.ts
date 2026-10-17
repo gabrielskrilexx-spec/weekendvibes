@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots, ingestionLeases } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 import { buildDailyTelemetrySeries, calculateSystemHealthStatus, normalizeObservabilityPeriod, summarizeTelemetryTrend } from "./observability";
@@ -27,6 +27,29 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+export async function acquireIngestionLease(lockKey: string, leaseMs = 120_000) {
+  const db = await getDb();
+  if (!db) return { acquired: false as const, holderId: null };
+  const holderId = randomUUID();
+  const safeKey = lockKey.trim().slice(0, 160);
+  const duration = Math.max(10_000, Math.min(15 * 60_000, Math.trunc(leaseMs)));
+  const rows = await db.execute(sql`
+    INSERT INTO "ingestionLeases" ("lockKey", "holderId", "leaseUntil", "createdAt", "updatedAt")
+    VALUES (${safeKey}, ${holderId}, CURRENT_TIMESTAMP + (${duration} * INTERVAL '1 millisecond'), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT ("lockKey") DO UPDATE SET "holderId" = ${holderId}, "leaseUntil" = CURRENT_TIMESTAMP + (${duration} * INTERVAL '1 millisecond'), "updatedAt" = CURRENT_TIMESTAMP
+    WHERE "ingestionLeases"."leaseUntil" <= CURRENT_TIMESTAMP
+    RETURNING "holderId"
+  `);
+  return { acquired: Array.isArray(rows) && rows.length > 0, holderId };
+}
+
+export async function releaseIngestionLease(lockKey: string, holderId: string) {
+  const db = await getDb();
+  if (!db) return false;
+  await db.execute(sql`DELETE FROM "ingestionLeases" WHERE "lockKey" = ${lockKey.trim().slice(0, 160)} AND "holderId" = ${holderId}`);
+  return true;
 }
 
 export async function claimRateLimitRequest(input: { key: string; windowMs: number }) {
@@ -454,8 +477,8 @@ export async function createCatalogSnapshot(report?: Awaited<ReturnType<typeof g
   const payloadJson = JSON.stringify(payload);
   const snapshotHash = createHash("sha256").update(payloadJson).digest("hex");
   const generatedAt = new Date(payload.generatedAt);
-  const [inserted] = await db.insert(catalogSnapshots).values({ snapshotHash, generatedAt, sourceCount: payload.totalSources, payloadJson });
-  return { id: Number((inserted as unknown as { insertId?: number }).insertId ?? 0), snapshotHash, generatedAt: generatedAt.toISOString(), sourceCount: payload.totalSources };
+  const [inserted] = await db.insert(catalogSnapshots).values({ snapshotHash, generatedAt, sourceCount: payload.totalSources, payloadJson }).returning({ id: catalogSnapshots.id });
+  return { id: Number(inserted?.id ?? 0), snapshotHash, generatedAt: generatedAt.toISOString(), sourceCount: payload.totalSources };
 }
 
 export async function listCatalogSnapshots(limit = 20, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
