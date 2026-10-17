@@ -98,7 +98,7 @@ describe("Apify async Stories", () => {
   it("rejeita token inválido do webhook sem alterar o run", async () => {
     mocks.findIngestionRunByApifyActor.mockResolvedValueOnce({ id: 77, status: "running", details: JSON.stringify({ callbackToken: "expected" }) });
     const res = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() } as never;
-    await apifyInstagramWebhookHandler({ query: { token: "wrong" }, body: { resource: { id: "actor-run-invalid" } } } as never, res);
+    await apifyInstagramWebhookHandler({ headers: { "x-apify-signature": "wrong" }, body: { resource: { id: "actor-run-invalid" } } } as never, res);
     expect((res as any).status).toHaveBeenCalledWith(403);
     expect(mocks.finishIngestionRun).not.toHaveBeenCalled();
   });
@@ -106,7 +106,7 @@ describe("Apify async Stories", () => {
   it("finaliza como failed quando o Actor não conclui com sucesso", async () => {
     mocks.findIngestionRunByApifyActor.mockResolvedValueOnce({ id: 78, status: "running", details: JSON.stringify({ callbackToken: "expected" }) });
     const res = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() } as never;
-    await apifyInstagramWebhookHandler({ query: { token: "expected" }, body: { resource: { id: "actor-run-failed", status: "FAILED" } } } as never, res);
+    await apifyInstagramWebhookHandler({ headers: { "x-apify-signature": "expected" }, body: { resource: { id: "actor-run-failed", status: "FAILED" } } } as never, res);
     expect((res as any).status).toHaveBeenCalledWith(202);
     expect(mocks.finishIngestionRun).toHaveBeenCalledWith(78, expect.objectContaining({ status: "failed", httpStatus: 502 }));
   });

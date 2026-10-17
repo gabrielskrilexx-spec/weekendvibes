@@ -65,10 +65,12 @@ function getWebhookBaseUrl() {
 }
 
 function encodeWebhooks(webhookUrl: string) {
+  const signature = process.env.APIFY_WEBHOOK_SECRET?.trim() || process.env.INTERNAL_CRON_SECRET?.trim();
   return Buffer.from(JSON.stringify([
     {
       eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.TIMED_OUT"],
       requestUrl: webhookUrl,
+      ...(signature ? { requestHeaders: { "x-apify-signature": signature } } : {}),
       payloadTemplate: '{"resource":{{resource}}}',
     },
   ])).toString("base64url");
@@ -145,7 +147,7 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
   if (!runId) throw new Error("Não foi possível registrar a execução assíncrona.");
 
   const callbackToken = randomUUID();
-  const webhookUrl = `${baseUrl}/api/webhooks/apify/instagram?token=${encodeURIComponent(callbackToken)}`;
+  const webhookUrl = `${baseUrl}/api/webhooks/apify/instagram`;
   const query = new URLSearchParams({ token, webhooks: encodeWebhooks(webhookUrl) });
   let response: globalThis.Response;
   try {
@@ -269,15 +271,18 @@ function detailsTrigger(rawDetails: string | null) {
 }
 
 export async function apifyInstagramWebhookHandler(req: Request, res: Response) {
-  const token = typeof req.query.token === "string" ? req.query.token : "";
   const resource = readResource(req.body);
   if (!resource.id) return res.status(400).json({ ok: false, error: "APIFY_RUN_ID_MISSING" });
   const run = await findIngestionRunByApifyActor(resource.id);
   if (!run) return res.status(404).json({ ok: false, error: "APIFY_RUN_NOT_FOUND" });
   let details: Record<string, unknown> = {};
   try { details = run.details ? JSON.parse(run.details) as Record<string, unknown> : {}; } catch { return res.status(500).json({ ok: false, error: "RUN_DETAILS_INVALID" }); }
+  const rawHeader = typeof req.header === "function" ? req.header("x-apify-signature") : req.headers?.["x-apify-signature"];
+  const headerSignature = Array.isArray(rawHeader) ? rawHeader[0] ?? "" : typeof rawHeader === "string" ? rawHeader : "";
+  const callbackSignature = String(details.callbackToken ?? "");
+  const configuredSignature = process.env.APIFY_WEBHOOK_SECRET?.trim() || process.env.INTERNAL_CRON_SECRET?.trim() || "";
   const authenticatedBySecret = hasValidInternalCronSecret(req);
-  if (!safeTokenEqual(token, details.callbackToken) && !authenticatedBySecret) return res.status(403).json({ ok: false, error: "WEBHOOK_TOKEN_INVALID" });
+  if (!safeTokenEqual(headerSignature, callbackSignature) && !safeTokenEqual(headerSignature, configuredSignature) && !authenticatedBySecret) return res.status(403).json({ ok: false, error: "WEBHOOK_SIGNATURE_INVALID" });
   if (run.status !== "running") return res.status(200).json({ ok: true, duplicate: true });
 
   const status = resource.status.toUpperCase();

@@ -1006,8 +1006,9 @@ export async function startIngestionRun(input: {
         routine: input.routine.slice(0, 64),
         sourceKey: input.sourceKey?.slice(0, 255),
         status: "running",
-      });
-    return Number(result[0].insertId);
+      })
+      .returning({ id: ingestionRuns.id });
+    return result[0]?.id;
   } catch (error) {
     console.warn("[Ingestion reports] Could not start run record:", error);
     return undefined;

@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
 import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 import { buildDailyTelemetrySeries, calculateSystemHealthStatus, normalizeObservabilityPeriod, summarizeTelemetryTrend } from "./observability";
+import { upsert } from "./pg-upsert";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -12,7 +14,13 @@ let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      const client = postgres(process.env.DATABASE_URL, {
+        max: Number.parseInt(process.env.DB_POOL_MAX ?? "5", 10),
+        idle_timeout: 20,
+        connect_timeout: 10,
+        prepare: false,
+      });
+      _db = drizzle(client);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -30,10 +38,10 @@ export async function claimRateLimitRequest(input: { key: string; windowMs: numb
   const resetAt = new Date(now.getTime() + windowMs);
   const bucketKey = input.key.slice(0, 255);
   try {
-    await db.insert(rateLimitBuckets).values({ bucketKey, requestCount: 1, resetAt }).onDuplicateKeyUpdate({
+    await upsert(db.insert(rateLimitBuckets).values({ bucketKey, requestCount: 1, resetAt }), rateLimitBuckets.bucketKey, {
       set: {
-        requestCount: sql`IF(${rateLimitBuckets.resetAt} <= UTC_TIMESTAMP(), 1, ${rateLimitBuckets.requestCount} + 1)`,
-        resetAt: sql`IF(${rateLimitBuckets.resetAt} <= UTC_TIMESTAMP(), DATE_ADD(UTC_TIMESTAMP(), INTERVAL ${windowSeconds} SECOND), ${rateLimitBuckets.resetAt})`,
+        requestCount: sql`CASE WHEN ${rateLimitBuckets.resetAt} <= CURRENT_TIMESTAMP THEN 1 ELSE ${rateLimitBuckets.requestCount} + 1 END`,
+        resetAt: sql`CASE WHEN ${rateLimitBuckets.resetAt} <= CURRENT_TIMESTAMP THEN CURRENT_TIMESTAMP + (${windowSeconds} * INTERVAL '1 second') ELSE ${rateLimitBuckets.resetAt} END`,
         updatedAt: now,
       },
     });
@@ -52,14 +60,14 @@ export async function claimApifyProcessedItem(input: { fingerprint: string; prov
   const db = await getDb();
   if (!db) return true;
   const fingerprint = input.fingerprint.slice(0, 64);
-  const result = await db.insert(apifyProcessedItems).values({
+  const result = await upsert(db.insert(apifyProcessedItems).values({
     itemFingerprint: fingerprint,
     providerItemId: input.providerItemId?.slice(0, 255),
     routine: input.routine.slice(0, 64),
     mediaUrl: input.mediaUrl?.slice(0, 1000),
     actorRunId: input.actorRunId?.slice(0, 160),
     status: "processing",
-  }).onDuplicateKeyUpdate({ set: { itemFingerprint: sql`${apifyProcessedItems.itemFingerprint}` } });
+  }), apifyProcessedItems.itemFingerprint, { itemFingerprint: sql`${apifyProcessedItems.itemFingerprint}` });
   const affectedRows = Number((result as unknown as { affectedRows?: number }).affectedRows ?? 1);
   return affectedRows > 0;
 }
@@ -121,9 +129,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       updateSet.lastSignedIn = new Date();
     }
 
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
-    });
+    await upsert(db.insert(users).values(values), users.openId, updateSet);
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
     throw error;
@@ -179,9 +185,7 @@ export async function recordOperationalAlert(input: { integration: OperationalIn
     fingerprint: operationalAlertFingerprint(input.integration, message),
     isResolved: 0,
   };
-  await db.insert(operationalAlerts).values(values).onDuplicateKeyUpdate({
-    set: { severity: values.severity, alertType: values.alertType, slaMinutes: values.slaMinutes, runId: values.runId, title: values.title, message: values.message, isResolved: 0, updatedAt: new Date() },
-  });
+  await upsert(db.insert(operationalAlerts).values(values), operationalAlerts.fingerprint, { severity: values.severity, alertType: values.alertType, slaMinutes: values.slaMinutes, runId: values.runId, title: values.title, message: values.message, isResolved: 0, updatedAt: new Date() });
   return values;
 }
 
@@ -231,7 +235,7 @@ export async function setApifyDailyRequestLimit(value: number) {
   if (limit !== value) throw new Error("O limite diário deve ser um número inteiro entre 1 e 100.");
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  await db.insert(appSettings).values({ key: APIFY_DAILY_REQUEST_LIMIT_KEY, value: String(limit) }).onDuplicateKeyUpdate({ set: { value: String(limit), updatedAt: new Date() } });
+  await upsert(db.insert(appSettings).values({ key: APIFY_DAILY_REQUEST_LIMIT_KEY, value: String(limit) }), appSettings.key, { value: String(limit), updatedAt: new Date() });
   const dateKey = saoPauloDateKey(new Date());
   await db.update(apifyDailyUsage).set({ dailyLimit: limit, updatedAt: new Date() }).where(eq(apifyDailyUsage.dateKey, dateKey));
   return limit;
@@ -251,7 +255,7 @@ export async function claimApifyDailyRequest(input: { now?: Date; units?: number
   const dailyLimit = await getConfiguredApifyDailyRequestLimit(db);
   if (await isApifyIngestionKillSwitchEnabled(db) && !isolatedManualRun) return { allowed: false, dateKey, requestCount: 0, dailyLimit, persistence: Boolean(db), blockedReason: "kill_switch" as const };
   if (!db) return { allowed: false, dateKey, requestCount: 0, dailyLimit, persistence: false, blockedReason: "budget_unavailable" as const };
-  await db.insert(apifyDailyUsage).values({ dateKey, requestCount: 0, dailyLimit }).onDuplicateKeyUpdate({ set: { dailyLimit, updatedAt: new Date() } });
+  await upsert(db.insert(apifyDailyUsage).values({ dateKey, requestCount: 0, dailyLimit }), apifyDailyUsage.dateKey, { dailyLimit, updatedAt: new Date() });
   const result = await db.update(apifyDailyUsage).set({ requestCount: sql`${apifyDailyUsage.requestCount} + ${units}`, updatedAt: new Date() }).where(and(eq(apifyDailyUsage.dateKey, dateKey), sql`${apifyDailyUsage.requestCount} + ${units} <= ${dailyLimit}`));
   const rows = await db.select({ requestCount: apifyDailyUsage.requestCount, dailyLimit: apifyDailyUsage.dailyLimit }).from(apifyDailyUsage).where(eq(apifyDailyUsage.dateKey, dateKey)).limit(1);
   const row = rows[0] ?? { requestCount: 0, dailyLimit };
@@ -378,7 +382,7 @@ export const DEFAULT_INGESTION_SOURCES = [
 async function ensureDefaultIngestionSources(db: Awaited<ReturnType<typeof getDb>>) {
   if (!db) return;
   for (const source of DEFAULT_INGESTION_SOURCES) {
-    await db.insert(ingestionSources).values(source).onDuplicateKeyUpdate({ set: { name: source.name, url: source.url, handle: source.handle } });
+    await upsert(db.insert(ingestionSources).values(source), ingestionSources.sourceKey, { name: source.name, url: source.url, handle: source.handle });
   }
 }
 
@@ -713,7 +717,7 @@ export async function saveIngestionPayloadCache(input: { cacheKey: string; sourc
   const db = dbOverride ?? await getDb();
   if (!db) return;
   const serialized = JSON.stringify(input.payload).slice(0, 60000);
-  await db.insert(ingestionPayloadCache).values({ cacheKey: input.cacheKey.slice(0, 255), sourceKey: input.sourceKey.slice(0, 120), sourceUrl: input.sourceUrl.slice(0, 1000), payload: serialized, latitude: input.latitude?.slice(0, 32) ?? null, longitude: input.longitude?.slice(0, 32) ?? null, lastGoodAt: new Date() }).onDuplicateKeyUpdate({ set: { sourceKey: input.sourceKey.slice(0, 120), sourceUrl: input.sourceUrl.slice(0, 1000), payload: serialized, latitude: input.latitude?.slice(0, 32) ?? null, longitude: input.longitude?.slice(0, 32) ?? null, lastGoodAt: new Date(), updatedAt: new Date() } });
+  await upsert(db.insert(ingestionPayloadCache).values({ cacheKey: input.cacheKey.slice(0, 255), sourceKey: input.sourceKey.slice(0, 120), sourceUrl: input.sourceUrl.slice(0, 1000), payload: serialized, latitude: input.latitude?.slice(0, 32) ?? null, longitude: input.longitude?.slice(0, 32) ?? null, lastGoodAt: new Date() }), ingestionPayloadCache.cacheKey, { sourceKey: input.sourceKey.slice(0, 120), sourceUrl: input.sourceUrl.slice(0, 1000), payload: serialized, latitude: input.latitude?.slice(0, 32) ?? null, longitude: input.longitude?.slice(0, 32) ?? null, lastGoodAt: new Date(), updatedAt: new Date() });
 }
 
 export function eventIdentityKey(sourceUrl: string, eventDate: Date | string) {
@@ -770,7 +774,7 @@ export async function setPublicFeedRolloverHour(value: number) {
   if (hour < 0) throw new Error("Horário de virada inválido");
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  await db.insert(appSettings).values({ key: PUBLIC_FEED_ROLLOVER_KEY, value: String(hour) }).onDuplicateKeyUpdate({ set: { value: String(hour), updatedAt: new Date() } });
+  await upsert(db.insert(appSettings).values({ key: PUBLIC_FEED_ROLLOVER_KEY, value: String(hour) }), appSettings.key, { value: String(hour), updatedAt: new Date() });
   return hour;
 }
 
@@ -882,7 +886,7 @@ function normalizeEventLocation(data: InsertEvent) {
 async function queueGeocoding(eventId: number, data: InsertEvent, db: Awaited<ReturnType<typeof getDb>>) {
   if (!db || (data.latitude && data.longitude)) return;
   const rawAddress = data.address || data.locationName;
-  await db.insert(geocodingJobs).values({ eventId, addressHash: geocodingAddressHash(rawAddress, data.city), status: "pending", attempts: 0 }).onDuplicateKeyUpdate({ set: { addressHash: geocodingAddressHash(rawAddress, data.city), status: "pending", lastError: null, updatedAt: new Date() } });
+  await upsert(db.insert(geocodingJobs).values({ eventId, addressHash: geocodingAddressHash(rawAddress, data.city), status: "pending", attempts: 0 }), geocodingJobs.eventId, { addressHash: geocodingAddressHash(rawAddress, data.city), status: "pending", lastError: null, updatedAt: new Date() });
 }
 
 function saoPauloCalendarDateForDb(value: Date) {
@@ -1039,8 +1043,8 @@ export async function saveEvent(data: InsertEvent) {
     }
     return { created: false, id: duplicate.id, duplicate: true, updated: keepIncoming };
   }
-  const inserted = await db.insert(events).values(normalized).onDuplicateKeyUpdate({ set: { ...normalized, updatedAt: new Date() } });
-  const eventId = Number(inserted[0]?.insertId ?? 0);
+  const inserted = await upsert(db.insert(events).values(normalized), events.slug, { ...normalized, updatedAt: new Date() });
+  const eventId = Number((Array.isArray(inserted) ? inserted[0] : undefined)?.id ?? 0);
   if (eventId > 0) {
     await recordEventTicketSnapshot(eventId, normalized, db);
     await queueGeocoding(eventId, normalized, db);

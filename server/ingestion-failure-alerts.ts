@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { operationalAlerts } from "../drizzle/schema";
 import { getDb, type OperationalIntegration, type OperationalSeverity } from "./db";
+import { upsert } from "./pg-upsert";
 
 export type IngestionFailureInput = {
   routine: string;
@@ -181,9 +182,7 @@ export async function handleIngestionFailureAlert(
       .limit(1);
     const reopened = existing?.isResolved === 1;
     const deduplicated = Boolean(existing && !reopened);
-    await tx.insert(operationalAlerts).values({ ...alert, isResolved: 0 }).onDuplicateKeyUpdate({
-      set: { severity: alert.severity, alertType: alert.alertType, slaMinutes: alert.slaMinutes, runId: alert.runId, title: alert.title, message: alert.message, isResolved: 0, updatedAt: input.now ?? new Date() },
-    });
+    await upsert(tx.insert(operationalAlerts).values({ ...alert, isResolved: 0 }), operationalAlerts.fingerprint, { severity: alert.severity, alertType: alert.alertType, slaMinutes: alert.slaMinutes, runId: alert.runId, title: alert.title, message: alert.message, isResolved: 0, updatedAt: input.now ?? new Date() });
     return { reopened, deduplicated };
   };
 

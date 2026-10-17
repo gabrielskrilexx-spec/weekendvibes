@@ -3,6 +3,7 @@ import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { appSettings, exportJobsAlertSettingsAudit, heartbeatExecutionEvents } from "../drizzle/schema";
 import { getDb, recordOperationalAlert } from "./db";
+import { upsert } from "./pg-upsert";
 
 export type HeartbeatEventType = "started" | "step" | "log" | "alert" | "completed" | "failed" | "timeout";
 export type HeartbeatExecutionStatus = "running" | "succeeded" | "failed" | "timeout" | "unknown";
@@ -204,7 +205,7 @@ export async function updateHeartbeatHealthSettings(input: Partial<Omit<Heartbea
   const next = clampSettings(input, input.environment);
   const now = new Date();
   const serialized = JSON.stringify({ maxDurationMs: next.maxDurationMs, failureThreshold: next.failureThreshold, cooldownHours: next.cooldownHours, minSuccessRate: next.minSuccessRate, maxP95DurationMs: next.maxP95DurationMs, minRegressionSuccessRateDrop: next.minRegressionSuccessRateDrop, maxRegressionP95IncreasePercent: next.maxRegressionP95IncreasePercent, warningRegressionPct: next.warningRegressionPct, criticalRegressionPct: next.criticalRegressionPct });
-  await db.insert(appSettings).values({ key: settingKey(input.environment), value: serialized, createdAt: now, updatedAt: now }).onDuplicateKeyUpdate({ set: { value: serialized, updatedAt: now } });
+  await upsert(db.insert(appSettings).values({ key: settingKey(input.environment), value: serialized, createdAt: now, updatedAt: now }), appSettings.key, { value: serialized, updatedAt: now });
   await db.insert((await import("../drizzle/schema")).exportJobsAlertSettingsAudit).values({ environment: input.environment, previousValue: JSON.stringify(previous), nextValue: serialized, changedByOpenId: input.changedByOpenId.slice(0, 160), changedAt: now });
   return { ...next, changedByOpenId: input.changedByOpenId.slice(0, 160), changedAt: now.toISOString() };
 }
@@ -340,7 +341,7 @@ export async function evaluateHeartbeatHealth(input: {
   const [failureRow] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, failureKey)).limit(1);
   const previousFailures = failureRow?.value ? Math.max(0, Number.parseInt(failureRow.value, 10) || 0) : 0;
   const failureCount = input.status === "failed" || input.status === "timeout" ? previousFailures + 1 : 0;
-  await db.insert(appSettings).values({ key: failureKey, value: String(failureCount) }).onDuplicateKeyUpdate({ set: { value: String(failureCount), updatedAt: new Date() } });
+  await upsert(db.insert(appSettings).values({ key: failureKey, value: String(failureCount) }), appSettings.key, { value: String(failureCount), updatedAt: new Date() });
   if ((input.status === "failed" || input.status === "timeout") && failureCount >= settings.failureThreshold) {
     await recordHeartbeatExecutionEvent({ heartbeatExecutionId: input.heartbeatExecutionId, eventType: input.status === "timeout" ? "timeout" : "alert", sequence: 999_998, status: input.status, message: input.errorMessage ?? "Execução do Heartbeat falhou." });
     await recordOperationalAlert({ integration: "pipeline", alertType: "heartbeat_execution_failed", severity: "CRITICAL", title: "Falha na execução do Heartbeat", message: `A execução ${input.heartbeatExecutionId} terminou com status ${input.status} após ${failureCount} falha(s) consecutiva(s).`, runId: input.heartbeatExecutionId, slaMinutes: settings.cooldownHours * 60 });

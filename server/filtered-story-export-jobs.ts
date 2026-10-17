@@ -6,6 +6,7 @@ import { getDb, recordOperationalAlert } from "./db";
 import { storageGet, storagePut } from "./storage";
 import { buildFilteredStoriesCsv, listAllFilteredStories, type FilteredStoriesFilter } from "./ingestion-reports";
 import { getHeartbeatStatsExportRows, listHeartbeatExecutionEventsForExport, type HeartbeatEventType } from "./heartbeat-observability";
+import { upsert } from "./pg-upsert";
 
 type ExportFormat = "csv" | "json";
 type PersistentExportStatus = "queued" | "processing" | "completed" | "failed" | "cancelled" | "expired";
@@ -271,7 +272,7 @@ export async function updateExportJobsAlertSettings(input: Omit<ExportAlertSetti
     minimumQueueSize: Math.min(100000, Math.max(0, Math.trunc(input.minimumQueueSize))),
     consecutiveWindows: Math.min(10, Math.max(1, Math.trunc(input.consecutiveWindows))),
   };
-  await db.insert(appSettings).values({ key: exportAlertSettingsKey(input.environment), value: JSON.stringify({ ...settings, ...next }) }).onDuplicateKeyUpdate({ set: { value: JSON.stringify(next), updatedAt: new Date() } });
+  await upsert(db.insert(appSettings).values({ key: exportAlertSettingsKey(input.environment), value: JSON.stringify({ ...settings, ...next }) }), appSettings.key, { value: JSON.stringify(next), updatedAt: new Date() });
   await db.insert(exportJobsAlertSettingsAudit).values({ environment: input.environment, previousValue: JSON.stringify(settings), nextValue: JSON.stringify(next), changedByOpenId: (input.changedByOpenId ?? "system").slice(0, 160), changedAt: new Date() });
   return next;
 }
@@ -594,4 +595,3 @@ export async function getSnapshotExecutionHistory(input: { snapshotId: string; o
     events: [{ event: "evaluated" as const, occurredAt, message: row.heartbeatExecutionId ? `Avaliação vinculada à execução ${row.heartbeatExecutionId}` : "Avaliação registrada sem execução M2M associada" }],
   };
 }
-

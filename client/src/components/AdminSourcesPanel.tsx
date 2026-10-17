@@ -216,7 +216,7 @@ export default function AdminSourcesPanel() {
     const filename = `auditoria_${category}_${graphPeriod}dias_${today}.${format}`;
     const content = format === "json"
       ? JSON.stringify({ periodDays: graphPeriod, series }, null, 2)
-      : `\uFEFFdate,waf,meta110,network,succeeded,total,successRate\n${series.map(point => [point.date, point.waf, point.meta110, point.network, point.succeeded, point.total, point.successRate].join(",")).join("\n")}`;
+      : `\uFEFFdate,waf,meta110,network,succeeded,total,successRate\n${series.map((point: { date: string; waf: number; meta110: number; network: number; succeeded: number; total: number; successRate: number }) => [point.date, point.waf, point.meta110, point.network, point.succeeded, point.total, point.successRate].join(",")).join("\n")}`;
     const blob = new Blob([content], { type: format === "json" ? "application/json;charset=utf-8" : "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -309,7 +309,7 @@ export default function AdminSourcesPanel() {
       </div>
       <div className="mt-5 rounded-2xl border border-white/10 bg-black/10 p-4" data-testid="health-transition-widget" aria-label="Últimas transições de saúde">
         <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-sm font-black text-white">Últimas transições de saúde</p><p className="mt-1 text-xs text-zinc-500">Registro das mudanças detectadas pelo monitor executivo.</p></div><span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-300">Saúde atual: {executiveReport.data?.system_health_status ?? "—"}</span></div>
-        {executiveReport.data?.healthTransitions?.length ? <ol className="mt-3 grid gap-2 sm:grid-cols-2">{executiveReport.data.healthTransitions.map(transition => <li key={transition.id} className="rounded-xl border border-white/10 p-3 text-xs text-zinc-300"><div className="flex items-center justify-between gap-2"><strong>{transition.previousStatus ?? "inicial"} → {transition.nextStatus}</strong><time className="text-zinc-500" dateTime={String(transition.observedAt)}>{formatTimestamp(transition.observedAt)}</time></div><p className="mt-1 text-zinc-500">{transition.reason}</p></li>)}</ol> : <p className="mt-3 text-xs text-zinc-500">Nenhuma transição registrada ainda.</p>}
+        {executiveReport.data?.healthTransitions?.length ? <ol className="mt-3 grid gap-2 sm:grid-cols-2">{executiveReport.data.healthTransitions.map((transition: { id: number | string; previousStatus: string | null; nextStatus: string; observedAt: string | Date; reason: string }) => <li key={transition.id} className="rounded-xl border border-white/10 p-3 text-xs text-zinc-300"><div className="flex items-center justify-between gap-2"><strong>{transition.previousStatus ?? "inicial"} → {transition.nextStatus}</strong><time className="text-zinc-500" dateTime={String(transition.observedAt)}>{formatTimestamp(transition.observedAt)}</time></div><p className="mt-1 text-zinc-500">{transition.reason}</p></li>)}</ol> : <p className="mt-3 text-xs text-zinc-500">Nenhuma transição registrada ainda.</p>}
       </div>
       <div className="mt-5 space-y-3">
         {sources.data?.map(source => {
