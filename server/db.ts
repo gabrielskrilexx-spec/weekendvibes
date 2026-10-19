@@ -1,8 +1,8 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots, ingestionLeases } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots, ingestionLeases, adminMagicLinks } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 import { buildDailyTelemetrySeries, calculateSystemHealthStatus, normalizeObservabilityPeriod, summarizeTelemetryTrend } from "./observability";
@@ -50,6 +50,34 @@ export async function checkDatabaseHealth() {
     console.warn("[DatabaseHealth] dependency check failed", error instanceof Error ? error.message : "unknown_error");
     return { ok: false as const, database: "degraded" as const, rateLimiter: "unavailable" as const, userPersistence: "unavailable" as const, latencyMs: Date.now() - startedAt };
   }
+}
+
+export async function issueAdminMagicLink(openId: string, ttlMs = 5 * 60_000) {
+  const db = await getDb();
+  if (!db) throw new Error("database_unavailable");
+  const token = randomBytes(32).toString("hex");
+  const tokenHash = createHash("sha256").update(token, "utf8").digest("hex");
+  const boundedTtl = Math.max(30_000, Math.min(5 * 60_000, Math.trunc(ttlMs)));
+  const expiresAt = new Date(Date.now() + boundedTtl);
+  await db.insert(adminMagicLinks).values({ tokenHash, openId, expiresAt });
+  return { token, expiresAt };
+}
+
+/** Atomically consumes a token; a second request can never receive the openId. */
+export async function consumeAdminMagicLink(token: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const tokenHash = createHash("sha256").update(token, "utf8").digest("hex");
+  const rows = await db.execute(sql`
+    UPDATE "adminMagicLinks"
+    SET "usedAt" = CURRENT_TIMESTAMP
+    WHERE "tokenHash" = ${tokenHash}
+      AND "usedAt" IS NULL
+      AND "expiresAt" > CURRENT_TIMESTAMP
+    RETURNING "openId"
+  `);
+  const row = Array.isArray(rows) ? rows[0] as { openId?: unknown } | undefined : undefined;
+  return typeof row?.openId === "string" ? row.openId : null;
 }
 
 export async function acquireIngestionLease(lockKey: string, leaseMs = 120_000) {

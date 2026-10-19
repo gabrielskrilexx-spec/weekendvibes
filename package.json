@@ -15,6 +15,7 @@
     "test:e2e": "playwright test",
     "monitor:ticketing": "tsx scripts/monitor-ticketing-sources.mjs --watch",
     "monitor:ticketing:once": "tsx scripts/monitor-ticketing-sources.mjs",
+    "admin:magic-link": "tsx scripts/generate-admin-magic-link.mts",
     "seed:events": "cross-env DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes tsx scripts/seed-events.mts",
     "db:push": "cross-env DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes drizzle-kit generate && cross-env DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes drizzle-kit migrate"
   },

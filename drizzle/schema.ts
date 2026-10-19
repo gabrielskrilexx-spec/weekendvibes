@@ -30,6 +30,22 @@ export const users = pgTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
+/** One-time administrative links; only a SHA-256 digest is persisted. */
+export const adminMagicLinks = pgTable("adminMagicLinks", {
+  id: serial("id").primaryKey(),
+  tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
+  openId: varchar("openId", { length: 160 }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  usedAt: timestamp("usedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => ({
+  activeTokenIdx: index("adminMagicLinks_active_token_idx").on(table.tokenHash, table.expiresAt, table.usedAt),
+  expiryIdx: index("adminMagicLinks_expiry_idx").on(table.expiresAt),
+}));
+
+export type AdminMagicLink = typeof adminMagicLinks.$inferSelect;
+export type InsertAdminMagicLink = typeof adminMagicLinks.$inferInsert;
+
 export const appSettings = pgTable("appSettings", {
   key: varchar("key", { length: 120 }).primaryKey(),
   value: varchar("value", { length: 255 }).notNull(),

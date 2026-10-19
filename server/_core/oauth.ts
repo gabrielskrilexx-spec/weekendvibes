@@ -52,6 +52,41 @@ export function registerOAuthRoutes(app: Express) {
     }
   });
 
+  app.get("/api/auth/magic-link", async (req: Request, res: Response) => {
+    const token = getQueryParam(req, "token");
+    if (!token || !/^[a-f0-9]{64}$/i.test(token)) {
+      res.status(400).json({ error: "invalid_magic_link" });
+      return;
+    }
+
+    try {
+      const openId = await db.consumeAdminMagicLink(token);
+      if (!openId) {
+        res.status(410).json({ error: "magic_link_expired_or_used" });
+        return;
+      }
+
+      const user = await db.getUserByOpenId(openId);
+      if (!user || user.role !== "admin") {
+        res.status(403).json({ error: "admin_access_required" });
+        return;
+      }
+
+      const sessionToken = await sdk.createSessionToken(user.openId, {
+        name: user.name || "WeekendVibes Admin",
+        expiresInMs: ONE_YEAR_MS,
+      });
+      res.cookie(COOKIE_NAME, sessionToken, { ...getSessionCookieOptions(req), maxAge: ONE_YEAR_MS });
+      res.redirect(302, getSafeReturnPath(getQueryParam(req, "redirect_to"), "/admin"));
+    } catch (error) {
+      console.error("[OAuth] Magic link consumption failed", {
+        stage: "magic_link",
+        ...redactError(error),
+      });
+      res.status(503).json({ error: "magic_link_unavailable" });
+    }
+  });
+
   app.get("/api/oauth/callback", async (req: Request, res: Response) => {
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
