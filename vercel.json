@@ -17,6 +17,10 @@
   ],
   "rewrites": [
     {
+      "source": "/api/oauth/(.*)",
+      "destination": "/api"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api"
     },

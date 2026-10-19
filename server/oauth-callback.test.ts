@@ -89,6 +89,27 @@ describe("OAuth callback", () => {
     expect(mocks.createSessionToken).toHaveBeenCalled();
   });
 
+  it.each([
+    ["without an Accept header", undefined],
+    ["with an application/json Accept header", "application/json"],
+  ])("redirects GitHub login with HTTP 302 %s", async (_label, accept) => {
+    const handler = register("/api/oauth/login");
+    const response = createResponse();
+
+    await handler?.({
+      query: {},
+      headers: accept ? { accept } : {},
+      protocol: "https",
+    }, response);
+
+    expect(response.statusCode).toBe(302);
+    expect(response.redirectLocation).toMatch(/^https:\/\/github\.com\/login\/oauth\/authorize\?/);
+    const location = new URL(String(response.redirectLocation));
+    expect(location.searchParams.get("client_id")).toBe("github-client");
+    expect(location.searchParams.get("redirect_uri")).toBe("https://weekendvibes-dh6w.vercel.app/api/oauth/callback");
+    expect(location.searchParams.get("state")).toBeTruthy();
+  });
+
   it("recusa o login Dev Mode imediatamente em produção e registra IP e timestamp", async () => {
     const previousNodeEnv = process.env.NODE_ENV;
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
