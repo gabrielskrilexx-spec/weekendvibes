@@ -1,16 +1,14 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { ENV } from "./_core/env";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "./_core/sdk";
 
 describe("session signing", () => {
-  const originalSecret = ENV.cookieSecret;
-
   afterEach(() => {
-    ENV.cookieSecret = originalSecret;
+    vi.unstubAllEnvs();
   });
 
   it("deriva uma chave segura e valida a sessão com um segredo configurado curto", async () => {
-    ENV.cookieSecret = "platform-secret-value";
+    vi.stubEnv("JWT_SECRET", "platform-secret-value");
+    vi.stubEnv("VITE_APP_ID", "test-app-id");
 
     const token = await sdk.createSessionToken("user-short-secret", {
       name: "WeekendVibes Admin",
@@ -20,13 +18,14 @@ describe("session signing", () => {
 
     expect(session).toMatchObject({
       openId: "user-short-secret",
-      appId: ENV.appId,
+      appId: "test-app-id",
       name: "WeekendVibes Admin",
     });
   });
 
   it("rejeita segredo ausente em vez de criar uma sessão sem assinatura", async () => {
-    ENV.cookieSecret = "";
+    vi.stubEnv("JWT_SECRET", "");
+    vi.stubEnv("VITE_APP_ID", "test-app-id");
 
     await expect(sdk.createSessionToken("user-without-secret")).rejects.toThrow(
       "JWT_SECRET is required",

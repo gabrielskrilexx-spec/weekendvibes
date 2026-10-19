@@ -310,6 +310,19 @@ export function registerOAuthRoutes(app: Express) {
         });
         return;
       }
+      const errorCandidate = error as { name?: unknown; message?: unknown; stack?: unknown };
+      const internalMessage = typeof errorCandidate?.message === "string"
+        ? errorCandidate.message
+        : String(error);
+      const internalStack = typeof errorCandidate?.stack === "string"
+        ? errorCandidate.stack
+        : new Error(internalMessage).stack;
+      console.error("[OAuth] Internal callback error:", {
+        stage: "callback",
+        name: typeof errorCandidate?.name === "string" ? errorCandidate.name : "Error",
+        message: internalMessage,
+        stack: internalStack,
+      });
       console.error("[OAuth] Callback failed", { ...redactError(error), stage: "callback" });
       res.status(500).json({ error: "oauth_callback_failed" });
     }

@@ -155,7 +155,7 @@ class SDKServer {
   }
 
   private getSessionSecret() {
-    const secret = ENV.cookieSecret;
+    const secret = (process.env.JWT_SECRET ?? "").trim();
     if (!secret) {
       throw new Error("JWT_SECRET is required");
     }
@@ -163,6 +163,14 @@ class SDKServer {
     // Derive a fixed-size key so the configured secret is accepted safely even
     // when the platform-provided value is shorter than the old arbitrary limit.
     return createHash("sha256").update(secret, "utf8").digest();
+  }
+
+  private getRuntimeAppId() {
+    const appId = (process.env.VITE_APP_ID ?? "").trim();
+    if (!appId) {
+      throw new Error("VITE_APP_ID is required for session");
+    }
+    return appId;
   }
 
   /**
@@ -177,7 +185,7 @@ class SDKServer {
     return this.signSession(
       {
         openId,
-        appId: ENV.appId,
+        appId: this.getRuntimeAppId(),
         name: options.name || "",
       },
       options
@@ -221,7 +229,7 @@ class SDKServer {
         !isNonEmptyString(openId) ||
         !isNonEmptyString(appId) ||
         !isNonEmptyString(name) ||
-        appId !== ENV.appId
+        appId !== this.getRuntimeAppId()
       ) {
         console.warn("[Auth] Session payload missing required fields");
         return null;
