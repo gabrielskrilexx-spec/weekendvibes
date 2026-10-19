@@ -26,5 +26,10 @@ describe("TodayEvents", () => {
 
     state.query = { data: [{ id: 1, title: "Rolê de hoje" }], isLoading: false, isError: false };
     expect(renderToStaticMarkup(<TodayEvents />)).toContain("Rolê de hoje");
+
+    state.query = { data: [{ id: 2, title: "Rolê resolvido" }], isLoading: true, isError: false };
+    const resolvedMarkup = renderToStaticMarkup(<TodayEvents />);
+    expect(resolvedMarkup).toContain("Rolê resolvido");
+    expect(resolvedMarkup).not.toContain("Buscando os rolês de hoje");
   });
 });
