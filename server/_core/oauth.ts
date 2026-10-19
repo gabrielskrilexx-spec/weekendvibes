@@ -1,5 +1,6 @@
-import { COOKIE_NAME, getSafeReturnPath, ONE_YEAR_MS, OAUTH_STATE_COOKIE, decodeOAuthState } from "@shared/const";
+import { COOKIE_NAME, encodeOAuthState, getOAuthCallbackUri, getSafeReturnPath, ONE_YEAR_MS, OAUTH_STATE_COOKIE, decodeOAuthState } from "@shared/const";
 import { parse as parseCookieHeader } from "cookie";
+import { randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
 import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
@@ -26,6 +27,30 @@ function oauthFailureDetails(error: unknown, stage: "exchange" | "user_info" | "
 }
 
 export function registerOAuthRoutes(app: Express) {
+  app.get("/api/oauth/login", (req: Request, res: Response) => {
+    const clientId = ENV.oauthClientId.trim();
+    if (!clientId) {
+      res.status(503).json({ error: "oauth_not_configured" });
+      return;
+    }
+
+    const nonce = randomUUID();
+    const redirectUri = ENV.oauthRedirectUri.trim() || getOAuthCallbackUri(`${req.protocol}://${req.get("host")}`);
+    const returnTo = getSafeReturnPath(getQueryParam(req, "redirect_to"), "/admin");
+    const state = encodeOAuthState({ redirectUri, nonce, returnTo });
+    res.cookie(OAUTH_STATE_COOKIE, nonce, {
+      ...getSessionCookieOptions(req),
+      maxAge: 10 * 60 * 1000,
+    });
+
+    const authorizationUrl = new URL("https://github.com/login/oauth/authorize");
+    authorizationUrl.searchParams.set("client_id", clientId);
+    authorizationUrl.searchParams.set("redirect_uri", redirectUri);
+    authorizationUrl.searchParams.set("scope", "read:user user:email");
+    authorizationUrl.searchParams.set("state", state);
+    res.redirect(302, authorizationUrl.toString());
+  });
+
   app.get("/api/auth/dev-login", async (req: Request, res: Response) => {
     if (process.env.NODE_ENV === "production") {
       console.warn("[Security] Dev Mode access blocked in production", {

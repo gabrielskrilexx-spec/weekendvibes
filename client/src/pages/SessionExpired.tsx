@@ -3,7 +3,6 @@ import { getSafeReturnPath } from "@shared/const";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { startLogin } from "@/const";
 
 export default function SessionExpired() {
   const [, setLocation] = useLocation();
@@ -30,7 +29,7 @@ export default function SessionExpired() {
             Por segurança, sua sessão expirou. Entre novamente para continuar usando favoritos, lembretes e recursos da sua conta.
           </p>
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-            <Button onClick={() => startLogin(returnTo)} className="bg-gradient-to-r from-orange-500 to-fuchsia-600 text-white hover:from-orange-600 to-fuchsia-700">
+            <Button onClick={() => { window.location.href = "/api/oauth/login"; }} className="bg-gradient-to-r from-orange-500 to-fuchsia-600 text-white hover:from-orange-600 hover:to-fuchsia-700">
               <LogIn className="mr-2 h-4 w-4" aria-hidden="true" />
               Entrar novamente
             </Button>
