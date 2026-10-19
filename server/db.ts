@@ -64,11 +64,9 @@ export async function claimRateLimitRequest(input: { key: string; windowMs: numb
   const bucketKey = input.key.slice(0, 255);
   try {
     await upsert(db.insert(rateLimitBuckets).values({ bucketKey, requestCount: 1, resetAt }), rateLimitBuckets.bucketKey, {
-      set: {
-        requestCount: sql`CASE WHEN ${rateLimitBuckets.resetAt} <= CURRENT_TIMESTAMP THEN 1 ELSE ${rateLimitBuckets.requestCount} + 1 END`,
-        resetAt: sql`CASE WHEN ${rateLimitBuckets.resetAt} <= CURRENT_TIMESTAMP THEN CURRENT_TIMESTAMP + (${windowSeconds} * INTERVAL '1 second') ELSE ${rateLimitBuckets.resetAt} END`,
-        updatedAt: now,
-      },
+      requestCount: sql`CASE WHEN ${rateLimitBuckets.resetAt} <= CURRENT_TIMESTAMP THEN 1 ELSE ${rateLimitBuckets.requestCount} + 1 END`,
+      resetAt: sql`CASE WHEN ${rateLimitBuckets.resetAt} <= CURRENT_TIMESTAMP THEN CURRENT_TIMESTAMP + (${windowSeconds} * INTERVAL '1 second') ELSE ${rateLimitBuckets.resetAt} END`,
+      updatedAt: now,
     });
     const [bucket] = await db.select({ requestCount: rateLimitBuckets.requestCount, resetAt: rateLimitBuckets.resetAt })
       .from(rateLimitBuckets)
