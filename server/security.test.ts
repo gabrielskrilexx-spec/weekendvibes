@@ -9,7 +9,7 @@ describe("security boundaries", () => {
   it("uses secure cross-site cookies only for HTTPS requests", () => {
     expect(getSessionCookieOptions({ protocol: "https", headers: {} } as any)).toMatchObject({
       secure: true,
-      sameSite: "none",
+      sameSite: "lax",
       httpOnly: true,
     });
     expect(getSessionCookieOptions({ protocol: "http", headers: {} } as any)).toMatchObject({
