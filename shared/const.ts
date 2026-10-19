@@ -12,7 +12,7 @@ export const OAUTH_STATE_COOKIE = "__Host-oauth_state";
 
 // `state` carries the callback redirect URI (used at token exchange) plus the
 // CSRF nonce. Defined here so the client encoder and server decoder never drift.
-export type OAuthState = { redirectUri: string; nonce?: string; returnTo?: string };
+export type OAuthState = { redirectUri: string; nonce?: string; returnTo?: string; provider?: "manus" | "github" };
 
 /** Normaliza apenas o alias local rejeitado pelo OAuth; origens públicas permanecem intactas. */
 export const normalizeOAuthRedirectUri = (candidate: unknown): string => {

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { encodeOAuthState, OAUTH_STATE_COOKIE } from "@shared/const";
+import { ENV } from "./_core/env";
 
 const mocks = vi.hoisted(() => ({
   exchangeCodeForToken: vi.fn(),
@@ -66,6 +67,10 @@ function register(path = "/api/oauth/callback") {
 describe("OAuth callback", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    ENV.oauthClientId = "github-client";
+    ENV.oauthClientSecret = "github-secret";
+    ENV.githubAdminLogin = "admin-user";
+    ENV.githubAdminId = "123";
   });
 
   it("cria sessão administrativa no Dev Mode e aceita somente retorno interno", async () => {
@@ -148,5 +153,36 @@ describe("OAuth callback", () => {
     expect(response.body).toEqual({ error: "oauth_callback_failed" });
     expect(mocks.getUserInfo).not.toHaveBeenCalled();
     expect(response.clearedCookie).toBe(OAUTH_STATE_COOKIE);
+  });
+
+  it("troca o código GitHub, valida a allowlist e cria sessão admin", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "github-access-token" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 123, login: "admin-user", name: "Admin User", email: "admin@example.com" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const handler = register();
+    const response = createResponse();
+    const state = encodeOAuthState({
+      redirectUri: "https://weekendvibes-dh6w.vercel.app/api/oauth/callback",
+      nonce: "github-nonce",
+      returnTo: "/admin",
+      provider: "github",
+    });
+
+    await handler?.({
+      query: { code: "github-code", state },
+      headers: { cookie: `${OAUTH_STATE_COOKIE}=github-nonce` },
+      protocol: "https",
+    }, response);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://github.com/login/oauth/access_token");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("https://api.github.com/user");
+    expect(mocks.upsertUser).toHaveBeenCalledWith(expect.objectContaining({ openId: "github:123", role: "admin", loginMethod: "github" }));
+    expect(mocks.createSessionToken).toHaveBeenCalledWith("github:123", expect.any(Object));
+    expect(response.cookieName).toBe("app_session_id");
+    expect(response.statusCode).toBe(302);
+    expect(response.redirectLocation).toBe("/admin");
+    vi.unstubAllGlobals();
   });
 });

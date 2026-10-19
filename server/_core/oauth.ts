@@ -26,6 +26,79 @@ function oauthFailureDetails(error: unknown, stage: "exchange" | "user_info" | "
   };
 }
 
+type GithubTokenResponse = { access_token?: unknown; error?: unknown; error_description?: unknown };
+type GithubUserResponse = { id?: unknown; login?: unknown; name?: unknown; email?: unknown };
+
+async function fetchGithubJson<T>(url: string, init: RequestInit, stage: "exchange" | "user_info"): Promise<T> {
+  const response = await fetch(url, {
+    ...init,
+    signal: init.signal ?? AbortSignal.timeout(10_000),
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "WeekendVibes-OAuth/1.0",
+      ...(init.headers ?? {}),
+    },
+  });
+  const payload = (await response.json().catch(() => ({}))) as T & { error?: unknown; error_description?: unknown };
+  if (!response.ok) {
+    const error = new Error(`GitHub OAuth ${stage} failed`);
+    Object.assign(error, {
+      code: typeof payload.error === "string" ? payload.error : "github_upstream_error",
+      response: { status: response.status, data: payload },
+    });
+    throw error;
+  }
+  return payload;
+}
+
+async function completeGithubLogin(code: string, oauthState: ReturnType<typeof decodeOAuthState>, req: Request, res: Response) {
+  const clientId = ENV.oauthClientId.trim();
+  const clientSecret = ENV.oauthClientSecret.trim();
+  const adminLogin = ENV.githubAdminLogin.trim().toLowerCase();
+  const adminId = ENV.githubAdminId.trim();
+  if (!clientId || !clientSecret) {
+    res.status(503).json({ error: "github_oauth_not_configured" });
+    return;
+  }
+  if (!adminLogin && !adminId) {
+    res.status(503).json({ error: "github_admin_not_configured" });
+    return;
+  }
+
+  const tokenResponse = await fetchGithubJson<GithubTokenResponse>("https://github.com/login/oauth/access_token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, code }),
+  }, "exchange");
+  const accessToken = typeof tokenResponse.access_token === "string" ? tokenResponse.access_token : "";
+  if (!accessToken) {
+    res.status(502).json({ error: "github_token_exchange_failed" });
+    return;
+  }
+
+  const githubUser = await fetchGithubJson<GithubUserResponse>("https://api.github.com/user", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  }, "user_info");
+  const githubId = typeof githubUser.id === "number" || typeof githubUser.id === "string" ? String(githubUser.id) : "";
+  const githubLogin = typeof githubUser.login === "string" ? githubUser.login.trim() : "";
+  if (!githubId || !githubLogin) {
+    res.status(502).json({ error: "github_user_invalid" });
+    return;
+  }
+  if ((adminId && githubId !== adminId) && (adminLogin && githubLogin.toLowerCase() !== adminLogin)) {
+    console.warn("[OAuth] GitHub user rejected by admin allowlist", { githubId, githubLogin });
+    res.status(403).json({ error: "github_user_not_authorized" });
+    return;
+  }
+
+  const openId = `github:${githubId}`;
+  const displayName = typeof githubUser.name === "string" && githubUser.name.trim() ? githubUser.name.trim() : githubLogin;
+  await db.upsertUser({ openId, name: displayName, email: typeof githubUser.email === "string" ? githubUser.email : null, loginMethod: "github", lastSignedIn: new Date(), role: "admin" });
+  const sessionToken = await sdk.createSessionToken(openId, { name: displayName, expiresInMs: ONE_YEAR_MS });
+  res.cookie(COOKIE_NAME, sessionToken, { ...getSessionCookieOptions(req), maxAge: ONE_YEAR_MS });
+  res.redirect(302, getSafeReturnPath(oauthState.returnTo, "/admin"));
+}
+
 export function registerOAuthRoutes(app: Express) {
   app.get("/api/oauth/login", (req: Request, res: Response) => {
     const clientId = ENV.oauthClientId.trim();
@@ -37,7 +110,7 @@ export function registerOAuthRoutes(app: Express) {
     const nonce = randomUUID();
     const redirectUri = ENV.oauthRedirectUri.trim() || getOAuthCallbackUri(`${req.protocol}://${req.get("host")}`);
     const returnTo = getSafeReturnPath(getQueryParam(req, "redirect_to"), "/admin");
-    const state = encodeOAuthState({ redirectUri, nonce, returnTo });
+    const state = encodeOAuthState({ redirectUri, nonce, returnTo, provider: "github" });
     res.cookie(OAUTH_STATE_COOKIE, nonce, {
       ...getSessionCookieOptions(req),
       maxAge: 10 * 60 * 1000,
@@ -101,6 +174,11 @@ export function registerOAuthRoutes(app: Express) {
     res.clearCookie(OAUTH_STATE_COOKIE, { path: "/", secure: true, sameSite: "none" });
 
     try {
+      if (oauthState.provider === "github") {
+        await completeGithubLogin(code, oauthState, req, res);
+        return;
+      }
+
       let tokenResponse;
       try {
         tokenResponse = await sdk.exchangeCodeForToken(code, state);
