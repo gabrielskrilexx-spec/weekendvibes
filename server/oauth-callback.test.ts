@@ -185,4 +185,37 @@ describe("OAuth callback", () => {
     expect(response.redirectLocation).toBe("/admin");
     vi.unstubAllGlobals();
   });
+
+  it("registra o código JSON retornado pelo GitHub sem expor o código OAuth", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      error: "bad_verification_code",
+      error_description: "The code passed is incorrect or expired.",
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const handler = register();
+    const response = createResponse();
+    const state = encodeOAuthState({
+      redirectUri: "https://weekendvibes-dh6w.vercel.app/api/oauth/callback",
+      nonce: "github-error-nonce",
+      provider: "github",
+    });
+
+    await handler?.({
+      query: { code: "sensitive-oauth-code", state },
+      headers: { cookie: `${OAUTH_STATE_COOKIE}=github-error-nonce` },
+    }, response);
+
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toEqual({ error: "oauth_callback_failed" });
+    expect(errorSpy).toHaveBeenCalledWith("[OAuth] GitHub upstream rejected OAuth request", expect.objectContaining({
+      stage: "exchange",
+      status: 200,
+      error: "bad_verification_code",
+      error_description: "The code passed is incorrect or expired.",
+    }));
+    expect(errorSpy.mock.calls.flat().join(" ")).not.toContain("sensitive-oauth-code");
+    errorSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
 });

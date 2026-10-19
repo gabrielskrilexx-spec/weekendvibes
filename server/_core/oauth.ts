@@ -29,26 +29,49 @@ function oauthFailureDetails(error: unknown, stage: "exchange" | "user_info" | "
 type GithubTokenResponse = { access_token?: unknown; error?: unknown; error_description?: unknown };
 type GithubUserResponse = { id?: unknown; login?: unknown; name?: unknown; email?: unknown };
 
+function boundedExternalMessage(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 160) : undefined;
+}
+
 async function fetchGithubJson<T>(url: string, init: RequestInit, stage: "exchange" | "user_info"): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    signal: init.signal ?? AbortSignal.timeout(10_000),
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "WeekendVibes-OAuth/1.0",
-      ...(init.headers ?? {}),
-    },
-  });
-  const payload = (await response.json().catch(() => ({}))) as T & { error?: unknown; error_description?: unknown };
-  if (!response.ok) {
-    const error = new Error(`GitHub OAuth ${stage} failed`);
-    Object.assign(error, {
-      code: typeof payload.error === "string" ? payload.error : "github_upstream_error",
-      response: { status: response.status, data: payload },
+  try {
+    const response = await fetch(url, {
+      ...init,
+      signal: init.signal ?? AbortSignal.timeout(10_000),
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "WeekendVibes-OAuth/1.0",
+        ...(init.headers ?? {}),
+      },
+    });
+    const payload = (await response.json().catch(() => ({}))) as T & { error?: unknown; error_description?: unknown };
+    const upstreamError = boundedExternalMessage(payload.error);
+    const upstreamDescription = boundedExternalMessage(payload.error_description);
+    if (!response.ok || upstreamError) {
+      console.error("[OAuth] GitHub upstream rejected OAuth request", {
+        provider: "github",
+        stage,
+        status: response.status,
+        error: upstreamError ?? "github_upstream_error",
+        error_description: upstreamDescription,
+      });
+      const error = new Error(`GitHub OAuth ${stage} failed`);
+      Object.assign(error, {
+        code: upstreamError ?? "github_upstream_error",
+        response: { status: response.status, data: payload },
+      });
+      throw error;
+    }
+    return payload;
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("GitHub OAuth ")) throw error;
+    console.error("[OAuth] GitHub upstream request failed", {
+      provider: "github",
+      stage,
+      error: error instanceof Error ? error.name : "unknown_error",
     });
     throw error;
   }
-  return payload;
 }
 
 async function completeGithubLogin(code: string, oauthState: ReturnType<typeof decodeOAuthState>, req: Request, res: Response) {
@@ -57,10 +80,22 @@ async function completeGithubLogin(code: string, oauthState: ReturnType<typeof d
   const adminLogin = ENV.githubAdminLogin.trim().toLowerCase();
   const adminId = ENV.githubAdminId.trim();
   if (!clientId || !clientSecret) {
+    console.error("[OAuth] GitHub OAuth configuration incomplete", {
+      provider: "github",
+      stage: "configuration",
+      clientIdConfigured: Boolean(clientId),
+      clientSecretConfigured: Boolean(clientSecret),
+    });
     res.status(503).json({ error: "github_oauth_not_configured" });
     return;
   }
   if (!adminLogin && !adminId) {
+    console.error("[OAuth] GitHub admin allowlist missing", {
+      provider: "github",
+      stage: "configuration",
+      adminLoginConfigured: false,
+      adminIdConfigured: false,
+    });
     res.status(503).json({ error: "github_admin_not_configured" });
     return;
   }
