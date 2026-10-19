@@ -23,6 +23,7 @@ const eventBackupSchema = z.object({
   category: z.enum(["show", "balada", "evento_musical"]),
   genre: z.enum(["funk", "house_eletronica", "samba_pagode", "rap_trap"]).nullable().optional(),
   sourceHash: z.string().trim().min(3).max(64).regex(/^[A-Za-z0-9:_-]+$/),
+  sourceType: z.string().trim().min(2).max(64).regex(/^[A-Za-z0-9:_-]+$/).optional(),
 }).strict();
 
 const backupPath = resolve(process.cwd(), "server/db/seeds/events_backup.json");
@@ -41,7 +42,7 @@ try {
       ) VALUES (
         ${event.title}, ${event.sourceHash}, ${event.description ?? null}, ${event.date}::timestamptz, ${event.endDate ?? null}::timestamptz,
         ${event.locationName}, ${event.address ?? null}, ${event.city}, ${event.category}, ${event.genre ?? null}, ${event.price},
-        ${event.priceNote ?? null}, 'available', ${event.ticketUrl}, 'backup:local', ${event.imageUrl ?? null}, 1, 0, 'exact', ${event.sourceHash}
+        ${event.priceNote ?? null}, 'available', ${event.ticketUrl}, ${event.sourceType ?? "backup:local"}, ${event.imageUrl ?? null}, 1, 0, 'exact', ${event.sourceHash}
       )
       ON CONFLICT ("sourceHash") DO UPDATE SET
         title = EXCLUDED.title,
