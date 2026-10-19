@@ -1,6 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encodeOAuthState, OAUTH_STATE_COOKIE } from "@shared/const";
-import { ENV } from "./_core/env";
 
 const mocks = vi.hoisted(() => ({
   exchangeCodeForToken: vi.fn(),
@@ -67,10 +66,14 @@ function register(path = "/api/oauth/callback") {
 describe("OAuth callback", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    ENV.oauthClientId = "github-client";
-    ENV.oauthClientSecret = "github-secret";
-    ENV.githubAdminLogin = "admin-user";
-    ENV.githubAdminId = "123";
+    vi.stubEnv("OAUTH_CLIENT_ID", "github-client");
+    vi.stubEnv("OAUTH_CLIENT_SECRET", "github-secret");
+    vi.stubEnv("GITHUB_ADMIN_LOGIN", "admin-user");
+    vi.stubEnv("GITHUB_ADMIN_ID", "123");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("cria sessão administrativa no Dev Mode e aceita somente retorno interno", async () => {

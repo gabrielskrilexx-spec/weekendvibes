@@ -8,6 +8,25 @@ import { sdk } from "./sdk";
 import { redactError } from "./security";
 import { ENV } from "./env";
 
+type OAuthConfig = {
+  clientId: string;
+  clientSecret: string;
+  adminLogin: string;
+  adminId: string;
+  redirectUri: string;
+};
+
+/** Read OAuth secrets at request time; Vercel functions can reuse a warm module between requests. */
+function getOAuthConfig(): OAuthConfig {
+  return {
+    clientId: (process.env.OAUTH_CLIENT_ID ?? "").trim(),
+    clientSecret: (process.env.OAUTH_CLIENT_SECRET ?? "").trim(),
+    adminLogin: (process.env.GITHUB_ADMIN_LOGIN ?? "").trim().toLowerCase(),
+    adminId: (process.env.GITHUB_ADMIN_ID ?? "").trim(),
+    redirectUri: (process.env.OAUTH_REDIRECT_URI ?? "").trim(),
+  };
+}
+
 function getQueryParam(req: Request, key: string): string | undefined {
   const value = req.query[key];
   return typeof value === "string" ? value : undefined;
@@ -75,10 +94,7 @@ async function fetchGithubJson<T>(url: string, init: RequestInit, stage: "exchan
 }
 
 async function completeGithubLogin(code: string, oauthState: ReturnType<typeof decodeOAuthState>, req: Request, res: Response) {
-  const clientId = ENV.oauthClientId.trim();
-  const clientSecret = ENV.oauthClientSecret.trim();
-  const adminLogin = ENV.githubAdminLogin.trim().toLowerCase();
-  const adminId = ENV.githubAdminId.trim();
+  const { clientId, clientSecret, adminLogin, adminId } = getOAuthConfig();
   if (!clientId || !clientSecret) {
     console.error("[OAuth] GitHub OAuth configuration incomplete", {
       provider: "github",
@@ -136,14 +152,14 @@ async function completeGithubLogin(code: string, oauthState: ReturnType<typeof d
 
 export function registerOAuthRoutes(app: Express) {
   app.get("/api/oauth/login", (req: Request, res: Response) => {
-    const clientId = ENV.oauthClientId.trim();
+    const { clientId, redirectUri: configuredRedirectUri } = getOAuthConfig();
     if (!clientId) {
       res.status(503).json({ error: "oauth_not_configured" });
       return;
     }
 
     const nonce = randomUUID();
-    const redirectUri = ENV.oauthRedirectUri.trim() || getOAuthCallbackUri(`${req.protocol}://${req.get("host")}`);
+    const redirectUri = configuredRedirectUri || getOAuthCallbackUri(`${req.protocol}://${req.get("host")}`);
     const returnTo = getSafeReturnPath(getQueryParam(req, "redirect_to"), "/admin");
     const state = encodeOAuthState({ redirectUri, nonce, returnTo, provider: "github" });
     res.cookie(OAUTH_STATE_COOKIE, nonce, {
