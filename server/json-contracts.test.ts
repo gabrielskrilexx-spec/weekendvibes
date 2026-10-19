@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseJsonObjectColumn, parsePayloadJsonColumn, serializeIngestionCounts, serializeIngestionDetails, serializePayloadJson } from "./json-contracts";
+import { ApifyRoutineDetailsSchema, ManualIngestionPayloadSchema, parseJsonObjectColumn, parsePayloadJsonColumn, serializeIngestionCounts, serializeIngestionDetails, serializePayloadJson, serializeRoutineDetails, serializeRoutinePayload } from "./json-contracts";
 
 describe("json contracts", () => {
   it("versions and preserves ingestion counts", () => {
@@ -18,5 +18,15 @@ describe("json contracts", () => {
     const encoded = serializePayloadJson([{ id: "event-1" }]);
     expect(JSON.parse(encoded)).toMatchObject({ _schemaVersion: 1 });
     expect(parsePayloadJsonColumn(encoded)).toEqual([{ id: "event-1" }]);
+  });
+
+  it("uses routine-specific schemas and migrates malformed legacy rows safely", () => {
+    const manual = serializeRoutinePayload({ title: "Evento", eventDate: "2026-10-30", locationName: "O Beco", sourceUrl: "https://example.com/evento" }, "manual-ingestion");
+    expect(JSON.parse(manual)).toMatchObject({ routine: "manual-ingestion", _schemaVersion: 1 });
+    const apify = serializeRoutineDetails({ actorRunId: "run-1", itemsRead: 3 }, "apify-webhook");
+    expect(ApifyRoutineDetailsSchema.parse(JSON.parse(apify))).toMatchObject({ actorRunId: "run-1", itemsRead: 3 });
+    expect(ManualIngestionPayloadSchema.safeParse({ title: "incompleto" }).success).toBe(false);
+    expect(parseJsonObjectColumn("{legacy-invalid", "details")).toMatchObject({ _legacy: true });
+    expect(parsePayloadJsonColumn("{legacy-invalid")).toMatchObject({ _legacy: true });
   });
 });

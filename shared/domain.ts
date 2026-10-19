@@ -31,3 +31,20 @@ export const FailureCategory = {
 export type FailureCategory = (typeof FailureCategory)[keyof typeof FailureCategory];
 
 export const JsonContractVersion = 1 as const;
+
+export type TelemetryPoint = {
+  date: string;
+  waf: number;
+  meta110: number;
+  network: number;
+  succeeded: number;
+  total: number;
+  successRate: number;
+};
+
+export type TelemetryTrend = {
+  current: number;
+  previous: number;
+  percentage: number;
+  direction: "up" | "down" | "flat";
+};

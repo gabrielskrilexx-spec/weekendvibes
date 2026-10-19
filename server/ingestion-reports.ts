@@ -26,7 +26,7 @@ import {
 import { listHeartbeatJobs } from "./_core/heartbeat";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import { isWafBlockedFailure } from "./ingestion";
-import { serializeIngestionCounts, serializeIngestionDetails, parseJsonObjectColumn } from "./json-contracts";
+import { serializeIngestionCounts, serializeIngestionDetails, serializeRoutineDetails, parseJsonObjectColumn } from "./json-contracts";
 import type { RunStatus } from "../shared/domain";
 const monitoredBrandFor = (title: string, sourceType: string | null) => {
   if (sourceType === "weticket" && /ap(?:ê|e)\s*22/i.test(title)) return { brand: "APÊ 22", sourceKey: "public:weticket" } as const;
@@ -1180,7 +1180,7 @@ export async function finishIngestionRun(
     const serializedCounts = serializeIngestionCounts(counts);
     const serializedDetails =
       input.details !== undefined
-        ? serializeIngestionDetails(typeof input.details === "string" ? JSON.parse(input.details) : input.details).slice(0, 20000)
+        ? serializeRoutineDetails(typeof input.details === "string" ? JSON.parse(input.details) : input.details, input.routine ?? "generic").slice(0, 20000)
         : null;
     await db
       .update(ingestionRuns)
