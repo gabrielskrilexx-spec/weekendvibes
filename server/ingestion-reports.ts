@@ -1601,10 +1601,10 @@ export async function listIngestionReport(
     .limit(safeSize);
   const [totals] = await db
     .select({
-      succeeded: sql<number>`sum(status = 'succeeded')`,
-      failed: sql<number>`sum(status = 'failed')`,
-      partial: sql<number>`sum(status = 'partial')`,
-      imported: sql<number>`coalesce(sum(importedCount), 0)`,
+      succeeded: sql<number>`count(*) filter (where ${ingestionRuns.status} = 'succeeded')`,
+      failed: sql<number>`count(*) filter (where ${ingestionRuns.status} = 'failed')`,
+      partial: sql<number>`count(*) filter (where ${ingestionRuns.status} = 'partial')`,
+      imported: sql<number>`coalesce(sum(${ingestionRuns.importedCount}), 0)`,
     })
     .from(ingestionRuns);
   const sourceRows = await db
@@ -1612,7 +1612,7 @@ export async function listIngestionReport(
       sourceKey: ingestionRuns.sourceKey,
       imported: sql<number>`coalesce(sum(${ingestionRuns.importedCount}), 0)`,
       runs: sql<number>`count(*)`,
-      failed: sql<number>`sum(status = 'failed')`,
+      failed: sql<number>`count(*) filter (where ${ingestionRuns.status} = 'failed')`,
     })
     .from(ingestionRuns)
     .groupBy(ingestionRuns.sourceKey)
