@@ -1,4 +1,4 @@
-import { COOKIE_NAME, encodeOAuthState, getOAuthCallbackUri, getSafeReturnPath, ONE_YEAR_MS, OAUTH_STATE_COOKIE, decodeOAuthState } from "@shared/const";
+import { COOKIE_NAME, encodeOAuthState, getSafeReturnPath, ONE_YEAR_MS, OAUTH_STATE_COOKIE, decodeOAuthState } from "@shared/const";
 import { parse as parseCookieHeader } from "cookie";
 import { randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
@@ -7,6 +7,8 @@ import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
 import { redactError } from "./security";
 import { ENV } from "./env";
+
+const GITHUB_CALLBACK_URI = "https://weekendvibes-dh6w.vercel.app/api/oauth/callback";
 
 type OAuthConfig = {
   clientId: string;
@@ -48,6 +50,20 @@ function oauthFailureDetails(error: unknown, stage: "exchange" | "user_info" | "
 type GithubTokenResponse = { access_token?: unknown; error?: unknown; error_description?: unknown };
 type GithubUserResponse = { id?: unknown; login?: unknown; name?: unknown; email?: unknown };
 
+class GithubOAuthError extends Error {
+  readonly status: number;
+  readonly errorCode: string;
+  readonly errorDescription?: string;
+
+  constructor(status: number, errorCode: string, errorDescription?: string) {
+    super(`GitHub OAuth request failed: ${errorCode}`);
+    this.name = "GithubOAuthError";
+    this.status = status;
+    this.errorCode = errorCode;
+    this.errorDescription = errorDescription;
+  }
+}
+
 function boundedExternalMessage(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim().slice(0, 160) : undefined;
 }
@@ -74,12 +90,7 @@ async function fetchGithubJson<T>(url: string, init: RequestInit, stage: "exchan
         error: upstreamError ?? "github_upstream_error",
         error_description: upstreamDescription,
       });
-      const error = new Error(`GitHub OAuth ${stage} failed`);
-      Object.assign(error, {
-        code: upstreamError ?? "github_upstream_error",
-        response: { status: response.status, data: payload },
-      });
-      throw error;
+      throw new GithubOAuthError(response.status, upstreamError ?? "github_upstream_error", upstreamDescription);
     }
     return payload;
   } catch (error) {
@@ -118,8 +129,13 @@ async function completeGithubLogin(code: string, oauthState: ReturnType<typeof d
 
   const tokenResponse = await fetchGithubJson<GithubTokenResponse>("https://github.com/login/oauth/access_token", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, code }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code,
+      redirect_uri: GITHUB_CALLBACK_URI,
+    }),
   }, "exchange");
   const accessToken = typeof tokenResponse.access_token === "string" ? tokenResponse.access_token : "";
   if (!accessToken) {
@@ -152,14 +168,14 @@ async function completeGithubLogin(code: string, oauthState: ReturnType<typeof d
 
 export function registerOAuthRoutes(app: Express) {
   app.get("/api/oauth/login", (req: Request, res: Response) => {
-    const { clientId, redirectUri: configuredRedirectUri } = getOAuthConfig();
+    const { clientId } = getOAuthConfig();
     if (!clientId) {
       res.status(503).json({ error: "oauth_not_configured" });
       return;
     }
 
     const nonce = randomUUID();
-    const redirectUri = configuredRedirectUri || getOAuthCallbackUri(`${req.protocol}://${req.get("host")}`);
+    const redirectUri = GITHUB_CALLBACK_URI;
     const returnTo = getSafeReturnPath(getQueryParam(req, "redirect_to"), "/admin");
     const state = encodeOAuthState({ redirectUri, nonce, returnTo, provider: "github" });
     res.cookie(OAUTH_STATE_COOKIE, nonce, {
@@ -280,6 +296,20 @@ export function registerOAuthRoutes(app: Express) {
 
       res.redirect(302, returnTo);
     } catch (error) {
+      if (error instanceof GithubOAuthError) {
+        console.error("[OAuth] GitHub callback failed", {
+          provider: "github",
+          stage: "callback",
+          status: error.status,
+          error: error.errorCode,
+          error_description: error.errorDescription,
+        });
+        res.status(502).json({
+          error: "github_oauth_failed",
+          error_description: error.errorDescription ?? error.errorCode,
+        });
+        return;
+      }
       console.error("[OAuth] Callback failed", { ...redactError(error), stage: "callback" });
       res.status(500).json({ error: "oauth_callback_failed" });
     }

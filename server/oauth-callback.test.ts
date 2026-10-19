@@ -180,6 +180,14 @@ describe("OAuth callback", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://github.com/login/oauth/access_token");
+    const tokenRequest = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(tokenRequest.headers).toEqual(expect.objectContaining({ Accept: "application/json", "Content-Type": "application/json" }));
+    expect(JSON.parse(String(tokenRequest.body))).toEqual({
+      client_id: "github-client",
+      client_secret: "github-secret",
+      code: "github-code",
+      redirect_uri: "https://weekendvibes-dh6w.vercel.app/api/oauth/callback",
+    });
     expect(fetchMock.mock.calls[1]?.[0]).toBe("https://api.github.com/user");
     expect(mocks.upsertUser).toHaveBeenCalledWith(expect.objectContaining({ openId: "github:123", role: "admin", loginMethod: "github" }));
     expect(mocks.createSessionToken).toHaveBeenCalledWith("github:123", expect.any(Object));
@@ -209,8 +217,8 @@ describe("OAuth callback", () => {
       headers: { cookie: `${OAUTH_STATE_COOKIE}=github-error-nonce` },
     }, response);
 
-    expect(response.statusCode).toBe(500);
-    expect(response.body).toEqual({ error: "oauth_callback_failed" });
+    expect(response.statusCode).toBe(502);
+    expect(response.body).toEqual({ error: "github_oauth_failed", error_description: "The code passed is incorrect or expired." });
     expect(errorSpy).toHaveBeenCalledWith("[OAuth] GitHub upstream rejected OAuth request", expect.objectContaining({
       stage: "exchange",
       status: 200,
