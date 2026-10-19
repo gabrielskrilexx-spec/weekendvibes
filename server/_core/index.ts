@@ -29,6 +29,9 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
   if (server) server.on("request", app);
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
+  // OAuth must be registered before content negotiation, security headers,
+  // static assets, tRPC, and the SPA fallback so login always reaches GitHub.
+  registerOAuthRoutes(app);
   app.use(createStrictCors());
   app.use((req, res, next) => {
     applySecurityHeaders(req, res);
@@ -46,7 +49,6 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
   registerStorageProxy(app);
   app.use("/api/maps", createRateLimit({ windowMs: 60 * 1000, max: 30, name: "maps-script" }));
   registerMapsJavascriptRoute(app);
-  registerOAuthRoutes(app);
   registerAdminRestRoutes(app);
   app.get("/api/health", async (_req, res) => {
     res.setHeader("Content-Type", "application/json; charset=utf-8");

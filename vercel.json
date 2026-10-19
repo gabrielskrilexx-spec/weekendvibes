@@ -17,12 +17,12 @@
   ],
   "rewrites": [
     {
-      "source": "/api/oauth/(.*)",
-      "destination": "/api"
+      "source": "/api/oauth/:path*",
+      "destination": "/api/index.ts"
     },
     {
       "source": "/api/(.*)",
-      "destination": "/api"
+      "destination": "/api/index.ts"
     },
     {
       "source": "/(.*)",
