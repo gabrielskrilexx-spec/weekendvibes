@@ -62,6 +62,24 @@ describe("security boundaries", () => {
     expect(response.body).toEqual({ error: "rate_limit_unavailable" });
   });
 
+  it("uses an in-memory fallback only in development when persistence is unavailable", async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+    claimRateLimitRequest.mockResolvedValueOnce(null);
+    const middleware = createRateLimit({ windowMs: 60_000, max: 10, name: "oauth", failClosed: true });
+    const response = createResponse();
+    let nextCalls = 0;
+    try {
+      await middleware({ ip: "203.0.113.13" } as any, response as any, () => { nextCalls += 1; });
+      expect(response.statusCode).toBe(200);
+      expect(nextCalls).toBe(1);
+      expect(response.headers["X-RateLimit-Remaining"]).toBe("9");
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+    }
+  });
+
   it("allows only configured or local origins and rejects wildcard CORS", () => {
     const middleware = createStrictCors();
     const allowed = createResponse();

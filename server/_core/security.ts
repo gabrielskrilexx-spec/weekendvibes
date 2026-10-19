@@ -14,6 +14,28 @@ export interface RateLimitOptions {
   failClosed?: boolean;
 }
 
+type LocalRateLimitBucket = { requestCount: number; resetAt: number };
+const localRateLimitBuckets = new Map<string, LocalRateLimitBucket>();
+
+function allowsLocalRateLimitFallback() {
+  return process.env.NODE_ENV === "development";
+}
+
+function claimLocalRateLimitRequest(key: string, windowMs: number) {
+  const now = Date.now();
+  const existing = localRateLimitBuckets.get(key);
+  const bucket = !existing || existing.resetAt <= now
+    ? { requestCount: 1, resetAt: now + windowMs }
+    : { requestCount: existing.requestCount + 1, resetAt: existing.resetAt };
+  localRateLimitBuckets.set(key, bucket);
+  if (localRateLimitBuckets.size > 2048) {
+    localRateLimitBuckets.forEach((value, bucketKey) => {
+      if (value.resetAt <= now) localRateLimitBuckets.delete(bucketKey);
+    });
+  }
+  return { requestCount: bucket.requestCount, resetAt: new Date(bucket.resetAt) };
+}
+
 export function createRateLimit(options: RateLimitOptions): RequestHandler {
   const name = options.name ?? "api";
 
@@ -25,21 +47,29 @@ export function createRateLimit(options: RateLimitOptions): RequestHandler {
     try {
       bucket = await claimRateLimitRequest({ key, windowMs: options.windowMs });
     } catch (error) {
-      if (options.failClosed) {
+      if (options.failClosed && allowsLocalRateLimitFallback()) {
+        console.warn(`[RateLimit:${name}] using development in-memory fallback after persistence failure`);
+        bucket = claimLocalRateLimitRequest(key, options.windowMs);
+      } else if (options.failClosed) {
         res.status(503).json({ error: "rate_limit_unavailable" });
         return;
+      } else {
+        console.warn(`[RateLimit:${name}] persistence unavailable`, error instanceof Error ? error.message : "unknown error");
+        next();
+        return;
       }
-      console.warn(`[RateLimit:${name}] persistence unavailable`, error instanceof Error ? error.message : "unknown error");
-      next();
-      return;
     }
     if (!bucket) {
-      if (options.failClosed) {
+      if (options.failClosed && allowsLocalRateLimitFallback()) {
+        console.warn(`[RateLimit:${name}] using development in-memory fallback while persistence is unavailable`);
+        bucket = claimLocalRateLimitRequest(key, options.windowMs);
+      } else if (options.failClosed) {
         res.status(503).json({ error: "rate_limit_unavailable" });
         return;
+      } else {
+        next();
+        return;
       }
-      next();
-      return;
     }
     const resetAt = new Date(bucket.resetAt).getTime();
 

@@ -126,6 +126,31 @@ describe("OAuth callback", () => {
     expect(mocks.exchangeCodeForToken).not.toHaveBeenCalled();
   });
 
+  it("grava a sessão e redireciona para o painel após autenticação válida", async () => {
+    mocks.exchangeCodeForToken.mockResolvedValue({ accessToken: "access-token" });
+    mocks.getUserInfo.mockResolvedValue({ openId: "admin-open-id", name: "Admin Local", email: "admin@example.com" });
+    const handler = register();
+    const response = createResponse();
+    const state = encodeOAuthState({
+      redirectUri: "https://weekendvib-jscaalye.manus.space/api/oauth/callback",
+      nonce: "expected-nonce",
+      returnTo: "/admin",
+    });
+
+    await handler?.({
+      query: { code: "opaque-code", state },
+      headers: { cookie: `${OAUTH_STATE_COOKIE}=expected-nonce` },
+      protocol: "https",
+    }, response);
+
+    expect(response.statusCode).toBe(302);
+    expect(response.redirectLocation).toBe("/admin");
+    expect(response.clearedCookie).toBe(OAUTH_STATE_COOKIE);
+    expect(response.cookieName).toBe("app_session_id");
+    expect(response.cookieValue).toBe("dev-session-token");
+    expect(mocks.upsertUser).toHaveBeenCalledWith(expect.objectContaining({ openId: "admin-open-id" }));
+  });
+
   it("mantém resposta pública genérica quando o provedor falha na troca", async () => {
     mocks.exchangeCodeForToken.mockRejectedValue({
       name: "AxiosError",
