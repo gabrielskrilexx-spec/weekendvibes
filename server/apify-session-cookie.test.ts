@@ -1,6 +1,19 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { startAsyncApifyStoriesRun } from "./apify-async";
 
+vi.mock("./ingestion-reports", () => ({
+  startIngestionRun: vi.fn().mockResolvedValue(42),
+  linkIngestionRunToApifyActor: vi.fn().mockResolvedValue(true),
+  setIngestionRunDetails: vi.fn().mockResolvedValue(true),
+  finishIngestionRun: vi.fn().mockResolvedValue(undefined),
+  findIngestionRunByApifyActor: vi.fn(),
+}));
+
+vi.mock("./db", () => ({
+  claimApifyDailyRequest: vi.fn().mockResolvedValue({ allowed: true, dateKey: "2026-09-18", requestCount: 1, dailyLimit: 100, persistence: false }),
+  recordOperationalAlert: vi.fn().mockResolvedValue(undefined),
+}));
+
 const SECRET = "instagram-session-cookie-test-value";
 
 describe("Apify Stories session cookie", () => {

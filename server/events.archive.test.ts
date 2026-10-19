@@ -78,7 +78,7 @@ describe("event archive eligibility", () => {
       return value;
     });
     expect(serializedCondition).toContain("eventDate");
-    expect(serializedCondition).toContain("UTC_TIMESTAMP");
+    expect(serializedCondition).toContain("CURRENT_TIMESTAMP");
   });
 
   it("does not re-archive an already archived event", () => {

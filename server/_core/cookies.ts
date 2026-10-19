@@ -43,7 +43,9 @@ export function getSessionCookieOptions(
   return {
     httpOnly: true,
     path: "/",
-    sameSite: secure ? "none" : "lax",
+    // OAuth returns through a top-level GET, which is allowed by Lax while
+    // avoiding cross-site cookie submission on background requests.
+    sameSite: "lax",
     secure,
   };
 }

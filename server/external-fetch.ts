@@ -16,9 +16,12 @@ function isAbortError(error: unknown) {
   return Boolean(error && typeof error === "object" && "name" in error && String((error as { name?: unknown }).name) === "AbortError");
 }
 
-export async function fetchExternal(url: string, init: RequestInit = {}, timeoutMs = 12_000, allowHttpError = false): Promise<Response> {
+export async function fetchExternal(url: string, init: RequestInit = {}, timeoutMs = 12_000, allowHttpError = false, externalSignal?: AbortSignal): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const abortFromCaller = () => controller.abort();
+  if (externalSignal?.aborted) controller.abort();
+  else externalSignal?.addEventListener("abort", abortFromCaller, { once: true });
   const headers = new Headers(init.headers);
   if (!headers.has("user-agent")) headers.set("user-agent", DEFAULT_USER_AGENT);
   if (!headers.has("accept")) headers.set("accept", "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.1");
@@ -35,6 +38,7 @@ export async function fetchExternal(url: string, init: RequestInit = {}, timeout
     throw new ExternalFetchError("Não foi possível conectar à fonte externa", "NETWORK_ERROR");
   } finally {
     clearTimeout(timer);
+    externalSignal?.removeEventListener("abort", abortFromCaller);
   }
 }
 

@@ -26,7 +26,8 @@ import {
 import { listHeartbeatJobs } from "./_core/heartbeat";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import { isWafBlockedFailure } from "./ingestion";
-
+import { serializeIngestionCounts, serializeIngestionDetails, serializeRoutineDetails, parseJsonObjectColumn } from "./json-contracts";
+import type { RunStatus } from "../shared/domain";
 const monitoredBrandFor = (title: string, sourceType: string | null) => {
   if (sourceType === "weticket" && /ap(?:ê|e)\s*22/i.test(title)) return { brand: "APÊ 22", sourceKey: "public:weticket" } as const;
   if (sourceType === "zig" && /osuco/i.test(title)) return { brand: "OSUCO", sourceKey: "public:zig" } as const;
@@ -472,6 +473,8 @@ function buildWeeklyTrend(
   return Array.from(buckets.values());
 }
 
+export type SourceErrorCategory = "waf" | "anti_bot" | "proxy" | "timeout_dns" | "meta_invalid_user" | "sandbox" | "other";
+
 export type SourceTelemetry = {
   sourceKey: string;
   runs: number;
@@ -480,10 +483,10 @@ export type SourceTelemetry = {
   averageLatencyMs: number;
   p95LatencyMs: number;
   simulatedExecutions: number;
-  errors: { category: "waf" | "anti_bot" | "proxy" | "timeout_dns" | "sandbox" | "other"; count: number }[];
+  errors: { category: SourceErrorCategory; count: number }[];
 };
 
-export type TelemetryCategory = "success" | "parser" | "waf" | "network";
+export type TelemetryCategory = "success" | "parser" | "waf" | "network" | "meta_invalid_user";
 
 export type WafPersistenceAlert = {
   sourceKey: string;
@@ -496,6 +499,7 @@ export type WafPersistenceAlert = {
 export function classifyIngestionRunCategoryForTest(input: { status: string; httpStatus?: number | null; details?: unknown }): TelemetryCategory {
   const text = JSON.stringify(input.details ?? "").toLowerCase();
   const status = Number(input.httpStatus ?? 0);
+  if (/invalid user id|code\s*110|oauth(?:exception)?[^\n]*(?:110|invalid user)/.test(text)) return "meta_invalid_user";
   if (isWafBlockedFailure(status || null, text) || /bloqueado por waf|cloudflare|akamai|challenge|access denied/.test(text)) return "waf";
   if (/timeout|timed out|enotfound|eai_again|econnrefused|network|fetch failed|socket/.test(text) || [502, 504].includes(status)) return "network";
   if (input.status === "succeeded") return "success";
@@ -579,8 +583,6 @@ export function buildWafProviderHistoryForTest(runs: Array<{ sourceKey: string |
   return Array.from(grouped.values()).sort((a, b) => a.date.localeCompare(b.date) || a.sourceKey.localeCompare(b.sourceKey) || a.provider.localeCompare(b.provider));
 }
 
-type SourceErrorCategory = SourceTelemetry["errors"][number]["category"];
-
 export const DEFAULT_PUBLIC_P95_THRESHOLD_MS = 15_000;
 export const INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS = 30_000;
 export const MANUAL_AGENDA_P95_THRESHOLD_MS = 180_000;
@@ -618,6 +620,7 @@ export function buildSourceTelemetryForTest(runs: Array<{ sourceKey: string | nu
     const status = Number(run.httpStatus ?? 0);
     let category: SourceErrorCategory | "none" = "none";
     if (text.includes("sandbox_restricted") || text.includes("previewmock")) category = "sandbox";
+    else if (/invalid user id|code\s*110|oauth(?:exception)?[^\n]*(?:110|invalid user)/.test(text)) category = "meta_invalid_user";
     else if (isWafBlockedFailure(status || null, text) || /bloqueado por waf|cloudflare|akamai|challenge|access denied/.test(text)) category = "waf";
     else if ([429].includes(status) || /anti.?bot|forbidden/.test(text)) category = "anti_bot";
     else if ([502, 503, 504].includes(status) || /bad gateway|proxy|gateway|server error/.test(text)) category = "proxy";
@@ -925,7 +928,7 @@ export async function approveFilteredInstagramStory(input: { runId: number; stor
   const [row] = await db.select({ details: ingestionRuns.details }).from(ingestionRuns).where(eq(ingestionRuns.id, input.runId)).limit(1);
   if (!row) throw new Error("Execução de ingestão não encontrada.");
   let details: unknown = {};
-  try { details = row.details ? JSON.parse(row.details) : {}; } catch { throw new Error("Detalhes da execução estão inválidos."); }
+  try { details = parseJsonObjectColumn(row.details, "Detalhes da execução"); } catch { throw new Error("Detalhes da execução estão inválidos."); }
   if (!details || typeof details !== "object" || Array.isArray(details)) throw new Error("Detalhes da execução estão inválidos.");
   const root = details as Record<string, unknown>;
   const instagram = root.instagram && typeof root.instagram === "object" && !Array.isArray(root.instagram) ? root.instagram as Record<string, unknown> : null;
@@ -947,7 +950,7 @@ export async function updateIngestionRunOcrText(input: { runId: number; entryInd
   const [row] = await db.select({ details: ingestionRuns.details }).from(ingestionRuns).where(eq(ingestionRuns.id, input.runId)).limit(1);
   if (!row) throw new Error("Execução de ingestão não encontrada.");
   let details: unknown = {};
-  try { details = row.details ? JSON.parse(row.details) : {}; } catch { throw new Error("Detalhes da execução estão inválidos."); }
+  try { details = parseJsonObjectColumn(row.details, "Detalhes da execução"); } catch { throw new Error("Detalhes da execução estão inválidos."); }
   if (!details || typeof details !== "object" || Array.isArray(details)) throw new Error("Detalhes da execução estão inválidos.");
   const root = details as Record<string, unknown>;
   const instagram = root.instagram && typeof root.instagram === "object" && !Array.isArray(root.instagram) ? root.instagram as Record<string, unknown> : null;
@@ -971,7 +974,7 @@ export async function reprocessIngestionRunOcr(input: { runId: number; entryInde
   const [row] = await db.select({ details: ingestionRuns.details }).from(ingestionRuns).where(eq(ingestionRuns.id, input.runId)).limit(1);
   if (!row) throw new Error("Execução de ingestão não encontrada.");
   let details: unknown = {};
-  try { details = row.details ? JSON.parse(row.details) : {}; } catch { throw new Error("Detalhes da execução estão inválidos."); }
+  try { details = parseJsonObjectColumn(row.details, "Detalhes da execução"); } catch { throw new Error("Detalhes da execução estão inválidos."); }
   if (!details || typeof details !== "object" || Array.isArray(details)) throw new Error("Detalhes da execução estão inválidos.");
   const root = details as Record<string, unknown>;
   const instagram = root.instagram && typeof root.instagram === "object" && !Array.isArray(root.instagram) ? root.instagram as Record<string, unknown> : null;
@@ -1004,8 +1007,9 @@ export async function startIngestionRun(input: {
         routine: input.routine.slice(0, 64),
         sourceKey: input.sourceKey?.slice(0, 255),
         status: "running",
-      });
-    return Number(result[0].insertId);
+      })
+      .returning({ id: ingestionRuns.id });
+    return result[0]?.id;
   } catch (error) {
     console.warn("[Ingestion reports] Could not start run record:", error);
     return undefined;
@@ -1114,7 +1118,7 @@ function normalizeCounts(input: {
 export async function setIngestionRunDetails(runId: number, details: Record<string, unknown>) {
   const db = await getDb();
   if (!db) return false;
-  await db.update(ingestionRuns).set({ details: JSON.stringify(details).slice(0, 20000) }).where(eq(ingestionRuns.id, runId));
+  await db.update(ingestionRuns).set({ details: serializeIngestionDetails(details).slice(0, 20000) }).where(eq(ingestionRuns.id, runId));
   return true;
 }
 
@@ -1142,7 +1146,7 @@ export async function findIngestionRunById(runId: number) {
 export async function finishIngestionRun(
   id: number | undefined,
   input: {
-    status: "succeeded" | "failed" | "partial";
+    status: Exclude<RunStatus, "running">;
     importedCount?: number;
     failedCount?: number;
     details?: unknown;
@@ -1173,10 +1177,10 @@ export async function finishIngestionRun(
       )
     );
     const counts = normalizeCounts(input);
-    const serializedCounts = JSON.stringify(counts);
+    const serializedCounts = serializeIngestionCounts(counts);
     const serializedDetails =
       input.details !== undefined
-        ? JSON.stringify(input.details).slice(0, 20000)
+        ? serializeRoutineDetails(typeof input.details === "string" ? JSON.parse(input.details) : input.details, input.routine ?? "generic").slice(0, 20000)
         : null;
     await db
       .update(ingestionRuns)
@@ -1597,10 +1601,10 @@ export async function listIngestionReport(
     .limit(safeSize);
   const [totals] = await db
     .select({
-      succeeded: sql<number>`sum(status = 'succeeded')`,
-      failed: sql<number>`sum(status = 'failed')`,
-      partial: sql<number>`sum(status = 'partial')`,
-      imported: sql<number>`coalesce(sum(importedCount), 0)`,
+      succeeded: sql<number>`count(*) filter (where ${ingestionRuns.status} = 'succeeded')`,
+      failed: sql<number>`count(*) filter (where ${ingestionRuns.status} = 'failed')`,
+      partial: sql<number>`count(*) filter (where ${ingestionRuns.status} = 'partial')`,
+      imported: sql<number>`coalesce(sum(${ingestionRuns.importedCount}), 0)`,
     })
     .from(ingestionRuns);
   const sourceRows = await db
@@ -1608,7 +1612,7 @@ export async function listIngestionReport(
       sourceKey: ingestionRuns.sourceKey,
       imported: sql<number>`coalesce(sum(${ingestionRuns.importedCount}), 0)`,
       runs: sql<number>`count(*)`,
-      failed: sql<number>`sum(status = 'failed')`,
+      failed: sql<number>`count(*) filter (where ${ingestionRuns.status} = 'failed')`,
     })
     .from(ingestionRuns)
     .groupBy(ingestionRuns.sourceKey)

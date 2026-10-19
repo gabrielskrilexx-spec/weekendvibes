@@ -1,0 +1,1 @@
+ALTER TABLE `ingestionSources` ADD `lastAttemptAt` timestamp;

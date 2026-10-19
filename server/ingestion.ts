@@ -4,6 +4,7 @@ import { invokeLLM } from "./_core/llm";
 import { assertEventDateIsCurrentOrFuture, getIngestionPayloadCache, listActiveLocationAliasValues, listIngestionSources, recordOperationalAlert, saveEvent, saveIngestionPayloadCache } from "./db";
 import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
 import { fetchExternal, isSandboxRestrictedError, readExternalBody, sanitizeExternalFetchError } from "./external-fetch";
+import { parsePayloadJsonColumn } from "./json-contracts";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 
 const DEFAULT_SOURCE_URLS = [
@@ -825,7 +826,7 @@ export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCac
     const cached = await cacheStore.read(ingresseCacheKey(url)).catch(() => undefined);
     if (cached) {
       try {
-        const structured = JSON.parse(cached.payload) as Record<string, string | number>;
+        const structured = parsePayloadJsonColumn(cached.payload) as Record<string, string | number>;
         const text = Object.values(structured).filter(value => typeof value === "string").join(" ");
         return { url, html: "", text: text.slice(0, 16_000), imageUrl: String(structured.imageUrl ?? ""), structured, cacheFallback: { used: true as const, status: failure.status, message: failure.message }, fetchFailure: failure };
       } catch {
@@ -870,7 +871,7 @@ export function publicSourceKey(url: string) {
   return "public:unknown";
 }
 
-async function guardedFetchPublicPage(url: string, options: { dryRun?: boolean } = {}): Promise<PublicPage> {
+async function guardedFetchPublicPage(url: string, options: { dryRun?: boolean; signal?: AbortSignal } = {}): Promise<PublicPage> {
   const startedAt = Date.now();
   const sourceKey = publicSourceKey(url);
   if (!options.dryRun) {
@@ -972,11 +973,11 @@ export async function fetchWithConcurrency<TItem, TResult>(items: TItem[], worke
   return results;
 }
 
-async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}): Promise<PublicPage> {
+async function fetchPublicPage(url: string, options: { dryRun?: boolean; signal?: AbortSignal } = {}): Promise<PublicPage> {
   if (isIngresseEventUrl(url)) return fetchIngresseEventApi(url, { read: getIngestionPayloadCache, write: saveIngestionPayloadCache }, options);
   if (isBlackPassEventUrl(url)) return fetchBlackPassEventPage(url);
   if (isWeTicketEventUrl(url)) {
-    const response = await fetchExternal(url, { headers: WETICKET_REQUEST_HEADERS }, WETICKET_FETCH_TIMEOUT_MS);
+    const response = await fetchExternal(url, { headers: WETICKET_REQUEST_HEADERS }, WETICKET_FETCH_TIMEOUT_MS, false, options.signal);
     const html = await readExternalBody(response);
     const structured = parseWeTicketEventMetadata(html, url);
     const meta = readMetaTags(html);
@@ -985,7 +986,7 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
     return { url, html, text: text.slice(0, 16_000), imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter: "weticket", adapterError: structured ? undefined : "Adaptador WeTicket não encontrou dados estruturados completos." };
   }
   if (isSymplaEventUrl(url)) {
-    const response = await fetchExternal(url, { headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36", accept: "text/html,application/xhtml+xml", "accept-language": "pt-BR,pt;q=0.9,en;q=0.8", "cache-control": "no-cache", "sec-ch-ua": '"Chromium";v="140", "Google Chrome";v="140", "Not=A?Brand";v="24"', "sec-ch-ua-mobile": "?0", "sec-ch-ua-platform": '"Windows"', "sec-fetch-dest": "document", "sec-fetch-mode": "navigate", "sec-fetch-site": "same-origin", "upgrade-insecure-requests": "1" } }, SYMPLA_FETCH_TIMEOUT_MS);
+    const response = await fetchExternal(url, { headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36", accept: "text/html,application/xhtml+xml", "accept-language": "pt-BR,pt;q=0.9,en;q=0.8", "cache-control": "no-cache", "sec-ch-ua": '"Chromium";v="140", "Google Chrome";v="140", "Not=A?Brand";v="24"', "sec-ch-ua-mobile": "?0", "sec-ch-ua-platform": '"Windows"', "sec-fetch-dest": "document", "sec-fetch-mode": "navigate", "sec-fetch-site": "same-origin", "upgrade-insecure-requests": "1" } }, SYMPLA_FETCH_TIMEOUT_MS, false, options.signal);
     const html = await readExternalBody(response);
     const structured = parseSymplaEventMetadata(html, url);
     const meta = readMetaTags(html);
@@ -996,7 +997,7 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
     return { url, html, text: text.slice(0, 16_000), imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter: "sympla", adapterError: structured ? undefined : "Adaptador Sympla não encontrou dados estruturados públicos." };
   }
   if (new URL(url).hostname.endsWith("zig.tickets")) {
-    const response = await fetchExternal(url, { headers: { ...ZIG_REQUEST_HEADERS, referer: "https://zig.tickets/pt-BR" } }, ZIG_FETCH_TIMEOUT_MS);
+    const response = await fetchExternal(url, { headers: { ...ZIG_REQUEST_HEADERS, referer: "https://zig.tickets/pt-BR" } }, ZIG_FETCH_TIMEOUT_MS, false, options.signal);
     const html = await readExternalBody(response);
     const structured = parseZigEventMetadata(html, url);
     const meta = readMetaTags(html);
@@ -1005,7 +1006,7 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
     return { url, html, text: text.slice(0, 16_000), imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter: "zig", adapterError: structured ? undefined : "Adaptador Zig não encontrou metadados públicos completos." };
   }
   if (isParqueValongoUrl(url)) {
-    const response = await fetchExternal(url, { headers: SANTOS_PUBLIC_REQUEST_HEADERS }, PARQUE_VALONGO_FETCH_TIMEOUT_MS);
+    const response = await fetchExternal(url, { headers: SANTOS_PUBLIC_REQUEST_HEADERS }, PARQUE_VALONGO_FETCH_TIMEOUT_MS, false, options.signal);
     const html = await readExternalBody(response);
     const meta = readMetaTags(html);
     const structured = parseParqueValongoEventMetadata(html, url);
@@ -1016,14 +1017,14 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean } = {}):
     return { url, html, text: text.slice(0, 16_000), imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter: "parque-valongo", adapterError: structured ? undefined : "Página do Parque Valongo sem evento JSON-LD completo; conteúdo encaminhado para classificação." };
   }
   if (isEventosLitoralOrganizerUrl(url)) {
-    const response = await fetchExternal(url, { headers: SANTOS_PUBLIC_REQUEST_HEADERS }, EVENTOS_LITORAL_FETCH_TIMEOUT_MS);
+    const response = await fetchExternal(url, { headers: SANTOS_PUBLIC_REQUEST_HEADERS }, EVENTOS_LITORAL_FETCH_TIMEOUT_MS, false, options.signal);
     const html = await readExternalBody(response);
     const metadata = parseEventosLitoralOrganizerMetadata(html, url);
     if (!metadata) throw createFetchError("Página pública do Eventos Litoral retornou conteúdo vazio ou contrato inesperado");
     return { url, html, text: metadata.text, imageUrl: metadata.imageUrl, adapter: "eventos-litoral" };
   }
   if (isBlueMedAgendaUrl(url)) {
-    const response = await fetchExternal(url, { headers: { ...SANTOS_PUBLIC_REQUEST_HEADERS, referer: "https://santosconventioncenter.com.br/" } }, BLUE_MED_FETCH_TIMEOUT_MS);
+    const response = await fetchExternal(url, { headers: { ...SANTOS_PUBLIC_REQUEST_HEADERS, referer: "https://santosconventioncenter.com.br/" } }, BLUE_MED_FETCH_TIMEOUT_MS, false, options.signal);
     const html = await readExternalBody(response);
     const structured = parseBlueMedAgendaEvents(html, url);
     const $ = load(html, undefined, false);
@@ -1110,7 +1111,7 @@ export type IngestionSourceReport = {
   rejectionReasons: { fetchFailed: number; outsideTargetVenue: number; invalidStructuredEvent: number; duplicate: number; pastEvent: number };
 };
 
-export type IngestionPipelineOptions = { dryRun?: boolean; sourceKey?: string };
+export type IngestionPipelineOptions = { dryRun?: boolean; sourceKey?: string; signal?: AbortSignal };
 type PublicSourceReportInput = {
   candidateUrls: string[];
   pages: PromiseSettledResult<PublicPage>[];

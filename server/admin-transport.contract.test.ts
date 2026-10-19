@@ -4,7 +4,12 @@ const maintenanceMocks = vi.hoisted(() => ({
   resolveOperationalAlertsBefore: vi.fn().mockResolvedValue({ resolvedCount: 3, before: "2026-08-20T15:00:00.000Z" }),
   resetActiveIngestionSourceCircuitBreakers: vi.fn().mockResolvedValue({ resetCount: 2, sourceKeys: ["instagram:bar", "public:agenda"] }),
   reactivateIngestionSourceCircuitBreaker: vi.fn().mockResolvedValue(undefined),
+  markIngestionSourceResult: vi.fn().mockResolvedValue(undefined),
+  recordIngestionSourceAction: vi.fn().mockResolvedValue(undefined),
+  listIngestionSourceOperationalTimeline: vi.fn().mockResolvedValue({ items: [{ id: "action-1", sourceKey: "instagram:mimadafesta", action: "reprocessed", actorOpenId: "admin", details: "Sucesso: 10 eventos lidos, 2 persistidos.", occurredAt: "2026-10-16T12:00:00.000Z" }], page: 1, pageSize: 500, total: 1, hasNextPage: false }),
+  getExecutiveObservabilityReport: vi.fn().mockResolvedValue({ generatedAt: "2026-10-16T12:00:00.000Z", sources: { active: 1, open: 0, waf: 0, meta110: 0, network: 0 }, series: [], trends: { waf: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, meta110: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, network: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, succeeded: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, successRate: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" } } }),
   runIngestionSourceChunk: vi.fn().mockResolvedValue({ sourceKey: "public:ingresse", dryRun: true, result: { read: 1, persisted: 1, filtered: 0, sandboxRestricted: false, previewMock: false } }),
+  runObservabilitySnapshotMaintenance: vi.fn().mockResolvedValue({ systemHealthStatus: "healthy", observedAt: "2026-10-17T12:00:00.000Z", snapshot: { id: 4, snapshotHash: "b".repeat(64), generatedAt: "2026-10-17T12:00:00.000Z", sourceCount: 12 }, deletedSnapshots: 2 }),
 }));
 
 vi.mock("./db", () => ({
@@ -55,6 +60,14 @@ vi.mock("./db", () => ({
         createdAt: new Date("2026-08-26T12:00:00.000Z"),
       },
     ]),
+  listFilteredIngestionSources: vi.fn().mockResolvedValue([{ id: 1, sourceKey: "public", createdAt: new Date("2026-08-26T12:00:00.000Z") }]),
+  getIngestionSourceSummary: vi.fn().mockResolvedValue({ active: 1, open: 0, waf: 0, meta110: 0, network: 0 }),
+  getConsolidatedIngestionSourceReport: vi.fn().mockResolvedValue({ generatedAt: "2026-10-16T12:00:00.000Z", totalSources: 1, activeSources: 1, pausedSources: 0, sources: [{ sourceKey: "public", name: "Agenda \"Litoral\"", kind: "public", handle: null, url: "https://example.test", isEnabled: true, lastStatus: "succeeded", lastAttemptAt: null, lastSuccessAt: new Date("2026-10-16T12:00:00.000Z"), lastFailureReason: null, lastHttpStatus: 200, circuitState: "closed", circuitFailureCount: 0, circuitNextAttemptAt: null, consecutive403Count: 0 }] }),
+  listCatalogSnapshots: vi.fn().mockResolvedValue([{ id: 1, snapshotHash: "a".repeat(64), generatedAt: new Date("2026-10-16T12:00:00.000Z"), sourceCount: 1, createdAt: new Date("2026-10-16T12:00:00.000Z") }]),
+  getExecutiveObservabilityReport: vi.fn().mockResolvedValue({ generatedAt: "2026-10-16T12:00:00.000Z", sources: { active: 1, open: 0, waf: 0, meta110: 0, network: 0 }, series: [], trends: { waf: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, meta110: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, network: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, succeeded: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, successRate: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" } } }),
+  listIngestionSourceHandleAudit: vi.fn().mockResolvedValue([
+    { id: 2, sourceKey: "instagram:mimadafesta", previousHandle: "mimadafesta-old", nextHandle: "mimadafesta", changedAt: new Date("2026-10-16T12:00:00.000Z") },
+  ]),
   listGeocodingSummary: vi.fn(),
   createLocationAlias: vi.fn(),
   updateLocationAlias: vi.fn(),
@@ -64,6 +77,9 @@ vi.mock("./db", () => ({
   resolveOperationalAlertsBefore: maintenanceMocks.resolveOperationalAlertsBefore,
   resetActiveIngestionSourceCircuitBreakers: maintenanceMocks.resetActiveIngestionSourceCircuitBreakers,
   reactivateIngestionSourceCircuitBreaker: maintenanceMocks.reactivateIngestionSourceCircuitBreaker,
+  markIngestionSourceResult: maintenanceMocks.markIngestionSourceResult,
+  recordIngestionSourceAction: maintenanceMocks.recordIngestionSourceAction,
+  listIngestionSourceOperationalTimeline: maintenanceMocks.listIngestionSourceOperationalTimeline,
   deleteEvent: vi.fn(),
   deleteEvents: vi.fn(),
   updateEventsPublication: vi.fn(),
@@ -109,6 +125,7 @@ vi.mock("./geocoding", () => ({
     .mockResolvedValue({ processed: 0, succeeded: 0, failed: 0, pending: 0 }),
 }));
 vi.mock("./dry-run", () => ({ runDryRun: vi.fn() }));
+vi.mock("./scheduled-observability-maintenance", () => ({ runObservabilitySnapshotMaintenance: maintenanceMocks.runObservabilitySnapshotMaintenance }));
 
 import { appRouter } from "./routers";
 import { reprocessIngestionSource } from "./ingestion-reports";
@@ -145,6 +162,64 @@ describe("admin transport contracts", () => {
     expect(result).toEqual({ success: true, sourceKey: "public:ingresse", status: "reactivated", read: 1, persisted: 1, message: "Teste concluído; fonte reativada para o próximo ciclo." });
     expect(maintenanceMocks.runIngestionSourceChunk).toHaveBeenCalledWith({ sourceKey: "public:ingresse", dryRun: true });
     expect(maintenanceMocks.reactivateIngestionSourceCircuitBreaker).toHaveBeenCalledWith("public:ingresse");
+  });
+
+  it("reativa e dispara reprocessamento imediato somente quando solicitado", async () => {
+    const caller = appRouter.createCaller(adminContext);
+    const result = await caller.ingestionSources.reactivate({ sourceKey: "instagram:mimadafesta", reprocessNow: true });
+    expect(result).toEqual({ ok: true, sourceKey: "instagram:mimadafesta", reprocess: "succeeded" });
+    expect(maintenanceMocks.reactivateIngestionSourceCircuitBreaker).toHaveBeenCalledWith("instagram:mimadafesta", "admin", "Reprocessamento imediato solicitado");
+    expect(maintenanceMocks.runIngestionSourceChunk).toHaveBeenCalledWith({ sourceKey: "instagram:mimadafesta", dryRun: false });
+  });
+
+  it("expõe o histórico de alterações do ID Meta como JSON seguro", async () => {
+    const result = await appRouter.createCaller(adminContext).ingestionSources.auditLog({ sourceKey: "instagram:mimadafesta" });
+    expect(result).toEqual([{ id: 2, sourceKey: "instagram:mimadafesta", previousHandle: "mimadafesta-old", nextHandle: "mimadafesta", changedAt: "2026-10-16T12:00:00.000Z" }]);
+  });
+
+  it("expõe a exportação completa da timeline como contrato JSON seguro", async () => {
+    const result = await appRouter.createCaller(adminContext).ingestionSources.operationalTimelineExport({ sourceKey: "instagram:mimadafesta" });
+    expect(result).toEqual({ items: [{ id: "action-1", sourceKey: "instagram:mimadafesta", action: "reprocessed", actorOpenId: "admin", details: "Sucesso: 10 eventos lidos, 2 persistidos.", occurredAt: "2026-10-16T12:00:00.000Z" }], total: 1 });
+    expect(maintenanceMocks.listIngestionSourceOperationalTimeline).toHaveBeenCalledWith("instagram:mimadafesta", 1, 500, undefined, undefined, undefined, undefined);
+  });
+
+  it("expõe catálogo consolidado em CSV UTF-8 e snapshots versionados", async () => {
+    const caller = appRouter.createCaller(adminContext);
+    const csv = await caller.ingestionSources.consolidatedCsvExport();
+    const snapshots = await caller.ingestionSources.snapshots({ limit: 10 });
+    expect(csv.filename).toMatch(/\.csv$/);
+    expect(csv.contentType).toBe("text/csv;charset=utf-8");
+    expect(csv.csv.startsWith("\uFEFF")).toBe(true);
+    expect(csv.csv).toContain("Agenda \"\"Litoral\"\"");
+    expect(snapshots[0]?.snapshotHash).toHaveLength(64);
+    expect(snapshots[0]?.generatedAt).toBe("2026-10-16T12:00:00.000Z");
+  });
+
+  it("dispara manualmente a rotina completa de observabilidade com autorização admin", async () => {
+    const result = await appRouter.createCaller(adminContext).ingestionSources.runObservabilityNow();
+    expect(result).toMatchObject({ ok: true, systemHealthStatus: "healthy", deletedSnapshots: 2, snapshot: { id: 4, sourceCount: 12 } });
+    expect(maintenanceMocks.runObservabilitySnapshotMaintenance).toHaveBeenCalledTimes(1);
+  });
+
+  it("encaminha ação, datas e estado para a exportação contextual", async () => {
+    await appRouter.createCaller(adminContext).ingestionSources.operationalTimelineJsonExport({ sourceKey: "instagram:mimadafesta", action: "reprocessed", from: "2026-08-01T00:00:00.000Z", to: "2026-08-31T23:59:59.999Z", status: "open" });
+    expect(maintenanceMocks.listIngestionSourceOperationalTimeline).toHaveBeenCalledWith("instagram:mimadafesta", 1, 500, "reprocessed", new Date("2026-08-01T00:00:00.000Z"), new Date("2026-08-31T23:59:59.999Z"), "open");
+  });
+
+  it("expõe JSON versionado com origem, total e timestamp de exportação", async () => {
+    const result = await appRouter.createCaller(adminContext).ingestionSources.operationalTimelineJsonExport({ sourceKey: "instagram:mimadafesta" });
+    expect(result.sourceKey).toBe("instagram:mimadafesta");
+    expect(result.total).toBe(1);
+    expect(result.exportedAt).toMatch(/^2026-.*Z$/);
+    expect(result.items[0]?.action).toBe("reprocessed");
+  });
+
+  it("expõe KPIs e aceita filtros combinados de fontes", async () => {
+    const caller = appRouter.createCaller(adminContext);
+    const summary = await caller.ingestionSources.summary();
+    const filtered = await caller.ingestionSources.list({ openOnly: true, failureCategory: "waf", since: "2026-10-10T00:00:00.000Z" });
+    expect(summary).toEqual({ active: 1, open: 0, waf: 0, meta110: 0, network: 0 });
+    expect(filtered).toEqual([{ id: 1, sourceKey: "public", createdAt: "2026-08-26T12:00:00.000Z" }]);
   });
 
   it("returns forbidden for maintenance mutations outside admin context", async () => {

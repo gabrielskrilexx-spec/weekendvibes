@@ -6,6 +6,7 @@ import { getDb, recordOperationalAlert } from "./db";
 import { storageGet, storagePut } from "./storage";
 import { buildFilteredStoriesCsv, listAllFilteredStories, type FilteredStoriesFilter } from "./ingestion-reports";
 import { getHeartbeatStatsExportRows, listHeartbeatExecutionEventsForExport, type HeartbeatEventType } from "./heartbeat-observability";
+import { upsert } from "./pg-upsert";
 
 type ExportFormat = "csv" | "json";
 type PersistentExportStatus = "queued" | "processing" | "completed" | "failed" | "cancelled" | "expired";
@@ -271,7 +272,7 @@ export async function updateExportJobsAlertSettings(input: Omit<ExportAlertSetti
     minimumQueueSize: Math.min(100000, Math.max(0, Math.trunc(input.minimumQueueSize))),
     consecutiveWindows: Math.min(10, Math.max(1, Math.trunc(input.consecutiveWindows))),
   };
-  await db.insert(appSettings).values({ key: exportAlertSettingsKey(input.environment), value: JSON.stringify({ ...settings, ...next }) }).onDuplicateKeyUpdate({ set: { value: JSON.stringify(next), updatedAt: new Date() } });
+  await upsert(db.insert(appSettings).values({ key: exportAlertSettingsKey(input.environment), value: JSON.stringify({ ...settings, ...next }) }), appSettings.key, { value: JSON.stringify(next), updatedAt: new Date() });
   await db.insert(exportJobsAlertSettingsAudit).values({ environment: input.environment, previousValue: JSON.stringify(settings), nextValue: JSON.stringify(next), changedByOpenId: (input.changedByOpenId ?? "system").slice(0, 160), changedAt: new Date() });
   return next;
 }
@@ -473,7 +474,7 @@ export async function recordExportAlertEvaluationSnapshot(input: {
 }) {
   const db = await getDb();
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
-  const insertResult = await db.insert(exportAlertEvaluationSnapshots).values({
+  const insertBuilder = db.insert(exportAlertEvaluationSnapshots).values({
     environment: input.environment,
     windowStartedAt: input.windowStartedAt,
     windowEndedAt: input.windowEndedAt,
@@ -491,8 +492,13 @@ export async function recordExportAlertEvaluationSnapshot(input: {
     heartbeatExecutionId: input.heartbeatExecutionId ? input.heartbeatExecutionId.slice(0, 160) : null,
     evaluatedAt: new Date(),
   });
-  const inserted = Array.isArray(insertResult) ? insertResult[0] : insertResult;
-  return { snapshotId: String((inserted as { insertId?: number } | undefined)?.insertId ?? "0") };
+  const returning = (insertBuilder as unknown as { returning?: (fields: { id: unknown }) => Promise<Array<{ id?: number }>> }).returning;
+  if (typeof returning === "function") {
+    const insertResult = await returning.call(insertBuilder, { id: exportAlertEvaluationSnapshots.id });
+    return { snapshotId: String(insertResult[0]?.id ?? "0") };
+  }
+  const insertResult = await insertBuilder as unknown as { insertId?: number };
+  return { snapshotId: String(insertResult.insertId ?? "0") };
 }
 
 export async function listExportAlertEvaluationSnapshots(input: {
@@ -594,4 +600,3 @@ export async function getSnapshotExecutionHistory(input: { snapshotId: string; o
     events: [{ event: "evaluated" as const, occurredAt, message: row.heartbeatExecutionId ? `Avaliação vinculada à execução ${row.heartbeatExecutionId}` : "Avaliação registrada sem execução M2M associada" }],
   };
 }
-

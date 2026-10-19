@@ -64,6 +64,55 @@
       "when": 1792159084217,
       "tag": "0008_woozy_morgan_stark",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1792175675917,
+      "tag": "0009_smooth_forgotten_one",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1792176037305,
+      "tag": "0010_square_rage",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1792176600275,
+      "tag": "0011_tiresome_yellow_claw",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1792178275474,
+      "tag": "0012_fresh_nightshade",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1792178537576,
+      "tag": "0013_ambiguous_shaman",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1792184207166,
+      "tag": "0014_keen_preak",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "5",
+      "when": 1792241308280,
+      "tag": "0015_daily_maestro",
+      "breakpoints": true
     }
   ]
 }

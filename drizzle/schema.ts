@@ -1,47 +1,68 @@
-import { index, int, mysqlEnum, mysqlTable, text, timestamp, varchar, uniqueIndex } from "drizzle-orm/mysql-core";
+import { sql } from "drizzle-orm";
+import { index, integer, pgTable, serial, text, timestamp, varchar, uniqueIndex } from "drizzle-orm/pg-core";
+
+/** PostgreSQL text-backed enum helper. The literal union remains available to TypeScript. */
+const enumText = <T extends string>(name: string, values: readonly T[]) =>
+  text(name).$type<T>();
 
 /**
  * Core user table backing auth flow.
  * Extend this file with additional tables as your product grows.
  * Columns use camelCase to match both database fields and generated types.
  */
-export const users = mysqlTable("users", {
+export const users = pgTable("users", {
   /**
    * Surrogate primary key. Auto-incremented numeric value managed by the database.
    * Use this for relations between tables.
    */
-  id: int("id").autoincrement().primaryKey(),
+  id: serial("id").primaryKey(),
   /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  role: enumText("role", ["user", "admin"]).default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-export const appSettings = mysqlTable("appSettings", {
+/** One-time administrative links; only a SHA-256 digest is persisted. */
+export const adminMagicLinks = pgTable("adminMagicLinks", {
+  id: serial("id").primaryKey(),
+  tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
+  openId: varchar("openId", { length: 160 }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  usedAt: timestamp("usedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => ({
+  activeTokenIdx: index("adminMagicLinks_active_token_idx").on(table.tokenHash, table.expiresAt, table.usedAt),
+  expiryIdx: index("adminMagicLinks_expiry_idx").on(table.expiresAt),
+}));
+
+export type AdminMagicLink = typeof adminMagicLinks.$inferSelect;
+export type InsertAdminMagicLink = typeof adminMagicLinks.$inferInsert;
+
+export const appSettings = pgTable("appSettings", {
   key: varchar("key", { length: 120 }).primaryKey(),
   value: varchar("value", { length: 255 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type AppSetting = typeof appSettings.$inferSelect;
 export type InsertAppSetting = typeof appSettings.$inferInsert;
 
-export const heartbeatExecutionEvents = mysqlTable("heartbeatExecutionEvents", {
+export const heartbeatExecutionEvents = pgTable("heartbeatExecutionEvents", {
   id: varchar("id", { length: 128 }).primaryKey(),
   heartbeatExecutionId: varchar("heartbeatExecutionId", { length: 160 }).notNull(),
-  eventType: mysqlEnum("eventType", ["started", "step", "log", "alert", "completed", "failed", "timeout"]).notNull(),
-  sequence: int("sequence").notNull(),
+  eventType: enumText("eventType", ["started", "step", "log", "alert", "completed", "failed", "timeout"]).notNull(),
+  sequence: integer("sequence").notNull(),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
-  durationMs: int("durationMs"),
+  durationMs: integer("durationMs"),
   status: varchar("status", { length: 64 }),
   message: text("message"),
   metadataJson: text("metadataJson"),
@@ -53,21 +74,21 @@ export const heartbeatExecutionEvents = mysqlTable("heartbeatExecutionEvents", {
 export type HeartbeatExecutionEvent = typeof heartbeatExecutionEvents.$inferSelect;
 export type InsertHeartbeatExecutionEvent = typeof heartbeatExecutionEvents.$inferInsert;
 
-export const exportAlertEvaluationSnapshots = mysqlTable("exportAlertEvaluationSnapshots", {
-  id: int("id").autoincrement().primaryKey(),
-  environment: mysqlEnum("environment", ["development", "preview", "production"]).notNull(),
+export const exportAlertEvaluationSnapshots = pgTable("exportAlertEvaluationSnapshots", {
+  id: serial("id").primaryKey(),
+  environment: enumText("environment", ["development", "preview", "production"]).notNull(),
   windowStartedAt: timestamp("windowStartedAt").notNull(),
   windowEndedAt: timestamp("windowEndedAt").notNull(),
-  queueSize: int("queueSize").notNull(),
-  previousQueueSize: int("previousQueueSize").notNull(),
-  queueGrowth: int("queueGrowth").notNull(),
-  expiredLeases: int("expiredLeases").notNull(),
-  orphanedJobs: int("orphanedJobs").notNull(),
-  growthThreshold: int("growthThreshold").notNull(),
-  minimumQueueSize: int("minimumQueueSize").notNull(),
-  consecutiveWindows: int("consecutiveWindows").notNull(),
-  severity: mysqlEnum("severity", ["INFO", "WARNING", "CRITICAL"]).notNull(),
-  decision: mysqlEnum("decision", ["NO_ALERT", "ALERT_CREATED", "DEDUPLICATED"]).notNull(),
+  queueSize: integer("queueSize").notNull(),
+  previousQueueSize: integer("previousQueueSize").notNull(),
+  queueGrowth: integer("queueGrowth").notNull(),
+  expiredLeases: integer("expiredLeases").notNull(),
+  orphanedJobs: integer("orphanedJobs").notNull(),
+  growthThreshold: integer("growthThreshold").notNull(),
+  minimumQueueSize: integer("minimumQueueSize").notNull(),
+  consecutiveWindows: integer("consecutiveWindows").notNull(),
+  severity: enumText("severity", ["INFO", "WARNING", "CRITICAL"]).notNull(),
+  decision: enumText("decision", ["NO_ALERT", "ALERT_CREATED", "DEDUPLICATED"]).notNull(),
   evaluatedByOpenId: varchar("evaluatedByOpenId", { length: 160 }).notNull(),
   heartbeatExecutionId: varchar("heartbeatExecutionId", { length: 160 }),
   evaluatedAt: timestamp("evaluatedAt").defaultNow().notNull(),
@@ -80,9 +101,9 @@ export const exportAlertEvaluationSnapshots = mysqlTable("exportAlertEvaluationS
 export type ExportAlertEvaluationSnapshot = typeof exportAlertEvaluationSnapshots.$inferSelect;
 export type InsertExportAlertEvaluationSnapshot = typeof exportAlertEvaluationSnapshots.$inferInsert;
 
-export const exportJobsAlertSettingsAudit = mysqlTable("exportJobsAlertSettingsAudit", {
-  id: int("id").autoincrement().primaryKey(),
-  environment: mysqlEnum("environment", ["development", "preview", "production"]).notNull(),
+export const exportJobsAlertSettingsAudit = pgTable("exportJobsAlertSettingsAudit", {
+  id: serial("id").primaryKey(),
+  environment: enumText("environment", ["development", "preview", "production"]).notNull(),
   previousValue: text("previousValue").notNull(),
   nextValue: text("nextValue").notNull(),
   changedByOpenId: varchar("changedByOpenId", { length: 160 }).notNull(),
@@ -95,8 +116,8 @@ export const exportJobsAlertSettingsAudit = mysqlTable("exportJobsAlertSettingsA
 export type ExportJobsAlertSettingsAudit = typeof exportJobsAlertSettingsAudit.$inferSelect;
 export type InsertExportJobsAlertSettingsAudit = typeof exportJobsAlertSettingsAudit.$inferInsert;
 
-export const events = mysqlTable("events", {
-  id: int("id").autoincrement().primaryKey(),
+export const events = pgTable("events", {
+  id: serial("id").primaryKey(),
   title: varchar("title", { length: 255 }).notNull(),
   slug: varchar("slug", { length: 255 }).notNull().unique(),
   description: text("description"),
@@ -107,11 +128,11 @@ export const events = mysqlTable("events", {
   neighborhood: varchar("neighborhood", { length: 160 }),
   formattedAddress: varchar("formattedAddress", { length: 500 }),
   city: varchar("city", { length: 100 }).notNull(),
-  category: mysqlEnum("category", ["show", "balada", "evento_musical"]).notNull(),
+  category: enumText("category", ["show", "balada", "evento_musical"]).notNull(),
   genre: varchar("genre", { length: 80 }),
-  priceCents: int("priceCents").default(0).notNull(),
+  priceCents: integer("priceCents").default(0).notNull(),
   priceNote: varchar("priceNote", { length: 255 }),
-  ticketStatus: mysqlEnum("ticketStatus", ["available", "sold_out", "unknown"]).default("unknown").notNull(),
+  ticketStatus: enumText("ticketStatus", ["available", "sold_out", "unknown"]).default("unknown").notNull(),
   sourceUrl: varchar("sourceUrl", { length: 1000 }),
   sourceType: varchar("sourceType", { length: 64 }),
   imageUrl: varchar("imageUrl", { length: 1000 }),
@@ -119,10 +140,10 @@ export const events = mysqlTable("events", {
   longitude: varchar("longitude", { length: 32 }),
   locationPrecision: varchar("locationPrecision", { length: 24 }).default("exact").notNull(),
   sourceHash: varchar("sourceHash", { length: 64 }).unique(),
-  isPublished: int("isPublished").default(1).notNull(),
-  isArchived: int("isArchived").default(0).notNull(),
+  isPublished: integer("isPublished").default(1).notNull(),
+  isArchived: integer("isArchived").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 }, table => ({
   publishedDateIdx: index("events_published_archived_date_idx").on(table.isPublished, table.isArchived, table.eventDate),
 }));
@@ -131,10 +152,10 @@ export type Event = typeof events.$inferSelect;
 export type InsertEvent = typeof events.$inferInsert;
 
 /** Immutable snapshots captured when a public ticketing price or lot changes. */
-export const eventPriceHistory = mysqlTable("eventPriceHistory", {
-  id: int("id").autoincrement().primaryKey(),
-  eventId: int("eventId").notNull(),
-  priceCents: int("priceCents").notNull(),
+export const eventPriceHistory = pgTable("eventPriceHistory", {
+  id: serial("id").primaryKey(),
+  eventId: integer("eventId").notNull(),
+  priceCents: integer("priceCents").notNull(),
   priceNote: varchar("priceNote", { length: 255 }),
   sourceUrl: varchar("sourceUrl", { length: 1000 }),
   capturedAt: timestamp("capturedAt").defaultNow().notNull(),
@@ -145,8 +166,8 @@ export const eventPriceHistory = mysqlTable("eventPriceHistory", {
 export type EventPriceHistory = typeof eventPriceHistory.$inferSelect;
 export type InsertEventPriceHistory = typeof eventPriceHistory.$inferInsert;
 
-export const manualReviewEvents = mysqlTable("manualReviewEvents", {
-  id: int("id").autoincrement().primaryKey(),
+export const manualReviewEvents = pgTable("manualReviewEvents", {
+  id: serial("id").primaryKey(),
   sourceUrl: varchar("sourceUrl", { length: 1000 }),
   sourceType: varchar("sourceType", { length: 64 }),
   title: varchar("title", { length: 255 }).notNull(),
@@ -156,18 +177,18 @@ export const manualReviewEvents = mysqlTable("manualReviewEvents", {
   locationName: varchar("locationName", { length: 255 }),
   address: varchar("address", { length: 500 }),
   city: varchar("city", { length: 100 }),
-  category: mysqlEnum("category", ["show", "balada", "evento_musical"]),
+  category: enumText("category", ["show", "balada", "evento_musical"]),
   genre: varchar("genre", { length: 80 }),
-  priceCents: int("priceCents"),
+  priceCents: integer("priceCents"),
   imageUrl: varchar("imageUrl", { length: 1000 }),
   rawText: text("rawText"),
   reason: varchar("reason", { length: 160 }).notNull(),
-  status: mysqlEnum("status", ["pending", "approved", "rejected", "expired"]).default("pending").notNull(),
+  status: enumText("status", ["pending", "approved", "rejected", "expired"]).default("pending").notNull(),
   reviewedBy: varchar("reviewedBy", { length: 160 }),
   reviewedAt: timestamp("reviewedAt"),
-  publishedEventId: int("publishedEventId"),
+  publishedEventId: integer("publishedEventId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 }, table => ({
   statusCreatedIdx: index("manualReviewEvents_status_created_idx").on(table.status, table.createdAt),
   sourceStatusIdx: index("manualReviewEvents_source_status_idx").on(table.sourceType, table.status),
@@ -177,10 +198,10 @@ export const manualReviewEvents = mysqlTable("manualReviewEvents", {
 export type ManualReviewEvent = typeof manualReviewEvents.$inferSelect;
 export type InsertManualReviewEvent = typeof manualReviewEvents.$inferInsert;
 
-export const manualReviewAuditLogs = mysqlTable("manualReviewAuditLogs", {
-  id: int("id").autoincrement().primaryKey(),
-  manualReviewEventId: int("manualReviewEventId").notNull(),
-  action: mysqlEnum("action", ["edited", "approved", "rejected", "expired", "undone"]).notNull(),
+export const manualReviewAuditLogs = pgTable("manualReviewAuditLogs", {
+  id: serial("id").primaryKey(),
+  manualReviewEventId: integer("manualReviewEventId").notNull(),
+  action: enumText("action", ["edited", "approved", "rejected", "expired", "undone"]).notNull(),
   changedFieldsJson: text("changedFieldsJson").notNull(),
   beforeJson: text("beforeJson").notNull(),
   afterJson: text("afterJson").notNull(),
@@ -194,19 +215,19 @@ export const manualReviewAuditLogs = mysqlTable("manualReviewAuditLogs", {
 export type ManualReviewAuditLog = typeof manualReviewAuditLogs.$inferSelect;
 export type InsertManualReviewAuditLog = typeof manualReviewAuditLogs.$inferInsert;
 
-export const operationalAlerts = mysqlTable("operationalAlerts", {
-  id: int("id").autoincrement().primaryKey(),
-  integration: mysqlEnum("integration", ["meta", "public", "ocr", "openai", "pipeline"]).notNull(),
-  severity: mysqlEnum("severity", ["INFO", "WARNING", "CRITICAL"]).default("WARNING").notNull(),
+export const operationalAlerts = pgTable("operationalAlerts", {
+  id: serial("id").primaryKey(),
+  integration: enumText("integration", ["meta", "public", "ocr", "openai", "pipeline"]).notNull(),
+  severity: enumText("severity", ["INFO", "WARNING", "CRITICAL"]).default("WARNING").notNull(),
   alertType: varchar("alertType", { length: 80 }).default("operational").notNull(),
-  slaMinutes: int("slaMinutes").default(1440).notNull(),
+  slaMinutes: integer("slaMinutes").default(1440).notNull(),
   runId: varchar("runId", { length: 32 }),
   title: varchar("title", { length: 180 }).notNull(),
   message: text("message").notNull(),
   fingerprint: varchar("fingerprint", { length: 64 }).notNull().unique(),
-  isResolved: int("isResolved").default(0).notNull(),
+  isResolved: integer("isResolved").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 }, table => ({
   resolvedCreatedIdx: index("operationalAlerts_resolved_created_idx").on(table.isResolved, table.createdAt),
 }));
@@ -214,10 +235,10 @@ export const operationalAlerts = mysqlTable("operationalAlerts", {
 export type OperationalAlert = typeof operationalAlerts.$inferSelect;
 export type InsertOperationalAlert = typeof operationalAlerts.$inferInsert;
 
-export const eventFavorites = mysqlTable("eventFavorites", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  eventId: int("eventId").notNull(),
+export const eventFavorites = pgTable("eventFavorites", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull(),
+  eventId: integer("eventId").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, table => ({
   userEventUnique: uniqueIndex("eventFavorites_user_event_unique").on(table.userId, table.eventId),
@@ -226,15 +247,15 @@ export const eventFavorites = mysqlTable("eventFavorites", {
 export type EventFavorite = typeof eventFavorites.$inferSelect;
 export type InsertEventFavorite = typeof eventFavorites.$inferInsert;
 
-export const eventReminders = mysqlTable("eventReminders", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  eventId: int("eventId").notNull(),
-  hoursBefore: int("hoursBefore").default(24).notNull(),
+export const eventReminders = pgTable("eventReminders", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull(),
+  eventId: integer("eventId").notNull(),
+  hoursBefore: integer("hoursBefore").default(24).notNull(),
   remindAt: timestamp("remindAt").notNull(),
-  isActive: int("isActive").default(1).notNull(),
+  isActive: integer("isActive").default(1).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 }, table => ({
   userEventUnique: uniqueIndex("eventReminders_user_event_unique").on(table.userId, table.eventId),
 }));
@@ -242,31 +263,32 @@ export const eventReminders = mysqlTable("eventReminders", {
 export type EventReminder = typeof eventReminders.$inferSelect;
 export type InsertEventReminder = typeof eventReminders.$inferInsert;
 
-export const ingestionRuns = mysqlTable("ingestionRuns", {
-  id: int("id").autoincrement().primaryKey(),
+export const ingestionRuns = pgTable("ingestionRuns", {
+  id: serial("id").primaryKey(),
   routine: varchar("routine", { length: 64 }).notNull(),
   sourceKey: varchar("sourceKey", { length: 255 }),
-  status: mysqlEnum("status", ["running", "succeeded", "failed", "partial"]).default("running").notNull(),
-  importedCount: int("importedCount").default(0).notNull(),
-  failedCount: int("failedCount").default(0).notNull(),
-  durationMs: int("duration_ms"),
-  httpStatus: int("httpStatus"),
+  status: enumText("status", ["running", "succeeded", "failed", "partial"]).default("running").notNull(),
+  importedCount: integer("importedCount").default(0).notNull(),
+  failedCount: integer("failedCount").default(0).notNull(),
+  durationMs: integer("duration_ms"),
+  httpStatus: integer("httpStatus"),
   counts: text("counts"),
   details: text("details"),
   startedAt: timestamp("startedAt").defaultNow().notNull(),
   finishedAt: timestamp("finishedAt"),
 }, table => ({
   routineStartedIdx: index("ingestionRuns_routine_started_idx").on(table.routine, table.startedAt),
+  sourceStartedIdx: index("ingestionRuns_source_started_idx").on(table.sourceKey, table.startedAt),
 }));
 
 export type IngestionRun = typeof ingestionRuns.$inferSelect;
 export type InsertIngestionRun = typeof ingestionRuns.$inferInsert;
 
-export const ingestionStoryAuditLogs = mysqlTable("ingestionStoryAuditLogs", {
-  id: int("id").autoincrement().primaryKey(),
+export const ingestionStoryAuditLogs = pgTable("ingestionStoryAuditLogs", {
+  id: serial("id").primaryKey(),
   storyId: varchar("storyId", { length: 500 }).notNull(),
-  runId: int("runId").notNull(),
-  action: mysqlEnum("action", ["ocr_edit", "approval"]).notNull(),
+  runId: integer("runId").notNull(),
+  action: enumText("action", ["ocr_edit", "approval"]).notNull(),
   previousText: text("previousText"),
   nextText: text("nextText"),
   status: varchar("status", { length: 32 }),
@@ -279,8 +301,8 @@ export const ingestionStoryAuditLogs = mysqlTable("ingestionStoryAuditLogs", {
 export type IngestionStoryAuditLog = typeof ingestionStoryAuditLogs.$inferSelect;
 export type InsertIngestionStoryAuditLog = typeof ingestionStoryAuditLogs.$inferInsert;
 
-export const ingestionPayloadCache = mysqlTable("ingestionPayloadCache", {
-  id: int("id").autoincrement().primaryKey(),
+export const ingestionPayloadCache = pgTable("ingestionPayloadCache", {
+  id: serial("id").primaryKey(),
   cacheKey: varchar("cacheKey", { length: 255 }).notNull().unique(),
   sourceKey: varchar("sourceKey", { length: 120 }).notNull(),
   sourceUrl: varchar("sourceUrl", { length: 1000 }).notNull(),
@@ -289,36 +311,36 @@ export const ingestionPayloadCache = mysqlTable("ingestionPayloadCache", {
   longitude: varchar("longitude", { length: 32 }),
   lastGoodAt: timestamp("lastGoodAt").defaultNow().notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type IngestionPayloadCache = typeof ingestionPayloadCache.$inferSelect;
 export type InsertIngestionPayloadCache = typeof ingestionPayloadCache.$inferInsert;
 
-export const geocodingJobs = mysqlTable("geocodingJobs", {
-  id: int("id").autoincrement().primaryKey(),
-  eventId: int("eventId").notNull().unique(),
+export const geocodingJobs = pgTable("geocodingJobs", {
+  id: serial("id").primaryKey(),
+  eventId: integer("eventId").notNull().unique(),
   addressHash: varchar("addressHash", { length: 64 }).notNull(),
-  status: mysqlEnum("status", ["pending", "processing", "succeeded", "failed"]).default("pending").notNull(),
-  attempts: int("attempts").default(0).notNull(),
+  status: enumText("status", ["pending", "processing", "succeeded", "failed"]).default("pending").notNull(),
+  attempts: integer("attempts").default(0).notNull(),
   provider: varchar("provider", { length: 64 }),
   confidence: varchar("confidence", { length: 32 }),
   lastError: text("lastError"),
   processedAt: timestamp("processedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type GeocodingJob = typeof geocodingJobs.$inferSelect;
 export type InsertGeocodingJob = typeof geocodingJobs.$inferInsert;
 
-export const geocodingAuditLogs = mysqlTable("geocodingAuditLogs", {
-  id: int("id").autoincrement().primaryKey(),
-  eventId: int("eventId").notNull(),
+export const geocodingAuditLogs = pgTable("geocodingAuditLogs", {
+  id: serial("id").primaryKey(),
+  eventId: integer("eventId").notNull(),
   city: varchar("city", { length: 100 }).notNull(),
   rawAddress: varchar("rawAddress", { length: 500 }),
   normalizedAddress: varchar("normalizedAddress", { length: 500 }),
-  status: mysqlEnum("status", ["invalid", "fallback", "rejected", "succeeded"]).notNull(),
+  status: enumText("status", ["invalid", "fallback", "rejected", "succeeded"]).notNull(),
   message: varchar("message", { length: 1000 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -326,66 +348,131 @@ export const geocodingAuditLogs = mysqlTable("geocodingAuditLogs", {
 export type GeocodingAuditLog = typeof geocodingAuditLogs.$inferSelect;
 export type InsertGeocodingAuditLog = typeof geocodingAuditLogs.$inferInsert;
 
-export const locationAliases = mysqlTable("locationAliases", {
-  id: int("id").autoincrement().primaryKey(),
+export const locationAliases = pgTable("locationAliases", {
+  id: serial("id").primaryKey(),
   alias: varchar("alias", { length: 180 }).notNull().unique(),
   canonicalName: varchar("canonicalName", { length: 180 }).notNull(),
   city: varchar("city", { length: 100 }).notNull(),
-  isActive: int("isActive").default(1).notNull(),
+  isActive: integer("isActive").default(1).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type LocationAlias = typeof locationAliases.$inferSelect;
 export type InsertLocationAlias = typeof locationAliases.$inferInsert;
 
-export const ingestionSources = mysqlTable("ingestionSources", {
-  id: int("id").autoincrement().primaryKey(),
+export const ingestionSources = pgTable("ingestionSources", {
+  id: serial("id").primaryKey(),
   sourceKey: varchar("sourceKey", { length: 120 }).notNull().unique(),
   name: varchar("name", { length: 180 }).notNull(),
-  kind: mysqlEnum("kind", ["instagram", "public"]).notNull(),
+  kind: enumText("kind", ["instagram", "public"]).notNull(),
   handle: varchar("handle", { length: 180 }),
   url: varchar("url", { length: 1000 }).notNull(),
-  isEnabled: int("isEnabled").default(1).notNull(),
-  priority: int("priority").default(50).notNull(),
-  frequencyMinutes: int("frequencyMinutes").default(10080).notNull(),
-  p95LatencyThresholdMs: int("p95LatencyThresholdMs").default(3000).notNull(),
+  isEnabled: integer("isEnabled").default(1).notNull(),
+  priority: integer("priority").default(50).notNull(),
+  frequencyMinutes: integer("frequencyMinutes").default(10080).notNull(),
+  p95LatencyThresholdMs: integer("p95LatencyThresholdMs").default(3000).notNull(),
   scheduleTaskUid: varchar("scheduleTaskUid", { length: 65 }),
+  lastAttemptAt: timestamp("lastAttemptAt"),
   lastSuccessAt: timestamp("lastSuccessAt"),
-  lastStatus: mysqlEnum("lastStatus", ["never", "succeeded", "failed", "skipped"]).default("never").notNull(),
+  lastStatus: enumText("lastStatus", ["never", "succeeded", "failed", "skipped"]).default("never").notNull(),
   lastMessage: text("lastMessage"),
-  lastHttpStatus: int("lastHttpStatus"),
+  lastExecutionFeedback: varchar("lastExecutionFeedback", { length: 1000 }),
+  lastHttpStatus: integer("lastHttpStatus"),
   lastFailureReason: varchar("lastFailureReason", { length: 500 }),
-  circuitState: mysqlEnum("circuitState", ["closed", "open", "half_open"]).default("closed").notNull(),
-  circuitFailureCount: int("circuitFailureCount").default(0).notNull(),
+  circuitState: enumText("circuitState", ["closed", "open", "half_open"]).default("closed").notNull(),
+  circuitFailureCount: integer("circuitFailureCount").default(0).notNull(),
   circuitOpenedAt: timestamp("circuitOpenedAt"),
   circuitNextAttemptAt: timestamp("circuitNextAttemptAt"),
   circuitLastError: text("circuitLastError"),
-  consecutive403Count: int("consecutive403Count").default(0).notNull(),
+  consecutive403Count: integer("consecutive403Count").default(0).notNull(),
   last403AlertedAt: timestamp("last403AlertedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type IngestionSource = typeof ingestionSources.$inferSelect;
 export type InsertIngestionSource = typeof ingestionSources.$inferInsert;
 
-export const apifyDailyUsage = mysqlTable("apifyDailyUsage", {
+export const ingestionLeases = pgTable("ingestionLeases", {
+  lockKey: varchar("lockKey", { length: 160 }).primaryKey(),
+  holderId: varchar("holderId", { length: 120 }).notNull(),
+  leaseUntil: timestamp("leaseUntil").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export const ingestionSourceHandleAuditLogs = pgTable("ingestionSourceHandleAuditLogs", {
+  id: serial("id").primaryKey(),
+  sourceKey: varchar("sourceKey", { length: 120 }).notNull(),
+  previousHandle: varchar("previousHandle", { length: 180 }),
+  nextHandle: varchar("nextHandle", { length: 180 }),
+  changedByOpenId: varchar("changedByOpenId", { length: 160 }),
+  changedAt: timestamp("changedAt").defaultNow().notNull(),
+}, table => ({
+  sourceChangedIdx: index("ingestionSourceHandleAuditLogs_source_changed_idx").on(table.sourceKey, table.changedAt),
+}));
+
+export type IngestionSourceHandleAuditLog = typeof ingestionSourceHandleAuditLogs.$inferSelect;
+export type InsertIngestionSourceHandleAuditLog = typeof ingestionSourceHandleAuditLogs.$inferInsert;
+
+export const ingestionSourceActionAuditLogs = pgTable("ingestionSourceActionAuditLogs", {
+  id: serial("id").primaryKey(),
+  sourceKey: varchar("sourceKey", { length: 120 }).notNull(),
+  action: enumText("action", ["reactivated", "reprocessed"]).notNull(),
+  operatorOpenId: varchar("operatorOpenId", { length: 160 }),
+  details: varchar("details", { length: 500 }),
+  actedAt: timestamp("actedAt").defaultNow().notNull(),
+}, table => ({
+  sourceActedIdx: index("ingestionSourceActionAuditLogs_source_acted_idx").on(table.sourceKey, table.actedAt),
+}));
+
+export type IngestionSourceActionAuditLog = typeof ingestionSourceActionAuditLogs.$inferSelect;
+export type InsertIngestionSourceActionAuditLog = typeof ingestionSourceActionAuditLogs.$inferInsert;
+
+export const systemHealthTransitions = pgTable("systemHealthTransitions", {
+  id: serial("id").primaryKey(),
+  previousStatus: enumText("previousStatus", ["healthy", "degraded", "critical"]),
+  nextStatus: enumText("nextStatus", ["healthy", "degraded", "critical"]).notNull(),
+  reason: varchar("reason", { length: 500 }).notNull(),
+  observedAt: timestamp("observedAt").defaultNow().notNull(),
+}, table => ({
+  observedIdx: index("systemHealthTransitions_observed_idx").on(table.observedAt),
+}));
+
+export type SystemHealthTransition = typeof systemHealthTransitions.$inferSelect;
+export type InsertSystemHealthTransition = typeof systemHealthTransitions.$inferInsert;
+
+export const catalogSnapshots = pgTable("catalogSnapshots", {
+  id: serial("id").primaryKey(),
+  snapshotHash: varchar("snapshotHash", { length: 64 }).notNull(),
+  generatedAt: timestamp("generatedAt").notNull(),
+  sourceCount: integer("sourceCount").notNull(),
+  payloadJson: text("payloadJson").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => ({
+  createdIdx: index("catalogSnapshots_created_idx").on(table.createdAt),
+}));
+
+export type CatalogSnapshot = typeof catalogSnapshots.$inferSelect;
+export type InsertCatalogSnapshot = typeof catalogSnapshots.$inferInsert;
+
+export const apifyDailyUsage = pgTable("apifyDailyUsage", {
   dateKey: varchar("dateKey", { length: 10 }).primaryKey(),
-  requestCount: int("requestCount").default(0).notNull(),
-  dailyLimit: int("dailyLimit").notNull(),
+  requestCount: integer("requestCount").default(0).notNull(),
+  dailyLimit: integer("dailyLimit").notNull(),
   lastBlockedAt: timestamp("lastBlockedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 export type ApifyDailyUsage = typeof apifyDailyUsage.$inferSelect;
 export type InsertApifyDailyUsage = typeof apifyDailyUsage.$inferInsert;
 
-export const filteredStoryExportJobs = mysqlTable("filteredStoryExportJobs", {
+export const filteredStoryExportJobs = pgTable("filteredStoryExportJobs", {
   id: varchar("id", { length: 128 }).primaryKey(),
-  format: mysqlEnum("format", ["csv", "json"]).notNull(),
-  status: mysqlEnum("status", ["queued", "processing", "completed", "failed", "cancelled", "expired"]).default("queued").notNull(),
-  progress: int("progress").default(0).notNull(),
+  format: enumText("format", ["csv", "json"]).notNull(),
+  status: enumText("status", ["queued", "processing", "completed", "failed", "cancelled", "expired"]).default("queued").notNull(),
+  progress: integer("progress").default(0).notNull(),
   filtersJson: text("filtersJson").notNull(),
   fileKey: varchar("fileKey", { length: 512 }),
   fileName: varchar("fileName", { length: 180 }),
@@ -393,15 +480,15 @@ export const filteredStoryExportJobs = mysqlTable("filteredStoryExportJobs", {
   errorMessage: varchar("errorMessage", { length: 500 }),
   createdByOpenId: varchar("createdByOpenId", { length: 160 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   expiresAt: timestamp("expiresAt").notNull(),
   completedAt: timestamp("completedAt"),
   cancelledAt: timestamp("cancelledAt"),
   leaseOwner: varchar("leaseOwner", { length: 128 }),
   leaseExpiresAt: timestamp("leaseExpiresAt"),
-  recoveryAttempts: int("recoveryAttempts").default(0).notNull(),
+  recoveryAttempts: integer("recoveryAttempts").default(0).notNull(),
   lastRecoveredAt: timestamp("lastRecoveredAt"),
-  fileDeletePending: int("fileDeletePending").$type<boolean>().default(false).notNull(),
+  fileDeletePending: integer("fileDeletePending").$type<boolean>().default(sql`0`).notNull(),
   fileDeletedAt: timestamp("fileDeletedAt"),
 }, table => ({
   statusUpdatedIdx: index("filteredStoryExportJobs_status_updated_idx").on(table.status, table.updatedAt),
@@ -411,22 +498,22 @@ export const filteredStoryExportJobs = mysqlTable("filteredStoryExportJobs", {
 }));
 export type FilteredStoryExportJob = typeof filteredStoryExportJobs.$inferSelect;
 export type InsertFilteredStoryExportJob = typeof filteredStoryExportJobs.$inferInsert;
-export const rateLimitBuckets = mysqlTable("rateLimitBuckets", {
+export const rateLimitBuckets = pgTable("rateLimitBuckets", {
   bucketKey: varchar("bucketKey", { length: 255 }).primaryKey(),
-  requestCount: int("requestCount").default(0).notNull(),
+  requestCount: integer("requestCount").default(0).notNull(),
   resetAt: timestamp("resetAt").notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type RateLimitBucket = typeof rateLimitBuckets.$inferSelect;
 export type InsertRateLimitBucket = typeof rateLimitBuckets.$inferInsert;
-export const apifyProcessedItems = mysqlTable("apifyProcessedItems", {
+export const apifyProcessedItems = pgTable("apifyProcessedItems", {
   itemFingerprint: varchar("itemFingerprint", { length: 64 }).primaryKey(),
   providerItemId: varchar("providerItemId", { length: 255 }),
   routine: varchar("routine", { length: 64 }).notNull(),
   mediaUrl: varchar("mediaUrl", { length: 1000 }),
   actorRunId: varchar("actorRunId", { length: 160 }),
-  status: mysqlEnum("status", ["processing", "completed"]).default("processing").notNull(),
+  status: enumText("status", ["processing", "completed"]).default("processing").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   completedAt: timestamp("completedAt"),
 }, table => ({

@@ -1,9 +1,14 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
-import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory } from "../drizzle/schema";
+import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
+import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots, ingestionLeases, adminMagicLinks } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
+import { buildDailyTelemetrySeries, calculateSystemHealthStatus, normalizeObservabilityPeriod, summarizeTelemetryTrend } from "./observability";
+import { upsert } from "./pg-upsert";
+import { serializePayloadJson } from "./json-contracts";
+import type { CircuitState, FailureCategory } from "../shared/domain";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -11,13 +16,91 @@ let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      const client = postgres(process.env.DATABASE_URL, {
+        max: Number.parseInt(process.env.DB_POOL_MAX ?? "5", 10),
+        idle_timeout: 20,
+        connect_timeout: 10,
+        prepare: false,
+      });
+      _db = drizzle(client);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
     }
   }
   return _db;
+}
+
+export async function checkDatabaseHealth() {
+  const startedAt = Date.now();
+  const db = await getDb();
+  if (!db) return { ok: false as const, database: "unavailable" as const, rateLimiter: "unavailable" as const, userPersistence: "unavailable" as const, latencyMs: Date.now() - startedAt };
+  try {
+    const [row] = await db.execute(sql`
+      SELECT
+        current_database() AS database_name,
+        to_regclass('public."rateLimitBuckets"') AS rate_limit_table,
+        to_regclass('public."users"') AS users_table
+    `);
+    const record = row as { database_name?: string; rate_limit_table?: string | null; users_table?: string | null } | undefined;
+    const rateLimiter = record?.rate_limit_table ? "ready" : "unavailable";
+    const userPersistence = record?.users_table ? "ready" : "unavailable";
+    return { ok: rateLimiter === "ready" && userPersistence === "ready", database: "ready" as const, rateLimiter, userPersistence, latencyMs: Date.now() - startedAt };
+  } catch (error) {
+    console.warn("[DatabaseHealth] dependency check failed", error instanceof Error ? error.message : "unknown_error");
+    return { ok: false as const, database: "degraded" as const, rateLimiter: "unavailable" as const, userPersistence: "unavailable" as const, latencyMs: Date.now() - startedAt };
+  }
+}
+
+export async function issueAdminMagicLink(openId: string, ttlMs = 5 * 60_000) {
+  const db = await getDb();
+  if (!db) throw new Error("database_unavailable");
+  const token = randomBytes(32).toString("hex");
+  const tokenHash = createHash("sha256").update(token, "utf8").digest("hex");
+  const boundedTtl = Math.max(30_000, Math.min(5 * 60_000, Math.trunc(ttlMs)));
+  const expiresAt = new Date(Date.now() + boundedTtl);
+  await db.insert(adminMagicLinks).values({ tokenHash, openId, expiresAt });
+  return { token, expiresAt };
+}
+
+/** Atomically consumes a token; a second request can never receive the openId. */
+export async function consumeAdminMagicLink(token: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const tokenHash = createHash("sha256").update(token, "utf8").digest("hex");
+  const rows = await db.execute(sql`
+    UPDATE "adminMagicLinks"
+    SET "usedAt" = CURRENT_TIMESTAMP
+    WHERE "tokenHash" = ${tokenHash}
+      AND "usedAt" IS NULL
+      AND "expiresAt" > CURRENT_TIMESTAMP
+    RETURNING "openId"
+  `);
+  const row = Array.isArray(rows) ? rows[0] as { openId?: unknown } | undefined : undefined;
+  return typeof row?.openId === "string" ? row.openId : null;
+}
+
+export async function acquireIngestionLease(lockKey: string, leaseMs = 120_000) {
+  const db = await getDb();
+  if (!db) return { acquired: false as const, holderId: null };
+  const holderId = randomUUID();
+  const safeKey = lockKey.trim().slice(0, 160);
+  const duration = Math.max(10_000, Math.min(15 * 60_000, Math.trunc(leaseMs)));
+  const rows = await db.execute(sql`
+    INSERT INTO "ingestionLeases" ("lockKey", "holderId", "leaseUntil", "createdAt", "updatedAt")
+    VALUES (${safeKey}, ${holderId}, CURRENT_TIMESTAMP + (${duration} * INTERVAL '1 millisecond'), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT ("lockKey") DO UPDATE SET "holderId" = ${holderId}, "leaseUntil" = CURRENT_TIMESTAMP + (${duration} * INTERVAL '1 millisecond'), "updatedAt" = CURRENT_TIMESTAMP
+    WHERE "ingestionLeases"."leaseUntil" <= CURRENT_TIMESTAMP
+    RETURNING "holderId"
+  `);
+  return { acquired: Array.isArray(rows) && rows.length > 0, holderId };
+}
+
+export async function releaseIngestionLease(lockKey: string, holderId: string) {
+  const db = await getDb();
+  if (!db) return false;
+  await db.execute(sql`DELETE FROM "ingestionLeases" WHERE "lockKey" = ${lockKey.trim().slice(0, 160)} AND "holderId" = ${holderId}`);
+  return true;
 }
 
 export async function claimRateLimitRequest(input: { key: string; windowMs: number }) {
@@ -29,12 +112,10 @@ export async function claimRateLimitRequest(input: { key: string; windowMs: numb
   const resetAt = new Date(now.getTime() + windowMs);
   const bucketKey = input.key.slice(0, 255);
   try {
-    await db.insert(rateLimitBuckets).values({ bucketKey, requestCount: 1, resetAt }).onDuplicateKeyUpdate({
-      set: {
-        requestCount: sql`IF(${rateLimitBuckets.resetAt} <= UTC_TIMESTAMP(), 1, ${rateLimitBuckets.requestCount} + 1)`,
-        resetAt: sql`IF(${rateLimitBuckets.resetAt} <= UTC_TIMESTAMP(), DATE_ADD(UTC_TIMESTAMP(), INTERVAL ${windowSeconds} SECOND), ${rateLimitBuckets.resetAt})`,
-        updatedAt: now,
-      },
+    await upsert(db.insert(rateLimitBuckets).values({ bucketKey, requestCount: 1, resetAt }), rateLimitBuckets.bucketKey, {
+      requestCount: sql`CASE WHEN ${rateLimitBuckets.resetAt} <= CURRENT_TIMESTAMP THEN 1 ELSE ${rateLimitBuckets.requestCount} + 1 END`,
+      resetAt: sql`CASE WHEN ${rateLimitBuckets.resetAt} <= CURRENT_TIMESTAMP THEN CURRENT_TIMESTAMP + (${windowSeconds} * INTERVAL '1 second') ELSE ${rateLimitBuckets.resetAt} END`,
+      updatedAt: now,
     });
     const [bucket] = await db.select({ requestCount: rateLimitBuckets.requestCount, resetAt: rateLimitBuckets.resetAt })
       .from(rateLimitBuckets)
@@ -51,14 +132,14 @@ export async function claimApifyProcessedItem(input: { fingerprint: string; prov
   const db = await getDb();
   if (!db) return true;
   const fingerprint = input.fingerprint.slice(0, 64);
-  const result = await db.insert(apifyProcessedItems).values({
+  const result = await upsert(db.insert(apifyProcessedItems).values({
     itemFingerprint: fingerprint,
     providerItemId: input.providerItemId?.slice(0, 255),
     routine: input.routine.slice(0, 64),
     mediaUrl: input.mediaUrl?.slice(0, 1000),
     actorRunId: input.actorRunId?.slice(0, 160),
     status: "processing",
-  }).onDuplicateKeyUpdate({ set: { itemFingerprint: sql`${apifyProcessedItems.itemFingerprint}` } });
+  }), apifyProcessedItems.itemFingerprint, { itemFingerprint: sql`${apifyProcessedItems.itemFingerprint}` });
   const affectedRows = Number((result as unknown as { affectedRows?: number }).affectedRows ?? 1);
   return affectedRows > 0;
 }
@@ -120,9 +201,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       updateSet.lastSignedIn = new Date();
     }
 
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
-    });
+    await upsert(db.insert(users).values(values), users.openId, updateSet);
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
     throw error;
@@ -178,9 +257,7 @@ export async function recordOperationalAlert(input: { integration: OperationalIn
     fingerprint: operationalAlertFingerprint(input.integration, message),
     isResolved: 0,
   };
-  await db.insert(operationalAlerts).values(values).onDuplicateKeyUpdate({
-    set: { severity: values.severity, alertType: values.alertType, slaMinutes: values.slaMinutes, runId: values.runId, title: values.title, message: values.message, isResolved: 0, updatedAt: new Date() },
-  });
+  await upsert(db.insert(operationalAlerts).values(values), operationalAlerts.fingerprint, { severity: values.severity, alertType: values.alertType, slaMinutes: values.slaMinutes, runId: values.runId, title: values.title, message: values.message, isResolved: 0, updatedAt: new Date() });
   return values;
 }
 
@@ -230,7 +307,7 @@ export async function setApifyDailyRequestLimit(value: number) {
   if (limit !== value) throw new Error("O limite diário deve ser um número inteiro entre 1 e 100.");
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  await db.insert(appSettings).values({ key: APIFY_DAILY_REQUEST_LIMIT_KEY, value: String(limit) }).onDuplicateKeyUpdate({ set: { value: String(limit), updatedAt: new Date() } });
+  await upsert(db.insert(appSettings).values({ key: APIFY_DAILY_REQUEST_LIMIT_KEY, value: String(limit) }), appSettings.key, { value: String(limit), updatedAt: new Date() });
   const dateKey = saoPauloDateKey(new Date());
   await db.update(apifyDailyUsage).set({ dailyLimit: limit, updatedAt: new Date() }).where(eq(apifyDailyUsage.dateKey, dateKey));
   return limit;
@@ -250,7 +327,7 @@ export async function claimApifyDailyRequest(input: { now?: Date; units?: number
   const dailyLimit = await getConfiguredApifyDailyRequestLimit(db);
   if (await isApifyIngestionKillSwitchEnabled(db) && !isolatedManualRun) return { allowed: false, dateKey, requestCount: 0, dailyLimit, persistence: Boolean(db), blockedReason: "kill_switch" as const };
   if (!db) return { allowed: false, dateKey, requestCount: 0, dailyLimit, persistence: false, blockedReason: "budget_unavailable" as const };
-  await db.insert(apifyDailyUsage).values({ dateKey, requestCount: 0, dailyLimit }).onDuplicateKeyUpdate({ set: { dailyLimit, updatedAt: new Date() } });
+  await upsert(db.insert(apifyDailyUsage).values({ dateKey, requestCount: 0, dailyLimit }), apifyDailyUsage.dateKey, { dailyLimit, updatedAt: new Date() });
   const result = await db.update(apifyDailyUsage).set({ requestCount: sql`${apifyDailyUsage.requestCount} + ${units}`, updatedAt: new Date() }).where(and(eq(apifyDailyUsage.dateKey, dateKey), sql`${apifyDailyUsage.requestCount} + ${units} <= ${dailyLimit}`));
   const rows = await db.select({ requestCount: apifyDailyUsage.requestCount, dailyLimit: apifyDailyUsage.dailyLimit }).from(apifyDailyUsage).where(eq(apifyDailyUsage.dateKey, dateKey)).limit(1);
   const row = rows[0] ?? { requestCount: 0, dailyLimit };
@@ -377,7 +454,7 @@ export const DEFAULT_INGESTION_SOURCES = [
 async function ensureDefaultIngestionSources(db: Awaited<ReturnType<typeof getDb>>) {
   if (!db) return;
   for (const source of DEFAULT_INGESTION_SOURCES) {
-    await db.insert(ingestionSources).values(source).onDuplicateKeyUpdate({ set: { name: source.name, url: source.url, handle: source.handle } });
+    await upsert(db.insert(ingestionSources).values(source), ingestionSources.sourceKey, { name: source.name, url: source.url, handle: source.handle });
   }
 }
 
@@ -386,6 +463,180 @@ export async function listIngestionSources(dbOverride?: Awaited<ReturnType<typeo
   if (!db) return [];
   await ensureDefaultIngestionSources(db);
   return db.select().from(ingestionSources).orderBy(asc(ingestionSources.kind), asc(ingestionSources.priority), asc(ingestionSources.name));
+}
+
+export type IngestionSourceFailureCategory = Extract<FailureCategory, "waf" | "meta110" | "network">;
+export type IngestionSourceListFilters = { openOnly?: boolean; failureCategory?: IngestionSourceFailureCategory; since?: Date };
+
+export function classifyIngestionSourceFailure(source: Pick<IngestionSource, "lastMessage" | "lastFailureReason" | "lastHttpStatus">): IngestionSourceFailureCategory | null {
+  const text = `${source.lastMessage ?? ""} ${source.lastFailureReason ?? ""}`.toLowerCase();
+  if (source.lastHttpStatus === 403 || /waf|cloudflare|akamai|bloqueado/.test(text)) return "waf";
+  if (/code 110|invalid user id|id inválido|desconectado da meta/.test(text)) return "meta110";
+  if (/timeout|timed out|network|rede|econn|socket|fetch failed/.test(text) || source.lastHttpStatus === 408 || source.lastHttpStatus === 504) return "network";
+  return null;
+}
+
+export async function listFilteredIngestionSources(filters: IngestionSourceListFilters = {}, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const rows = await listIngestionSources(dbOverride);
+  return rows.filter(source => (!filters.openOnly || source.circuitState === "open") && (!filters.failureCategory || classifyIngestionSourceFailure(source) === filters.failureCategory) && (!filters.since || (source.lastAttemptAt ? new Date(source.lastAttemptAt).getTime() >= filters.since.getTime() : false)));
+}
+
+export async function getIngestionSourceSummary(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (db && typeof (db as unknown as { execute?: unknown }).execute === "function") {
+    const result = await db.execute(sql`
+      SELECT count(*) FILTER (WHERE "isEnabled" = 1)::int AS active_total,
+        count(*) FILTER (WHERE "circuitState" = 'open')::int AS open_total,
+        count(*) FILTER (WHERE "lastHttpStatus" = 403 OR lower(coalesce("lastMessage", '') || ' ' || coalesce("lastFailureReason", '')) ~ 'waf|cloudflare|akamai|bloqueado')::int AS waf_total,
+        count(*) FILTER (WHERE lower(coalesce("lastMessage", '') || ' ' || coalesce("lastFailureReason", '')) ~ 'code[[:space:]]*110|invalid user id|id inválido|desconectado da meta')::int AS meta110_total,
+        count(*) FILTER (WHERE "lastHttpStatus" IN (408, 504) OR lower(coalesce("lastMessage", '') || ' ' || coalesce("lastFailureReason", '')) ~ 'timeout|timed out|network|rede|econn|socket|fetch failed')::int AS network_total
+      FROM "ingestionSources"
+    `);
+    const row = (result as unknown as Array<Record<string, unknown>>)[0] ?? {};
+    return { active: Number(row.active_total ?? 0), open: Number(row.open_total ?? 0), waf: Number(row.waf_total ?? 0), meta110: Number(row.meta110_total ?? 0), network: Number(row.network_total ?? 0) };
+  }
+  const rows = await listIngestionSources(db);
+  return {
+    active: rows.filter(source => source.isEnabled === 1).length,
+    open: rows.filter(source => source.circuitState === "open").length,
+    waf: rows.filter(source => classifyIngestionSourceFailure(source) === "waf").length,
+    meta110: rows.filter(source => classifyIngestionSourceFailure(source) === "meta110").length,
+    network: rows.filter(source => classifyIngestionSourceFailure(source) === "network").length,
+  };
+}
+
+export async function getConsolidatedIngestionSourceReport(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const rows = await listIngestionSources(dbOverride);
+  return {
+    generatedAt: new Date().toISOString(),
+    totalSources: rows.length,
+    activeSources: rows.filter(source => source.isEnabled === 1).length,
+    pausedSources: rows.filter(source => source.circuitState === "open" || source.isEnabled !== 1).length,
+    sources: rows.map(source => ({
+      sourceKey: source.sourceKey,
+      name: source.name,
+      kind: source.kind,
+      handle: source.handle,
+      url: source.url,
+      isEnabled: source.isEnabled === 1,
+      lastStatus: source.lastStatus,
+      lastAttemptAt: source.lastAttemptAt,
+      lastSuccessAt: source.lastSuccessAt,
+      lastFailureReason: source.lastFailureReason,
+      lastHttpStatus: source.lastHttpStatus,
+      circuitState: source.circuitState,
+      circuitFailureCount: source.circuitFailureCount,
+      circuitNextAttemptAt: source.circuitNextAttemptAt,
+      consecutive403Count: source.consecutive403Count,
+    })),
+  };
+}
+
+export async function createCatalogSnapshot(report?: Awaited<ReturnType<typeof getConsolidatedIngestionSourceReport>>, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return null;
+  const payload = report ?? await getConsolidatedIngestionSourceReport(db);
+  const payloadJson = serializePayloadJson(payload);
+  const snapshotHash = createHash("sha256").update(payloadJson).digest("hex");
+  const generatedAt = new Date(payload.generatedAt);
+  const [inserted] = await db.insert(catalogSnapshots).values({ snapshotHash, generatedAt, sourceCount: payload.totalSources, payloadJson }).returning({ id: catalogSnapshots.id });
+  return { id: Number(inserted?.id ?? 0), snapshotHash, generatedAt: generatedAt.toISOString(), sourceCount: payload.totalSources };
+}
+
+export async function listCatalogSnapshots(limit = 20, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return [];
+  return db.select({ id: catalogSnapshots.id, snapshotHash: catalogSnapshots.snapshotHash, generatedAt: catalogSnapshots.generatedAt, sourceCount: catalogSnapshots.sourceCount, createdAt: catalogSnapshots.createdAt }).from(catalogSnapshots).orderBy(desc(catalogSnapshots.createdAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 100));
+}
+
+export function catalogSnapshotRetentionCutoff(days = 30, now = new Date()) {
+  const safeDays = Math.min(Math.max(Math.trunc(days), 1), 3650);
+  return new Date(now.getTime() - safeDays * 24 * 60 * 60 * 1000);
+}
+
+export async function deleteCatalogSnapshotsOlderThan(days = 30, now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return 0;
+  const result = await db.delete(catalogSnapshots).where(lt(catalogSnapshots.createdAt, catalogSnapshotRetentionCutoff(days, now)));
+  return Number((result as { affectedRows?: number }).affectedRows ?? 0);
+}
+
+export function ingestionRetentionCutoff(days = 30, now = new Date()) {
+  const safeDays = Math.min(Math.max(Math.trunc(days), 1), 3650);
+  return new Date(now.getTime() - safeDays * 24 * 60 * 60 * 1000);
+}
+
+function deletedRowCount(result: unknown) {
+  const value = result as { count?: number; affectedRows?: number };
+  return Number(value.count ?? value.affectedRows ?? 0);
+}
+
+export async function deleteExpiredIngestionRecords(days = 30, now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return { ingestionRuns: 0, actionAuditLogs: 0, handleAuditLogs: 0, healthTransitions: 0, total: 0 };
+  const cutoff = ingestionRetentionCutoff(days, now);
+  const [runs, actions, handles, transitions] = await Promise.all([
+    db.delete(ingestionRuns).where(lt(ingestionRuns.startedAt, cutoff)),
+    db.delete(ingestionSourceActionAuditLogs).where(lt(ingestionSourceActionAuditLogs.actedAt, cutoff)),
+    db.delete(ingestionSourceHandleAuditLogs).where(lt(ingestionSourceHandleAuditLogs.changedAt, cutoff)),
+    db.delete(systemHealthTransitions).where(lt(systemHealthTransitions.observedAt, cutoff)),
+  ]);
+  const counts = { ingestionRuns: deletedRowCount(runs), actionAuditLogs: deletedRowCount(actions), handleAuditLogs: deletedRowCount(handles), healthTransitions: deletedRowCount(transitions) };
+  return { ...counts, total: counts.ingestionRuns + counts.actionAuditLogs + counts.handleAuditLogs + counts.healthTransitions };
+}
+
+export async function listSystemHealthTransitions(limit = 10, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return [];
+  return db.select({ id: systemHealthTransitions.id, previousStatus: systemHealthTransitions.previousStatus, nextStatus: systemHealthTransitions.nextStatus, reason: systemHealthTransitions.reason, observedAt: systemHealthTransitions.observedAt }).from(systemHealthTransitions).orderBy(desc(systemHealthTransitions.observedAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 50));
+}
+
+export async function recordSystemHealthTransition(input: { nextStatus: "healthy" | "degraded" | "critical"; reason: string; observedAt?: Date }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return null;
+  const [latest] = await db.select({ id: systemHealthTransitions.id, nextStatus: systemHealthTransitions.nextStatus }).from(systemHealthTransitions).orderBy(desc(systemHealthTransitions.observedAt)).limit(1);
+  if (latest?.nextStatus === input.nextStatus) return null;
+  const previousStatus = latest?.nextStatus ?? null;
+  await db.insert(systemHealthTransitions).values({ previousStatus, nextStatus: input.nextStatus, reason: input.reason.slice(0, 500), observedAt: input.observedAt ?? new Date() });
+  return { previousStatus, nextStatus: input.nextStatus, reason: input.reason.slice(0, 500), observedAt: input.observedAt ?? new Date() };
+}
+
+export async function getExecutiveObservabilityReport(now = new Date(), days = 14, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const safeDays = normalizeObservabilityPeriod(days);
+  const db = dbOverride ?? await getDb();
+  const sources = await getIngestionSourceSummary(db);
+  if (!db) return { generatedAt: now.toISOString(), periodDays: safeDays, sources, series: buildDailyTelemetrySeries([], now, safeDays), trends: summarizeTelemetryTrend([]), system_health_status: calculateSystemHealthStatus({ openSources: sources.open, activeSources: sources.active, recentRuns: 0, recentFailures: 0 }), healthTransitions: [] };
+  const since = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - safeDays + 1));
+  const series = typeof (db as unknown as { execute?: unknown }).execute === "function"
+    ? await buildDailyTelemetrySeriesFromPostgres(db, since, safeDays)
+    : buildDailyTelemetrySeries(await db.select({ status: ingestionRuns.status, startedAt: ingestionRuns.startedAt, httpStatus: ingestionRuns.httpStatus, details: ingestionRuns.details, counts: ingestionRuns.counts }).from(ingestionRuns).where(gte(ingestionRuns.startedAt, since)).orderBy(asc(ingestionRuns.startedAt)), now, safeDays);
+  const lastDay = series.at(-1);
+  const recentRuns = lastDay?.total ?? 0;
+  const recentFailures = recentRuns - (lastDay?.succeeded ?? 0);
+  return { generatedAt: now.toISOString(), periodDays: safeDays, sources, series, trends: summarizeTelemetryTrend(series), system_health_status: calculateSystemHealthStatus({ openSources: sources.open, activeSources: sources.active, recentRuns, recentFailures }), healthTransitions: await listSystemHealthTransitions(10, db) };
+}
+
+async function buildDailyTelemetrySeriesFromPostgres(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, since: Date, days: number) {
+  const result = await db.execute(sql`
+    SELECT to_char(date_trunc('day', "startedAt" AT TIME ZONE 'America/Sao_Paulo'), 'YYYY-MM-DD') AS date,
+      count(*)::int AS total,
+      count(*) FILTER (WHERE "status" = 'succeeded')::int AS succeeded,
+      count(*) FILTER (WHERE "httpStatus" = 403 OR lower(coalesce("details", '') || ' ' || coalesce("counts", '')) ~ 'waf|cloudflare|akamai|bloqueado')::int AS waf,
+      count(*) FILTER (WHERE lower(coalesce("details", '') || ' ' || coalesce("counts", '')) ~ 'code[[:space:]]*110|invalid user id|id inválido')::int AS meta110,
+      count(*) FILTER (WHERE "httpStatus" IN (408, 504) OR lower(coalesce("details", '') || ' ' || coalesce("counts", '')) ~ 'timeout|timed out|network|rede|econn|socket|fetch failed')::int AS network
+    FROM "ingestionRuns"
+    WHERE "startedAt" >= ${since.toISOString()}
+    GROUP BY 1
+    ORDER BY 1
+  `);
+  const byDate = new Map((result as unknown as Array<Record<string, unknown>>).map(row => [String(row.date), row]));
+  return Array.from({ length: days }, (_, index) => {
+    const date = new Date(since.getTime() + index * 86_400_000).toISOString().slice(0, 10);
+    const row = byDate.get(date);
+    const total = Number(row?.total ?? 0);
+    const succeeded = Number(row?.succeeded ?? 0);
+    return { date, waf: Number(row?.waf ?? 0), meta110: Number(row?.meta110 ?? 0), network: Number(row?.network ?? 0), succeeded, total, successRate: total ? Number(((succeeded / total) * 100).toFixed(1)) : 0 };
+  });
 }
 
 export async function listEnabledInstagramSources(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
@@ -415,17 +666,116 @@ export async function createIngestionSource(input: { name: string; kind: "instag
   return { id: created.id, sourceKey: created.sourceKey };
 }
 
-export async function updateIngestionSource(id: number, input: { isEnabled: boolean; priority: number; frequencyMinutes: number; p95LatencyThresholdMs?: number }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+export async function updateIngestionSource(id: number, input: { isEnabled: boolean; priority: number; frequencyMinutes: number; p95LatencyThresholdMs?: number; handle?: string | null; changedByOpenId?: string | null }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) throw new Error("Database unavailable");
   const priority = Math.min(Math.max(Math.round(input.priority), 1), 1000);
   const frequencyMinutes = Math.min(Math.max(Math.round(input.frequencyMinutes), 60), 525600);
   const p95LatencyThresholdMs = Math.min(Math.max(Math.round(input.p95LatencyThresholdMs ?? 3000), 500), 180000);
-  await db.update(ingestionSources).set({ isEnabled: input.isEnabled ? 1 : 0, priority, frequencyMinutes, p95LatencyThresholdMs, updatedAt: new Date() }).where(eq(ingestionSources.id, id));
+  const handle = input.handle === undefined ? undefined : input.handle?.trim().replace(/^@+/, "").replace(/\/$/, "") || null;
+  const [existing] = await db.select({ sourceKey: ingestionSources.sourceKey, handle: ingestionSources.handle }).from(ingestionSources).where(eq(ingestionSources.id, id)).limit(1);
+  if (existing && handle !== undefined && existing.handle !== handle) {
+    await db.insert(ingestionSourceHandleAuditLogs).values({ sourceKey: existing.sourceKey, previousHandle: existing.handle, nextHandle: handle, changedByOpenId: input.changedByOpenId ?? null });
+  }
+  await db.update(ingestionSources).set({ isEnabled: input.isEnabled ? 1 : 0, priority, frequencyMinutes, p95LatencyThresholdMs, ...(handle === undefined ? {} : { handle }), updatedAt: new Date() }).where(eq(ingestionSources.id, id));
   return listIngestionSources(db);
 }
 
-export type CircuitState = "closed" | "open" | "half_open";
+export async function listIngestionSourceHandleAudit(sourceKey: string, limit = 20, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return [];
+  return db.select({ id: ingestionSourceHandleAuditLogs.id, sourceKey: ingestionSourceHandleAuditLogs.sourceKey, previousHandle: ingestionSourceHandleAuditLogs.previousHandle, nextHandle: ingestionSourceHandleAuditLogs.nextHandle, changedAt: ingestionSourceHandleAuditLogs.changedAt }).from(ingestionSourceHandleAuditLogs).where(eq(ingestionSourceHandleAuditLogs.sourceKey, sourceKey)).orderBy(desc(ingestionSourceHandleAuditLogs.changedAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 100));
+}
+
+export async function listIngestionSourceActionAudit(sourceKey: string, limit = 20, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return [];
+  return db.select({ id: ingestionSourceActionAuditLogs.id, sourceKey: ingestionSourceActionAuditLogs.sourceKey, action: ingestionSourceActionAuditLogs.action, operatorOpenId: ingestionSourceActionAuditLogs.operatorOpenId, details: ingestionSourceActionAuditLogs.details, actedAt: ingestionSourceActionAuditLogs.actedAt }).from(ingestionSourceActionAuditLogs).where(eq(ingestionSourceActionAuditLogs.sourceKey, sourceKey)).orderBy(desc(ingestionSourceActionAuditLogs.actedAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 100));
+}
+
+export type IngestionSourceTimelineItem = {
+  id: string;
+  sourceKey: string;
+  action: "handle_changed" | "reactivated" | "reprocessed";
+  actorOpenId: string | null;
+  details: string | null;
+  occurredAt: Date;
+};
+
+export async function listIngestionSourceOperationalTimeline(sourceKey: string, page = 1, pageSize = 10, action?: IngestionSourceTimelineItem["action"], from?: Date, to?: Date, status?: "open" | "closed", dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  const safePageSize = Math.min(Math.max(Math.trunc(pageSize), 5), 500);
+  const safePage = Math.max(1, Math.trunc(page));
+  if (!db) return { items: [] as Array<Omit<IngestionSourceTimelineItem, "occurredAt"> & { occurredAt: string }>, page: safePage, pageSize: safePageSize, total: 0, hasNextPage: false, actionCounts: { all: 0, handle_changed: 0, reactivated: 0, reprocessed: 0 } };
+  if (status) {
+    const [source] = await db.select({ circuitState: ingestionSources.circuitState }).from(ingestionSources).where(eq(ingestionSources.sourceKey, sourceKey)).limit(1);
+    const matchesStatus = status === "open" ? source?.circuitState === "open" : source?.circuitState !== "open";
+    if (!matchesStatus) return { items: [], page: safePage, pageSize: safePageSize, total: 0, hasNextPage: false, actionCounts: { all: 0, handle_changed: 0, reactivated: 0, reprocessed: 0 } };
+  }
+  const combined = sql`
+    SELECT concat('handle-', "id"::text) AS "id", "sourceKey", 'handle_changed'::text AS "action",
+      "changedByOpenId" AS "actorOpenId", concat(coalesce("previousHandle", 'vazio'), ' → ', coalesce("nextHandle", 'vazio')) AS "details", "changedAt" AS "occurredAt"
+    FROM "ingestionSourceHandleAuditLogs"
+    WHERE "sourceKey" = ${sourceKey}
+    UNION ALL
+    SELECT concat('action-', "id"::text) AS "id", "sourceKey", "action"::text AS "action",
+      "operatorOpenId" AS "actorOpenId", "details", "actedAt" AS "occurredAt"
+    FROM "ingestionSourceActionAuditLogs"
+    WHERE "sourceKey" = ${sourceKey}
+  `;
+  const dateFilters = [
+    ...(from ? [sql`"occurredAt" >= ${from}`] : []),
+    ...(to ? [sql`"occurredAt" <= ${to}`] : []),
+  ];
+  const datePredicate = dateFilters.length > 0 ? sql`WHERE ${sql.join(dateFilters, sql` AND `)}` : sql``;
+  const filteredFilters = [...dateFilters, ...(action ? [sql`"action" = ${action}`] : [])];
+  const filteredPredicate = filteredFilters.length > 0 ? sql`WHERE ${sql.join(filteredFilters, sql` AND `)}` : sql``;
+  const offset = (safePage - 1) * safePageSize;
+  const [countResult, rowsResult] = await Promise.all([
+    db.execute(sql`
+      WITH combined AS (${combined})
+      SELECT count(*)::int AS "all",
+        count(*) FILTER (WHERE "action" = 'handle_changed')::int AS "handle_changed",
+        count(*) FILTER (WHERE "action" = 'reactivated')::int AS "reactivated",
+        count(*) FILTER (WHERE "action" = 'reprocessed')::int AS "reprocessed"
+      FROM combined ${datePredicate}
+    `),
+    db.execute(sql`
+      WITH combined AS (${combined}), filtered AS (
+        SELECT * FROM combined ${filteredPredicate}
+      )
+      SELECT "id", "sourceKey", "action", "actorOpenId", "details", "occurredAt"
+      FROM filtered
+      ORDER BY "occurredAt" DESC, "id" DESC
+      LIMIT ${safePageSize} OFFSET ${offset}
+    `),
+  ]);
+  const countRow = (countResult as unknown as Array<Record<string, unknown>>)[0] ?? {};
+  const actionCounts = {
+    all: Number(countRow.all ?? 0),
+    handle_changed: Number(countRow.handle_changed ?? 0),
+    reactivated: Number(countRow.reactivated ?? 0),
+    reprocessed: Number(countRow.reprocessed ?? 0),
+  };
+  const filteredTotal = action ? actionCounts[action] : actionCounts.all;
+  const rows = rowsResult as unknown as Array<Record<string, unknown>>;
+  return {
+    items: rows.map(item => ({ id: String(item.id), sourceKey: String(item.sourceKey), action: String(item.action) as IngestionSourceTimelineItem["action"], actorOpenId: item.actorOpenId == null ? null : String(item.actorOpenId), details: item.details == null ? null : String(item.details), occurredAt: new Date(item.occurredAt as string | Date).toISOString() })),
+    page: safePage,
+    pageSize: safePageSize,
+    total: filteredTotal,
+    hasNextPage: offset + safePageSize < filteredTotal,
+    actionCounts,
+  };
+}
+
+export async function recordIngestionSourceAction(input: { sourceKey: string; action: "reprocessed"; operatorOpenId?: string | null; details?: string | null }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return;
+  await db.insert(ingestionSourceActionAuditLogs).values({ sourceKey: input.sourceKey.slice(0, 120), action: input.action, operatorOpenId: input.operatorOpenId?.slice(0, 160) ?? null, details: input.details?.slice(0, 500) ?? null });
+}
+
+export type { CircuitState } from "../shared/domain";
 
 function circuitCooldownMs() {
   const configuredHours = Number(process.env.INGESTION_CIRCUIT_COOLDOWN_HOURS ?? 18);
@@ -475,7 +825,7 @@ export async function recordCircuitFailure(sourceKey: string, message: string, s
   const shouldOpen = severe && failureCount >= threshold;
   const nextAttemptAt = shouldOpen ? new Date(now.getTime() + circuitCooldownMs()) : null;
   const safeMessage = `${status ? `HTTP ${status}: ` : ""}${message}`.replace(/(token|secret|key|cookie|authorization)=[^\s&]+/gi, "$1=[redacted]").slice(0, 1000);
-  await db.update(ingestionSources).set({ circuitState: shouldOpen ? "open" : "closed", circuitFailureCount: failureCount, circuitOpenedAt: shouldOpen ? now : null, circuitNextAttemptAt: nextAttemptAt, circuitLastError: safeMessage, lastStatus: "failed", lastMessage: safeMessage, lastHttpStatus: status ?? null, lastFailureReason: sanitizedFailureReason(status, message), updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
+  await db.update(ingestionSources).set({ circuitState: shouldOpen ? "open" : "closed", circuitFailureCount: failureCount, circuitOpenedAt: shouldOpen ? now : null, circuitNextAttemptAt: nextAttemptAt, circuitLastError: safeMessage, lastAttemptAt: now, lastStatus: "failed", lastMessage: safeMessage, lastHttpStatus: status ?? null, lastFailureReason: sanitizedFailureReason(status, message), updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
   return { state: shouldOpen ? "open" as const : "closed" as const, failureCount, openedNow: shouldOpen && source.circuitState !== "open", nextAttemptAt };
 }
 
@@ -504,13 +854,15 @@ export async function resetSource403State(sourceKey: string, now = new Date(), d
 export async function recordCircuitSuccess(sourceKey: string, now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) return;
-  await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, lastStatus: "succeeded", lastSuccessAt: now, lastHttpStatus: 200, lastFailureReason: null, consecutive403Count: 0, last403AlertedAt: null, updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
+  await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, lastAttemptAt: now, lastStatus: "succeeded", lastSuccessAt: now, lastHttpStatus: 200, lastFailureReason: null, consecutive403Count: 0, last403AlertedAt: null, updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
 }
 
-export async function reactivateIngestionSourceCircuitBreaker(sourceKey: string, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+export async function reactivateIngestionSourceCircuitBreaker(sourceKey: string, operatorOpenId?: string | null, details?: string, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) throw new Error("Database unavailable");
-  await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, consecutive403Count: 0, last403AlertedAt: null, updatedAt: new Date() }).where(eq(ingestionSources.sourceKey, sourceKey));
+  const now = new Date();
+  await db.update(ingestionSources).set({ circuitState: "closed", circuitFailureCount: 0, circuitOpenedAt: null, circuitNextAttemptAt: null, circuitLastError: null, consecutive403Count: 0, last403AlertedAt: null, updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
+  await db.insert(ingestionSourceActionAuditLogs).values({ sourceKey, action: "reactivated", operatorOpenId: operatorOpenId ?? null, details: details?.slice(0, 500) ?? null, actedAt: now });
 }
 
 export async function resetActiveIngestionSourceCircuitBreakers(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
@@ -523,10 +875,11 @@ export async function resetActiveIngestionSourceCircuitBreakers(dbOverride?: Awa
   return { resetCount: activeSources.length, sourceKeys: activeSources.map(source => source.sourceKey) };
 }
 
-export async function markIngestionSourceResult(sourceKey: string, result: { status: "succeeded" | "failed" | "skipped"; message?: string }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+export async function markIngestionSourceResult(sourceKey: string, result: { status: "succeeded" | "failed" | "skipped"; message?: string; executionFeedback?: string | null }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) return;
-  await db.update(ingestionSources).set({ lastStatus: result.status, lastSuccessAt: result.status === "succeeded" ? new Date() : undefined, lastMessage: result.message?.slice(0, 1000) ?? null, updatedAt: new Date() }).where(eq(ingestionSources.sourceKey, sourceKey));
+  const now = new Date();
+  await db.update(ingestionSources).set({ lastAttemptAt: now, lastStatus: result.status, lastSuccessAt: result.status === "succeeded" ? now : undefined, lastMessage: result.message?.slice(0, 1000) ?? null, ...(result.executionFeedback !== undefined ? { lastExecutionFeedback: result.executionFeedback?.slice(0, 1000) ?? null } : {}), updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
 }
 
 export async function getIngestionPayloadCache(cacheKey: string, dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<IngestionPayloadCache | undefined> {
@@ -539,8 +892,8 @@ export async function getIngestionPayloadCache(cacheKey: string, dbOverride?: Aw
 export async function saveIngestionPayloadCache(input: { cacheKey: string; sourceKey: string; sourceUrl: string; payload: unknown; latitude?: string; longitude?: string }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) return;
-  const serialized = JSON.stringify(input.payload).slice(0, 60000);
-  await db.insert(ingestionPayloadCache).values({ cacheKey: input.cacheKey.slice(0, 255), sourceKey: input.sourceKey.slice(0, 120), sourceUrl: input.sourceUrl.slice(0, 1000), payload: serialized, latitude: input.latitude?.slice(0, 32) ?? null, longitude: input.longitude?.slice(0, 32) ?? null, lastGoodAt: new Date() }).onDuplicateKeyUpdate({ set: { sourceKey: input.sourceKey.slice(0, 120), sourceUrl: input.sourceUrl.slice(0, 1000), payload: serialized, latitude: input.latitude?.slice(0, 32) ?? null, longitude: input.longitude?.slice(0, 32) ?? null, lastGoodAt: new Date(), updatedAt: new Date() } });
+  const serialized = serializePayloadJson(input.payload).slice(0, 60000);
+  await upsert(db.insert(ingestionPayloadCache).values({ cacheKey: input.cacheKey.slice(0, 255), sourceKey: input.sourceKey.slice(0, 120), sourceUrl: input.sourceUrl.slice(0, 1000), payload: serialized, latitude: input.latitude?.slice(0, 32) ?? null, longitude: input.longitude?.slice(0, 32) ?? null, lastGoodAt: new Date() }), ingestionPayloadCache.cacheKey, { sourceKey: input.sourceKey.slice(0, 120), sourceUrl: input.sourceUrl.slice(0, 1000), payload: serialized, latitude: input.latitude?.slice(0, 32) ?? null, longitude: input.longitude?.slice(0, 32) ?? null, lastGoodAt: new Date(), updatedAt: new Date() });
 }
 
 export function eventIdentityKey(sourceUrl: string, eventDate: Date | string) {
@@ -597,7 +950,7 @@ export async function setPublicFeedRolloverHour(value: number) {
   if (hour < 0) throw new Error("Horário de virada inválido");
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  await db.insert(appSettings).values({ key: PUBLIC_FEED_ROLLOVER_KEY, value: String(hour) }).onDuplicateKeyUpdate({ set: { value: String(hour), updatedAt: new Date() } });
+  await upsert(db.insert(appSettings).values({ key: PUBLIC_FEED_ROLLOVER_KEY, value: String(hour) }), appSettings.key, { value: String(hour), updatedAt: new Date() });
   return hour;
 }
 
@@ -629,13 +982,13 @@ export async function listEvents(filters: { day?: string; date?: string; startDa
   if (filters.neighborhood?.trim()) { conditions.push(like(events.neighborhood, `%${filters.neighborhood.trim()}%`)); }
   if (filters.minPriceCents !== undefined) conditions.push(sql`${events.priceCents} >= ${filters.minPriceCents}`);
   if (filters.maxPriceCents !== undefined) conditions.push(sql`${events.priceCents} <= ${filters.maxPriceCents}`);
-  if (filters.date) conditions.push(sql`DATE(${events.eventDate}) = ${filters.date}`);
-  if (filters.startDate) conditions.push(sql`DATE(${events.eventDate}) >= ${filters.startDate}`);
-  if (filters.endDate) conditions.push(sql`DATE(${events.eventDate}) <= ${filters.endDate}`);
-  if (filters.timeFrom) conditions.push(sql`TIME(${events.eventDate}) >= ${`${filters.timeFrom}:00`}`);
-  if (filters.timeTo) conditions.push(sql`TIME(${events.eventDate}) <= ${`${filters.timeTo}:59`}`);
-  if (filters.day === "sexta") conditions.push(sql`DAYOFWEEK(${events.eventDate}) = 6`);
-  if (filters.day === "sabado") conditions.push(sql`DAYOFWEEK(${events.eventDate}) = 7`);
+  if (filters.date) conditions.push(sql`${events.eventDate}::date = ${filters.date}`);
+  if (filters.startDate) conditions.push(sql`${events.eventDate}::date >= ${filters.startDate}`);
+  if (filters.endDate) conditions.push(sql`${events.eventDate}::date <= ${filters.endDate}`);
+  if (filters.timeFrom) conditions.push(sql`${events.eventDate}::time >= ${`${filters.timeFrom}:00`}`);
+  if (filters.timeTo) conditions.push(sql`${events.eventDate}::time <= ${`${filters.timeTo}:59`}`);
+  if (filters.day === "sexta") conditions.push(sql`EXTRACT(ISODOW FROM ${events.eventDate}) = 5`);
+  if (filters.day === "sabado") conditions.push(sql`EXTRACT(ISODOW FROM ${events.eventDate}) = 6`);
   const page = Math.max(filters.page ?? 1, 1);
   const size = Math.min(Math.max(filters.size ?? 24, 1), 100);
   return db.select().from(events).where(and(...conditions)).orderBy(asc(events.eventDate)).limit(size).offset((page - 1) * size);
@@ -709,7 +1062,7 @@ function normalizeEventLocation(data: InsertEvent) {
 async function queueGeocoding(eventId: number, data: InsertEvent, db: Awaited<ReturnType<typeof getDb>>) {
   if (!db || (data.latitude && data.longitude)) return;
   const rawAddress = data.address || data.locationName;
-  await db.insert(geocodingJobs).values({ eventId, addressHash: geocodingAddressHash(rawAddress, data.city), status: "pending", attempts: 0 }).onDuplicateKeyUpdate({ set: { addressHash: geocodingAddressHash(rawAddress, data.city), status: "pending", lastError: null, updatedAt: new Date() } });
+  await upsert(db.insert(geocodingJobs).values({ eventId, addressHash: geocodingAddressHash(rawAddress, data.city), status: "pending", attempts: 0 }), geocodingJobs.eventId, { addressHash: geocodingAddressHash(rawAddress, data.city), status: "pending", lastError: null, updatedAt: new Date() });
 }
 
 function saoPauloCalendarDateForDb(value: Date) {
@@ -866,8 +1219,8 @@ export async function saveEvent(data: InsertEvent) {
     }
     return { created: false, id: duplicate.id, duplicate: true, updated: keepIncoming };
   }
-  const inserted = await db.insert(events).values(normalized).onDuplicateKeyUpdate({ set: { ...normalized, updatedAt: new Date() } });
-  const eventId = Number(inserted[0]?.insertId ?? 0);
+  const inserted = await upsert(db.insert(events).values(normalized), events.slug, { ...normalized, updatedAt: new Date() });
+  const eventId = Number((Array.isArray(inserted) ? inserted[0] : undefined)?.id ?? 0);
   if (eventId > 0) {
     await recordEventTicketSnapshot(eventId, normalized, db);
     await queueGeocoding(eventId, normalized, db);
@@ -959,7 +1312,7 @@ export async function deleteEvent(id: number) {
 export async function deleteExpiredEvents(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) throw new Error("Database unavailable");
-  const result = await db.delete(events).where(sql`${events.eventDate} < UTC_TIMESTAMP()`);
+  const result = await db.delete(events).where(sql`${events.eventDate} < CURRENT_TIMESTAMP`);
   return Number((result as { affectedRows?: number }).affectedRows ?? 0);
 }
 

@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: weekendvibes-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: senha_super_secreta_weekendvibes
+      POSTGRES_DB: weekendvibes
+    network_mode: host
+    volumes:
+      - weekendvibes_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d weekendvibes"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  weekendvibes_postgres_data:

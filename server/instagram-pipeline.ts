@@ -88,8 +88,33 @@ export function isInstagramTransportFailure(status: number, body = "") {
 }
 
 /** OAuthException/invalid-token responses are isolated to Meta so Apify can still run. */
+export function isMetaInvalidUserError(status: number, body = "") {
+  return status === 400 && /invalid user id|code\s*[:=]?\s*110|oauth(?:exception)?[^\n]*(?:110|invalid user)/i.test(body);
+}
+
 export function isMetaCredentialFailure(status: number, body = "") {
-  return status === 401 || (status === 400 && /oauthexception|invalid oauth|access token|expired|token.*invalid|session.*expired/i.test(body));
+  return status === 401 || (status === 400 && /oauthexception|invalid oauth|access token|expired|token.*invalid|session.*expired/i.test(body) && !isMetaInvalidUserError(status, body));
+}
+
+/** Extrai a mensagem pública da Graph API sem expor token, query string ou payload bruto. */
+export function extractMetaGraphErrorMessage(body: string, status?: number) {
+  let providerMessage = "";
+  let providerType = "";
+  let providerCode: number | undefined;
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: unknown; type?: unknown; code?: unknown } };
+    if (parsed.error && typeof parsed.error === "object") {
+      providerMessage = typeof parsed.error.message === "string" ? parsed.error.message : "";
+      providerType = typeof parsed.error.type === "string" ? parsed.error.type : "";
+      providerCode = Number.isFinite(Number(parsed.error.code)) ? Number(parsed.error.code) : undefined;
+    }
+  } catch {
+    // Fallback below keeps non-JSON upstream responses useful without logging the full body.
+  }
+  const detail = normalizeDiagnosticText(providerMessage || body, 240);
+  const metadata = [providerType, providerCode !== undefined ? `code ${providerCode}` : ""].filter(Boolean).join(", ");
+  const prefix = status ? `Meta Graph API HTTP ${status}` : "Meta Graph API";
+  return `${prefix}: ${detail || "erro sem mensagem"}${metadata ? ` (${metadata})` : ""}`;
 }
 
 export const INSTAGRAM_TARGETS = [
@@ -500,10 +525,10 @@ async function openAiChat(body: Record<string, unknown>) {
   }
 }
 
-export async function prepareImageForOcr(imageUrl: string) {
+export async function prepareImageForOcr(imageUrl: string, signal?: AbortSignal) {
   if (!imageUrl) return "";
   if (imageUrl.startsWith("data:image/")) return imageUrl;
-  const response = await fetchExternal(imageUrl, { headers: { Accept: "image/*", "User-Agent": "WeekendVibes/1.0" } }, 8_000, false);
+  const response = await fetchExternal(imageUrl, { headers: { Accept: "image/*", "User-Agent": "WeekendVibes/1.0" } }, 8_000, false, signal);
   if (!response.ok) throw new Error(`Instagram image download failed with ${response.status}`);
   const contentType = response.headers.get("content-type")?.split(";")[0] || "image/jpeg";
   if (!contentType.startsWith("image/")) throw new Error(`Instagram image returned unsupported content type: ${contentType}`);
@@ -591,7 +616,7 @@ function metaPostsFromPayload(payload: unknown, target: (typeof INSTAGRAM_TARGET
   }
 }
 
-type InstagramTransportFailure = { username: string; status: number; kind: "proxy_or_session" | "circuit_open" | "quota" | "actor_timeout"; message: string };
+type InstagramTransportFailure = { username: string; status: number; kind: "proxy_or_session" | "circuit_open" | "quota" | "actor_timeout" | "meta_invalid_user"; message: string };
 type InstagramProviderIssue = { code: "APIFY_QUOTA_EXCEEDED"; status: 403; message: string };
 
 function logInstagramResponseDiagnostics(input: { username: string; status: number; contentType: string | null; body: string; parsed: boolean; mediaCount: number; maskedHtml: boolean }) {
@@ -607,7 +632,7 @@ function logInstagramResponseDiagnostics(input: { username: string; status: numb
   });
 }
 
-export async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId: string, options: { dryRun?: boolean } = {}): Promise<{ posts: InstagramPost[]; transportFailures: InstagramTransportFailure[] }> {
+export async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, accountId: string, options: { dryRun?: boolean; signal?: AbortSignal } = {}): Promise<{ posts: InstagramPost[]; transportFailures: InstagramTransportFailure[] }> {
   const posts: InstagramPost[] = [];
   const transportFailures: InstagramTransportFailure[] = [];
   const configuredSources = (await listEnabledInstagramSources()) ?? [];
@@ -620,8 +645,23 @@ export async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, acc
     return leftPriority - rightPriority;
   });
   const forceRefresh = process.env.INGESTION_FORCE_INSTAGRAM === "1";
+  const gracefullySkippedHandles = new Set(["mimadafesta"]);
   for (const target of targets) {
     const source = configuredSources.find(item => item.handle?.replace(/^@/, "").toLowerCase() === target.username.toLowerCase());
+    if (source && gracefullySkippedHandles.has(target.username.toLowerCase())) {
+      const message = "Perfil temporariamente ignorado: Meta Graph API retornou Invalid user id (OAuthException, code 110).";
+      if (!options.dryRun) {
+        const circuit = await allowSourceAttempt(source.sourceKey);
+        if (!circuit.allowed) {
+          transportFailures.push({ username: target.username, status: 0, kind: "circuit_open", message: "Fonte pausada pelo Circuit Breaker após erro Meta code 110." });
+          continue;
+        }
+        await registerSourceFailure({ sourceKey: source.sourceKey, routine: "instagram-agenda", status: 400, message });
+        await markIngestionSourceResult(source.sourceKey, { status: "skipped", message });
+      }
+      transportFailures.push({ username: target.username, status: 400, kind: "meta_invalid_user", message });
+      continue;
+    }
     if (source && !options.dryRun) {
       const circuit = await allowSourceAttempt(source.sourceKey);
       if (!circuit.allowed) {
@@ -635,7 +675,7 @@ export async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, acc
     }
     const fields = `business_discovery.username(${target.username}){username,media.limit(25){id,caption,timestamp,permalink,media_url,media_type}}`;
     const url = `${META_GRAPH_BASE_URL}/${accountId}?${new URLSearchParams({ fields, access_token: token }).toString()}`;
-    const response = await fetchExternal(url, { headers: { Accept: "application/json" } }, 12_000, true);
+    const response = await fetchExternal(url, { headers: { Accept: "application/json" } }, 12_000, true, options.signal);
     const responseBody = await readExternalBody(response);
     let parsedBody: unknown = null;
     let parsed = false;
@@ -650,14 +690,24 @@ export async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, acc
       continue;
     }
     if (!response.ok) {
-      if (source && !options.dryRun) await markIngestionSourceResult(source.sourceKey, { status: "failed", message: `HTTP ${response.status}` });
+      if (isMetaInvalidUserError(response.status, responseBody)) {
+        const message = extractMetaGraphErrorMessage(responseBody, response.status);
+        if (source && !options.dryRun) {
+          await registerSourceFailure({ sourceKey: source.sourceKey, routine: "instagram-agenda", status: response.status, message });
+          await markIngestionSourceResult(source.sourceKey, { status: "skipped", message });
+        }
+        transportFailures.push({ username: target.username, status: response.status, kind: "meta_invalid_user", message });
+        console.warn("[Instagram] Meta profile skipped: invalid user id", { username: target.username, status: response.status, reason: message });
+        continue;
+      }
       if (isMetaCredentialFailure(response.status, responseBody)) {
-        const message = "Token da Meta Expirado - Atualize a variável META_INSTAGRAM_TOKEN";
+        const message = extractMetaGraphErrorMessage(responseBody, response.status);
+        if (source && !options.dryRun) await markIngestionSourceResult(source.sourceKey, { status: "failed", message });
         resetInstagramSessionForRetry(`meta_credentials_${response.status}`);
         if (source && !options.dryRun) await registerSourceFailure({ sourceKey: source.sourceKey, routine: "instagram-agenda", status: response.status, message });
         if (!options.dryRun) {
           try {
-            await recordOperationalAlert({ integration: "meta", alertType: "meta_token_expired", severity: "CRITICAL", title: "Token da Meta expirado", message });
+            await recordOperationalAlert({ integration: "meta", alertType: "meta_token_expired", severity: "CRITICAL", title: "Falha de credencial/permissão na Graph API da Meta", message });
           } catch (alertError) {
             console.warn("[Instagram] Could not persist Meta token alert", { message: normalizeDiagnosticText(alertError instanceof Error ? alertError.message : alertError, 160) });
           }
@@ -667,6 +717,7 @@ export async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, acc
         continue;
       }
       if (isInstagramTransportFailure(response.status, responseBody)) {
+        if (source && !options.dryRun) await markIngestionSourceResult(source.sourceKey, { status: "failed", message: `HTTP ${response.status}` });
         resetInstagramSessionForRetry(`meta_${response.status}`);
         if (source && !options.dryRun) await registerSourceFailure({ sourceKey: source.sourceKey, routine: "instagram-agenda", status: response.status, message: `Meta respondeu HTTP ${response.status}; perfil ignorado nesta tentativa.` });
         transportFailures.push({ username: target.username, status: response.status, kind: "proxy_or_session", message: `Meta respondeu HTTP ${response.status}; perfil ignorado nesta tentativa.` });
@@ -713,7 +764,7 @@ export async function claimApifyBudgetOrReport(input: { units?: number; allowIso
   return { ...budget, blockedMessage: message };
 }
 
-export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean; targets?: ReadonlyArray<{ username: string }>; allowIsolatedManualRun?: boolean } = {}) {
+export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean; targets?: ReadonlyArray<{ username: string }>; allowIsolatedManualRun?: boolean; signal?: AbortSignal } = {}) {
   const token = process.env.APIFY_API_TOKEN?.trim();
   if (!token) return { posts: [] as InstagramPost[], transportFailures: [] as InstagramTransportFailure[] };
   const targets = options.targets ?? INSTAGRAM_TARGETS;
@@ -725,7 +776,7 @@ export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean
     const payload = buildInstagramStoriesScraperPayload(targets);
   try {
     const timeoutMs = getApifySyncTimeoutMs();
-    const response = await fetchExternal(`https://api.apify.com/v2/acts/${encodeURIComponent(getConfiguredApifyStoriesActorId())}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}&timeout=30`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "WeekendVibes/1.0" }, body: JSON.stringify(payload) }, timeoutMs, true);
+    const response = await fetchExternal(`https://api.apify.com/v2/acts/${encodeURIComponent(getConfiguredApifyStoriesActorId())}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}&timeout=30`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "WeekendVibes/1.0" }, body: JSON.stringify(payload) }, timeoutMs, true, options.signal);
     const body = await readExternalBody(response);
     if (!response.ok) {
       let providerMessage = "";
@@ -771,7 +822,7 @@ export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean
   }
 }
 
-export async function fetchInstagramPostsDetailed(options: { dryRun?: boolean } = {}) {
+export async function fetchInstagramPostsDetailed(options: { dryRun?: boolean; signal?: AbortSignal } = {}) {
   const token = requiredEnv("META_INSTAGRAM_TOKEN");
   const accountId = requiredEnv("META_INSTAGRAM_ACCOUNT_ID");
   let meta: { posts: InstagramPost[]; transportFailures: InstagramTransportFailure[] } = { posts: [], transportFailures: [] };
@@ -783,7 +834,7 @@ export async function fetchInstagramPostsDetailed(options: { dryRun?: boolean } 
     const statusMatch = rawMessage.match(/\b([45]\d{2})\b/);
     const status = statusMatch ? Number(statusMatch[1]) : 0;
     const message = credentialFailure
-      ? "Token da Meta Expirado - Atualize a variável META_INSTAGRAM_TOKEN"
+      ? extractMetaGraphErrorMessage(rawMessage, status || undefined)
       : `Falha isolada na Graph API da Meta${status ? ` (HTTP ${status})` : ""}; a extração da Apify continuará.`;
     if (credentialFailure && !options.dryRun) {
       try {
@@ -921,7 +972,7 @@ export async function extractStructuredEventsForTest(referenceDate: string, appr
   return extractStructuredEvents(referenceDate, approvedPosts);
 }
 
-export type InstagramPipelineOptions = { dryRun?: boolean; storiesOnly?: boolean; postsOverride?: InstagramPost[]; persistIncompleteToManualReview?: boolean };
+export type InstagramPipelineOptions = { dryRun?: boolean; storiesOnly?: boolean; postsOverride?: InstagramPost[]; persistIncompleteToManualReview?: boolean; signal?: AbortSignal };
 
 export async function runInstagramPipeline(options: InstagramPipelineOptions = {}) {
   const pipelineStartedAt = Date.now();
@@ -933,8 +984,8 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   const fetched = options.postsOverride
     ? { posts: options.postsOverride, transportFailures: [] as InstagramTransportFailure[] }
     : storiesOnly
-      ? await fetchApifyStoriesAndHighlights({ dryRun })
-      : await fetchInstagramPostsDetailed({ dryRun });
+      ? await fetchApifyStoriesAndHighlights({ dryRun, signal: options.signal })
+      : await fetchInstagramPostsDetailed({ dryRun, signal: options.signal });
   const sandboxRestricted = process.env.NODE_ENV !== "production" && fetched.posts.length === 0 && (fetched.transportFailures.length === 0 && storiesOnly ? !process.env.APIFY_API_TOKEN : fetched.transportFailures.length > 0 && fetched.transportFailures.every(failure => failure.status === 0 || failure.status === 403 || failure.status === 502 || failure.status === 503 || failure.status === 504 || isSandboxRestrictedError(new Error(failure.message))));
   if (sandboxRestricted && shouldUseSandboxMocks()) {
     const durationMs = Math.max(1, Date.now() - pipelineStartedAt);

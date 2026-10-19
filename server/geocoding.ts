@@ -56,7 +56,7 @@ export async function processPendingGeocoding(limit = 5) {
   const db = await getDb();
   if (!db) return { processed: 0, succeeded: 0, failed: 0, pending: 0 };
   const safeLimit = Math.min(Math.max(limit, 1), 10);
-  await db.update(geocodingJobs).set({ status: "pending", updatedAt: new Date() }).where(and(eq(geocodingJobs.status, "processing"), sql`${geocodingJobs.updatedAt} < DATE_SUB(NOW(), INTERVAL 15 MINUTE)`));
+  await db.update(geocodingJobs).set({ status: "pending", updatedAt: new Date() }).where(and(eq(geocodingJobs.status, "processing"), sql`${geocodingJobs.updatedAt} < CURRENT_TIMESTAMP - INTERVAL '15 minutes'`));
   const jobs = await db.select({ job: geocodingJobs, event: events }).from(geocodingJobs).innerJoin(events, eq(events.id, geocodingJobs.eventId)).where(and(inArray(geocodingJobs.status, ["pending", "failed"]), sql`${geocodingJobs.attempts} < ${MAX_ATTEMPTS}`, or(isNull(events.latitude), eq(events.latitude, ""), isNull(events.longitude), eq(events.longitude, "")))).orderBy(geocodingJobs.createdAt).limit(safeLimit);
   let succeeded = 0;
   let failed = 0;

@@ -19,7 +19,7 @@ import { notifyIngestionSummary } from "./ingestion-failure-alerts";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import { reconcileIngestionResult } from "./reconciliation";
 
-export type AgendaStepOptions = { archive?: boolean; track?: boolean; sourceKey?: string; runId?: number; trigger?: "manual" | "scheduled" };
+export type AgendaStepOptions = { archive?: boolean; track?: boolean; sourceKey?: string; runId?: number; trigger?: "manual" | "scheduled"; signal?: AbortSignal };
 export type AgendaProgressUpdate = {
   phase: "starting" | "archiving" | "collecting" | "finalizing" | "completed" | "failed";
   step: number;
@@ -41,12 +41,17 @@ export function getInstagramAgendaTimeoutMs() {
   return Math.min(30_000, Math.max(1_000, configured));
 }
 
-async function withAgendaTimeout<T>(work: Promise<T>, timeoutMs: number): Promise<T> {
+async function withAgendaTimeout<T>(work: (signal: AbortSignal) => Promise<T>, timeoutMs: number, externalSignal?: AbortSignal): Promise<T> {
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort();
+  if (externalSignal?.aborted) controller.abort();
+  else externalSignal?.addEventListener("abort", abortFromCaller, { once: true });
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    return await Promise.race([work, new Promise<T>((_, reject) => { timer = setTimeout(() => reject(new Error(`Tempo limite de ${timeoutMs} ms excedido para instagram-agenda.`)), timeoutMs); })]);
+    return await Promise.race([work(controller.signal), new Promise<T>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error(`Tempo limite de ${timeoutMs} ms excedido para instagram-agenda.`)); }, timeoutMs); })]);
   } finally {
     if (timer) clearTimeout(timer);
+    externalSignal?.removeEventListener("abort", abortFromCaller);
   }
 }
 
@@ -202,7 +207,7 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
 export async function runPublicAgendaStep(options: AgendaStepOptions = {}) {
   const execute = async () => {
     const archived = options.archive === false ? 0 : await archiveExpiredSoldOutEvents();
-    const result = await runIngestionPipeline({ sourceKey: options.sourceKey });
+    const result = await runIngestionPipeline({ sourceKey: options.sourceKey, signal: options.signal });
     return { archived, result };
   };
   return options.track === false ? execute() : trackedStep("public-agenda", options.sourceKey ?? "public", execute, options);
@@ -211,7 +216,7 @@ export async function runPublicAgendaStep(options: AgendaStepOptions = {}) {
 export async function runInstagramAgendaStep(options: AgendaStepOptions = {}) {
   const execute = async () => {
     const archived = options.archive === false ? 0 : await archiveExpiredSoldOutEvents();
-    const result = await withAgendaTimeout(runInstagramPipeline(), getInstagramAgendaTimeoutMs());
+    const result = await withAgendaTimeout(signal => runInstagramPipeline({ signal }), getInstagramAgendaTimeoutMs(), options.signal);
     let geocoding = { processed: 0, succeeded: 0, failed: 0, pending: 0 };
     try {
       geocoding = await processPendingGeocoding(5);

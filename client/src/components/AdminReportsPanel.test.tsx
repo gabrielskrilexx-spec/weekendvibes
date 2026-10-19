@@ -121,6 +121,15 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     expect(JSON.stringify(tree!.toJSON())).toContain("Evento #\",\"1234");
   });
 
+  it("identifica code 110 como desconexão da Meta no histórico", async () => {
+    latestReportData = { ...reportData, runs: [{ id: 92, sourceKey: "instagram:mimadafesta", routine: "instagram-agenda", status: "partial", importedCount: 0, startedAt: "2026-08-22T03:00:00.000Z", finishedAt: "2026-08-22T03:01:00.000Z", durationMs: 60000, counts: JSON.stringify({ read: 1, filtered: 1, structured: 0, persisted: 0 }), details: JSON.stringify({ transportFailures: [{ username: "mimadafesta", status: 400, kind: "meta_invalid_user", message: "Meta Graph API HTTP 400: Invalid user id (OAuthException, code 110)" }] }) }] } as typeof reportData;
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    expect(JSON.stringify(tree!.toJSON())).toContain("ID inválido · Meta");
+    await act(async () => { tree!.root.findByProps({ children: "Ver detalhes" }).props.onClick(); });
+    expect(JSON.stringify(tree!.toJSON())).toContain("Desconectado da Meta · ID inválido (code 110)");
+  });
+
   it("aplica o filtro de tipo de execução à consulta", async () => {
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminReportsPanel />); });

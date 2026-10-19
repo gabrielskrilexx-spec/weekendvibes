@@ -9,7 +9,7 @@ describe("security boundaries", () => {
   it("uses secure cross-site cookies only for HTTPS requests", () => {
     expect(getSessionCookieOptions({ protocol: "https", headers: {} } as any)).toMatchObject({
       secure: true,
-      sameSite: "none",
+      sameSite: "lax",
       httpOnly: true,
     });
     expect(getSessionCookieOptions({ protocol: "http", headers: {} } as any)).toMatchObject({
@@ -40,6 +40,44 @@ describe("security boundaries", () => {
     expect(response.statusCode).toBe(429);
     expect(response.body).toEqual({ error: "too_many_requests" });
     expect(JSON.stringify(response.body)).not.toContain("token");
+  });
+
+  it("fails closed with 503 when persistence is unavailable for a sensitive limiter", async () => {
+    claimRateLimitRequest.mockResolvedValueOnce(null);
+    const middleware = createRateLimit({ windowMs: 60_000, max: 10, name: "admin", failClosed: true });
+    const response = createResponse();
+    let nextCalls = 0;
+    await middleware({ ip: "203.0.113.11" } as any, response as any, () => { nextCalls += 1; });
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toEqual({ error: "rate_limit_unavailable" });
+    expect(nextCalls).toBe(0);
+  });
+
+  it("fails closed when the rate-limit store throws a database error", async () => {
+    claimRateLimitRequest.mockRejectedValueOnce(new Error("database unavailable"));
+    const middleware = createRateLimit({ windowMs: 60_000, max: 10, name: "oauth", failClosed: true });
+    const response = createResponse();
+    await middleware({ ip: "203.0.113.12" } as any, response as any, vi.fn());
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toEqual({ error: "rate_limit_unavailable" });
+  });
+
+  it("uses an in-memory fallback only in development when persistence is unavailable", async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+    claimRateLimitRequest.mockResolvedValueOnce(null);
+    const middleware = createRateLimit({ windowMs: 60_000, max: 10, name: "oauth", failClosed: true });
+    const response = createResponse();
+    let nextCalls = 0;
+    try {
+      await middleware({ ip: "203.0.113.13" } as any, response as any, () => { nextCalls += 1; });
+      expect(response.statusCode).toBe(200);
+      expect(nextCalls).toBe(1);
+      expect(response.headers["X-RateLimit-Remaining"]).toBe("9");
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+    }
   });
 
   it("allows only configured or local origins and rejects wildcard CORS", () => {

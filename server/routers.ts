@@ -28,6 +28,16 @@ import {
   setEventReminder,
   listUserReminders,
   listIngestionSources,
+  listFilteredIngestionSources,
+  getIngestionSourceSummary,
+  getConsolidatedIngestionSourceReport,
+  listCatalogSnapshots,
+  getExecutiveObservabilityReport,
+  listIngestionSourceHandleAudit,
+  listIngestionSourceActionAudit,
+  listIngestionSourceOperationalTimeline,
+  recordIngestionSourceAction,
+  markIngestionSourceResult,
   createIngestionSource,
   updateIngestionSource,
   getPublicFeedRolloverHour,
@@ -72,7 +82,9 @@ import { listGeocodingSummary, processPendingGeocoding } from "./geocoding";
 import { approveManualReviewEvent, approveManualReviewEvents, expireStaleManualReviewHighlights, getManualReviewMetrics, listManualReviewAuditHistory, listManualReviewEvents, rejectManualReviewEvent, rejectManualReviewEvents, undoManualReviewAction, undoManualReviewActions, updateManualReviewEvent, type ManualReviewEventInput } from "./manual-review";
 import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
+import { consolidatedCatalogFilename, consolidatedCatalogToCsv } from "./consolidated-export";
 import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
+import { runObservabilitySnapshotMaintenance } from "./scheduled-observability-maintenance";
 import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts, getExportJobsMetricsTrend, getExportJobAlertDetail, getExportJobsAlertSettings, updateExportJobsAlertSettings, getExportJobsTrendBucket, getExportJobsAlertEfficiency, compareExportJobsEfficiency, listExportJobsAlertSettingsHistory, recordExportAlertEvaluationSnapshot, listExportAlertEvaluationSnapshots, getExportJobsEfficiencyBucket, getExportJobsAlertEfficiencyTrend } from "./filtered-story-export-jobs";
 import { compareHeartbeatExecutionStats, evaluateHeartbeatHealth, evaluateHeartbeatPerformance, getHeartbeatExecutionStats, getHeartbeatHealthSettings, getHeartbeatExecutionSummary, listHeartbeatExecutionEvents, listHeartbeatHealthSettingsHistory, listHeartbeatIncidentsByRegression, recordHeartbeatExecutionEvent, updateHeartbeatHealthSettings, type HeartbeatEventType, type HeartbeatHealthEnvironment } from "./heartbeat-observability";
 
@@ -1065,7 +1077,7 @@ export const appRouter = router({
             runId: z.number().int().positive().optional(),
             sourceKey: z.string().trim().max(255).optional(),
             executionKind: z.enum(["all", "real", "simulated"]).optional(),
-            telemetryCategory: z.enum(["success", "parser", "waf", "network"]).optional(),
+            telemetryCategory: z.enum(["success", "parser", "waf", "network", "meta_invalid_user"]).optional(),
           })
           .optional()
       )
@@ -1190,9 +1202,59 @@ export const appRouter = router({
       }),
   }),
   ingestionSources: router({
-    list: adminOnly.query(async () =>
-      normalizeJsonForTransport(await listIngestionSources())
-    ),
+    list: adminOnly
+      .input(z.object({ openOnly: z.boolean().optional(), failureCategory: z.enum(["waf", "meta110", "network"]).optional(), since: z.string().datetime().optional() }).strict().optional())
+      .query(async ({ input }) => normalizeJsonForTransport(await listFilteredIngestionSources({ openOnly: input?.openOnly, failureCategory: input?.failureCategory, since: input?.since ? new Date(input.since) : undefined }))),
+    summary: adminOnly
+      .query(async () => normalizeJsonForTransport(await getIngestionSourceSummary())),
+    consolidatedReport: adminOnly
+      .query(async () => normalizeJsonForTransport(await getConsolidatedIngestionSourceReport())),
+    consolidatedCsvExport: adminOnly
+      .output(z.object({ filename: z.string().min(1).max(180), contentType: z.literal("text/csv;charset=utf-8"), csv: z.string() }).strict())
+      .query(async () => {
+        const report = await getConsolidatedIngestionSourceReport();
+        return { filename: consolidatedCatalogFilename(new Date(), "csv"), contentType: "text/csv;charset=utf-8" as const, csv: consolidatedCatalogToCsv(report) };
+      }),
+    snapshots: adminOnly
+      .input(z.object({ limit: z.number().int().positive().max(100).default(20) }).strict().optional())
+      .query(async ({ input }) => normalizeJsonForTransport(await listCatalogSnapshots(input?.limit ?? 20))),
+    runObservabilityNow: adminOnly
+      .output(z.object({ ok: z.literal(true), systemHealthStatus: z.enum(["healthy", "degraded", "critical"]), observedAt: z.string().datetime(), deletedSnapshots: z.number().int().nonnegative(), snapshot: z.object({ id: z.number().int().nonnegative(), snapshotHash: z.string().length(64), generatedAt: z.string().datetime(), sourceCount: z.number().int().nonnegative() }).strict().nullable() }).strict())
+      .mutation(async () => {
+        try {
+          const result = await runObservabilitySnapshotMaintenance();
+          return { ok: true as const, ...result };
+        } catch (error) {
+          return throwSanitizedAdminMutationError(error, "Não foi possível executar a rotina de observabilidade agora.");
+        }
+      }),
+    executiveReport: adminOnly
+      .input(z.object({ days: z.union([z.literal(7), z.literal(14), z.literal(30)]).default(14) }).strict().optional())
+      .query(async ({ input }) => normalizeJsonForTransport(await getExecutiveObservabilityReport(undefined, input?.days ?? 14))),
+    auditLog: adminOnly
+      .input(z.object({ sourceKey: z.string().trim().min(1).max(120) }).strict())
+      .query(async ({ input }) => normalizeJsonForTransport(await listIngestionSourceHandleAudit(input.sourceKey))),
+    actionAudit: adminOnly
+      .input(z.object({ sourceKey: z.string().trim().min(1).max(120) }).strict())
+      .query(async ({ input }) => normalizeJsonForTransport(await listIngestionSourceActionAudit(input.sourceKey))),
+    operationalTimeline: adminOnly
+      .input(z.object({ sourceKey: z.string().trim().min(1).max(120), page: z.number().int().positive().default(1), pageSize: z.number().int().min(5).max(10).default(10), action: z.enum(["handle_changed", "reactivated", "reprocessed"]).optional(), from: z.string().datetime().optional(), to: z.string().datetime().optional() }).strict())
+      .output(z.object({ items: z.array(z.object({ id: z.string().min(1).max(64), sourceKey: z.string().min(1).max(120), action: z.enum(["handle_changed", "reactivated", "reprocessed"]), actorOpenId: z.string().max(160).nullable(), details: z.string().max(500).nullable(), occurredAt: z.string().datetime() }).strict()).max(10), page: z.number().int().positive(), pageSize: z.number().int().min(5).max(10), total: z.number().int().nonnegative(), hasNextPage: z.boolean(), actionCounts: z.object({ all: z.number().int().nonnegative(), handle_changed: z.number().int().nonnegative(), reactivated: z.number().int().nonnegative(), reprocessed: z.number().int().nonnegative() }).strict() }).strict())
+      .query(async ({ input }) => normalizeJsonForTransport(await listIngestionSourceOperationalTimeline(input.sourceKey, input.page, input.pageSize, input.action, input.from ? new Date(input.from) : undefined, input.to ? new Date(input.to) : undefined))),
+    operationalTimelineExport: adminOnly
+      .input(z.object({ sourceKey: z.string().trim().min(1).max(120), action: z.enum(["handle_changed", "reactivated", "reprocessed"]).optional(), from: z.string().datetime().optional(), to: z.string().datetime().optional(), status: z.enum(["open", "closed"]).optional() }).strict())
+      .output(z.object({ items: z.array(z.object({ id: z.string().min(1).max(64), sourceKey: z.string().min(1).max(120), action: z.enum(["handle_changed", "reactivated", "reprocessed"]), actorOpenId: z.string().max(160).nullable(), details: z.string().max(500).nullable(), occurredAt: z.string().datetime() }).strict()).max(500), total: z.number().int().nonnegative() }).strict())
+      .query(async ({ input }) => {
+        const result = await listIngestionSourceOperationalTimeline(input.sourceKey, 1, 500, input.action, input.from ? new Date(input.from) : undefined, input.to ? new Date(input.to) : undefined, input.status);
+        return { items: normalizeJsonForTransport(result.items), total: result.total };
+      }),
+    operationalTimelineJsonExport: adminOnly
+      .input(z.object({ sourceKey: z.string().trim().min(1).max(120), action: z.enum(["handle_changed", "reactivated", "reprocessed"]).optional(), from: z.string().datetime().optional(), to: z.string().datetime().optional(), status: z.enum(["open", "closed"]).optional() }).strict())
+      .output(z.object({ sourceKey: z.string().min(1).max(120), exportedAt: z.string().datetime(), total: z.number().int().nonnegative(), items: z.array(z.object({ id: z.string().min(1).max(64), sourceKey: z.string().min(1).max(120), action: z.enum(["handle_changed", "reactivated", "reprocessed"]), actorOpenId: z.string().max(160).nullable(), details: z.string().max(500).nullable(), occurredAt: z.string().datetime() }).strict()).max(500) }).strict())
+      .query(async ({ input }) => {
+        const result = await listIngestionSourceOperationalTimeline(input.sourceKey, 1, 500, input.action, input.from ? new Date(input.from) : undefined, input.to ? new Date(input.to) : undefined, input.status);
+        return { sourceKey: input.sourceKey, exportedAt: new Date().toISOString(), total: result.total, items: normalizeJsonForTransport(result.items) };
+      }),
     create: adminOnly
       .input(
         z
@@ -1228,6 +1290,7 @@ export const appRouter = router({
           priority: z.number().int().min(1).max(1000),
           frequencyMinutes: z.number().int().min(60).max(525600),
           p95LatencyThresholdMs: z.number().int().min(500).max(180000).default(3000),
+          handle: z.string().trim().max(180).nullable().optional(),
         })
       )
       .output(
@@ -1242,8 +1305,8 @@ export const appRouter = router({
           })
           .strict()
       )
-      .mutation(async ({ input }) => {
-        await updateIngestionSource(input.id, input);
+      .mutation(async ({ input, ctx }) => {
+        await updateIngestionSource(input.id, { ...input, changedByOpenId: ctx.user.openId });
         return {
           ok: true as const,
           id: input.id,
@@ -1252,6 +1315,33 @@ export const appRouter = router({
           frequencyMinutes: input.frequencyMinutes,
           p95LatencyThresholdMs: input.p95LatencyThresholdMs,
         };
+      }),
+    reactivate: adminOnly
+      .input(z.object({ sourceKey: z.string().trim().min(1).max(120), reprocessNow: z.boolean().default(false) }).strict())
+      .output(z.object({ ok: z.literal(true), sourceKey: z.string().min(1).max(120), reprocess: z.enum(["not_requested", "succeeded", "failed"]) }).strict())
+      .mutation(async ({ input, ctx }) => {
+        try {
+          await reactivateIngestionSourceCircuitBreaker(input.sourceKey, ctx.user.openId, input.reprocessNow ? "Reprocessamento imediato solicitado" : "Reativação sem reprocessamento imediato");
+          if (!input.reprocessNow) return { ok: true as const, sourceKey: input.sourceKey, reprocess: "not_requested" as const };
+          try {
+            const focused = await runIngestionSourceChunk({ sourceKey: input.sourceKey, dryRun: false });
+            const result = focused && typeof focused === "object" && "result" in focused ? (focused as { result?: unknown }).result : focused;
+            const summary = result && typeof result === "object" ? result as Record<string, unknown> : {};
+            const nestedResult = summary.result && typeof summary.result === "object" ? summary.result as Record<string, unknown> : {};
+            const read = Number(summary.read ?? summary.readCount ?? summary.received ?? nestedResult.read ?? nestedResult.readCount ?? nestedResult.received ?? 0) || 0;
+            const persisted = Number(summary.persisted ?? summary.persistedCount ?? summary.added ?? summary.imported ?? nestedResult.persisted ?? nestedResult.persistedCount ?? nestedResult.added ?? nestedResult.imported ?? 0) || 0;
+            const feedback = `Sucesso: ${read} eventos lidos, ${persisted} persistidos.`;
+            await markIngestionSourceResult(input.sourceKey, { status: "succeeded", message: feedback, executionFeedback: feedback });
+            await recordIngestionSourceAction({ sourceKey: input.sourceKey, action: "reprocessed", operatorOpenId: ctx.user.openId, details: `Reprocessamento imediato concluído: ${read} eventos lidos, ${persisted} persistidos.` });
+            return { ok: true as const, sourceKey: input.sourceKey, reprocess: "succeeded" as const };
+          } catch {
+            await markIngestionSourceResult(input.sourceKey, { status: "failed", message: "Erro no reprocessamento imediato; consulte os detalhes da última execução.", executionFeedback: "Falha no reprocessamento imediato; consulte o motivo da última execução." });
+            await recordIngestionSourceAction({ sourceKey: input.sourceKey, action: "reprocessed", operatorOpenId: ctx.user.openId, details: "Reprocessamento imediato falhou; consulte o motivo da última execução." });
+            return { ok: true as const, sourceKey: input.sourceKey, reprocess: "failed" as const };
+          }
+        } catch (error) {
+          return throwSanitizedAdminMutationError(error, "Não foi possível reativar a fonte.");
+        }
       }),
   }),
   events: router({
