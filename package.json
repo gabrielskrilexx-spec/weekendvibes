@@ -7,7 +7,7 @@
     "predev": "docker compose up -d",
     "dev": "cross-env DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes NODE_ENV=development tsx watch server/_core/index.ts",
     "build": "cross-env DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes vite build && cross-env DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --external:./vite --outdir=dist",
-    "start": "NODE_ENV=production node dist/index.js",
+    "start": "cross-env NODE_ENV=production node dist/index.js",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
     "pretest": "docker compose up -d",

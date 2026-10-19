@@ -31,6 +31,27 @@ export async function getDb() {
   return _db;
 }
 
+export async function checkDatabaseHealth() {
+  const startedAt = Date.now();
+  const db = await getDb();
+  if (!db) return { ok: false as const, database: "unavailable" as const, rateLimiter: "unavailable" as const, userPersistence: "unavailable" as const, latencyMs: Date.now() - startedAt };
+  try {
+    const [row] = await db.execute(sql`
+      SELECT
+        current_database() AS database_name,
+        to_regclass('public."rateLimitBuckets"') AS rate_limit_table,
+        to_regclass('public."users"') AS users_table
+    `);
+    const record = row as { database_name?: string; rate_limit_table?: string | null; users_table?: string | null } | undefined;
+    const rateLimiter = record?.rate_limit_table ? "ready" : "unavailable";
+    const userPersistence = record?.users_table ? "ready" : "unavailable";
+    return { ok: rateLimiter === "ready" && userPersistence === "ready", database: "ready" as const, rateLimiter, userPersistence, latencyMs: Date.now() - startedAt };
+  } catch (error) {
+    console.warn("[DatabaseHealth] dependency check failed", error instanceof Error ? error.message : "unknown_error");
+    return { ok: false as const, database: "degraded" as const, rateLimiter: "unavailable" as const, userPersistence: "unavailable" as const, latencyMs: Date.now() - startedAt };
+  }
+}
+
 export async function acquireIngestionLease(lockKey: string, leaseMs = 120_000) {
   const db = await getDb();
   if (!db) return { acquired: false as const, holderId: null };

@@ -20,6 +20,7 @@ import { applySecurityHeaders, createRateLimit, createStrictCors } from "./secur
 import { registerMapsJavascriptRoute } from "../maps-javascript";
 import { registerAdminRestRoutes } from "../admin-rest";
 import { requireInternalCron, requireVercelCron } from "./cron-auth";
+import { checkDatabaseHealth } from "../db";
 
 export async function createApp(server?: ReturnType<typeof createServer>) {
   const app = express();
@@ -64,6 +65,20 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
     res.setHeader("Expires", "0");
     next();
   };
+  app.get("/api/health", noStoreScheduledResponse, async (_req, res) => {
+    try {
+      const dependencies = await checkDatabaseHealth();
+      res.status(dependencies.ok ? 200 : 503).json({
+        ok: dependencies.ok,
+        service: "weekendvibes-api",
+        status: dependencies.ok ? "healthy" : "degraded",
+        checkedAt: new Date().toISOString(),
+        dependencies,
+      });
+    } catch {
+      res.status(503).json({ ok: false, service: "weekendvibes-api", status: "degraded", error: "health_check_unavailable" });
+    }
+  });
   app.get("/api/scheduled/health", noStoreScheduledResponse, requireVercelCron, (_req, res) => res.json({ ok: true, service: "weekendvibes-api", checkedAt: new Date().toISOString() }));
   app.post("/api/scheduled/health", noStoreScheduledResponse, requireInternalCron, (_req, res) => res.json({ ok: true, service: "weekendvibes-api", checkedAt: new Date().toISOString() }));
   app.post("/api/scheduled/ingest-events", noStoreScheduledResponse, requireInternalCron, ingestEventsHandler);
