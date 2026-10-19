@@ -28,7 +28,7 @@ describe("session signing", () => {
     vi.stubEnv("VITE_APP_ID", "test-app-id");
 
     await expect(sdk.createSessionToken("user-without-secret")).rejects.toThrow(
-      "JWT_SECRET is required",
+      "JWT_SECRET is required in environment variables",
     );
   });
 });

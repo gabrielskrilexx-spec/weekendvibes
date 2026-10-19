@@ -157,7 +157,7 @@ class SDKServer {
   private getSessionSecret() {
     const secret = (process.env.JWT_SECRET ?? "").trim();
     if (!secret) {
-      throw new Error("JWT_SECRET is required");
+      throw new Error("JWT_SECRET is required in environment variables");
     }
 
     // Derive a fixed-size key so the configured secret is accepted safely even

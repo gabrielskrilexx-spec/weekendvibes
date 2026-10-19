@@ -153,7 +153,7 @@ describe("OAuth callback", () => {
     }, response);
 
     expect(response.statusCode).toBe(500);
-    expect(response.body).toEqual({ error: "oauth_callback_failed" });
+    expect(response.body).toEqual({ error: "oauth_callback_failed", details: "provider unavailable" });
     expect(mocks.getUserInfo).not.toHaveBeenCalled();
     expect(response.clearedCookie).toBe(OAUTH_STATE_COOKIE);
   });

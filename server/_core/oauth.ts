@@ -310,10 +310,19 @@ export function registerOAuthRoutes(app: Express) {
         });
         return;
       }
-      const errorCandidate = error as { name?: unknown; message?: unknown; stack?: unknown };
+      const errorCandidate = error as {
+        name?: unknown;
+        message?: unknown;
+        stack?: unknown;
+        response?: { data?: { message?: unknown; error?: unknown } };
+      };
       const internalMessage = typeof errorCandidate?.message === "string"
         ? errorCandidate.message
-        : String(error);
+        : typeof errorCandidate?.response?.data?.message === "string"
+          ? errorCandidate.response.data.message
+          : typeof errorCandidate?.response?.data?.error === "string"
+            ? errorCandidate.response.data.error
+            : String(error);
       const internalStack = typeof errorCandidate?.stack === "string"
         ? errorCandidate.stack
         : new Error(internalMessage).stack;
@@ -324,7 +333,14 @@ export function registerOAuthRoutes(app: Express) {
         stack: internalStack,
       });
       console.error("[OAuth] Callback failed", { ...redactError(error), stage: "callback" });
-      res.status(500).json({ error: "oauth_callback_failed" });
+      if (internalMessage === "JWT_SECRET is required" || internalMessage === "JWT_SECRET is required in environment variables") {
+        res.status(500).json({
+          error: "JWT_SECRET_MISSING",
+          message: "JWT_SECRET is required in environment variables",
+        });
+        return;
+      }
+      res.status(500).json({ error: "oauth_callback_failed", details: internalMessage });
     }
   });
 }
