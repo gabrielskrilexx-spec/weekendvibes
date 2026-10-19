@@ -18,6 +18,8 @@ import { applySecurityHeaders, createRateLimit, createStrictCors } from "./secur
 import { registerMapsJavascriptRoute } from "../maps-javascript";
 import { registerAdminRestRoutes } from "../admin-rest";
 import { requireInternalCron, requireVercelCron } from "./cron-auth";
+import { getDb } from "../db";
+import { sql } from "drizzle-orm";
 
 export async function createApp(server?: ReturnType<typeof createServer>) {
   const app = express();
@@ -44,6 +46,38 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
   registerMapsJavascriptRoute(app);
   registerOAuthRoutes(app);
   registerAdminRestRoutes(app);
+  app.get("/api/health", async (_req, res) => {
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    const timestamp = new Date().toISOString();
+    const db = await getDb();
+
+    if (!db) {
+      return res.status(503).json({
+        status: "degraded",
+        db: "unavailable",
+        rateLimiter: "unavailable",
+        timestamp,
+      });
+    }
+
+    try {
+      await db.execute(sql`SELECT 1`);
+      return res.status(200).json({
+        status: "ok",
+        db: "connected",
+        rateLimiter: "active",
+        timestamp,
+      });
+    } catch (error) {
+      console.error("[Health] Database connectivity check failed", error instanceof Error ? error.message : String(error));
+      return res.status(503).json({
+        status: "degraded",
+        db: "unavailable",
+        rateLimiter: "unavailable",
+        timestamp,
+      });
+    }
+  });
   const noStoreScheduledResponse = (_req: Request, res: Response, next: NextFunction) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.setHeader("Pragma", "no-cache");
