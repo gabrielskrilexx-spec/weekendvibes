@@ -101,7 +101,7 @@ export function applySecurityHeaders(req: Request, res: Response): void {
   const analyticsOrigin = getOrigin(process.env.VITE_ANALYTICS_ENDPOINT);
   const mapsProxyOrigin = getOrigin(process.env.VITE_FRONTEND_FORGE_API_URL);
   const connectSources = ["'self'", "https://maps.googleapis.com", "https://maps.gstatic.com"];
-  const imageSources = ["'self'", "data:", "blob:", "https://*.cdninstagram.com", "https://*.fbcdn.net", "https://images.unsplash.com"];
+  const imageSources = ["'self'", "data:", "blob:", "https://*.cdninstagram.com", "https://*.fbcdn.net", "https://images.unsplash.com", "https://santosconventioncenter.com.br", "https://turismosantos.com.br"];
   if (analyticsOrigin) connectSources.push(analyticsOrigin);
   if (mapsProxyOrigin) connectSources.push(mapsProxyOrigin);
   for (const origin of getConfiguredOrigins(process.env.CSP_IMAGE_ORIGINS)) imageSources.push(origin);

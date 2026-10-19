@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { ArrowUpRight, CalendarDays, MapPin, Ticket, TicketX } from "lucide-react";
 import { Link } from "wouter";
 import type { Event } from "../../../drizzle/schema";
@@ -19,14 +19,15 @@ export function getEventPriceLabel(event: Pick<Event, "priceCents" | "priceNote"
 
 export default function EventCard({ event }: { event: Event }) {
   const date = new Date(event.eventDate);
-  const image = event.imageUrl || "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=900&q=80";
-  const imageProps = responsiveImageProps(image, EVENT_CARD_IMAGE_SIZES);
+  const [imageFailed, setImageFailed] = useState(false);
+  const image = event.imageUrl?.trim() || "";
+  const imageProps = image ? responsiveImageProps(image, EVENT_CARD_IMAGE_SIZES) : null;
   const isSoldOut = event.ticketStatus === "sold_out" || (event.ticketStatus === undefined && (event.priceNote?.toLowerCase().includes("vendas encerradas") ?? false));
   const priceLabel = getEventPriceLabel(event);
   return (
     <article className="content-fade-in group flex h-full flex-col overflow-hidden rounded-[24px] border border-zinc-200 bg-white shadow-[0_16px_40px_-28px_rgba(168,85,247,.24)] dark:border-white/10 dark:bg-zinc-900/90 dark:shadow-[0_16px_40px_-28px_rgba(168,85,247,.48)] transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out hover:-translate-y-1 hover:scale-[1.012] hover:border-orange-300/60 hover:bg-orange-50 hover:shadow-[0_24px_54px_-24px_rgba(249,115,22,.28)] dark:hover:border-orange-300/45 dark:hover:bg-zinc-900 dark:hover:shadow-[0_24px_54px_-24px_rgba(249,115,22,.48)] focus-within:-translate-y-1 focus-within:scale-[1.006] focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-300/30 dark:focus-within:border-orange-300/55 dark:focus-within:ring-orange-300/25 motion-reduce:transform-none motion-reduce:transition-none">
       <div className="relative h-48 shrink-0 overflow-hidden bg-zinc-100 dark:bg-zinc-800/80">
-        <img {...imageProps} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover transition-[transform,filter] duration-500 ease-out group-hover:scale-105 group-hover:brightness-110 group-hover:saturate-125 motion-reduce:transition-none" />
+        {imageProps && !imageFailed ? <img {...imageProps} onError={() => setImageFailed(true)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover transition-[transform,filter] duration-500 ease-out group-hover:scale-105 group-hover:brightness-110 group-hover:saturate-125 motion-reduce:transition-none" /> : <div className="grid h-full place-items-center bg-gradient-to-br from-orange-200 via-fuchsia-200 to-zinc-300 text-zinc-700 dark:from-orange-950 dark:via-fuchsia-950 dark:to-zinc-900 dark:text-zinc-300" role="img" aria-label={`Imagem indisponível para ${event.title}`}><div className="text-center"><CalendarDays size={30} className="mx-auto opacity-70" aria-hidden="true" /><p className="mt-2 text-[10px] font-black uppercase tracking-[0.18em]">Imagem indisponível</p></div></div>}
         <div className="absolute inset-0 bg-gradient-to-t from-zinc-900/90 via-zinc-900/15 to-transparent dark:from-zinc-950 dark:via-zinc-950/15" />
         <span className="absolute left-4 top-4 rounded-full border border-white/25 bg-zinc-900/80 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-orange-100 dark:border-white/15 dark:bg-zinc-950/70 backdrop-blur">{event.city}</span>
         {isSoldOut && <span aria-label="Ingressos esgotados ou vendas encerradas" className="absolute right-4 top-4 inline-flex items-center gap-1.5 rounded-full border border-rose-200/50 bg-rose-500 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-white shadow-[0_8px_24px_-8px_rgba(244,63,94,.9)]"><TicketX size={13} strokeWidth={2.5} /> Esgotado</span>}
