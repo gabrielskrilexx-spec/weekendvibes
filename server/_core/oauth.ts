@@ -191,7 +191,8 @@ export function registerOAuthRoutes(app: Express) {
     authorizationUrl.searchParams.set("redirect_uri", redirectUri);
     authorizationUrl.searchParams.set("scope", "read:user user:email");
     authorizationUrl.searchParams.set("state", state);
-    return res.status(302).redirect(authorizationUrl.toString());
+    res.setHeader("Location", authorizationUrl.toString());
+    return res.status(302).end();
   });
 
   app.get("/api/auth/dev-login", async (req: Request, res: Response) => {

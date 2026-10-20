@@ -46,4 +46,10 @@ describe("internal cron authentication", () => {
     expect(hasValidVercelCronSecret({ headers: { authorization: "Bearer vercel-cron-secret-test" } })).toBe(true);
     expect(hasValidVercelCronSecret({ headers: { authorization: "Bearer wrong-secret" } })).toBe(false);
   });
+
+  it("falls back to INTERNAL_CRON_SECRET when CRON_SECRET is empty", () => {
+    vi.stubEnv("CRON_SECRET", "   ");
+    vi.stubEnv("INTERNAL_CRON_SECRET", "internal-cron-secret-test");
+    expect(hasValidVercelCronSecret({ headers: { authorization: "Bearer internal-cron-secret-test" } })).toBe(true);
+  });
 });

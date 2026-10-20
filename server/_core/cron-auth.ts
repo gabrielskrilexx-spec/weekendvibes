@@ -17,7 +17,7 @@ export function hasValidInternalCronSecret(req: Pick<Request, "headers">): boole
 /** Accepts the native Vercel Cron Authorization header without weakening x-cron-secret validation. */
 export function hasValidVercelCronSecret(req: Pick<Request, "headers">): boolean {
   if (hasValidInternalCronSecret(req)) return true;
-  const configuredSecret = process.env.CRON_SECRET ?? process.env.INTERNAL_CRON_SECRET;
+  const configuredSecret = process.env.CRON_SECRET?.trim() || process.env.INTERNAL_CRON_SECRET?.trim();
   const authorization = req.headers?.authorization;
   if (!configuredSecret || typeof authorization !== "string" || !/^Bearer\s+/i.test(authorization)) return false;
   const receivedSecret = authorization.replace(/^Bearer\s+/i, "").trim();

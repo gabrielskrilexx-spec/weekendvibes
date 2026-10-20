@@ -26,6 +26,7 @@ function createResponse() {
   const response = {
     statusCode: 200,
     body: undefined as unknown,
+    headers: {} as Record<string, string>,
     clearedCookie: undefined as unknown,
     status(code: number) {
       response.statusCode = code;
@@ -33,6 +34,13 @@ function createResponse() {
     },
     json(value: unknown) {
       response.body = value;
+      return response;
+    },
+    setHeader(name: string, value: string) {
+      response.headers[name] = value;
+      return response;
+    },
+    end() {
       return response;
     },
     clearCookie(name: string) {
@@ -103,8 +111,8 @@ describe("OAuth callback", () => {
     }, response);
 
     expect(response.statusCode).toBe(302);
-    expect(response.redirectLocation).toMatch(/^https:\/\/github\.com\/login\/oauth\/authorize\?/);
-    const location = new URL(String(response.redirectLocation));
+    expect(response.headers.Location).toMatch(/^https:\/\/github\.com\/login\/oauth\/authorize\?/);
+    const location = new URL(String(response.headers.Location));
     expect(location.searchParams.get("client_id")).toBe("github-client");
     expect(location.searchParams.get("redirect_uri")).toBe("https://weekendvibes-dh6w.vercel.app/api/oauth/callback");
     expect(location.searchParams.get("state")).toBeTruthy();
