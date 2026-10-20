@@ -51,7 +51,7 @@ export default function Home() {
     genre: genre === "funk" || genre === "house_eletronica" || genre === "samba_pagode" || genre === "rap_trap" ? genre : undefined,
     venue: venue === "blue-med" ? "Santos Convention Center" : venue === "parque-valongo" ? "Parque Valongo" : venue === "vallum-garden" ? "Vallum Garden" : venue === "arena-club" ? "Arena Club" : venue === "laroc-guaruja" ? "Laroc" : venue === "guaruja-golf-club" ? "Guarujá Golf Club" : venue === "goat-club" ? "Goat Club" : undefined,
     size: 40,
-  }, { retry: 1, refetchOnWindowFocus: false });
+  }, { retry: 1, refetchOnWindowFocus: false, refetchOnMount: "always", refetchInterval: 60_000 });
   const events = useMemo(() => eventsQuery.data ?? [], [eventsQuery.data]);
   const hasResolvedEvents = eventsQuery.data !== undefined;
   const showEventsLoading = eventsQuery.isLoading && !hasResolvedEvents && !eventsQuery.isError;

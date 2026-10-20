@@ -5,7 +5,7 @@ import { trpc } from "@/lib/trpc";
 import EventCard from "./EventCard";
 
 export default function TodayEvents() {
-  const query = trpc.events.today.useQuery({ size: 6 }, { retry: 1, refetchOnWindowFocus: false });
+  const query = trpc.events.today.useQuery({ size: 6 }, { retry: 1, refetchOnWindowFocus: false, refetchOnMount: "always", refetchInterval: 60_000 });
   const hasResolvedData = query.data !== undefined;
   const showLoading = query.isLoading && !hasResolvedData && !query.isError;
   const showEmpty = !showLoading && !query.isError && hasResolvedData && query.data.length === 0;

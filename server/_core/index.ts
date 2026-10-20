@@ -107,6 +107,12 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
   // tRPC API
   app.use(
     "/api/trpc",
+    (_req, res, next) => {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+      next();
+    },
     createExpressMiddleware({
       router: appRouter,
       createContext,
