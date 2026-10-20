@@ -33,7 +33,7 @@ export default function Home() {
   const [city, setCity] = useState("Todas");
   const [category, setCategory] = useState("Todas");
   const [genre, setGenre] = useState("");
-  const [venue, setVenue] = useState<"blue-med" | "parque-valongo" | "">("");
+  const [venue, setVenue] = useState<"blue-med" | "parque-valongo" | "vallum-garden" | "arena-club" | "laroc-guaruja" | "guaruja-golf-club" | "goat-club" | "">("");
   const [quickFilter, setQuickFilter] = useState<(typeof quickFilters)[number]["value"]>("todos");
   const todayKey = saoPauloDateKey();
   const quickRange = useMemo(() => {
@@ -49,7 +49,7 @@ export default function Home() {
     city: quickFilter === "santos" ? "Santos" : quickFilter === "guaruja" ? "Guarujá" : city === "Santos" || city === "Guarujá" ? city : undefined,
     category: category === "show" || category === "balada" || category === "evento_musical" ? category : undefined,
     genre: genre === "funk" || genre === "house_eletronica" || genre === "samba_pagode" || genre === "rap_trap" ? genre : undefined,
-    venue: venue === "blue-med" ? "Santos Convention Center" : venue === "parque-valongo" ? "Parque Valongo" : undefined,
+    venue: venue === "blue-med" ? "Santos Convention Center" : venue === "parque-valongo" ? "Parque Valongo" : venue === "vallum-garden" ? "Vallum Garden" : venue === "arena-club" ? "Arena Club" : venue === "laroc-guaruja" ? "Laroc" : venue === "guaruja-golf-club" ? "Guarujá Golf Club" : venue === "goat-club" ? "Goat Club" : undefined,
     size: 40,
   }, { retry: 1, refetchOnWindowFocus: false });
   const events = useMemo(() => eventsQuery.data ?? [], [eventsQuery.data]);

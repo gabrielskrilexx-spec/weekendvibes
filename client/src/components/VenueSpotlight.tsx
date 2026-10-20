@@ -2,13 +2,13 @@ import React from "react";
 import { Building2, CalendarDays, MapPin, X } from "lucide-react";
 import type { Event } from "../../../drizzle/schema";
 
-type VenueKey = "blue-med" | "parque-valongo";
+type VenueKey = "blue-med" | "parque-valongo" | "vallum-garden" | "arena-club" | "laroc-guaruja" | "guaruja-golf-club" | "goat-club";
 
 type Venue = {
   key: VenueKey;
   name: string;
   aliases: string;
-  city: "Santos";
+  city: "Santos" | "Guarujá";
   imageUrl: string;
   description: string;
   query: string;
@@ -32,6 +32,51 @@ export const FEATURED_VENUES: Venue[] = [
     imageUrl: "https://turismosantos.com.br/sites/default/files/files_turismosantos/styles/node_wide/public/2026-09/japan_francisco_arrais_7397.jpg?h=501e7db7",
     description: "Um novo polo aberto para música, cultura e experiências à beira do cais.",
     query: "Parque Valongo",
+  },
+  {
+    key: "vallum-garden",
+    name: "Vallum Garden",
+    aliases: "Centro Histórico · Rua Tuyuti, 90 · Santos",
+    city: "Santos",
+    imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/vallum-garden-converted_1cf50681.jpg",
+    description: "Espaço de eventos e festas no Centro Histórico de Santos.",
+    query: "Vallum Garden",
+  },
+  {
+    key: "arena-club",
+    name: "Arena Club",
+    aliases: "Vila Mathias · Av. Pinheiro Machado, 33 · Santos",
+    city: "Santos",
+    imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/arena-club_2768a5f9.jpg",
+    description: "Casa de shows, rock, reggae e música alternativa na Vila Mathias.",
+    query: "Arena Club",
+  },
+  {
+    key: "laroc-guaruja",
+    name: "Laroc Club Guarujá",
+    aliases: "Praia do Perequê · Rod. Ariovaldo de Almeida de Viana · Guarujá",
+    city: "Guarujá",
+    imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/laroc-guaruja_13c232b6.jpg",
+    description: "Sunset e beach club de música eletrônica à beira-mar.",
+    query: "Laroc",
+  },
+  {
+    key: "guaruja-golf-club",
+    name: "Guarujá Golf Club",
+    aliases: "Praia de Pernambuco · Av. das Américas, 545 · Guarujá",
+    city: "Guarujá",
+    imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/guaruja-golf-club_8ed2fd53.jpg",
+    description: "Espaço amplo ao ar livre na Praia do Pernambuco para grandes festivais e festas.",
+    query: "Guarujá Golf Club",
+  },
+  {
+    key: "goat-club",
+    name: "Goat Club",
+    aliases: "Gonzaga · Santos",
+    city: "Santos",
+    imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/goat-club_4b3c5da2.jpg",
+    description: "Club noturno focado em música urbana, funk e eletrônico no Gonzaga.",
+    query: "Goat Club",
   },
 ];
 
