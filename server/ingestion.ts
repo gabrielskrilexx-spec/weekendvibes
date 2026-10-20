@@ -461,8 +461,29 @@ export function parseParqueValongoEventMetadata(html: string, url: string) {
   const searchable = normalizeText(`${title} ${visibleText}`);
   const genre = /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : /show|m[uú]sica|festival|dj|concerto/.test(searchable) ? "house_eletronica" : "";
   const category = /show|festival|concerto|m[uú]sica|dj/.test(searchable) ? "evento_musical" : "";
-  if (!title || !eventDate || city !== "Santos" || !genre || !category) return undefined;
-  return { title, summary: visibleText.slice(0, 4_000), eventDate, locationName, address: addressLine, city, category, genre, priceCents: 0, sourceUrl: url, imageUrl: meta("og:image"), text: visibleText.slice(0, 16_000) };
+  if (title && eventDate && city === "Santos" && genre && category) {
+    return { title, summary: visibleText.slice(0, 4_000), eventDate, locationName, address: addressLine, city, category, genre, priceCents: 0, sourceUrl: url, imageUrl: meta("og:image"), text: visibleText.slice(0, 16_000) };
+  }
+
+  // Algumas páginas do Turismo Santos exibem o evento apenas em HTML. O
+  // fallback exige um título, uma data ISO/HTML5 e texto verificável de
+  // Santos/Parque Valongo; sem esses campos, continua descartando o item.
+  const candidate = $("article, .evento, .event, [data-event], main").filter((_index, element) => {
+    const text = $(element).text().replace(/\s+/g, " ").trim();
+    return /parque valongo|arcos do valongo/i.test(text) && Boolean(element);
+  }).first();
+  if (!candidate.length) return undefined;
+  const candidateText = candidate.text().replace(/\s+/g, " ").trim();
+  const fallbackTitle = candidate.find("h1, h2, h3, .titulo, .title, [data-title]").first().text().replace(/\s+/g, " ").trim();
+  const fallbackDate = candidate.find("time[datetime], [datetime], [data-start-date], [data-date]").first().attr("datetime")
+    ?? candidate.find("[data-start-date], [data-date]").first().attr("data-start-date")
+    ?? candidate.find("[data-date]").first().attr("data-date")
+    ?? "";
+  const fallbackSearchable = normalizeText(`${fallbackTitle} ${candidateText}`);
+  const fallbackGenre = /funk/.test(fallbackSearchable) ? "funk" : /samba|pagode/.test(fallbackSearchable) ? "samba_pagode" : /rap|trap/.test(fallbackSearchable) ? "rap_trap" : /show|m[uú]sica|festival|dj|concerto/.test(fallbackSearchable) ? "house_eletronica" : "";
+  const fallbackCategory = /show|festival|concerto|m[uú]sica|dj/.test(fallbackSearchable) ? "evento_musical" : "";
+  if (!fallbackTitle || !fallbackDate || !/^\d{4}-\d{2}-\d{2}T/.test(fallbackDate) || !/santos|parque valongo|arcos do valongo/i.test(candidateText) || !fallbackGenre || !fallbackCategory) return undefined;
+  return { title: fallbackTitle, summary: candidateText.slice(0, 4_000), eventDate: fallbackDate, locationName: /arcos do valongo/i.test(candidateText) ? "Arcos do Valongo" : "Parque Valongo", address: "Rua Antônio Prado, s/nº, Centro Histórico", city: "Santos", category: fallbackCategory, genre: fallbackGenre, priceCents: 0, sourceUrl: url, imageUrl: meta("og:image"), text: candidateText.slice(0, 16_000) };
 }
 
 export function parseEventosLitoralOrganizerMetadata(html: string, url: string) {

@@ -106,6 +106,17 @@ describe("adapters de ticketeiras oficiais", () => {
     expect(PARQUE_VALONGO_FETCH_TIMEOUT_MS).toBe(20_000);
   });
 
+  it("usa fallback HTML do Parque Valongo quando o JSON-LD está ausente", () => {
+    const html = `<article class="evento"><h2>Festival de Música no Parque Valongo</h2><time datetime="2030-10-12T18:00:00-03:00"></time><p>Parque Valongo, Santos — festival com DJ e música eletrônica</p></article>`;
+    expect(parseParqueValongoEventMetadata(html, "https://www.turismosantos.com.br/pt-br/eventos/parque-valongo-musica")).toMatchObject({
+      title: "Festival de Música no Parque Valongo",
+      eventDate: "2030-10-12T18:00:00-03:00",
+      city: "Santos",
+      locationName: "Parque Valongo",
+      genre: "house_eletronica",
+    });
+  });
+
   it("reconhece a página pública do produtor Eventos Litoral sem fabricar evento", () => {
     const parsed = parseEventosLitoralOrganizerMetadata("<title>Eventos Litoral</title><main>Eventos Litoral próximos eventos Articket Santos</main>", "https://articket.com.br/o/58/eventos-litoral");
     expect(parsed?.text).toContain("Eventos Litoral");

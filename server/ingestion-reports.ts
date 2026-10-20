@@ -1343,9 +1343,9 @@ export function normalizeReportForTransport<T>(payload: T): T {
 }
 
 export type RoutineScheduleStatus = {
-  routine: "instagram-agenda" | "public-agenda";
+  routine: "full-agenda" | "instagram-agenda" | "public-agenda";
   label: string;
-  sourceKey: "instagram" | "public";
+  sourceKey: "all" | "instagram" | "public";
   enabled: boolean;
   cronExpression: string | null;
   timezone: string | null;
@@ -1361,16 +1361,25 @@ export async function listRoutineScheduleStatus(): Promise<
 > {
   const definitions = [
     {
+      routine: "full-agenda" as const,
+      sourceKey: "all" as const,
+      label: "Agenda completa — Vercel Cron",
+      path: "/api/scheduled/ingest-full-agenda",
+      fallbackCron: "0 5 * * *",
+    },
+    {
       routine: "instagram-agenda" as const,
       sourceKey: "instagram" as const,
       label: "Instagram — Agenda da Semana",
       path: "/api/scheduled/ingest-instagram",
+      fallbackCron: null,
     },
     {
       routine: "public-agenda" as const,
       sourceKey: "public" as const,
       label: "Fontes públicas — Agenda",
       path: "/api/scheduled/ingest-events",
+      fallbackCron: null,
     },
   ];
   const db = await getDb();
@@ -1408,14 +1417,16 @@ export async function listRoutineScheduleStatus(): Promise<
     const run = latestRuns.find(
       item =>
         item.sourceKey === definition.sourceKey ||
-        item.routine === definition.routine
+        item.routine === definition.routine ||
+        (definition.routine !== "full-agenda" && item.routine === "full-agenda")
     );
+    const fallbackScheduled = !job && definition.routine === "full-agenda";
     return {
       routine: definition.routine,
       label: definition.label,
       sourceKey: definition.sourceKey,
-      enabled: job ? job.isEnable : false,
-      cronExpression: job?.cronExpression ?? null,
+      enabled: job ? job.isEnable : fallbackScheduled,
+      cronExpression: job?.cronExpression ?? definition.fallbackCron,
       timezone: job?.timezone ?? "UTC",
       nextExecutionAt: job?.nextExecutionAt ?? null,
       lastExecutionAt: run
@@ -1578,11 +1589,24 @@ export async function listIngestionReport(
       status: ingestionRuns.status,
       startedAt: ingestionRuns.startedAt,
       finishedAt: ingestionRuns.finishedAt,
+      routine: ingestionRuns.routine,
+      sourceKey: ingestionRuns.sourceKey,
+      details: ingestionRuns.details,
     })
     .from(ingestionRuns)
-    .where(eq(ingestionRuns.sourceKey, "instagram"))
+    .where(or(eq(ingestionRuns.sourceKey, "instagram"), eq(ingestionRuns.routine, "instagram-agenda"), eq(ingestionRuns.routine, "full-agenda")))
     .orderBy(desc(ingestionRuns.startedAt))
     .limit(100);
+  const metaStatusRuns = metaRuns.flatMap(run => {
+    if (run.routine !== "full-agenda") return [{ status: String(run.status), startedAt: run.startedAt, finishedAt: run.finishedAt }];
+    const root = parseDetails(run.details);
+    const summary = root && typeof root === "object" && (root as Record<string, unknown>).automationSummary && typeof (root as Record<string, unknown>).automationSummary === "object"
+      ? (root as Record<string, unknown>).automationSummary as Record<string, unknown>
+      : root && typeof root === "object" ? root as Record<string, unknown> : {};
+    const source = Array.isArray(summary.sources) ? summary.sources.find(item => item && typeof item === "object" && (item as Record<string, unknown>).sourceKey === "instagram") as Record<string, unknown> | undefined : undefined;
+    const status = source ? (Array.isArray(source.errors) && source.errors.length > 0 ? "partial" : "succeeded") : String(run.status);
+    return [{ status, startedAt: run.startedAt, finishedAt: run.finishedAt }];
+  });
   const alerts = await db
     .select({
       id: operationalAlerts.id,
@@ -1786,7 +1810,7 @@ export async function listIngestionReport(
     reconciliationBySource: buildSourceReconciliationForTest(trendRuns),
     weeklyTrend: buildWeeklyTrend(trendRuns),
     weeklySummary: buildWeeklyOperationalSummary(trendRuns),
-    metaStatus: buildMetaIntegrationStatusForTest(metaRuns),
+    metaStatus: buildMetaIntegrationStatusForTest(metaStatusRuns),
     scheduleStatus: await listRoutineScheduleStatus(),
     automationStatus,
     filterEvaluatedAt: new Date().toISOString(),
