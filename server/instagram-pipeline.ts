@@ -9,6 +9,13 @@ import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from
 import { persistManualReviewEvents, type ManualReviewEventInput } from "./manual-review";
 
 const META_GRAPH_BASE_URL = "https://graph.facebook.com/v26.0";
+export const DEFAULT_META_GRAPH_FETCH_TIMEOUT_MS = 8_000;
+
+export function getMetaGraphFetchTimeoutMs() {
+  const configured = Number.parseInt(process.env.META_GRAPH_FETCH_TIMEOUT_MS ?? "", 10);
+  if (!Number.isFinite(configured)) return DEFAULT_META_GRAPH_FETCH_TIMEOUT_MS;
+  return Math.min(15_000, Math.max(5_000, configured));
+}
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
 const LOOKBACK_DAYS = 5;
@@ -675,7 +682,7 @@ export async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, acc
     }
     const fields = `business_discovery.username(${target.username}){username,media.limit(25){id,caption,timestamp,permalink,media_url,media_type}}`;
     const url = `${META_GRAPH_BASE_URL}/${accountId}?${new URLSearchParams({ fields, access_token: token }).toString()}`;
-    const response = await fetchExternal(url, { headers: { Accept: "application/json" } }, 12_000, true, options.signal);
+    const response = await fetchExternal(url, { headers: { Accept: "application/json" } }, getMetaGraphFetchTimeoutMs(), true, options.signal);
     const responseBody = await readExternalBody(response);
     let parsedBody: unknown = null;
     let parsed = false;

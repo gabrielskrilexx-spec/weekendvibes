@@ -15,7 +15,7 @@ vi.mock("./instagram-pipeline", () => ({ runInstagramPipeline: mocks.runInstagra
 vi.mock("./ingestion-reports", () => ({ startIngestionRun: mocks.startIngestionRun, finishIngestionRun: mocks.finishIngestionRun }));
 vi.mock("./geocoding", () => ({ processPendingGeocoding: mocks.processPendingGeocoding }));
 
-import { AGENDA_ROUTINE_COMPOSITION, buildAutomationSourceSummariesForTest, normalizeTrackedStepResultForTest, runFullAgendaRoutine, runInstagramAgendaStep, runPublicAgendaStep, runScheduledWithRetriesForTest, isRetryableAgendaErrorForTest, getInstagramAgendaTimeoutMs } from "./agenda-routine";
+import { AGENDA_ROUTINE_COMPOSITION, buildAutomationSourceSummariesForTest, normalizeTrackedStepResultForTest, runFullAgendaRoutine, runInstagramAgendaStep, runPublicAgendaStep, runScheduledWithRetriesForTest, isRetryableAgendaErrorForTest, getInstagramAgendaTimeoutMs, getPublicAgendaTimeoutMs } from "./agenda-routine";
 
 describe("agenda routine composition", () => {
   beforeEach(() => { vi.clearAllMocks(); vi.stubEnv("CRITICAL_ALERT_WEBHOOK_URL", ""); });
@@ -103,6 +103,13 @@ describe("agenda routine composition", () => {
     expect(getInstagramAgendaTimeoutMs()).toBe(30_000);
     vi.stubEnv("INSTAGRAM_AGENDA_TIMEOUT_MS", "500");
     expect(getInstagramAgendaTimeoutMs()).toBe(1_000);
+  });
+
+  it("limita o orçamento da etapa pública para finalizar parcialmente antes do timeout serverless", () => {
+    vi.stubEnv("PUBLIC_AGENDA_TIMEOUT_MS", "45000");
+    expect(getPublicAgendaTimeoutMs()).toBe(45_000);
+    vi.stubEnv("PUBLIC_AGENDA_TIMEOUT_MS", "1000");
+    expect(getPublicAgendaTimeoutMs()).toBe(5_000);
   });
 
   it("não repete erro 4xx nem execução manual", async () => {

@@ -1212,7 +1212,13 @@ export async function saveEvent(data: InsertEvent) {
   const existing = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, priceNote: events.priceNote, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl }).from(events).where(identityCondition).limit(1);
   const dayStartUtc = saoPauloDayStartUtc(normalized.eventDate);
   const nextDayStartUtc = saoPauloNextDayStartUtc(normalized.eventDate);
-  const fuzzyCandidates = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, priceNote: events.priceNote, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl }).from(events).where(and(eq(events.city, normalized.city), gte(events.eventDate, dayStartUtc), sql`${events.eventDate} < ${nextDayStartUtc}`));
+  const fuzzyCandidates = existing[0]
+    ? []
+    : await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, priceNote: events.priceNote, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl })
+      .from(events)
+      .where(and(eq(events.city, normalized.city), gte(events.eventDate, dayStartUtc), lt(events.eventDate, nextDayStartUtc)))
+      .orderBy(asc(events.eventDate))
+      .limit(50);
   const duplicate = existing[0] ?? fuzzyCandidates.find(candidate => isFuzzyDuplicateEventForTest(normalized, candidate as InsertEvent));
   if (duplicate) {
     const identityMatch = Boolean(existing[0]);

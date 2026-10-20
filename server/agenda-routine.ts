@@ -34,21 +34,27 @@ export type FullAgendaRoutineOptions = { trigger?: "manual" | "scheduled"; runId
 export type RetryAttempt = { attempt: number; startedAt: string; failedAt: string; reason: string; httpStatus: number | null };
 const MAX_SCHEDULED_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 1000;
+export const DEFAULT_PUBLIC_AGENDA_TIMEOUT_MS = 25_000;
 export const DEFAULT_INSTAGRAM_AGENDA_TIMEOUT_MS = 30_000;
+export function getPublicAgendaTimeoutMs() {
+  const configured = Number.parseInt(process.env.PUBLIC_AGENDA_TIMEOUT_MS ?? "", 10);
+  if (!Number.isFinite(configured)) return DEFAULT_PUBLIC_AGENDA_TIMEOUT_MS;
+  return Math.min(45_000, Math.max(5_000, configured));
+}
 export function getInstagramAgendaTimeoutMs() {
   const configured = Number.parseInt(process.env.INSTAGRAM_AGENDA_TIMEOUT_MS ?? "", 10);
   if (!Number.isFinite(configured)) return DEFAULT_INSTAGRAM_AGENDA_TIMEOUT_MS;
   return Math.min(30_000, Math.max(1_000, configured));
 }
 
-async function withAgendaTimeout<T>(work: (signal: AbortSignal) => Promise<T>, timeoutMs: number, externalSignal?: AbortSignal): Promise<T> {
+async function withAgendaTimeout<T>(work: (signal: AbortSignal) => Promise<T>, timeoutMs: number, externalSignal?: AbortSignal, label = "instagram-agenda"): Promise<T> {
   const controller = new AbortController();
   const abortFromCaller = () => controller.abort();
   if (externalSignal?.aborted) controller.abort();
   else externalSignal?.addEventListener("abort", abortFromCaller, { once: true });
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    return await Promise.race([work(controller.signal), new Promise<T>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error(`Tempo limite de ${timeoutMs} ms excedido para instagram-agenda.`)); }, timeoutMs); })]);
+    return await Promise.race([work(controller.signal), new Promise<T>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error(`Tempo limite de ${timeoutMs} ms excedido para ${label}.`)); }, timeoutMs); })]);
   } finally {
     if (timer) clearTimeout(timer);
     externalSignal?.removeEventListener("abort", abortFromCaller);
@@ -367,7 +373,12 @@ export async function runFullAgendaRoutine(options: FullAgendaRoutineOptions = {
   }
   reportProgress({ phase: "collecting", step: 2, totalSteps: 4, message: "Coletando fontes públicas e Instagram.", sourceKey: "public", sourceStatus: "running" });
   reportProgress({ phase: "collecting", step: 2, totalSteps: 4, message: "Coletando fontes públicas e Instagram.", sourceKey: "instagram", sourceStatus: "running" });
-  const publicPromise = runPublicAgendaStep({ archive: false, track: false }).then(value => {
+  const publicPromise = withAgendaTimeout(
+    signal => runPublicAgendaStep({ archive: false, track: false, signal }),
+    getPublicAgendaTimeoutMs(),
+    undefined,
+    "public-agenda",
+  ).then(value => {
     const source = sourceReportsFromResult("public", value && typeof value === "object" && "result" in value ? (value as { result: unknown }).result : value)[0];
     reportProgress({ phase: "collecting", step: 2, totalSteps: 4, message: "Fontes públicas concluídas.", sourceKey: "public", sourceStatus: "succeeded", metrics: source ? { read: source.read, added: source.added, updated: source.updated, ignored: source.ignored } : undefined });
     return value;

@@ -6,7 +6,8 @@
   "cleanUrls": true,
   "functions": {
     "api/index.ts": {
-      "includeFiles": "{dist/**,server/**,drizzle/**,shared/**}"
+      "includeFiles": "{dist/**,server/**,drizzle/**,shared/**}",
+      "maxDuration": 60
     }
   },
   "crons": [
