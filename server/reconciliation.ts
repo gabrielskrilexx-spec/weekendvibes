@@ -82,7 +82,9 @@ export function reconcileIngestionResult(input: ReconciliationInput): Reconcilia
   const fallbackList = safeCount(input.fallbackList);
   const skippedByReason = hasReasonBreakdown ? cappedReasons : (filtered > 0 ? { filtered: filtered } : {});
   const allKnownSkipped = Object.values(skippedByReason).reduce((sum, count) => sum + count, 0);
-  const reconciliationGap = read - persisted - allKnownSkipped;
+  const duplicateReasonCount = safeCount(skippedByReason.duplicate);
+  const unclassifiedDuplicates = Math.max(0, duplicates - duplicateReasonCount);
+  const reconciliationGap = read - persisted - allKnownSkipped - unclassifiedDuplicates;
   const issues: string[] = [];
 
   if (safeCount(input.filtered) > filteredCapacity || Object.values(suppliedReasons).reduce((sum, count) => sum + count, 0) > filteredCapacity) issues.push("filtered_exceeds_read");

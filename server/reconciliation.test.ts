@@ -42,6 +42,14 @@ describe("ingestion reconciliation", () => {
     expect(result.consistent).toBe(true);
   });
 
+  it("counts duplicates that are reported separately from filtered reasons", () => {
+    const result = reconcileIngestionResult({ read: 5, persisted: 0, duplicates: 2, skippedByReason: { past_event: 3 } });
+    expect(result.allKnownSkipped).toBe(3);
+    expect(result.reconciliationGap).toBe(0);
+    expect(result.consistent).toBe(true);
+    expect(result.issues).not.toContain("reconciliation_gap");
+  });
+
   it("flags only items with unknown destinations", () => {
     const result = reconcileIngestionResult({
       read: 109,
