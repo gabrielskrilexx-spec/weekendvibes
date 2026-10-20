@@ -20,7 +20,7 @@ export const FEATURED_VENUES: Venue[] = [
     name: "Blue Med Convention Center",
     aliases: "Santos Convention Center · antigo Mendes",
     city: "Santos",
-    imageUrl: "https://santosconventioncenter.com.br/wp-content/uploads/2026/09/SHOW-ROBERTO-CARLOS.png",
+    imageUrl: "/manus-storage/santos-convention-center-fachada_67f02d28.jpg",
     description: "Shows, espetáculos e grandes encontros na Ponta da Praia.",
     query: "Santos Convention Center",
   },

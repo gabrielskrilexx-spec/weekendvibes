@@ -10,6 +10,8 @@ describe("VenueSpotlight", () => {
     const initial = renderToStaticMarkup(<VenueSpotlight selectedVenue="" onSelect={vi.fn()} events={[]} />);
     expect(initial).toContain("Blue Med Convention Center");
     expect(initial).toContain("Parque Valongo");
+    expect(initial).toContain("/manus-storage/santos-convention-center-fachada_67f02d28.jpg");
+    expect(initial).not.toContain("SHOW-ROBERTO-CARLOS.png");
     const selected = renderToStaticMarkup(<VenueSpotlight selectedVenue="blue-med" onSelect={vi.fn()} events={[event]} />);
     expect(selected).toContain('role="dialog"');
     expect(selected).toContain("Pagodin com Belo");
