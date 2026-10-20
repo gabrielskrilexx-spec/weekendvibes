@@ -207,7 +207,7 @@ describe("OAuth callback", () => {
   it("troca o código GitHub, valida a allowlist e cria sessão admin", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "github-access-token" }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 123, login: "admin-user", name: "Admin User", email: "admin@example.com" }), { status: 200 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 123, login: "admin-user", name: "Admin User", email: "" }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     const handler = register();
     const response = createResponse();
@@ -235,7 +235,12 @@ describe("OAuth callback", () => {
       redirect_uri: "https://weekendvibes-dh6w.vercel.app/api/oauth/callback",
     });
     expect(fetchMock.mock.calls[1]?.[0]).toBe("https://api.github.com/user");
-    expect(mocks.upsertUser).toHaveBeenCalledWith(expect.objectContaining({ openId: "github:123", role: "admin", loginMethod: "github" }));
+    expect(mocks.upsertUser).toHaveBeenCalledWith(expect.objectContaining({
+      openId: "github:123",
+      email: "admin-user@users.noreply.github.com",
+      role: "admin",
+      loginMethod: "github",
+    }));
     expect(mocks.createSessionToken).toHaveBeenCalledWith("github:123", expect.any(Object));
     expect(response.cookieName).toBe("app_session_id");
     expect(response.statusCode).toBe(302);

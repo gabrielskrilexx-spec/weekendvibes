@@ -16,11 +16,19 @@ let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
+      const databaseUrl = process.env.DATABASE_URL;
+      const databaseProtocol = new URL(databaseUrl).protocol;
+      if (databaseProtocol !== "postgres:" && databaseProtocol !== "postgresql:") {
+        console.error("[Database] Unsupported DATABASE_URL protocol; expected PostgreSQL", { protocol: databaseProtocol });
+        return null;
+      }
+      const isLocalDatabase = /:\/\/(?:[^@]+@)?(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(databaseUrl);
       const client = postgres(process.env.DATABASE_URL, {
         max: Number.parseInt(process.env.DB_POOL_MAX ?? "5", 10),
         idle_timeout: 20,
         connect_timeout: 10,
         prepare: false,
+        ssl: isLocalDatabase ? false : "require",
       });
       _db = drizzle(client);
     } catch (error) {

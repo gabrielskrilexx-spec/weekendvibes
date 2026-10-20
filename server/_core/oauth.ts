@@ -160,7 +160,10 @@ async function completeGithubLogin(code: string, oauthState: ReturnType<typeof d
 
   const openId = `github:${githubId}`;
   const displayName = typeof githubUser.name === "string" && githubUser.name.trim() ? githubUser.name.trim() : githubLogin;
-  await db.upsertUser({ openId, name: displayName, email: typeof githubUser.email === "string" ? githubUser.email : null, loginMethod: "github", lastSignedIn: new Date(), role: "admin" });
+  const githubEmail = typeof githubUser.email === "string" && githubUser.email.trim()
+    ? githubUser.email.trim()
+    : `${githubLogin}@users.noreply.github.com`;
+  await db.upsertUser({ openId, name: displayName, email: githubEmail, loginMethod: "github", lastSignedIn: new Date(), role: "admin" });
   const sessionToken = await sdk.createSessionToken(openId, { name: displayName, expiresInMs: ONE_YEAR_MS });
   res.cookie(COOKIE_NAME, sessionToken, { ...getSessionCookieOptions(req), maxAge: ONE_YEAR_MS });
   res.redirect(302, getSafeReturnPath(oauthState.returnTo, "/admin"));
