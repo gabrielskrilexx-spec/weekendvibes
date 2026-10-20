@@ -1,10 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "./_core/sdk";
-import { ingestEventsHandler } from "./scheduled";
-import { runPublicAgendaStep } from "./agenda-routine";
+import { ingestEventsHandler, ingestFullAgendaHandler } from "./scheduled";
+import { runFullAgendaRoutine, runPublicAgendaStep } from "./agenda-routine";
+
+const mocks = vi.hoisted(() => ({
+  runPublicAgendaStep: vi.fn(),
+  runFullAgendaRoutine: vi.fn(),
+  handleIngestionFailureAlert: vi.fn(),
+  notifyIngestionSummary: vi.fn(),
+}));
 
 vi.mock("./agenda-routine", () => ({
-  runPublicAgendaStep: vi.fn(),
+  runPublicAgendaStep: mocks.runPublicAgendaStep,
+  runFullAgendaRoutine: mocks.runFullAgendaRoutine,
+}));
+
+vi.mock("./ingestion-failure-alerts", () => ({
+  handleIngestionFailureAlert: mocks.handleIngestionFailureAlert,
+  notifyIngestionSummary: mocks.notifyIngestionSummary,
 }));
 
 const response = () => {
@@ -21,9 +34,12 @@ describe("cron authentication and scheduled events callback", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.mocked(runPublicAgendaStep).mockResolvedValue({ archived: 0, result: { imported: 1 } } as never);
+    vi.mocked(runFullAgendaRoutine).mockResolvedValue({ runId: 77, status: "succeeded", errors: [] } as never);
+    mocks.handleIngestionFailureAlert.mockResolvedValue({ notified: true });
+    mocks.notifyIngestionSummary.mockResolvedValue({ sent: false, skipped: true });
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
   it("accepts a platform-issued opaque cron token validated with taskUid", async () => {
     vi.spyOn(sdk, "verifySession").mockResolvedValue(null);
@@ -68,5 +84,17 @@ describe("cron authentication and scheduled events callback", () => {
 
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith({ error: "internal_error" });
+  });
+
+  it("accepts Vercel Cron Authorization and alerts on a partial full-agenda run", async () => {
+    vi.stubEnv("CRON_SECRET", "vercel-cron-secret-test");
+    vi.mocked(runFullAgendaRoutine).mockResolvedValue({ runId: 77, status: "partial", errors: [{ sourceKey: "public:zig", message: "HTTP 503" }] } as never);
+    const res = response();
+
+    await ingestFullAgendaHandler({ headers: { authorization: "Bearer vercel-cron-secret-test" } } as never, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, status: "partial" }));
+    expect(mocks.handleIngestionFailureAlert).toHaveBeenCalledWith(expect.objectContaining({ routine: "full-agenda", sourceKey: "all", status: 207, runId: 77, message: expect.stringContaining("HTTP 503") }), expect.any(Object));
   });
 });

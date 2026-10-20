@@ -5,7 +5,7 @@ import * as failureAlerts from "./ingestion-failure-alerts";
 import { HttpError } from "@shared/_core/errors";
 import { redactError } from "./_core/security";
 import { notifyOwner } from "./_core/notification";
-import { hasValidInternalCronSecret } from "./_core/cron-auth";
+import { hasValidInternalCronSecret, hasValidVercelCronSecret } from "./_core/cron-auth";
 
 function buildPublicAutomationSummary(result: unknown, startedAt: string, finishedAt: string) {
   const value = result && typeof result === "object" ? result as Record<string, unknown> : {};
@@ -79,7 +79,7 @@ export async function ingestEventsHandler(req: Request, res: Response) {
 
 export async function ingestFullAgendaHandler(req: Request, res: Response) {
   const startedAt = new Date().toISOString();
-  if (!hasValidInternalCronSecret(req)) {
+  if (!hasValidVercelCronSecret(req)) {
     let user;
     try {
       user = await sdk.authenticateRequest(req);
@@ -93,6 +93,32 @@ export async function ingestFullAgendaHandler(req: Request, res: Response) {
   try {
     const result = await agendaRoutine.runFullAgendaRoutine({ trigger: "scheduled" });
     const finishedAt = new Date().toISOString();
+    if (result.status === "partial" || result.status === "failed") {
+      const errors = Array.isArray(result.errors) ? result.errors.slice(0, 20) : [];
+      const reason = errors.length > 0
+        ? errors.map(error => `${String(error.sourceKey ?? "unknown")}: ${String(error.message ?? "falha não especificada")}`).join("; ")
+        : `A rotina full-agenda terminou com status ${result.status}.`;
+      const safeReason = reason.replace(/https?:\/\/[^\s]+/gi, "fonte pública").replace(/Bearer\s+[^\s]+/gi, "Bearer [redacted]").replace(/[\r\n\t]+/g, " ").slice(0, 2_000);
+      const runId = typeof result.runId === "number" || typeof result.runId === "string" ? result.runId : undefined;
+      console.warn("[Scheduled] full-agenda completed with degraded status", { status: result.status, runId: runId ?? null, reason: safeReason });
+      try {
+        await failureAlerts.handleIngestionFailureAlert({
+          routine: "full-agenda",
+          sourceKey: "all",
+          integration: "pipeline",
+          status: result.status === "failed" ? 500 : 207,
+          errorCode: result.status,
+          alertType: "full_agenda_degraded",
+          message: safeReason,
+          severity: result.status === "failed" ? "CRITICAL" : "WARNING",
+          runId,
+        }, { notify: async notification => {
+          await notifyOwner({ title: "Rotina automática da agenda degradada", content: notification.message.slice(0, 500) });
+        }});
+      } catch (alertError) {
+        console.warn("[Scheduled] could not persist full-agenda alert", redactError(alertError));
+      }
+    }
     return res.status(result.status === "failed" ? 502 : 200).json({ ok: result.status !== "failed", status: result.status, startedAt, finishedAt, result });
   } catch (error) {
     console.error("[Scheduled] routine failed", redactError(error));

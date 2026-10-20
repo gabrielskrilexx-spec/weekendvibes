@@ -399,7 +399,7 @@ export async function runFullAgendaRoutine(options: FullAgendaRoutineOptions = {
     ],
     extraErrors: archiveError ? [archiveError] : [],
   });
-  const result = { archived, publicSources, instagram, status: summary.status, automationSummary: summary, errors: summary.errors };
+  const result = { runId, archived, publicSources, instagram, status: summary.status, automationSummary: summary, errors: summary.errors };
   reportProgress({ phase: summary.status === "failed" ? "failed" : "completed", step: 4, totalSteps: 4, message: summary.status === "succeeded" ? "Ingestão concluída com sucesso." : summary.status === "partial" ? "Ingestão concluída parcialmente; revise os erros." : "Ingestão concluída com falha crítica." });
   if (ownsRun) await finishIngestionRun(runId, {
     status: summary.status,
