@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { filterDisabledPublicSourceUrls, getConfiguredSourceUrls } from "./ingestion";
+import { filterDisabledPublicSourceUrls, getConfiguredSourceUrls, isIngresseCatalogRootUrl } from "./ingestion";
 
 describe("ingestion source configuration", () => {
   it("excludes URLs whose persisted public source is disabled", () => {
@@ -46,6 +46,11 @@ describe("JSON public source configuration", () => {
 });
 
 describe("public event discovery", () => {
+  it("identifica a raiz HTML da Ingresse para usar somente o adaptador JSON nos eventos", () => {
+    expect(isIngresseCatalogRootUrl("https://www.ingresse.com/")).toBe(true);
+    expect(isIngresseCatalogRootUrl("https://www.ingresse.com/laroc-guaruja-apresenta-meduza/")).toBe(false);
+  });
+
   it("maps the public Ingresse API payload into a structured event page", async () => {
     const { fetchIngresseEventApi } = await import("./ingestion");
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
@@ -55,6 +60,7 @@ describe("public event discovery", () => {
       sessions: [{ dateTime: "2026-12-31T23:00:00+00:00", status: "available" }],
       place: { name: "Laroc Club Guarujá", city: "Guarujá", state: "SP", street: "Rodovia Ariovaldo de Almeida de Viana, S/n", location: { lat: -23.89409, lon: -46.18753 } },
       poster: { large: "https://kraken.ingresse.com/event/posters/104949/large.jpg" },
+      externalLink: "https://cart.ingresse.com/event/104949/tickets",
     }), { status: 200, headers: { "content-type": "application/json" } }));
     vi.stubGlobal("fetch", fetchMock);
     const page = await fetchIngresseEventApi("https://www.ingresse.com/laroc-guaruja-apresenta-reveillon-2027-feat-mau-p/");
@@ -75,6 +81,7 @@ describe("public event discovery", () => {
       city: "Guarujá",
       latitude: "-23.89409",
       longitude: "-46.18753",
+      sourceUrl: "https://cart.ingresse.com/event/104949/tickets",
     });
     expect(page.text).toContain("música eletrônica");
     vi.unstubAllGlobals();

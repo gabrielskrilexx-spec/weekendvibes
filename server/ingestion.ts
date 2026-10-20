@@ -646,11 +646,11 @@ const BLACKPASS_REQUEST_HEADERS = {
   "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
 };
 
-async function fetchPublicAdapterJson<T>(input: string, init: RequestInit = {}, timeoutMs = 12_000, attempts = 2): Promise<T> {
+async function fetchPublicAdapterJson<T>(input: string, init: RequestInit = {}, timeoutMs = 12_000, attempts = 2, externalSignal?: AbortSignal): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      const response = await fetchExternal(input, init, timeoutMs);
+      const response = await fetchExternal(input, init, timeoutMs, false, externalSignal);
       if (!response.ok) throw createFetchError(`Fonte pública respondeu ${response.status}`, response.status);
       return await response.json() as T;
     } catch (error) {
@@ -796,13 +796,22 @@ function isIngresseEventUrl(url: string) {
   }
 }
 
+export function isIngresseCatalogRootUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.endsWith("ingresse.com") && ["", "/"].includes(parsed.pathname);
+  } catch {
+    return false;
+  }
+}
+
 function getIngresseSlug(url: string) {
   const parsed = new URL(url);
   const segments = parsed.pathname.split("/").filter(Boolean);
   return decodeURIComponent(segments.at(-1) ?? "");
 }
 
-export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCacheStore = { read: getIngestionPayloadCache, write: saveIngestionPayloadCache }, options: { dryRun?: boolean } = {}) {
+export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCacheStore = { read: getIngestionPayloadCache, write: saveIngestionPayloadCache }, options: { dryRun?: boolean; signal?: AbortSignal } = {}) {
   const slug = getIngresseSlug(url);
   if (!slug) throw createFetchError(`URL Ingresse sem slug de evento: ${url}`);
   try {
@@ -821,7 +830,7 @@ export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCac
         "upgrade-insecure-requests": "1",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
       },
-    }, getIngresseFetchTimeoutMs());
+    }, getIngresseFetchTimeoutMs(), 2, options.signal);
     const place = payload.place && typeof payload.place === "object" ? payload.place as Record<string, unknown> : {};
     const session = Array.isArray(payload.sessions) && payload.sessions[0] && typeof payload.sessions[0] === "object" ? payload.sessions[0] as Record<string, unknown> : {};
     const location = place.location && typeof place.location === "object" ? place.location as Record<string, unknown> : {};
@@ -835,9 +844,10 @@ export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCac
     const imageUrl = [poster.large, poster.medium, poster.small].find((value): value is string => typeof value === "string" && value.startsWith("http")) ?? "";
     const latitude = typeof location.lat === "number" ? String(location.lat) : "";
     const longitude = typeof location.lon === "number" ? String(location.lon) : "";
+    const purchaseUrl = typeof payload.externalLink === "string" && /^https:\/\//i.test(payload.externalLink) ? payload.externalLink : url;
     const text = [title, description, placeName, address, city, dateTime].filter(Boolean).join(" ");
     if (!title || !dateTime || !placeName) throw createFetchError(`API pública do Ingresse sem dados essenciais para ${url}`);
-    const structured = { title, summary: description, eventDate: dateTime, locationName: placeName, address, city, category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: url, imageUrl, latitude, longitude };
+    const structured = { title, summary: description, eventDate: dateTime, locationName: placeName, address, city, category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: purchaseUrl, imageUrl, latitude, longitude };
     if (!options.dryRun) await cacheStore.write({ cacheKey: ingresseCacheKey(url), sourceKey: "public:ingresse", sourceUrl: url, payload: structured, latitude, longitude }).catch(error => console.warn("[Ingestion cache] Could not save Ingresse payload:", sanitizeFetchFailure(error).message));
     return { url, html: "", text: text.slice(0, 16_000), imageUrl, structured };
   } catch (error) {
@@ -1091,12 +1101,13 @@ async function discoverCandidatePages(options: IngestionPipelineOptions = {}) {
   const bases = options.sourceKey
     ? configuredBases.filter(url => options.sourceKey === "public" || publicSourceKey(url) === options.sourceKey)
     : configuredBases;
-  const discovered = new Set(bases);
-  const basePages = await fetchWithConcurrency(bases, url => guardedFetchPublicPage(url, options), PUBLIC_FETCH_CONCURRENCY);
+  const crawlBases = bases.filter(url => !isIngresseCatalogRootUrl(url));
+  const discovered = new Set(crawlBases);
+  const basePages = await fetchWithConcurrency(crawlBases, url => guardedFetchPublicPage(url, options), PUBLIC_FETCH_CONCURRENCY);
   for (let index = 0; index < basePages.length; index += 1) {
     const result = basePages[index];
     if (result.status !== "fulfilled") continue;
-    const baseUrl = bases[index];
+    const baseUrl = crawlBases[index];
     for (const link of extractPublicEventLinks(result.value.html, result.value.url)) discovered.add(link);
     if (isMrIngressosCatalogUrl(baseUrl)) {
       for (const event of extractMrIngressosListingEvents(result.value.html, result.value.url)) discovered.add(event.url);
