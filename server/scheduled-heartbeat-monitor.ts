@@ -12,6 +12,11 @@ import { runPlatformSanitization } from "./platform-sanitization";
 const MONITORED_ROUTINES = ["full-agenda", "instagram-agenda", "scheduled-instagram"] as const;
 const MAX_HEARTBEAT_AGE_MS = 26 * 60 * 60 * 1000;
 
+type MonitoredRun = Pick<
+  typeof ingestionRuns.$inferSelect,
+  "id" | "routine" | "status" | "importedCount" | "failedCount" | "finishedAt" | "startedAt"
+>;
+
 function errorPayload(error: unknown, startedAt: string) {
   return {
     ok: false,
@@ -51,7 +56,7 @@ export async function heartbeatMonitorHandler(req: Request, res: Response) {
     const sanitization = await runPlatformSanitization(new Date(), { resetNoisySources: false });
     const freshnessAlerts = await evaluateCriticalFreshnessAlerts(db);
     console.info(`[HeartbeatMonitor] expired_events_removed=${expiredRemoved} review_expired=${sanitization.manualReview.expiredCount} stale_highlights_expired=${sanitization.manualReview.staleHighlights.expiredCount} stale_alerts_resolved=${sanitization.alerts.resolvedCount} sources_reset=${sanitization.reset.resetCount} public_sources_paused=${sanitization.paused.pausedCount} resolved_alerts_purged=${purgedResolvedAlerts.purgedCount} freshness_alerts=${freshnessAlerts.triggered}`);
-    const latestRuns = await db.select().from(ingestionRuns)
+    const latestRuns: MonitoredRun[] = await db.select().from(ingestionRuns)
       .where(sql`${ingestionRuns.routine} IN (${sql.join(MONITORED_ROUTINES.map(routine => sql`${routine}`), sql`, `)})`)
       .orderBy(desc(ingestionRuns.startedAt)).limit(10);
     const latest = latestRuns[0];
