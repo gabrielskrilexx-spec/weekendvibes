@@ -36,9 +36,9 @@ export const FEATURED_VENUES: Venue[] = [
   {
     key: "vallum-garden",
     name: "Vallum Garden",
-    aliases: "Centro Histórico · Rua Tuyuti, 90 · Santos",
+    aliases: "Centro · R. Tuyuti, 86 · Santos - SP · 11010-220",
     city: "Santos",
-    imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/vallum-garden-converted_1cf50681.jpg",
+    imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/vallum-tuyuti-converted_987b11a3.jpg",
     description: "Espaço de eventos e festas no Centro Histórico de Santos.",
     query: "Vallum Garden",
   },
@@ -72,10 +72,10 @@ export const FEATURED_VENUES: Venue[] = [
   {
     key: "goat-club",
     name: "Goat Club",
-    aliases: "Gonzaga · Santos",
+    aliases: "Centro · Rua do Comércio, 63 · Santos - SP · 11010-141",
     city: "Santos",
-    imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/goat-club_4b3c5da2.jpg",
-    description: "Club noturno focado em música urbana, funk e eletrônico no Gonzaga.",
+    imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/goat-comercio_72feaa77.jpg",
+    description: "Club noturno focado em música urbana, funk e eletrônico no Centro de Santos.",
     query: "Goat Club",
   },
 ];
@@ -88,16 +88,22 @@ type VenueSpotlightProps = {
 
 export default function VenueSpotlight({ selectedVenue, onSelect, events }: VenueSpotlightProps) {
   const activeVenue = FEATURED_VENUES.find(venue => venue.key === selectedVenue);
+  const carouselRef = React.useRef<HTMLDivElement>(null);
+  const scrollCarousel = (direction: number) => carouselRef.current?.scrollBy({ left: direction * Math.max(carouselRef.current.clientWidth * 0.82, 280), behavior: "smooth" });
   return (
     <section aria-labelledby="venues-heading" className="mx-auto max-w-7xl px-4 pt-10 sm:px-6">
       <div className="mb-5 flex items-end justify-between gap-4">
         <div><p className="text-xs font-black uppercase tracking-[0.2em] text-fuchsia-300">Explore por espaço</p><h2 id="venues-heading" className="mt-1 text-2xl font-black tracking-tight text-zinc-900 dark:text-white sm:text-3xl">Palcos da Baixada</h2></div>
-        {selectedVenue && <button type="button" onClick={() => onSelect("")} className="text-xs font-black uppercase tracking-wider text-orange-300 hover:text-orange-200">Limpar local</button>}
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => scrollCarousel(-1)} aria-label="Mostrar espaços anteriores" className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white transition hover:border-orange-300/60 hover:text-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">←</button>
+          <button type="button" onClick={() => scrollCarousel(1)} aria-label="Mostrar próximos espaços" className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white transition hover:border-orange-300/60 hover:text-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">→</button>
+          {selectedVenue && <button type="button" onClick={() => onSelect("")} className="ml-1 text-xs font-black uppercase tracking-wider text-orange-300 hover:text-orange-200">Limpar local</button>}
+        </div>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div id="venues-carousel" ref={carouselRef} aria-label="Carrossel de espaços da Baixada" tabIndex={0} className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3 scroll-smooth [scrollbar-width:thin] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">
         {FEATURED_VENUES.map(venue => {
           const active = selectedVenue === venue.key;
-          return <button key={venue.key} type="button" aria-pressed={active} onClick={() => onSelect(active ? "" : venue.key)} className={`group relative min-h-40 overflow-hidden rounded-[24px] border text-left transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 ${active ? "border-orange-300 ring-2 ring-orange-300/30" : "border-white/10"}`}>
+          return <button key={venue.key} type="button" aria-pressed={active} onClick={() => onSelect(active ? "" : venue.key)} className={`group relative min-h-40 min-w-[82vw] snap-start overflow-hidden rounded-[24px] border text-left transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 sm:min-w-[calc(50%-0.5rem)] lg:min-w-[calc(33.333%-0.7rem)] ${active ? "border-orange-300 ring-2 ring-orange-300/30" : "border-white/10"}`}>
             <img src={venue.imageUrl} alt={`Foto de ${venue.name}`} loading="lazy" onError={event => { event.currentTarget.style.display = "none"; }} className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105" />
             <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/55 to-transparent" />
             <div className="relative flex min-h-40 flex-col justify-end p-5 text-white"><div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-orange-200"><Building2 size={14} /> {venue.city}</div><h3 className="mt-2 text-xl font-black leading-tight">{venue.name}</h3><p className="mt-1 text-xs text-zinc-300">{venue.aliases}</p></div>
