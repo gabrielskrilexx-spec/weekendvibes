@@ -18,11 +18,11 @@
   "rewrites": [
     {
       "source": "/api/oauth/:path*",
-      "destination": "/api/index.ts"
+      "destination": "/api"
     },
     {
       "source": "/api/(.*)",
-      "destination": "/api/index.ts"
+      "destination": "/api"
     },
     {
       "source": "/(.*)",

@@ -5,19 +5,19 @@
   "license": "MIT",
   "scripts": {
     "predev": "sg docker -c 'docker compose up -d'",
-    "dev": "cross-env DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes NODE_ENV=development tsx watch server/_core/index.ts",
+    "dev": "DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes NODE_ENV=development tsx watch server/_core/index.ts",
     "build": "vite build && esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --external:./vite --outdir=dist",
-    "start": "cross-env DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes NODE_ENV=production node dist/index.js",
+    "start": "DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes NODE_ENV=production node dist/index.js",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
     "pretest": "sg docker -c 'docker compose up -d'",
-    "test": "cross-env DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes vitest run --maxWorkers=1 --minWorkers=1",
+    "test": "DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes vitest run --maxWorkers=1 --minWorkers=1",
     "test:e2e": "playwright test",
     "monitor:ticketing": "node scripts/monitor-ticketing-sources.mjs --watch",
     "monitor:ticketing:once": "node scripts/monitor-ticketing-sources.mjs",
     "admin:magic-link": "tsx scripts/generate-admin-magic-link.mts",
-    "seed:events": "cross-env DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes tsx scripts/seed-events.mts",
-    "db:push": "cross-env DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes drizzle-kit generate && cross-env DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes drizzle-kit migrate"
+    "seed:events": "DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes tsx scripts/seed-events.mts",
+    "db:push": "DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes drizzle-kit generate && DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes drizzle-kit migrate"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",
