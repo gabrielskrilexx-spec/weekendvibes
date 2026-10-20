@@ -623,6 +623,41 @@ function metaPostsFromPayload(payload: unknown, target: (typeof INSTAGRAM_TARGET
   }
 }
 
+export type MetaProfileValidationResult = {
+  ok: boolean;
+  username: string;
+  status: number;
+  message: string;
+};
+
+/** Valida um perfil pausado usando somente a Graph API oficial antes de reativá-lo. */
+export async function validateMetaBusinessDiscoveryProfile(username: string, signal?: AbortSignal): Promise<MetaProfileValidationResult> {
+  const normalizedUsername = username.trim().replace(/^@+/, "").toLowerCase();
+  const token = process.env.META_INSTAGRAM_TOKEN?.trim();
+  const accountId = process.env.META_INSTAGRAM_ACCOUNT_ID?.trim();
+  if (!token || !accountId) {
+    return { ok: false, username: normalizedUsername, status: 503, message: "Credenciais oficiais da Meta não configuradas." };
+  }
+  const fields = `business_discovery.username(${normalizedUsername}){username,media.limit(1){id}}`;
+  const url = `${META_GRAPH_BASE_URL}/${accountId}?${new URLSearchParams({ fields, access_token: token }).toString()}`;
+  try {
+    const response = await fetchExternal(url, { headers: { Accept: "application/json" } }, getMetaGraphFetchTimeoutMs(), true, signal);
+    const body = await readExternalBody(response);
+    if (!response.ok || isMetaInvalidUserError(response.status, body)) {
+      return { ok: false, username: normalizedUsername, status: response.status, message: extractMetaGraphErrorMessage(body, response.status).slice(0, 240) };
+    }
+    let parsed: unknown;
+    try { parsed = JSON.parse(body); } catch { parsed = null; }
+    const businessDiscovery = parsed && typeof parsed === "object" ? (parsed as { business_discovery?: unknown }).business_discovery : undefined;
+    if (!businessDiscovery || typeof businessDiscovery !== "object") {
+      return { ok: false, username: normalizedUsername, status: response.status, message: "Resposta da Meta não contém Business Discovery válido." };
+    }
+    return { ok: true, username: normalizedUsername, status: response.status, message: "Business Discovery respondeu HTTP 200 sem OAuthException 110." };
+  } catch (error) {
+    return { ok: false, username: normalizedUsername, status: 503, message: normalizeDiagnosticText(error instanceof Error ? error.message : String(error), 240) };
+  }
+}
+
 type InstagramTransportFailure = { username: string; status: number; kind: "proxy_or_session" | "circuit_open" | "quota" | "actor_timeout" | "meta_invalid_user"; message: string };
 type InstagramProviderIssue = { code: "APIFY_QUOTA_EXCEEDED"; status: 403; message: string };
 

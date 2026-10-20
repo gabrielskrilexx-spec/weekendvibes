@@ -91,10 +91,12 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
   app.get("/api/scheduled/health", noStoreScheduledResponse, requireVercelCron, (_req, res) => res.json({ ok: true, service: "weekendvibes-api", checkedAt: new Date().toISOString() }));
   app.post("/api/scheduled/health", noStoreScheduledResponse, requireInternalCron, (_req, res) => res.json({ ok: true, service: "weekendvibes-api", checkedAt: new Date().toISOString() }));
   app.post("/api/scheduled/ingest-events", noStoreScheduledResponse, requireInternalCron, ingestEventsHandler);
+  app.get("/api/scheduled/ingest-public-sources", noStoreScheduledResponse, requireVercelCron, ingestEventsHandler);
   app.post("/api/scheduled/ingest-full-agenda", noStoreScheduledResponse, requireInternalCron, ingestFullAgendaHandler);
   app.get("/api/scheduled/ingest-full-agenda", noStoreScheduledResponse, requireVercelCron, ingestFullAgendaHandler);
   app.post("/api/scheduled/ingest-event-documents", noStoreScheduledResponse, requireInternalCron, ingestAgentDocumentsHandler);
   app.post("/api/scheduled/ingest-instagram", noStoreScheduledResponse, requireInternalCron, asyncIngestInstagramHandler);
+  app.get("/api/scheduled/ingest-instagram", noStoreScheduledResponse, requireVercelCron, ingestInstagramHandler);
   app.post("/api/v2/ingestion/instagram/async", noStoreScheduledResponse, requireInternalCron, asyncIngestInstagramHandler);
   app.post("/api/scheduled/ingest-instagram-sync", noStoreScheduledResponse, requireInternalCron, ingestInstagramHandler);
   app.post("/api/webhooks/apify/instagram", noStoreScheduledResponse, apifyInstagramWebhookHandler);

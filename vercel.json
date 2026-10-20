@@ -12,8 +12,12 @@
   },
   "crons": [
     {
-      "path": "/api/scheduled/ingest-full-agenda",
+      "path": "/api/scheduled/ingest-public-sources",
       "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/scheduled/ingest-instagram",
+      "schedule": "30 5 * * *"
     }
   ],
   "rewrites": [

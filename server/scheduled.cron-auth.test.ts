@@ -65,6 +65,16 @@ describe("cron authentication and scheduled events callback", () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
   });
 
+  it("accepts the Vercel Authorization header on the independent public job", async () => {
+    vi.stubEnv("CRON_SECRET", "vercel-cron-secret-test");
+    const res = response();
+
+    await ingestEventsHandler({ headers: { authorization: "Bearer vercel-cron-secret-test" }, originalUrl: "/api/scheduled/ingest-public-sources" } as never, res);
+
+    expect(runPublicAgendaStep).toHaveBeenCalledOnce();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, status: "succeeded" }));
+  });
+
   it("returns 403 for a callback without a valid cron token", async () => {
     const res = response();
 

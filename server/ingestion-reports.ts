@@ -1363,23 +1363,23 @@ export async function listRoutineScheduleStatus(): Promise<
     {
       routine: "full-agenda" as const,
       sourceKey: "all" as const,
-      label: "Agenda completa — Vercel Cron",
+      label: "Agenda completa — manual/legado",
       path: "/api/scheduled/ingest-full-agenda",
-      fallbackCron: "0 5 * * *",
+      fallbackCron: null,
     },
     {
       routine: "instagram-agenda" as const,
       sourceKey: "instagram" as const,
       label: "Instagram — Agenda da Semana",
       path: "/api/scheduled/ingest-instagram",
-      fallbackCron: null,
+      fallbackCron: "30 5 * * *",
     },
     {
       routine: "public-agenda" as const,
       sourceKey: "public" as const,
       label: "Fontes públicas — Agenda",
-      path: "/api/scheduled/ingest-events",
-      fallbackCron: null,
+      path: "/api/scheduled/ingest-public-sources",
+      fallbackCron: "0 5 * * *",
     },
   ];
   const db = await getDb();

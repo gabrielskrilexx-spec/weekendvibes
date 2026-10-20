@@ -7,7 +7,8 @@ import { handleIngestionFailureAlert } from "./ingestion-failure-alerts";
 import { AgendaStepFailure, runInstagramAgendaStep } from "./agenda-routine";
 import { HttpError } from "@shared/_core/errors";
 import { redactError } from "./_core/security";
-import { hasValidInternalCronSecret } from "./_core/cron-auth";
+import { hasValidInternalCronSecret, hasValidVercelCronSecret } from "./_core/cron-auth";
+import { observeScheduledIngestion } from "./scheduled-observability";
 
 const integrationTitles: Record<OperationalIntegration, string> = {
   meta: "Falha na API oficial do Instagram",
@@ -20,7 +21,7 @@ const integrationTitles: Record<OperationalIntegration, string> = {
 export async function ingestInstagramHandler(req: Request, res: Response) {
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs).toISOString();
-  if (!hasValidInternalCronSecret(req)) {
+  if (!hasValidInternalCronSecret(req) && !hasValidVercelCronSecret(req)) {
     let user;
     try {
       user = await sdk.authenticateRequest(req);
@@ -35,6 +36,8 @@ export async function ingestInstagramHandler(req: Request, res: Response) {
   try {
     const { archived, result } = await runInstagramAgendaStep();
     const finishedAt = new Date().toISOString();
+    const status = result.degraded || (result.transportFailures?.length ?? 0) > 0 ? "partial" as const : "succeeded" as const;
+    const observability = await observeScheduledIngestion({ routine: "instagram-agenda", status, startedAtMs });
     const apifyTimeouts = (result.transportFailures ?? []).filter(failure => failure.kind === "actor_timeout");
     for (const failure of apifyTimeouts.slice(0, 3)) {
       try {
@@ -52,8 +55,9 @@ export async function ingestInstagramHandler(req: Request, res: Response) {
         console.warn("[Instagram] Could not persist Apify timeout alert", redactError(alertError));
       }
     }
-    return res.json({ ok: true, startedAt, finishedAt, durationMs: Date.now() - startedAtMs, archived, degraded: Boolean(result.degraded), transportFailures: result.transportFailures ?? [], result, counts: { read: Number(result.receivedPosts ?? 0), filtered: Math.max(0, Number(result.receivedPosts ?? 0) - Number(result.approvedPosts ?? 0)), persisted: Number(result.imported ?? 0) } });
+    return res.json({ ok: true, status, startedAt, finishedAt, durationMs: observability.durationMs, observability: observability.alerts, archived, degraded: Boolean(result.degraded), transportFailures: result.transportFailures ?? [], result, counts: { read: Number(result.receivedPosts ?? 0), filtered: Math.max(0, Number(result.receivedPosts ?? 0) - Number(result.approvedPosts ?? 0)), persisted: Number(result.imported ?? 0) } });
   } catch (error) {
+    await observeScheduledIngestion({ routine: "instagram-agenda", status: "failed", startedAtMs });
     const integration: OperationalIntegration = error instanceof AgendaStepFailure
       ? error.integration
       : error instanceof InstagramIntegrationFailure ? error.integration : "pipeline";

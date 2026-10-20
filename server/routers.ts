@@ -48,6 +48,7 @@ import {
 } from "./db";
 import { invokeLLM } from "./_core/llm";
 import { isSandboxRestrictedError } from "./external-fetch";
+import { validateMetaBusinessDiscoveryProfile } from "./instagram-pipeline";
 import {
   getWednesdayRoutineStatus,
   runWednesdayRoutineNow,
@@ -1306,6 +1307,16 @@ export const appRouter = router({
           .strict()
       )
       .mutation(async ({ input, ctx }) => {
+        if (input.isEnabled) {
+          const source = (await listIngestionSources()).find(item => item.id === input.id);
+          const handle = source?.handle?.replace(/^@+/, "").toLowerCase();
+          if (source?.kind === "instagram" && (handle === "doloresbarerestaurante" || handle === "mimadafesta")) {
+            const validation = await validateMetaBusinessDiscoveryProfile(handle);
+            if (!validation.ok) {
+              throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Reativação bloqueada: ${validation.message}` });
+            }
+          }
+        }
         await updateIngestionSource(input.id, { ...input, changedByOpenId: ctx.user.openId });
         return {
           ok: true as const,

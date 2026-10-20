@@ -2,11 +2,29 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import { eq, or } from "drizzle-orm";
 import { ingestionSources } from "../drizzle/schema";
 import { getDb } from "./db";
-import { isMetaInvalidUserError, createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, isMetaCredentialFailure, extractMetaGraphErrorMessage, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRecentApifySignal, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest, limitInstagramStoriesForCost, INSTAGRAM_OCR_CONCURRENCY } from "./instagram-pipeline";
+import { isMetaInvalidUserError, createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, isMetaCredentialFailure, extractMetaGraphErrorMessage, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRecentApifySignal, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest, limitInstagramStoriesForCost, INSTAGRAM_OCR_CONCURRENCY, validateMetaBusinessDiscoveryProfile } from "./instagram-pipeline";
 
 it("reconhece o erro Meta code 110 sem tratá-lo como credencial expirada", () => {
   expect(isMetaInvalidUserError(400, '{"error":{"message":"Invalid user id","code":110}}')).toBe(true);
   expect(isMetaInvalidUserError(400, '{"error":{"message":"Invalid OAuth access token","code":190}}')).toBe(false);
+});
+
+describe("validação prévia de perfis Meta", () => {
+  it("só aprova um Business Discovery oficial com HTTP 200", async () => {
+    vi.stubEnv("META_INSTAGRAM_TOKEN", "meta-test-token");
+    vi.stubEnv("META_INSTAGRAM_ACCOUNT_ID", "17841400000000000");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ business_discovery: { username: "mimadafesta", media: { data: [] } } }), { status: 200, headers: { "content-type": "application/json" } })));
+    await expect(validateMetaBusinessDiscoveryProfile("@mimadafesta")).resolves.toMatchObject({ ok: true, status: 200, username: "mimadafesta" });
+    vi.unstubAllGlobals();
+  });
+
+  it("rejeita OAuthException 110 e não libera o perfil", async () => {
+    vi.stubEnv("META_INSTAGRAM_TOKEN", "meta-test-token");
+    vi.stubEnv("META_INSTAGRAM_ACCOUNT_ID", "17841400000000000");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { message: "Invalid user id", code: 110, type: "OAuthException" } }), { status: 400, headers: { "content-type": "application/json" } })));
+    await expect(validateMetaBusinessDiscoveryProfile("doloresbarerestaurante")).resolves.toMatchObject({ ok: false, status: 400, username: "doloresbarerestaurante" });
+    vi.unstubAllGlobals();
+  });
 });
 
 describe("Instagram weekend pipeline", () => {

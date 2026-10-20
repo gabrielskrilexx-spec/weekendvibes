@@ -6,6 +6,7 @@ import { HttpError } from "@shared/_core/errors";
 import { redactError } from "./_core/security";
 import { notifyOwner } from "./_core/notification";
 import { hasValidInternalCronSecret, hasValidVercelCronSecret } from "./_core/cron-auth";
+import { observeScheduledIngestion } from "./scheduled-observability";
 
 function buildPublicAutomationSummary(result: unknown, startedAt: string, finishedAt: string) {
   const value = result && typeof result === "object" ? result as Record<string, unknown> : {};
@@ -22,8 +23,9 @@ function buildPublicAutomationSummary(result: unknown, startedAt: string, finish
 }
 
 export async function ingestEventsHandler(req: Request, res: Response) {
+  const startedAtMs = Date.now();
   const startedAt = new Date().toISOString();
-  if (!hasValidInternalCronSecret(req)) {
+  if (!hasValidInternalCronSecret(req) && !hasValidVercelCronSecret(req)) {
     let user;
     try {
       user = await sdk.authenticateRequest(req);
@@ -64,14 +66,16 @@ export async function ingestEventsHandler(req: Request, res: Response) {
     }
     const finishedAt = new Date().toISOString();
     const summary = buildPublicAutomationSummary(result, startedAt, finishedAt);
+    const observability = await observeScheduledIngestion({ routine: "public-agenda", status: summary.status, startedAtMs });
     try {
       const notification = await failureAlerts.notifyIngestionSummary({ routine: "public-agenda", status: summary.status, startedAt, finishedAt, added: summary.added, updated: summary.updated, ignored: summary.ignored, errors: summary.errors, sources: summary.sources.map(source => ({ sourceKey: source.sourceKey, read: source.read, added: source.added, updated: source.updated, ignored: source.ignored, errors: source.errors.length })) });
       if (!notification.sent) console.info("[Ingestion summary]", JSON.stringify({ routine: "public-agenda", status: summary.status, added: summary.added, updated: summary.updated, ignored: summary.ignored, errors: summary.errors.length, webhook: notification.skipped ? "not_configured" : "unavailable" }));
     } catch (notificationError) {
       console.warn("[Scheduled] Ingestion summary notification failed", redactError(notificationError));
     }
-    return res.json({ ok: true, status: summary.status, summary, archived, result, fetchFailed, startedAt, finishedAt });
+    return res.json({ ok: true, status: summary.status, summary, archived, result, fetchFailed, startedAt, finishedAt, durationMs: observability.durationMs, observability: observability.alerts });
   } catch (error) {
+    await observeScheduledIngestion({ routine: "public-agenda", status: "failed", startedAtMs });
     console.error("[Scheduled] routine failed", redactError(error));
     return res.status(500).json({ error: "internal_error" });
   }
