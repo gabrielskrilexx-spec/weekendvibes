@@ -11,8 +11,8 @@
   },
   "crons": [
     {
-      "path": "/api/scheduled/ticketing-monitor",
-      "schedule": "0 9 * * *"
+      "path": "/api/scheduled/ingest-full-agenda",
+      "schedule": "0 5 * * *"
     }
   ],
   "rewrites": [

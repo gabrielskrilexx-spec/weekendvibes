@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { hasValidInternalCronSecret, requireInternalCron } from "./_core/cron-auth";
+import { hasValidInternalCronSecret, hasValidVercelCronSecret, requireInternalCron } from "./_core/cron-auth";
 
 describe("internal cron authentication", () => {
   beforeEach(() => {
@@ -39,5 +39,11 @@ describe("internal cron authentication", () => {
     requireInternalCron({ headers: { "x-cron-secret": "cron-secret-test" } } as never, res, next);
     expect(next).toHaveBeenCalledOnce();
     expect((res as any).status).not.toHaveBeenCalled();
+  });
+
+  it("accepts the native Vercel Cron Authorization header", () => {
+    vi.stubEnv("CRON_SECRET", "vercel-cron-secret-test");
+    expect(hasValidVercelCronSecret({ headers: { authorization: "Bearer vercel-cron-secret-test" } })).toBe(true);
+    expect(hasValidVercelCronSecret({ headers: { authorization: "Bearer wrong-secret" } })).toBe(false);
   });
 });
