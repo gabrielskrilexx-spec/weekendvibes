@@ -20,7 +20,7 @@ export const FEATURED_VENUES: Venue[] = [
     name: "Blue Med Convention Center",
     aliases: "Santos Convention Center · antigo Mendes",
     city: "Santos",
-    imageUrl: "/manus-storage/santos-convention-center-fachada_67f02d28.jpg",
+    imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/santos-convention-center-fachada_67f02d28.jpg",
     description: "Shows, espetáculos e grandes encontros na Ponta da Praia.",
     query: "Santos Convention Center",
   },
