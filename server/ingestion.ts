@@ -52,6 +52,10 @@ export const TARGET_VENUES = [
   "curvão",
   "curvao",
   "guarujá golf club",
+  "praia verde beach club",
+  "praia verde",
+  "casa grande hotel resort",
+  "casa grande hotel",
   "praiô",
   "praio",
   "flamingos",
@@ -1300,7 +1304,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
   const structured = apiStructuredEvents.length > 0 ? { choices: [{ message: { content: JSON.stringify({ events: apiStructuredEvents }) } }] } : await invokeLLM({
     model: "gpt-4o-mini",
     messages: [
-      { role: "system", content: "Extraia somente eventos públicos de música, shows ou baladas nos locais oficiais Vallum Garden, Moby Dick, Ativa House, Casa 412, Verilonguinho, Meu Lugar, Goat Club, Laroc Club Guarujá, Lucky Scope, Curvão Surf House, Guarujá Golf Club, Praiô, Flamingos, Projac Bar, Boteco Almare, Dolores Restaurante e Bar, Arena Jequitimar, Parque Valongo, Armazém 3, Blue Med Convention Center ou Santos Convention Center, localizados exclusivamente em Santos ou Guarujá. Ignore eventos passados, cidades diferentes, locais fora dessa allowlist e eventos de gastronomia, esporte, teatro ou exposição sem música. Retorne somente JSON no schema. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Se o gênero não puder ser inferido com segurança, descarte o evento. Use o SOURCE_URL correspondente como sourceUrl e IMAGE_URL quando houver." },
+      { role: "system", content: "Extraia somente eventos públicos de música, shows ou baladas nos locais oficiais Vallum Garden, Moby Dick, Ativa House, Casa 412, Verilonguinho, Meu Lugar, Goat Club, Laroc Club Guarujá, Lucky Scope, Curvão Surf House, Guarujá Golf Club, Praia Verde Beach Club, Praia Verde, Casa Grande Hotel Resort, Casa Grande Hotel, Praiô, Flamingos, Projac Bar, Boteco Almare, Dolores Restaurante e Bar, Arena Jequitimar, Parque Valongo, Armazém 3, Blue Med Convention Center ou Santos Convention Center, localizados exclusivamente em Santos ou Guarujá. Ignore eventos passados, cidades diferentes, locais fora dessa allowlist e eventos de gastronomia, esporte, teatro ou exposição sem música. Retorne somente JSON no schema. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Se o gênero não puder ser inferido com segurança, descarte o evento. Use o SOURCE_URL correspondente como sourceUrl e IMAGE_URL quando houver." },
       { role: "user", content: rawText },
     ],
     response_format: { type: "json_schema", json_schema: { name: "event_batch", strict: true, schema: { type: "object", properties: { events: { type: "array", items: { type: "object", properties: { title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string" }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "samba_pagode", "rap_trap"] }, priceCents: { type: "integer" }, sourceUrl: { type: "string" }, imageUrl: { type: "string" }, latitude: { type: "string" }, longitude: { type: "string" } }, required: ["title", "summary", "eventDate", "locationName", "address", "city", "category", "genre", "priceCents", "sourceUrl", "imageUrl", "latitude", "longitude"], additionalProperties: false } } }, required: ["events"], additionalProperties: false } } },

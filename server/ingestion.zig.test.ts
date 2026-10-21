@@ -88,5 +88,9 @@ describe("Zig Tickets adapter", () => {
     expect(sanitizePublicSourceUrl("https://zig.tickets/eventos/osuco-black-and-white?utm_source=x&fbclid=y#section")).toBe("https://zig.tickets/eventos/osuco-black-and-white");
     expect(containsTargetVenue("O Beco Bar, Santos")).toBe(true);
     expect(containsTargetVenue("O Beco Santos")).toBe(true);
+    expect(containsTargetVenue("Praia Verde Beach Club, Guarujá")).toBe(true);
+    expect(containsTargetVenue("Praia Verde, Guarujá")).toBe(true);
+    expect(containsTargetVenue("Casa Grande Hotel Resort, Guarujá")).toBe(true);
+    expect(containsTargetVenue("Casa Grande Hotel, Guarujá")).toBe(true);
   });
 });
