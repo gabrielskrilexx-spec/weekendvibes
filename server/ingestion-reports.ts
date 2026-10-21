@@ -583,7 +583,8 @@ export function buildWafProviderHistoryForTest(runs: Array<{ sourceKey: string |
   return Array.from(grouped.values()).sort((a, b) => a.date.localeCompare(b.date) || a.sourceKey.localeCompare(b.sourceKey) || a.provider.localeCompare(b.provider));
 }
 
-export const DEFAULT_PUBLIC_P95_THRESHOLD_MS = 15_000;
+export const DEFAULT_PUBLIC_P95_THRESHOLD_MS = 3_000;
+export const CRON_PUBLIC_P95_THRESHOLD_MS = 40_000;
 export const INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS = 30_000;
 export const MANUAL_AGENDA_P95_THRESHOLD_MS = 180_000;
 
@@ -598,10 +599,36 @@ export function getEffectiveSourceP95ThresholdForTest(source: { sourceKey?: stri
   return Number.isFinite(configured) && configured > 0 ? configured : 3_000;
 }
 
-export function findConsecutiveP95PerformanceAlertsForTest(runs: Array<{ sourceKey: string | null; status: string; startedAt: string | Date; durationMs?: number | null }>, thresholdMs: number | Map<string, number> = 3000) {
-  const bySource = new Map<string, Array<{ startedAt: number; durationMs: number }>>();
-  for (const run of runs) { const durationMs = Number(run.durationMs ?? 0); const startedAt = new Date(run.startedAt).getTime(); if (!run.sourceKey || !Number.isFinite(durationMs) || durationMs <= 0 || !Number.isFinite(startedAt)) continue; const list = bySource.get(run.sourceKey) ?? []; list.push({ startedAt, durationMs }); bySource.set(run.sourceKey, list); }
-  return Array.from(bySource.entries()).flatMap(([sourceKey, list]) => { const sourceThreshold = typeof thresholdMs === "number" ? thresholdMs : thresholdMs.get(sourceKey) ?? (sourceKey === "instagram:apify:pending" ? INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS : sourceKey === "manual" || sourceKey === "all" ? MANUAL_AGENDA_P95_THRESHOLD_MS : 3000); const sortedRuns = list.sort((a, b) => b.startedAt - a.startedAt); if (sortedRuns.length < 2 || sortedRuns[0].durationMs <= sourceThreshold || sortedRuns[1].durationMs <= sourceThreshold) return []; const samples = sortedRuns.slice(0, 20).map(item => item.durationMs).sort((a, b) => a - b); const p95LatencyMs = samples[Math.min(samples.length - 1, Math.ceil(samples.length * 0.95) - 1)]; return [{ sourceKey, p95LatencyMs, thresholdMs: sourceThreshold, consecutiveRuns: 2 }]; });
+export function isCronIngestionRoutineForTest(routine?: string | null) {
+  return routine === "public-agenda" || routine === "full-agenda" || routine === "instagram-agenda" || routine?.startsWith("scheduled-") === true;
+}
+
+export function getEffectiveIngestionP95ThresholdForTest(run: { sourceKey?: string | null; routine?: string | null }, source?: { sourceKey?: string | null; kind?: string | null; p95LatencyThresholdMs?: number | null }) {
+  const isPublic = source?.kind === "public" || run.sourceKey === "public" || run.sourceKey?.startsWith("public:");
+  if (isPublic && isCronIngestionRoutineForTest(run.routine)) return CRON_PUBLIC_P95_THRESHOLD_MS;
+  if (isPublic) return DEFAULT_PUBLIC_P95_THRESHOLD_MS;
+  return getEffectiveSourceP95ThresholdForTest(source ?? { sourceKey: run.sourceKey });
+}
+
+export function findConsecutiveP95PerformanceAlertsForTest(runs: Array<{ sourceKey: string | null; routine?: string | null; status: string; startedAt: string | Date; durationMs?: number | null }>, thresholdMs: number | Map<string, number> | ((run: { sourceKey: string | null; routine?: string | null }) => number) = 3000) {
+  const bySource = new Map<string, Array<{ startedAt: number; durationMs: number; thresholdMs: number }>>();
+  for (const run of runs) {
+    const durationMs = Number(run.durationMs ?? 0);
+    const startedAt = new Date(run.startedAt).getTime();
+    if (!run.sourceKey || !Number.isFinite(durationMs) || durationMs <= 0 || !Number.isFinite(startedAt)) continue;
+    const sourceThreshold = typeof thresholdMs === "function" ? thresholdMs(run) : typeof thresholdMs === "number" ? thresholdMs : thresholdMs.get(run.sourceKey) ?? (run.sourceKey === "instagram:apify:pending" ? INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS : run.sourceKey === "manual" || run.sourceKey === "all" ? MANUAL_AGENDA_P95_THRESHOLD_MS : 3_000);
+    const list = bySource.get(run.sourceKey) ?? [];
+    list.push({ startedAt, durationMs, thresholdMs: sourceThreshold });
+    bySource.set(run.sourceKey, list);
+  }
+  return Array.from(bySource.entries()).flatMap(([sourceKey, list]) => {
+    const sortedRuns = list.sort((a, b) => b.startedAt - a.startedAt);
+    const sourceThreshold = sortedRuns[0]?.thresholdMs ?? 3_000;
+    if (sortedRuns.length < 2 || sortedRuns[0].durationMs <= sortedRuns[0].thresholdMs || sortedRuns[1].durationMs <= sortedRuns[1].thresholdMs) return [];
+    const samples = sortedRuns.slice(0, 20).map(item => item.durationMs).sort((a, b) => a - b);
+    const p95LatencyMs = samples[Math.min(samples.length - 1, Math.ceil(samples.length * 0.95) - 1)];
+    return [{ sourceKey, p95LatencyMs, thresholdMs: sourceThreshold, consecutiveRuns: 2 }];
+  });
 }
 
 
@@ -1666,7 +1693,10 @@ export async function listIngestionReport(
   const sourceTelemetry = buildSourceTelemetryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), durationMs: run.durationMs, httpStatus: run.httpStatus, details: run.details })));
   const wafPersistentAlerts = findConsecutiveWafBlocksForTest(trendRuns.map(run => ({ id: Number(run.id), sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, finishedAt: run.finishedAt, httpStatus: run.httpStatus, details: run.details })));
   await Promise.all(wafPersistentAlerts.map(alert => handleIngestionFailureAlert({ routine: "waf-monitor", sourceKey: alert.sourceKey, integration: alert.sourceKey.startsWith("instagram") ? "meta" : "public", status: 403, severity: "CRITICAL", alertType: "waf_persistent", runId: alert.runIds[0], message: `Fonte ${alert.sourceKey} permanece bloqueada por WAF há ${alert.consecutiveRuns} execuções consecutivas. Última captura válida: ${alert.lastValidCaptureAt ?? "não registrada"}.` })));
-  const performanceAlerts = findConsecutiveP95PerformanceAlertsForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, durationMs: run.durationMs })), new Map(sourceConfigs.map(source => [source.sourceKey, getEffectiveSourceP95ThresholdForTest(source)])));
+  const performanceAlerts = findConsecutiveP95PerformanceAlertsForTest(
+    trendRuns.map(run => ({ sourceKey: run.sourceKey, routine: run.routine, status: String(run.status), startedAt: run.startedAt, durationMs: run.durationMs })),
+    run => getEffectiveIngestionP95ThresholdForTest(run, sourceConfigs.find(source => source.sourceKey === run.sourceKey)),
+  );
   await Promise.all(performanceAlerts.map(async alert => { const message = `Desempenho degradado: P95 de ${Math.round(alert.p95LatencyMs)} ms em ${alert.sourceKey}, acima do limite de ${alert.thresholdMs} ms por ${alert.consecutiveRuns} rodadas consecutivas.`; await handleIngestionFailureAlert({ routine: "performance-monitor", sourceKey: alert.sourceKey, integration: alert.sourceKey.startsWith("instagram") ? "meta" : "public", severity: "WARNING", alertType: "performance_degraded", message }); await notifyPerformanceDegradationWebhook({ ...alert, message }); }));
   const sourceTelemetryHistory = buildSourceTelemetryHistoryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, finishedAt: run.finishedAt, durationMs: run.durationMs, details: run.details })));
   const wafProviderHistory = buildWafProviderHistoryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, httpStatus: run.httpStatus, details: run.details })));

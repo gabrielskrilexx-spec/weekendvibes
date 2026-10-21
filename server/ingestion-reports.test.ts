@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv, sortFilteredStoriesForTest, DEFAULT_PUBLIC_P95_THRESHOLD_MS, INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS, MANUAL_AGENDA_P95_THRESHOLD_MS, getEffectiveSourceP95ThresholdForTest, findConsecutiveP95PerformanceAlertsForTest, classifyIngestionRunCategoryForTest, findConsecutiveWafBlocksForTest, buildWafProviderHistoryForTest } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv, sortFilteredStoriesForTest, DEFAULT_PUBLIC_P95_THRESHOLD_MS, CRON_PUBLIC_P95_THRESHOLD_MS, INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS, MANUAL_AGENDA_P95_THRESHOLD_MS, getEffectiveSourceP95ThresholdForTest, getEffectiveIngestionP95ThresholdForTest, findConsecutiveP95PerformanceAlertsForTest, classifyIngestionRunCategoryForTest, findConsecutiveWafBlocksForTest, buildWafProviderHistoryForTest } from "./ingestion-reports";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
 import { sanitizeAgendaStepErrorForTest } from "./agenda-routine";
 
@@ -120,9 +120,12 @@ describe("freshness and source reconciliation", () => {
 });
 
 describe("public ingestion P95 SLA", () => {
-  it("uses a 15 second default for public sources while preserving the Instagram default", () => {
-    expect(DEFAULT_PUBLIC_P95_THRESHOLD_MS).toBe(15_000);
-    expect(getEffectiveSourceP95ThresholdForTest({ kind: "public", p95LatencyThresholdMs: 3_000 })).toBe(15_000);
+  it("uses 3 seconds for public APIs and 40 seconds for scheduled public ingestion", () => {
+    expect(DEFAULT_PUBLIC_P95_THRESHOLD_MS).toBe(3_000);
+    expect(CRON_PUBLIC_P95_THRESHOLD_MS).toBe(40_000);
+    expect(getEffectiveSourceP95ThresholdForTest({ kind: "public", p95LatencyThresholdMs: 3_000 })).toBe(3_000);
+    expect(getEffectiveIngestionP95ThresholdForTest({ sourceKey: "public:articket", routine: "public-agenda" }, { kind: "public", p95LatencyThresholdMs: 3_000 })).toBe(40_000);
+    expect(getEffectiveIngestionP95ThresholdForTest({ sourceKey: "public:articket", routine: "api" }, { kind: "public", p95LatencyThresholdMs: 3_000 })).toBe(3_000);
     expect(getEffectiveSourceP95ThresholdForTest({ kind: "instagram", p95LatencyThresholdMs: 3_000 })).toBe(3_000);
     expect(INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS).toBe(30_000);
     expect(MANUAL_AGENDA_P95_THRESHOLD_MS).toBe(180_000);
@@ -130,23 +133,21 @@ describe("public ingestion P95 SLA", () => {
     expect(getEffectiveSourceP95ThresholdForTest({ sourceKey: "manual" })).toBe(180_000);
   });
 
-  it("does not alert public sources below the 15 second threshold", () => {
+  it("still evaluates direct public API runs against 3 seconds", () => {
     const runs = [
-      { sourceKey: "public:articket", status: "succeeded", startedAt: "2026-08-22T10:00:00.000Z", durationMs: 10_500 },
-      { sourceKey: "public:articket", status: "succeeded", startedAt: "2026-08-22T09:00:00.000Z", durationMs: 10_200 },
+      { sourceKey: "public:articket", routine: "api", status: "succeeded", startedAt: "2026-08-22T10:00:00.000Z", durationMs: 3_500 },
+      { sourceKey: "public:articket", routine: "api", status: "succeeded", startedAt: "2026-08-22T09:00:00.000Z", durationMs: 3_200 },
     ];
-
-    expect(findConsecutiveP95PerformanceAlertsForTest(runs, new Map([["public:articket", getEffectiveSourceP95ThresholdForTest({ kind: "public", p95LatencyThresholdMs: 3_000 })]]))).toEqual([]);
+    expect(findConsecutiveP95PerformanceAlertsForTest(runs, run => getEffectiveIngestionP95ThresholdForTest(run, { kind: "public", p95LatencyThresholdMs: 3_000 }))).toMatchObject([{ sourceKey: "public:articket", thresholdMs: 3_000 }]);
   });
 
-  it("still alerts public sources when two consecutive runs exceed 15 seconds", () => {
-    const threshold = getEffectiveSourceP95ThresholdForTest({ kind: "public", p95LatencyThresholdMs: 3_000 });
+  it("does not alert a Cron whose P95 remains below 40 seconds", () => {
     const alerts = findConsecutiveP95PerformanceAlertsForTest([
-      { sourceKey: "public:articket", status: "succeeded", startedAt: "2026-08-22T10:00:00.000Z", durationMs: 16_000 },
-      { sourceKey: "public:articket", status: "succeeded", startedAt: "2026-08-22T09:00:00.000Z", durationMs: 17_000 },
-    ], new Map([["public:articket", threshold]]));
+      { sourceKey: "public:articket", routine: "public-agenda", status: "succeeded", startedAt: "2026-08-22T10:00:00.000Z", durationMs: 22_500 },
+      { sourceKey: "public:articket", routine: "public-agenda", status: "succeeded", startedAt: "2026-08-22T09:00:00.000Z", durationMs: 21_400 },
+    ], run => getEffectiveIngestionP95ThresholdForTest(run, { kind: "public", p95LatencyThresholdMs: 3_000 }));
 
-    expect(alerts[0]).toMatchObject({ sourceKey: "public:articket", thresholdMs: 15_000, consecutiveRuns: 2 });
+    expect(alerts).toEqual([]);
   });
 });
 
