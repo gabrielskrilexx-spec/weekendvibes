@@ -191,7 +191,8 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
   if (!budget.allowed) {
     const alert = getApifyBudgetBlockAlert(budget);
     await recordOperationalAlert({ integration: "pipeline", ...alert, title: "Extração Apify bloqueada" });
-    throw new Error(alert.message);
+    console.warn("[Apify] Dispatch ignorado por guarda de orçamento", { reason: budget.blockedReason ?? "daily_limit", dateKey: budget.dateKey, requestCount: budget.requestCount, dailyLimit: budget.dailyLimit });
+    return { accepted: false as const, status: "SKIPPED" as const, reason: "budget_guard" as const, message: alert.message };
   }
 
   const runId = await startIngestionRun({ routine: "instagram-stories-async", sourceKey: "instagram:apify:pending" });
