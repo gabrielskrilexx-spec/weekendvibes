@@ -419,7 +419,9 @@ export function parseZigEventMetadata(html: string, url: string) {
 
 function extractTicket360Field(html: string, field: string) {
   const normalized = html.replace(/\\+"/g, '"');
-  const match = normalized.match(new RegExp(`"${field}"\\s*:\\s*"([^"]*)"`, "i"))?.[1];
+  const eventIndex = normalized.search(/"ev"\s*:\s*\{/i);
+  const scoped = eventIndex >= 0 ? normalized.slice(eventIndex, eventIndex + 8_000) : normalized;
+  const match = scoped.match(new RegExp(`"${field}"\\s*:\\s*"([^"]*)"`, "i"))?.[1];
   if (!match) return "";
   try { return JSON.parse(`"${match.replace(/\\+u0026/g, "&")}"`) as string; } catch { return match.replace(/\\+u0026/g, "&").replace(/\\+"/g, '"'); }
 }
