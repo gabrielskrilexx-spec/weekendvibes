@@ -753,7 +753,7 @@ export const appRouter = router({
       .query(({ ctx, input }) => getExportJobsTrendBucket({ ...input, ownerOpenId: ctx.user.openId })),
     exportJobsAlertEfficiency: adminOnly
       .input(z.object({ windowDays: z.number().int().min(1).max(90).default(30) }).strict())
-      .output(z.object({ windowDays: z.number().int().positive(), total: z.number().int().nonnegative(), resolved: z.number().int().nonnegative(), resolutionRate: z.number().min(0).max(1), averageAgeMs: z.number().nonnegative(), openCount: z.number().int().nonnegative() }).strict())
+      .output(z.object({ windowDays: z.number().int().positive(), total: z.number().int().nonnegative(), resolved: z.number().int().nonnegative(), resolutionRate: z.number().min(0).max(1), averageAgeMs: z.number().nonnegative(), openCount: z.number().int().nonnegative(), expiredLeases: z.number().int().nonnegative() }).strict())
       .query(({ ctx, input }) => getExportJobsAlertEfficiency({ ...input, ownerOpenId: ctx.user.openId })),
     exportJobsAlertEfficiencyCompare: adminOnly
       .input(z.object({ first: z.object({ from: z.string().datetime(), to: z.string().datetime() }).strict(), second: z.object({ from: z.string().datetime(), to: z.string().datetime() }).strict() }).strict())
