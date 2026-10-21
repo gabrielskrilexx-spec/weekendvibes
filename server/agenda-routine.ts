@@ -251,7 +251,11 @@ function safeAutomationNumber(value: unknown) {
 }
 
 function safeAutomationError(error: unknown) {
-  const raw = error instanceof Error ? error.message : String(error ?? "Falha não especificada na fonte");
+  const raw = error instanceof Error
+    ? error.message
+    : error && typeof error === "object"
+      ? String((error as { message?: unknown }).message ?? (() => { try { return JSON.stringify(error); } catch { return "Falha não especificada na fonte"; } })())
+      : String(error ?? "Falha não especificada na fonte");
   return raw.replace(/https?:\/\/[^\s]+/gi, "fonte pública").replace(/Bearer\s+[^\s]+/gi, "Bearer [redacted]").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 240) || "Falha não especificada na fonte";
 }
 

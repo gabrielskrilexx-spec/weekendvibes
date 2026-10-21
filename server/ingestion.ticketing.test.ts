@@ -1,7 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { BLACKPASS_FETCH_TIMEOUT_MS, BLUE_MED_FETCH_TIMEOUT_MS, containsTargetVenue, EVENTOS_LITORAL_FETCH_TIMEOUT_MS, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, PARQUE_VALONGO_FETCH_TIMEOUT_MS, parseArticketEventMetadata, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseBlueMedAgendaEvents, parseEventosLitoralOrganizerMetadata, parseMrIngressosEventMetadata, parseParqueValongoEventMetadata, parseSymplaEventMetadata, parseTicketingEventMetadata, parseWeTicketEventMetadata, publicSourceKey, SYMPLA_FETCH_TIMEOUT_MS, WETICKET_FETCH_TIMEOUT_MS } from "./ingestion";
+import { BLACKPASS_FETCH_TIMEOUT_MS, BLUE_MED_FETCH_TIMEOUT_MS, containsTargetVenue, EVENTOS_LITORAL_FETCH_TIMEOUT_MS, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, PARQUE_VALONGO_FETCH_TIMEOUT_MS, parseArticketEventMetadata, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseBlueMedAgendaEvents, parseEventosLitoralOrganizerMetadata, parseMrIngressosEventMetadata, parseParqueValongoEventMetadata, parseSymplaEventMetadata, parseTicket360EventMetadata, parseTicketingEventMetadata, parseWeTicketEventMetadata, publicSourceKey, SYMPLA_FETCH_TIMEOUT_MS, WETICKET_FETCH_TIMEOUT_MS } from "./ingestion";
 
 describe("adapters de ticketeiras oficiais", () => {
+  it("normaliza o payload embutido do Ticket360 e classifica Casa Grande", () => {
+    const html = String.raw`<script>self.__next_f.push([1,"...\\"ev\\":{\\"id\\":\\"34199\\",\\"title\\":\\"Festa do Hawaii\\",\\"venue\\":\\"Casa Grande Hotel Resort \\u0026 Spa\\",\\"city\\":\\"Guarujá\\",\\"date\\":\\"2026-11-21\\",\\"doorsTime\\":\\"19h30\\",\\"image\\":\\"https://images.ticket360.com.br/hawaii.webp\\"}"])</script><h1>Festa do Hawaii</h1>`;
+    expect(parseTicket360EventMetadata(html, "https://www.ticket360.com.br/evento/34199/ingressos-para-festa-do-hawaii/ingressos")).toMatchObject({
+      title: "Festa do Hawaii",
+      eventDate: "2026-11-21T19:30:00-03:00",
+      locationName: "Casa Grande Hotel Resort & Spa",
+      city: "Guarujá",
+      category: "balada",
+      genre: "house_eletronica",
+    });
+    expect(publicSourceKey("https://www.ticket360.com.br/evento/34199/ingressos-para-festa-do-hawaii/ingressos")).toBe("public:ticket360");
+    expect(containsTargetVenue("Casa Grande Hotel Resort & Spa, Guarujá")).toBe(true);
+  });
+
   it("normaliza metadados públicos do Black Pass", () => {
     const html = `<script type="application/ld+json">${JSON.stringify({
       "@type": "Event",

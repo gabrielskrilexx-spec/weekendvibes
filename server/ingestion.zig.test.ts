@@ -2,6 +2,13 @@ import { describe, expect, it } from "vitest";
 import { containsTargetVenue, extractPublicEventLinks, getConfiguredSourceUrls, parseZigEventMetadata, sanitizePublicSourceUrl, ZIG_FETCH_TIMEOUT_MS } from "./ingestion";
 
 describe("Zig Tickets adapter", () => {
+  it("extrai Curvão e Praia Verde a partir do Markdown entregue sob CAPTCHA", () => {
+    const curvao = `# RÉVEILLON CURVÃO 2027 - OPEN BAR\n- **Quando:** quinta-feira, 31 de dezembro de 2026 às 20:00\n- **Onde:** Curvão Surf House, Guarujá, SP\n- **Endereço:** Avenida Miguel Estefno, 2435 - Enseada, Guarujá, SP`;
+    expect(parseZigEventMetadata(curvao, "https://zig.tickets/eventos/reveillon-curvao-2027")).toMatchObject({ title: "RÉVEILLON CURVÃO 2027 - OPEN BAR", eventDate: "2026-12-31T20:00:00-03:00", locationName: "Curvão Surf House", city: "Guarujá", category: "balada", genre: "house_eletronica" });
+    const praia = `# PRAIA VERDE SUMMER - INIMIGOS DA HP\n- **Quando:** sexta-feira, 20 de novembro de 2026 às 17:00\n- **Onde:** Guarujá, SP\n- **Endereço:** Avenida Marechal Deodoro da Fonseca, 773 - Pitangueiras, Guarujá, SP\nPRAIA VERDE BEACH CLUB Música Sunset e experiências`;
+    expect(parseZigEventMetadata(praia, "https://zig.tickets/eventos/praia-verde-summer-inimigos-da-hp")).toMatchObject({ title: "PRAIA VERDE SUMMER - INIMIGOS DA HP", eventDate: "2026-11-20T17:00:00-03:00", locationName: "Praia Verde Beach Club", city: "Guarujá", category: "balada", genre: "house_eletronica" });
+  });
+
   it("discovers internal event routes from the catalog HTML", () => {
     const html = `
       <a href="/eventos/froid-santos"><span>Froid em Santos</span><small>Santos</small></a>

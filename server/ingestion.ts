@@ -371,32 +371,77 @@ function readPriceCents(value: unknown) {
   return Number.isFinite(amount) ? Math.round(amount * 100) : 0;
 }
 
+function parsePortugueseEventDate(value: string) {
+  const months: Record<string, string> = { janeiro: "01", fevereiro: "02", março: "03", abril: "04", maio: "05", junho: "06", julho: "07", agosto: "08", setembro: "09", outubro: "10", novembro: "11", dezembro: "12" };
+  const match = value.match(/(\d{1,2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})(?:\s+às\s+(\d{1,2}):(\d{2}))?/i);
+  if (!match) return "";
+  const month = months[normalizeText(match[2])];
+  if (!month) return "";
+  return `${match[3]}-${month}-${match[1].padStart(2, "0")}T${(match[4] ?? "20").padStart(2, "0")}:${match[5] ?? "00"}:00-03:00`;
+}
+
 export function parseZigEventMetadata(html: string, url: string) {
-  const jsonLd = readJsonLd(html);
+  let jsonLd: Record<string, unknown> | undefined;
+  try {
+    jsonLd = readJsonLd(html);
+  } catch {
+    jsonLd = undefined;
+  }
   const location = jsonLd?.location && typeof jsonLd.location === "object" ? jsonLd.location as Record<string, unknown> : {};
   const address = location.address && typeof location.address === "object" ? location.address as Record<string, unknown> : {};
   const offers = Array.isArray(jsonLd?.offers) ? (jsonLd.offers.find(item => item && typeof item === "object") as Record<string, unknown> | undefined) ?? {} : jsonLd?.offers && typeof jsonLd.offers === "object" ? jsonLd.offers as Record<string, unknown> : {};
   const meta = readMetaTags(html);
   const text = stripHtml(html);
-  const title = typeof jsonLd?.name === "string" ? jsonLd.name.trim() : meta("og:title").trim();
-  const eventDate = typeof jsonLd?.startDate === "string" ? jsonLd.startDate : meta("event:start_time");
+  const sourceText = text.replace(/\s+/g, " ").trim();
+  const title = typeof jsonLd?.name === "string" ? jsonLd.name.trim() : meta("og:title").trim() || html.match(/^#\s+([^\n]+)$/m)?.[1]?.trim() || sourceText.slice(0, 160);
+  const eventDate = typeof jsonLd?.startDate === "string" ? jsonLd.startDate : meta("event:start_time") || parsePortugueseEventDate(sourceText.match(/Quando:\s*([^\n|]+)/i)?.[1] ?? sourceText);
   const locationName = typeof location.name === "string" && location.name.trim()
     ? location.name.trim()
     : typeof jsonLd?.location === "string" && jsonLd.location.trim()
       ? jsonLd.location.trim()
+      : /curv[aã]o\s+surf\s+house/i.test(`${title} ${sourceText} ${url}`)
+        ? "Curvão Surf House"
+        : /praia\s+verde/i.test(`${title} ${sourceText} ${url}`)
+          ? "Praia Verde Beach Club"
       : /osuco/i.test(`${title} ${text} ${url}`)
         ? "Osuco"
         : "";
-  const city = typeof address.addressLocality === "string" ? address.addressLocality.trim() : (/guaruj[aá]/i.test(text) ? "Guarujá" : /santos/i.test(text) ? "Santos" : "");
-  const street = typeof address.streetAddress === "string" ? address.streetAddress : "";
-  const priceCents = readPriceCents(offers.price ?? offers.lowPrice ?? offers.minPrice);
+  const city = typeof address.addressLocality === "string" ? address.addressLocality.trim() : (/guaruj[aá]/i.test(sourceText) ? "Guarujá" : /santos/i.test(sourceText) ? "Santos" : "");
+  const street = typeof address.streetAddress === "string" ? address.streetAddress : sourceText.match(/Endereço:\s*([^|]+)/i)?.[1]?.trim() ?? "";
+  const priceCents = readPriceCents(offers.price ?? offers.lowPrice ?? offers.minPrice) || readPriceCents(sourceText.match(/R\$\s*[\d.,]+/i)?.[0] ?? "");
   const imageUrl = meta("og:image");
-  const sourceText = text.replace(/\s+/g, " ").trim();
   const searchable = normalizeText(`${title} ${String(jsonLd?.description ?? "")} ${sourceText} ${locationName}`);
-  const genre = /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : /house|eletronic|eletrônica|dj|balada|festa/.test(searchable) ? "house_eletronica" : "";
-  const category = /show|festival|concerto|banda/.test(searchable) ? "show" : /balada|festa|dj|boate/.test(searchable) ? "balada" : genre ? "evento_musical" : "";
+  const genre = /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : /house|eletronic|eletrônica|dj|balada|festa|m[uú]sica|music|sunset/.test(searchable) ? "house_eletronica" : "";
+  const category = /show|festival|concerto|banda/.test(searchable) ? "show" : /balada|festa|dj|boate|reveillon|sunset|open\s+bar/.test(searchable) ? "balada" : genre ? "evento_musical" : "";
   if (!title || !eventDate || !city) return undefined;
   return { title, summary: sourceText.slice(0, 4_000), eventDate, locationName, address: street, city, category, genre, priceCents, sourceUrl: url, imageUrl, latitude: "", longitude: "", text: sourceText.slice(0, 16_000) };
+}
+
+function extractTicket360Field(html: string, field: string) {
+  const normalized = html.replace(/\\+"/g, '"');
+  const match = normalized.match(new RegExp(`"${field}"\\s*:\\s*"([^"]*)"`, "i"))?.[1];
+  if (!match) return "";
+  try { return JSON.parse(`"${match.replace(/\\+u0026/g, "&")}"`) as string; } catch { return match.replace(/\\+u0026/g, "&").replace(/\\+"/g, '"'); }
+}
+
+export function parseTicket360EventMetadata(html: string, url: string) {
+  const meta = readMetaTags(html);
+  const $ = load(html, undefined, false);
+  const title = extractTicket360Field(html, "title") || $("h1").first().text().replace(/\s+/g, " ").trim() || meta("og:title").replace(/^.*?·\s*/i, "").trim();
+  const venue = extractTicket360Field(html, "venue");
+  const visibleText = stripHtml(html).replace(/\s+/g, " ").trim();
+  const city = extractTicket360Field(html, "city") || (/guaruj[aá]/i.test(visibleText) ? "Guarujá" : "");
+  const date = extractTicket360Field(html, "date");
+  const doorsTime = extractTicket360Field(html, "doorsTime") || "20h00";
+  const timeMatch = doorsTime.match(/(\d{1,2})(?:h|:)(\d{2})?/i);
+  const eventDate = date && timeMatch ? `${date}T${timeMatch[1].padStart(2, "0")}:${(timeMatch[2] ?? "00").padStart(2, "0")}:00-03:00` : date;
+  const imageUrl = extractTicket360Field(html, "image") || meta("og:image");
+  const address = `${venue}${city ? `, ${city}` : ""}`;
+  const searchable = normalizeText(`${title} ${venue} ${visibleText}`);
+  const genre = /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : "house_eletronica";
+  const category = /show|festival|concerto|banda/.test(searchable) ? "show" : "balada";
+  if (!title || !eventDate || !venue || !city) return undefined;
+  return { title, summary: visibleText.slice(0, 4_000), eventDate, locationName: venue, address, city, category, genre, priceCents: 0, sourceUrl: url, imageUrl, latitude: "", longitude: "", text: visibleText.slice(0, 16_000) };
 }
 
 export const PARQUE_VALONGO_FETCH_TIMEOUT_MS = 20_000;
@@ -886,7 +931,7 @@ type PublicPage = {
   html: string;
   text: string;
   imageUrl: string;
-  adapter?: "blackpass" | "mringressos" | "ingresse" | "sympla" | "weticket" | "zig" | "articket" | "parque-valongo" | "eventos-litoral" | "blue-med" | "generic";
+  adapter?: "blackpass" | "mringressos" | "ingresse" | "sympla" | "weticket" | "ticket360" | "zig" | "articket" | "parque-valongo" | "eventos-litoral" | "blue-med" | "generic";
   adapterError?: string;
   durationMs?: number;
   structured?: Record<string, string | number | undefined> | Array<Record<string, string | number | undefined>>;
@@ -907,6 +952,7 @@ export function publicSourceKey(url: string) {
     if (host.includes("mringressos")) return "public:mringressos";
     if (host.includes("sympla.com.br")) return "public:sympla";
     if (host.includes("weticket.com.br")) return "public:weticket";
+    if (host.includes("ticket360.com.br")) return "public:ticket360";
     if (host.includes("articket")) return "public:articket";
     if (host.endsWith("zig.tickets")) return "public:zig";
   } catch {
@@ -942,6 +988,7 @@ function publicFetchTimeoutMs(url: string) {
   if (sourceKey === "public:articket") return ARTICKET_FETCH_TIMEOUT_MS;
   if (sourceKey === "public:ingresse") return getIngresseFetchTimeoutMs();
   if (sourceKey === "public:sympla") return SYMPLA_FETCH_TIMEOUT_MS;
+  if (sourceKey === "public:ticket360") return SYMPLA_FETCH_TIMEOUT_MS;
   if (sourceKey === "public:zig") return ZIG_FETCH_TIMEOUT_MS;
   if (sourceKey === "public:parque-valongo") return PARQUE_VALONGO_FETCH_TIMEOUT_MS;
   if (sourceKey === "public:eventos-litoral") return EVENTOS_LITORAL_FETCH_TIMEOUT_MS;
@@ -1041,13 +1088,22 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean; signal?
     return { url, html, text: text.slice(0, 16_000), imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter: "sympla", adapterError: structured ? undefined : "Adaptador Sympla não encontrou dados estruturados públicos." };
   }
   if (new URL(url).hostname.endsWith("zig.tickets")) {
-    const response = await fetchExternal(url, { headers: { ...ZIG_REQUEST_HEADERS, referer: "https://zig.tickets/pt-BR" } }, ZIG_FETCH_TIMEOUT_MS, false, options.signal);
+    const response = await fetchExternal(url, { headers: { ...ZIG_REQUEST_HEADERS, accept: "text/markdown,text/html,application/xhtml+xml;q=0.9,*/*;q=0.8", referer: "https://zig.tickets/pt-BR" } }, ZIG_FETCH_TIMEOUT_MS, false, options.signal);
     const html = await readExternalBody(response);
     const structured = parseZigEventMetadata(html, url);
     const meta = readMetaTags(html);
     const text = structured?.text ?? meta("og:description") ?? "";
     if (!text) throw createFetchError("Zig Tickets retornou conteúdo vazio");
     return { url, html, text: text.slice(0, 16_000), imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter: "zig", adapterError: structured ? undefined : "Adaptador Zig não encontrou metadados públicos completos." };
+  }
+  if (new URL(url).hostname.endsWith("ticket360.com.br")) {
+    const response = await fetchExternal(url, { headers: SANTOS_PUBLIC_REQUEST_HEADERS }, SYMPLA_FETCH_TIMEOUT_MS, false, options.signal);
+    const html = await readExternalBody(response);
+    const structured = parseTicket360EventMetadata(html, url);
+    const meta = readMetaTags(html);
+    const text = structured?.text ?? stripHtml(html);
+    if (!text) throw createFetchError("Ticket360 retornou conteúdo vazio");
+    return { url, html, text: text.slice(0, 16_000), imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter: "ticket360", adapterError: structured ? undefined : "Adaptador Ticket360 não encontrou dados estruturados públicos." };
   }
   if (isParqueValongoUrl(url)) {
     const response = await fetchExternal(url, { headers: SANTOS_PUBLIC_REQUEST_HEADERS }, PARQUE_VALONGO_FETCH_TIMEOUT_MS, false, options.signal);
@@ -1101,7 +1157,7 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean; signal?
     const structuredText = Array.isArray(structured) ? structured.map(item => String(item.text ?? "")).join(" ") : structured?.text;
     const normalizedText = structuredText?.slice(0, 8000) ?? text.slice(0, 8000);
     logPublicResponseDiagnostics({ url, status: response.status, contentType: response.headers.get("content-type"), html, text: normalizedText, structured: Boolean(structured), links: extractPublicEventLinks(html, url).length });
-    const adapter = hostname.endsWith("blackpass.com.br") ? "blackpass" : hostname.endsWith("mringressos.com.br") ? "mringressos" : hostname.includes("ingresse") ? "ingresse" : hostname.includes("sympla.com.br") ? "sympla" : hostname.includes("weticket.com.br") ? "weticket" : hostname.endsWith("zig.tickets") ? "zig" : hostname.endsWith("articket.com.br") ? "articket" : "generic";
+    const adapter = hostname.endsWith("blackpass.com.br") ? "blackpass" : hostname.endsWith("mringressos.com.br") ? "mringressos" : hostname.includes("ingresse") ? "ingresse" : hostname.includes("sympla.com.br") ? "sympla" : hostname.includes("weticket.com.br") ? "weticket" : hostname.includes("ticket360.com.br") ? "ticket360" : hostname.endsWith("zig.tickets") ? "zig" : hostname.endsWith("articket.com.br") ? "articket" : "generic";
     const adapterError = (isBlackPassEventUrl(url) || isMrIngressosEventUrl(url)) && !structured ? `Adaptador ${adapter} não encontrou JSON-LD/metadados completos; conteúdo textual encaminhado para a classificação.` : undefined;
     return { url, html, text: normalizedText, imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter, adapterError };
   } catch (error) {
