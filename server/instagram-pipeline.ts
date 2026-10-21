@@ -912,6 +912,10 @@ export async function fetchInstagramPostsDetailed(options: { dryRun?: boolean; s
   try {
     const { startAsyncApifyStoriesRun } = await import("./apify-async");
     const queued = await startAsyncApifyStoriesRun({ trigger: "automatic", targets: apifyTargets });
+    if (!queued.accepted) {
+      console.warn("[Instagram] Apify não despachado; quota guard preservou os resultados Meta", { reason: queued.reason });
+      return { posts: meta.posts, transportFailures: meta.transportFailures, apifyDispatch: "skipped_quota" as const };
+    }
     console.info("[Instagram] Apify Actor dispatched asynchronously", { actorRunId: queued.actorRunId, runId: queued.runId });
     return { posts: meta.posts, transportFailures: meta.transportFailures, apifyDispatch: "queued" as const, apifyRunId: queued.actorRunId, ingestionRunId: queued.runId };
   } catch (error) {

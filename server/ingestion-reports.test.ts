@@ -120,33 +120,34 @@ describe("freshness and source reconciliation", () => {
 });
 
 describe("public ingestion P95 SLA", () => {
-  it("uses a 15 second default for public sources while preserving the Instagram default", () => {
-    expect(DEFAULT_PUBLIC_P95_THRESHOLD_MS).toBe(15_000);
-    expect(getEffectiveSourceP95ThresholdForTest({ kind: "public", p95LatencyThresholdMs: 3_000 })).toBe(15_000);
-    expect(getEffectiveSourceP95ThresholdForTest({ kind: "instagram", p95LatencyThresholdMs: 3_000 })).toBe(3_000);
-    expect(INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS).toBe(30_000);
+  it("separa o limite da API pública do limite dos Crons", () => {
+    expect(DEFAULT_PUBLIC_P95_THRESHOLD_MS).toBe(3_000);
+    expect(getEffectiveSourceP95ThresholdForTest({ kind: "public" })).toBe(3_000);
+    expect(getEffectiveSourceP95ThresholdForTest({ kind: "public", sourceKey: "public:ingresse", p95LatencyThresholdMs: 3_000 })).toBe(40_000);
+    expect(getEffectiveSourceP95ThresholdForTest({ kind: "instagram", sourceKey: "instagram:doloresbarerestaurante", p95LatencyThresholdMs: 3_000 })).toBe(40_000);
+    expect(INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS).toBe(40_000);
     expect(MANUAL_AGENDA_P95_THRESHOLD_MS).toBe(180_000);
-    expect(getEffectiveSourceP95ThresholdForTest({ sourceKey: "instagram:apify:pending" })).toBe(30_000);
+    expect(getEffectiveSourceP95ThresholdForTest({ sourceKey: "instagram:apify:pending" })).toBe(40_000);
     expect(getEffectiveSourceP95ThresholdForTest({ sourceKey: "manual" })).toBe(180_000);
   });
 
-  it("does not alert public sources below the 15 second threshold", () => {
+  it("does not alert public sources below the configured source threshold", () => {
     const runs = [
-      { sourceKey: "public:articket", status: "succeeded", startedAt: "2026-08-22T10:00:00.000Z", durationMs: 10_500 },
-      { sourceKey: "public:articket", status: "succeeded", startedAt: "2026-08-22T09:00:00.000Z", durationMs: 10_200 },
+      { sourceKey: "public:articket", status: "succeeded", startedAt: "2026-08-22T10:00:00.000Z", durationMs: 39_500 },
+      { sourceKey: "public:articket", status: "succeeded", startedAt: "2026-08-22T09:00:00.000Z", durationMs: 39_200 },
     ];
 
-    expect(findConsecutiveP95PerformanceAlertsForTest(runs, new Map([["public:articket", getEffectiveSourceP95ThresholdForTest({ kind: "public", p95LatencyThresholdMs: 3_000 })]]))).toEqual([]);
+    expect(findConsecutiveP95PerformanceAlertsForTest(runs, new Map([["public:articket", getEffectiveSourceP95ThresholdForTest({ kind: "public", sourceKey: "public:articket", p95LatencyThresholdMs: 3_000 })]]))).toEqual([]);
   });
 
-  it("still alerts public sources when two consecutive runs exceed 15 seconds", () => {
-    const threshold = getEffectiveSourceP95ThresholdForTest({ kind: "public", p95LatencyThresholdMs: 3_000 });
+  it("still alerts public sources when two consecutive runs exceed the configured threshold", () => {
+    const threshold = getEffectiveSourceP95ThresholdForTest({ kind: "public", sourceKey: "public:articket", p95LatencyThresholdMs: 3_000 });
     const alerts = findConsecutiveP95PerformanceAlertsForTest([
-      { sourceKey: "public:articket", status: "succeeded", startedAt: "2026-08-22T10:00:00.000Z", durationMs: 16_000 },
-      { sourceKey: "public:articket", status: "succeeded", startedAt: "2026-08-22T09:00:00.000Z", durationMs: 17_000 },
+      { sourceKey: "public:articket", status: "succeeded", startedAt: "2026-08-22T10:00:00.000Z", durationMs: 41_000 },
+      { sourceKey: "public:articket", status: "succeeded", startedAt: "2026-08-22T09:00:00.000Z", durationMs: 42_000 },
     ], new Map([["public:articket", threshold]]));
 
-    expect(alerts[0]).toMatchObject({ sourceKey: "public:articket", thresholdMs: 15_000, consecutiveRuns: 2 });
+    expect(alerts[0]).toMatchObject({ sourceKey: "public:articket", thresholdMs: 40_000, consecutiveRuns: 2 });
   });
 });
 

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   setIngestionRunDetails: vi.fn().mockResolvedValue(true),
   finishIngestionRun: vi.fn().mockResolvedValue(undefined),
   findIngestionRunByApifyActor: vi.fn(),
+  claimApifyDailyRequest: vi.fn().mockResolvedValue({ allowed: true, dateKey: "2026-09-18", requestCount: 1, dailyLimit: 100, persistence: true }),
 }));
 
 vi.mock("./ingestion-reports", () => ({
@@ -17,7 +18,7 @@ vi.mock("./ingestion-reports", () => ({
 }));
 
 vi.mock("./db", () => ({
-  claimApifyDailyRequest: vi.fn().mockResolvedValue({ allowed: true, dateKey: "2026-09-18", requestCount: 1, dailyLimit: 100, persistence: true }),
+  claimApifyDailyRequest: mocks.claimApifyDailyRequest,
   recordOperationalAlert: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -29,6 +30,7 @@ describe("Apify async Stories", () => {
     mocks.startIngestionRun.mockResolvedValue(42);
     mocks.linkIngestionRunToApifyActor.mockResolvedValue(true);
     mocks.setIngestionRunDetails.mockResolvedValue(true);
+    mocks.claimApifyDailyRequest.mockResolvedValue({ allowed: true, dateKey: "2026-09-18", requestCount: 1, dailyLimit: 100, persistence: true });
     process.env.APIFY_API_TOKEN = "test-token";
     process.env.SCHEDULED_TASK_ENDPOINT_BASE = "https://weekendvib-jscaalye.manus.space";
     process.env.INTERNAL_CRON_SECRET = "cron-secret";
@@ -41,7 +43,7 @@ describe("Apify async Stories", () => {
 
     const result = await startAsyncApifyStoriesRun();
 
-    expect(result).toEqual({ runId: 42, actorRunId: "actor-run-1", status: "QUEUED" });
+    expect(result).toEqual({ accepted: true, runId: 42, actorRunId: "actor-run-1", status: "QUEUED" });
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(getConfiguredApifyStoriesActorId()).toBe("zaver.api~instagram-stories-highlights-scraper");
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/v2/acts/zaver.api~instagram-stories-highlights-scraper/runs?");
@@ -49,6 +51,16 @@ describe("Apify async Stories", () => {
     expect(mocks.linkIngestionRunToApifyActor).toHaveBeenCalledWith({ runId: 42, actorRunId: "actor-run-1" });
     expect(mocks.setIngestionRunDetails).toHaveBeenCalledWith(42, expect.objectContaining({ actorRunId: "actor-run-1", datasetId: "dataset-1", status: "QUEUED" }));
     fetchMock.mockRestore();
+  });
+
+  it("encerra com SKIPPED quando a quota diária está esgotada, sem abrir ingestionRun", async () => {
+    mocks.claimApifyDailyRequest.mockResolvedValueOnce({ allowed: false, blockedReason: "daily_limit", dateKey: "2026-10-21", requestCount: 1, dailyLimit: 1, persistence: true });
+
+    const result = await startAsyncApifyStoriesRun({ trigger: "automatic" });
+
+    expect(result).toMatchObject({ accepted: false, status: "SKIPPED", reason: "budget_guard" });
+    expect(mocks.startIngestionRun).not.toHaveBeenCalled();
+    expect(mocks.finishIngestionRun).not.toHaveBeenCalled();
   });
 
   it("retorna diagnóstico sanitizado quando o Actor público não existe", async () => {
