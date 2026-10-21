@@ -259,6 +259,9 @@ export function buildInstagramScraperPayload(targets: ReadonlyArray<{ username: 
 
 /** Input contract for the dedicated Stories Actor; kept separate from the profile/posts Actor contract. */
 export const DEFAULT_APIFY_ACTOR_MAX_RUNTIME_SECS = 45;
+export const DEFAULT_APIFY_SCRAPE_TYPE = "stories" as const;
+export const DEFAULT_APIFY_MAX_HIGHLIGHTS = 1;
+export const MAX_APIFY_MEDIA_PER_PROFILE = 5;
 export function getApifyActorMaxRuntimeSecs() {
   const configured = Number.parseInt(process.env.APIFY_ACTOR_MAX_RUNTIME_SECS ?? "", 10);
   if (!Number.isFinite(configured)) return DEFAULT_APIFY_ACTOR_MAX_RUNTIME_SECS;
@@ -268,8 +271,10 @@ export function getApifyActorMaxRuntimeSecs() {
 export function buildInstagramStoriesScraperPayload(targets: ReadonlyArray<{ username: string }>) {
   return {
     targets: targets.map(target => target.username),
-    scrapeType: "both" as const,
-    maxHighlights: 2,
+    // Stories expiram em aproximadamente 24h; não varrer Highlights por padrão.
+    // APIFY_SCRAPE_TYPE=both é um opt-in operacional explícito para campanhas.
+    scrapeType: process.env.APIFY_SCRAPE_TYPE === "both" ? "both" as const : DEFAULT_APIFY_SCRAPE_TYPE,
+    maxHighlights: DEFAULT_APIFY_MAX_HIGHLIGHTS,
     onlyNew: true,
   } as const;
 }
@@ -337,18 +342,25 @@ export async function persistDiscoverableInstagramLinks(posts: ReadonlyArray<Ins
 export function limitInstagramStoriesForCost(posts: InstagramPost[], now = new Date()) {
   const cutoff = now.getTime() - 24 * 60 * 60 * 1000;
   const highlightCount = new Map<string, number>();
+  const mediaCount = new Map<string, number>();
   const sorted = [...posts].sort((a, b) => (postDate(b)?.getTime() ?? 0) - (postDate(a)?.getTime() ?? 0));
   return sorted.filter(post => {
     const handle = String(post.ownerUsername ?? post.username ?? "").replace(/^@/, "").toLowerCase();
+    const count = mediaCount.get(handle) ?? 0;
+    if (count >= MAX_APIFY_MEDIA_PER_PROFILE) return false;
     if (post.mediaType === "highlight") {
-      const count = highlightCount.get(handle) ?? 0;
-      if (count >= 2) return false;
-      highlightCount.set(handle, count + 1);
+      const highlights = highlightCount.get(handle) ?? 0;
+      if (highlights >= DEFAULT_APIFY_MAX_HIGHLIGHTS) return false;
+      highlightCount.set(handle, highlights + 1);
+      mediaCount.set(handle, count + 1);
       return true;
     }
     if (post.mediaType !== "story") return false;
     const takenAt = postDate(post)?.getTime();
-    return typeof takenAt === "number" && takenAt >= cutoff && takenAt <= now.getTime();
+    const isRecent = typeof takenAt === "number" && takenAt >= cutoff && takenAt <= now.getTime();
+    if (!isRecent) return false;
+    mediaCount.set(handle, count + 1);
+    return true;
   });
 }
 
