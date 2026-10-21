@@ -22,6 +22,7 @@ const DEFAULT_SOURCE_URLS = [
   "https://www.sympla.com.br/eventos/santos-sp",
   "https://www.sympla.com.br/eventos/guaruja-sp",
   "https://www.weticket.com.br/",
+  "https://weticket.com.br/ap-22-edio-helloween-pedro-qua",
   "https://zig.tickets/pt-BR",
   "http://www.turismosantos.com.br/pt-br/tags/parque-valongo",
   "https://articket.com.br/o/58/eventos-litoral",

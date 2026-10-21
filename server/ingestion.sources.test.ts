@@ -25,6 +25,10 @@ describe("ingestion source configuration", () => {
       if (focused !== undefined) process.env.INGESTION_FOCUS_URLS = focused;
     }
   });
+
+  it("mantém a página específica do APÊ 22 no catálogo WeTicket", () => {
+    expect(getConfiguredSourceUrls()).toContain("https://weticket.com.br/ap-22-edio-helloween-pedro-qua");
+  });
 });
 
 
