@@ -191,10 +191,15 @@ async function getEnabledConfiguredSourceUrls() {
   const configuredUrls = getConfiguredSourceUrls();
   try {
     const sources = await listIngestionSources();
+    const enabledDatabaseUrls = sources
+      .filter(source => source.kind === "public" && source.isEnabled === 1)
+      .map(source => sanitizePublicSourceUrl(source.url))
+      .filter(Boolean);
+    const allConfiguredUrls = Array.from(new Set([...configuredUrls, ...enabledDatabaseUrls]));
     const disabledSourceKeys = new Set(
       sources.filter(source => source.kind === "public" && source.isEnabled !== 1).map(source => source.sourceKey),
     );
-    return filterDisabledPublicSourceUrls(configuredUrls, disabledSourceKeys);
+    return filterDisabledPublicSourceUrls(allConfiguredUrls, disabledSourceKeys);
   } catch (error) {
     console.warn("[Ingestion] Failed to read source enablement; preserving configured URLs", sanitizeFetchFailure(error));
     return configuredUrls;
