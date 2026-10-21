@@ -30,8 +30,29 @@ describe("Zig Tickets adapter", () => {
       eventDate: "2026-10-10T22:00:00-03:00",
       locationName: "Arena Club",
       city: "Santos",
+      category: "",
+      genre: "",
       priceCents: 8990,
     });
+  });
+
+  it("classifica o INSIDE 001 do Curvão como balada eletrônica", () => {
+    const html = `<script type="application/ld+json">${JSON.stringify({
+      "@type": "Event",
+      name: "Inside 001",
+      startDate: "2026-10-23T20:00:00-03:00",
+      location: { name: "Curvão Surf House", address: { streetAddress: "Avenida Miguel Estefno", addressLocality: "Guarujá" } },
+      description: "O verão começa mais cedo. Uma noite de música, praia e muita energia com DJs.",
+      offers: { price: 15 },
+    })}</script>`;
+    expect(parseZigEventMetadata(html, "https://zig.tickets/eventos/inside-001")).toMatchObject({
+      title: "Inside 001",
+      locationName: "Curvão Surf House",
+      city: "Guarujá",
+      category: "balada",
+      genre: "house_eletronica",
+    });
+    expect(containsTargetVenue("Curvão Surf House, Guarujá")).toBe(true);
   });
 
   it("normaliza Osuco Black And White com data, Santos e menor preço público", () => {

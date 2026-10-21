@@ -382,8 +382,11 @@ export function parseZigEventMetadata(html: string, url: string) {
   const priceCents = readPriceCents(offers.price ?? offers.lowPrice ?? offers.minPrice);
   const imageUrl = meta("og:image");
   const sourceText = text.replace(/\s+/g, " ").trim();
+  const searchable = normalizeText(`${title} ${String(jsonLd?.description ?? "")} ${sourceText} ${locationName}`);
+  const genre = /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : /house|eletronic|eletrônica|dj|balada|festa/.test(searchable) ? "house_eletronica" : "";
+  const category = /show|festival|concerto|banda/.test(searchable) ? "show" : /balada|festa|dj|boate/.test(searchable) ? "balada" : genre ? "evento_musical" : "";
   if (!title || !eventDate || !city) return undefined;
-  return { title, eventDate, locationName, address: street, city, priceCents, sourceUrl: url, imageUrl, text: sourceText.slice(0, 16_000) };
+  return { title, summary: sourceText.slice(0, 4_000), eventDate, locationName, address: street, city, category, genre, priceCents, sourceUrl: url, imageUrl, latitude: "", longitude: "", text: sourceText.slice(0, 16_000) };
 }
 
 export const PARQUE_VALONGO_FETCH_TIMEOUT_MS = 20_000;
