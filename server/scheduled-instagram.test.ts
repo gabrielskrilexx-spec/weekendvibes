@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "./_core/sdk";
 import { ingestInstagramHandler } from "./scheduled-instagram";
 import { hasRegionalHashtag, runInstagramPipeline, InstagramIntegrationFailure } from "./instagram-pipeline";
-import { archiveExpiredSoldOutEvents, claimApifyDailyRequest, saveEvent } from "./db";
+import { archiveExpiredSoldOutEvents, claimApifyDailyRequest, listActiveLocationAliasValues, saveEvent } from "./db";
 import { handleIngestionFailureAlert } from "./ingestion-failure-alerts";
 
 vi.mock("./ingestion-failure-alerts", () => ({
@@ -13,7 +13,7 @@ vi.mock("./db", () => ({
   INSTAGRAM_AGENDA_SOURCE_TYPE: "instagram_agenda_weekend",
   getDb: vi.fn().mockResolvedValue(null),
   archiveExpiredSoldOutEvents: vi.fn().mockResolvedValue(0),
-  listActiveLocationAliasValues: vi.fn().mockResolvedValue([]),
+  listActiveLocationAliasValues: vi.fn().mockResolvedValue(["moby house", "ativa house"]),
   listEnabledInstagramSources: vi.fn().mockResolvedValue([]),
   markIngestionSourceResult: vi.fn().mockResolvedValue(undefined),
   saveEvent: vi.fn().mockResolvedValue(undefined),
@@ -28,6 +28,7 @@ vi.mock("./_core/notification", () => ({
 describe("scheduled Instagram ingestion", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.mocked(listActiveLocationAliasValues).mockResolvedValue(["moby house", "ativa house"]);
     vi.mocked(claimApifyDailyRequest).mockResolvedValue({ allowed: true, dateKey: "2026-09-18", requestCount: 1, dailyLimit: 100, persistence: false });
     vi.mocked(saveEvent).mockClear();
     vi.mocked(archiveExpiredSoldOutEvents).mockClear();

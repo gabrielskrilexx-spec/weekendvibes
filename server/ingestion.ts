@@ -29,52 +29,6 @@ const DEFAULT_SOURCE_URLS = [
   "https://santosconventioncenter.com.br/agenda-2026/",
 ];
 
-export const TARGET_VENUES = [
-  "vallum garden",
-  "valluns garden",
-  "moby dick",
-  "moby house",
-  "ativa house",
-  "casa 412",
-  "casa412",
-  "verilonguinho",
-  "meu lugar",
-  "goat club",
-  "goat dining club",
-  "o beco",
-  "o beco santos",
-  "o beco bar",
-  "laroc club guaruja",
-  "laroc guaruja",
-  "lucky scope",
-  "curvão surf house",
-  "curvao surf house",
-  "curvão",
-  "curvao",
-  "guarujá golf club",
-  "praia verde beach club",
-  "praia verde",
-  "casa grande hotel resort",
-  "casa grande hotel",
-  "praiô",
-  "praio",
-  "flamingos",
-  "flamingo",
-  "projac bar",
-  "boteco almare",
-  "dolores restaurante e bar",
-  "dolores bar e restaurante",
-  "arena jequitimar",
-  "parque valongo",
-  "armazém 3",
-  "armazem 3",
-  "arcos do valongo",
-  "blue med convention center",
-  "santos convention center",
-  "mendes convention center",
-  "osuco",
-] as const;
-
 const normalizeSlug = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 const normalizeText = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 const stripHtml = (value: string) => {
@@ -208,7 +162,7 @@ async function getEnabledConfiguredSourceUrls() {
 
 export function containsTargetVenue(value: string, aliases: string[] = []) {
   const normalized = normalizeText(value);
-  return [...TARGET_VENUES, ...aliases].some(venue => normalized.includes(normalizeText(venue)));
+  return aliases.some(venue => normalized.includes(normalizeText(venue)));
 }
 
 export function sanitizePublicSourceUrl(input: string) {

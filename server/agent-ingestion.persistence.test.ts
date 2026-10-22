@@ -5,7 +5,7 @@ const { saveEventMock, invokeLLMMock } = vi.hoisted(() => ({ saveEventMock: vi.f
 
 vi.mock("./db", async () => {
   const actual = await vi.importActual<typeof import("./db")>("./db");
-  return { ...actual, saveEvent: saveEventMock };
+  return { ...actual, saveEvent: saveEventMock, listActiveLocationAliasValues: vi.fn().mockResolvedValue(["curvao surf house", "guaruja golf club", "laroc club guaruja"]) };
 });
 vi.mock("./_core/llm", () => ({ invokeLLM: invokeLLMMock }));
 vi.mock("./manual-review", () => ({

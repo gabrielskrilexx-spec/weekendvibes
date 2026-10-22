@@ -170,7 +170,7 @@ describe("Instagram weekend pipeline", () => {
       priceCents: 0,
       imageUrl: "",
       sourceUrl: "https://www.instagram.com/p/abc123/",
-    }, [], new Date("2026-08-20T12:00:00.000Z"))).toEqual([]);
+    }, ["moby house"], new Date("2026-08-20T12:00:00.000Z"))).toEqual([]);
   });
 
   it("accepts only posts from the last five days", () => {

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { invokeLLM } from "./_core/llm";
-import { assertEventDateIsCurrentOrFuture, saveEvent } from "./db";
+import { assertEventDateIsCurrentOrFuture, listActiveLocationAliasValues, saveEvent } from "./db";
 import { containsTargetVenue } from "./ingestion";
 import { buildManualReviewInputFromAgentEvent, persistManualReviewEvents } from "./manual-review";
 
@@ -69,6 +69,7 @@ export async function ingestAgentDocuments(documents: AgentEventDocument[]): Pro
     response_format: { type: "json_schema", json_schema: { name: "event_batch", strict: true, schema: { type: "object", properties: { events: { type: "array", items: { type: "object", properties: { title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string" }, category: { type: "string", enum: ["show", "balada", "evento_musical", ""] }, genre: { type: "string", enum: ["funk", "house_eletronica", "samba_pagode", "rap_trap", ""] }, priceCents: { type: "integer" }, sourceUrl: { type: "string" }, imageUrl: { type: "string" }, latitude: { type: "string" }, longitude: { type: "string" } }, required: ["title", "summary", "eventDate", "locationName", "address", "city", "category", "genre", "priceCents", "sourceUrl", "imageUrl", "latitude", "longitude"], additionalProperties: false } } }, required: ["events"], additionalProperties: false } } },
   });
   const payload = JSON.parse(String(structured.choices?.[0]?.message?.content ?? "{\"events\":[]}")) as { events: Array<Record<string, string | number>> };
+  const activeAliases = await listActiveLocationAliasValues();
   let imported = 0;
   const pendingReview: AgentReviewEvent[] = [];
   for (const event of payload.events) {
@@ -80,7 +81,7 @@ export async function ingestAgentDocuments(documents: AgentEventDocument[]): Pro
     const locationName = String(event.locationName ?? "").trim();
     const sourceUrl = String(event.sourceUrl ?? "");
     const hasCoreFields = Boolean(title && !Number.isNaN(date.getTime()) && locationName);
-    const eligibleForPublish = hasCoreFields && (city === "Santos" || city === "Guarujá") && containsTargetVenue(`${locationName} ${event.address ?? ""}`) && ["show", "balada", "evento_musical"].includes(category) && ["funk", "house_eletronica", "samba_pagode", "rap_trap"].includes(genre);
+    const eligibleForPublish = hasCoreFields && (city === "Santos" || city === "Guarujá") && containsTargetVenue(`${locationName} ${event.address ?? ""}`, activeAliases) && ["show", "balada", "evento_musical"].includes(category) && ["funk", "house_eletronica", "samba_pagode", "rap_trap"].includes(genre);
     if (!eligibleForPublish) {
       const review = reviewEventFromRaw(event, sourceUrl, hasCoreFields ? "revisao_manual_campos_parciais" : "extracao_incompleta");
       if (review) pendingReview.push(review);

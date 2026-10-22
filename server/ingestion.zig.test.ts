@@ -59,7 +59,7 @@ describe("Zig Tickets adapter", () => {
       category: "balada",
       genre: "house_eletronica",
     });
-    expect(containsTargetVenue("Curvão Surf House, Guarujá")).toBe(true);
+    expect(containsTargetVenue("Curvão Surf House, Guarujá", ["curvao surf house"])).toBe(true);
   });
 
   it("normaliza Osuco Black And White com data, Santos e menor preço público", () => {
@@ -93,11 +93,11 @@ describe("Zig Tickets adapter", () => {
 
   it("remove rastreadores e aceita aliases oficiais da allowlist", () => {
     expect(sanitizePublicSourceUrl("https://zig.tickets/eventos/osuco-black-and-white?utm_source=x&fbclid=y#section")).toBe("https://zig.tickets/eventos/osuco-black-and-white");
-    expect(containsTargetVenue("O Beco Bar, Santos")).toBe(true);
-    expect(containsTargetVenue("O Beco Santos")).toBe(true);
-    expect(containsTargetVenue("Praia Verde Beach Club, Guarujá")).toBe(true);
-    expect(containsTargetVenue("Praia Verde, Guarujá")).toBe(true);
-    expect(containsTargetVenue("Casa Grande Hotel Resort, Guarujá")).toBe(true);
-    expect(containsTargetVenue("Casa Grande Hotel, Guarujá")).toBe(true);
+    expect(containsTargetVenue("O Beco Bar, Santos", ["o beco bar"])).toBe(true);
+    expect(containsTargetVenue("O Beco Santos", ["o beco santos"])).toBe(true);
+    expect(containsTargetVenue("Praia Verde Beach Club, Guarujá", ["praia verde beach club"])).toBe(true);
+    expect(containsTargetVenue("Praia Verde, Guarujá", ["praia verde"])).toBe(true);
+    expect(containsTargetVenue("Casa Grande Hotel Resort, Guarujá", ["casa grande hotel resort"])).toBe(true);
+    expect(containsTargetVenue("Casa Grande Hotel, Guarujá", ["casa grande hotel"])).toBe(true);
   });
 });

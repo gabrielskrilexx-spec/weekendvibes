@@ -13,7 +13,7 @@ describe("adapters de ticketeiras oficiais", () => {
       genre: "house_eletronica",
     });
     expect(publicSourceKey("https://www.ticket360.com.br/evento/34199/ingressos-para-festa-do-hawaii/ingressos")).toBe("public:ticket360");
-    expect(containsTargetVenue("Casa Grande Hotel Resort & Spa, Guarujá")).toBe(true);
+    expect(containsTargetVenue("Casa Grande Hotel Resort & Spa, Guarujá", ["casa grande hotel resort"])).toBe(true);
   });
 
   it("normaliza metadados públicos do Black Pass", () => {
@@ -89,7 +89,7 @@ describe("adapters de ticketeiras oficiais", () => {
   it("normaliza evento WeTicket do O Beco com data em português e lote", () => {
     const html = `<title>APÊ 22 — Especial Halloween</title><meta property="og:image" content="https://cdn.weticket.com.br/ape22.jpg"><main>APÊ 22 — Especial Halloween O BECO, SANTOS, SP Sexta-feira, 30 de outubro de 2026, às 22:00 horas. Ingressos 1º lote R$ 45,00</main>`;
     expect(parseWeTicketEventMetadata(html, "https://www.weticket.com.br/ape-22-especial-halloween")).toMatchObject({ title: "APÊ 22 — Especial Halloween", eventDate: "2026-10-30T22:00:00-03:00", locationName: "O BECO", city: "Santos", priceCents: 4500, sourceUrl: "https://www.weticket.com.br/ape-22-especial-halloween" });
-    expect(containsTargetVenue("O BECO, Santos")).toBe(true);
+    expect(containsTargetVenue("O BECO, Santos", ["o beco"])).toBe(true);
     expect(WETICKET_FETCH_TIMEOUT_MS).toBe(20_000);
   });
 
@@ -109,9 +109,9 @@ describe("adapters de ticketeiras oficiais", () => {
   });
 
   it("aceita apenas venues da allowlist oficial", () => {
-    expect(containsTargetVenue("GOAT CLUB, Santos")).toBe(true);
-    expect(containsTargetVenue("Dolores Bar e Restaurante - Guarujá")).toBe(true);
-    expect(containsTargetVenue("Sede Vicente - Guarujá")).toBe(false);
+    expect(containsTargetVenue("GOAT CLUB, Santos", ["goat club"])).toBe(true);
+    expect(containsTargetVenue("Dolores Bar e Restaurante - Guarujá", ["dolores bar e restaurante"])).toBe(true);
+    expect(containsTargetVenue("Sede Vicente - Guarujá", ["goat club", "dolores bar e restaurante"])).toBe(false);
   });
 
   it("normaliza evento musical estruturado do Parque Valongo", () => {
@@ -142,7 +142,7 @@ describe("adapters de ticketeiras oficiais", () => {
 
   it("normaliza evento Articket associado ao produtor Eventos Litoral", () => {
     const html = `<script type="application/ld+json">${JSON.stringify({ "@type": "Event", name: "Feijuca no Arcos", startDate: "2030-11-28T20:00:00-03:00", location: { name: "Arcos do Valongo", address: { addressLocality: "Santos", streetAddress: "Rua Antônio Prado, s/nº" } }, offers: { price: "50.00" } })}</script><meta property="og:image" content="https://cdn.example/feijuca.jpg"><main>Feijuca no Arcos Santos samba pagode</main>`;
-    expect(containsTargetVenue("Arcos do Valongo, Santos")).toBe(true);
+    expect(containsTargetVenue("Arcos do Valongo, Santos", ["arcos do valongo"])).toBe(true);
     expect(parseArticketEventMetadata(html, "https://articket.com.br/e/7163/feijuca-no-arcos-tiee")).toMatchObject({ title: "Feijuca no Arcos", eventDate: "2030-11-28T20:00:00-03:00", locationName: "Arcos do Valongo", city: "Santos", priceCents: 5000, category: "evento_musical", genre: "samba_pagode" });
     expect(publicSourceKey("https://articket.com.br/e/7163/feijuca-no-arcos-tiee")).toBe("public:articket");
   });
@@ -156,8 +156,8 @@ describe("adapters de ticketeiras oficiais", () => {
     const parsed = parseBlueMedAgendaEvents(html, "https://santosconventioncenter.com.br/agenda-2026/");
     expect(parsed).toHaveLength(1);
     expect(parsed[0]).toMatchObject({ title: "SHOW PAGODIN COM BELO", city: "Santos", locationName: "Santos Convention Center", genre: "samba_pagode", sourceUrl: "https://santosconventioncenter.com.br/agenda-2026/" });
-    expect(containsTargetVenue("Blue Med Convention Center, Santos")).toBe(true);
-    expect(containsTargetVenue("Mendes Convention Center, Santos")).toBe(true);
+    expect(containsTargetVenue("Blue Med Convention Center, Santos", ["blue med convention center"])).toBe(true);
+    expect(containsTargetVenue("Mendes Convention Center, Santos", ["mendes convention center"])).toBe(true);
     expect(publicSourceKey("https://santosconventioncenter.com.br/agenda-2026/")).toBe("public:blue-med");
     expect(BLUE_MED_FETCH_TIMEOUT_MS).toBe(20_000);
   });

@@ -110,10 +110,10 @@ describe("public event discovery", () => {
     const { extractPublicEventLinks, containsTargetVenue } = await import("./ingestion");
     const html = '<a href="/e/123/show-verilonguinho">Show</a><a href="/eventos/456/moby-house">Moby</a><a href="https://example.com/outro">Outro</a>';
     expect(extractPublicEventLinks(html, "https://articket.com.br/")).toEqual(["https://articket.com.br/e/123/show-verilonguinho"]);
-    expect(containsTargetVenue("Moby Dick, Santos - SP")).toBe(true);
-    expect(containsTargetVenue("Laroc Club Guarujá")).toBe(true);
-    expect(containsTargetVenue("Guarujá Golf Club")).toBe(true);
-    expect(containsTargetVenue("Arena desconhecida, Santos - SP")).toBe(false);
+    expect(containsTargetVenue("Moby Dick, Santos - SP", ["moby dick"])).toBe(true);
+    expect(containsTargetVenue("Laroc Club Guarujá", ["laroc club guaruja"])).toBe(true);
+    expect(containsTargetVenue("Guarujá Golf Club", ["guaruja golf club"])).toBe(true);
+    expect(containsTargetVenue("Arena desconhecida, Santos - SP", ["moby dick", "laroc club guaruja", "guaruja golf club"])).toBe(false);
     expect(containsTargetVenue("Flamingo Music Bar, Santos - SP", ["flamingo music bar"])).toBe(true);
     expect(containsTargetVenue("Arena desconhecida, Santos - SP", ["Outro local"])).toBe(false);
   });

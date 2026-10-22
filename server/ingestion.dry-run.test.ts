@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./db", () => ({
   saveEvent: mocks.saveEvent,
-  listActiveLocationAliasValues: vi.fn().mockResolvedValue([]),
+  listActiveLocationAliasValues: vi.fn().mockResolvedValue(["vallum garden"]),
+  listIngestionSources: vi.fn().mockResolvedValue([]),
   assertEventDateIsCurrentOrFuture: vi.fn(),
   getIngestionPayloadCache: vi.fn().mockResolvedValue(null),
   saveIngestionPayloadCache: vi.fn().mockResolvedValue(undefined),
