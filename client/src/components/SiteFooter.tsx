@@ -8,7 +8,7 @@ export default function SiteFooter() {
           <a href="/" aria-label="WeekendVibes" className="group inline-flex text-xl font-black tracking-[-0.06em] text-zinc-900 transition-[opacity,filter] duration-200 hover:opacity-90 hover:drop-shadow-[0_0_12px_rgba(251,146,60,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 dark:text-white dark:hover:drop-shadow-[0_0_12px_rgba(253,186,116,0.35)]">
             <span className="text-orange-700 dark:text-orange-200">W</span>eekend<span className="text-orange-700 dark:text-orange-200">V</span>ibes<span className="text-yellow-700 dark:text-yellow-200">.</span>
           </a>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-500">Descubra o que vai rolar na Baixada Santista.</p>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-500">Contato: <a href="mailto:weekendvibes.of@gmail.com" className="transition hover:text-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">weekendvibes.of@gmail.com</a></p>
         </div>
         <nav aria-label="Links legais" className="flex flex-wrap gap-x-5 gap-y-2">
           <a href="/legal#privacidade" className="transition hover:text-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">Política de Privacidade</a>
