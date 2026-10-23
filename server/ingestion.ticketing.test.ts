@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BLACKPASS_FETCH_TIMEOUT_MS, BLUE_MED_FETCH_TIMEOUT_MS, containsTargetVenue, EVENTOS_LITORAL_FETCH_TIMEOUT_MS, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, PARQUE_VALONGO_FETCH_TIMEOUT_MS, parseArticketEventMetadata, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseBlueMedAgendaEvents, parseEventosLitoralOrganizerMetadata, parseMrIngressosEventMetadata, parseParqueValongoEventMetadata, parseSymplaEventMetadata, parseTicket360EventMetadata, parseTicketingEventMetadata, parseWeTicketEventMetadata, publicSourceKey, SYMPLA_FETCH_TIMEOUT_MS, WETICKET_FETCH_TIMEOUT_MS } from "./ingestion";
+import { BLACKPASS_FETCH_TIMEOUT_MS, BLUE_MED_FETCH_TIMEOUT_MS, containsTargetVenue, discoverArticketEventLinks, EVENTOS_LITORAL_FETCH_TIMEOUT_MS, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, PARQUE_VALONGO_FETCH_TIMEOUT_MS, parseArticketEventMetadata, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseBlueMedAgendaEvents, parseEventosLitoralOrganizerMetadata, parseMrIngressosEventMetadata, parseParqueValongoEventMetadata, parseSymplaEventMetadata, parseTicket360EventMetadata, parseTicketingEventMetadata, parseWeTicketEventMetadata, publicSourceKey, SYMPLA_FETCH_TIMEOUT_MS, WETICKET_FETCH_TIMEOUT_MS } from "./ingestion";
 
 describe("adapters de ticketeiras oficiais", () => {
   it("normaliza o payload embutido do Ticket360 e classifica Casa Grande", () => {
@@ -149,6 +149,14 @@ describe("adapters de ticketeiras oficiais", () => {
   it("captura dinamicamente a virada de lote da página Articket", () => {
     const html = `<script type="application/ld+json">${JSON.stringify({ "@type": "Event", name: "O Encontro — Edição Sunset", startDate: "2030-12-12T18:00:00-03:00", location: { name: "Parque Valongo", address: { addressLocality: "Santos", streetAddress: "Rua Antônio Prado" } }, offers: { name: "2º Lote", price: "75.00", description: "Ingresso inteiro" } })}</script><main>O Encontro — Edição Sunset 2º Lote R$ 75,00 Parque Valongo Santos</main>`;
     expect(parseArticketEventMetadata(html, "https://articket.com.br/e/7160/o-encontro")).toMatchObject({ title: "O Encontro — Edição Sunset", priceCents: 7500, priceNote: "2º Lote — Ingresso inteiro", locationName: "Parque Valongo", city: "Santos" });
+  });
+  it("classifica Sub - Plants e corrige Verilonguinho para Santos", () => {
+    const html = `<script type="application/ld+json">${JSON.stringify({ "@type": "Event", name: "Sub - Plants | Halloween", startDate: "2026-10-23T23:00:00-03:00", location: { name: "Verilonguinho", address: { addressLocality: "São Paulo", streetAddress: "Rua do Comércio, 72" } }, offers: { price: "70.00" } })}</script><main>Sub - Plants Halloween Plants Santos Verilonguinho Santos open bar Halloween</main>`;
+    expect(parseArticketEventMetadata(html, "https://articket.com.br/e/7358/sub-plants-halloween")).toMatchObject({ locationName: "Verilonguinho", city: "Santos", category: "balada", genre: "house_eletronica", priceCents: 7000 });
+  });
+  it("descobre apenas cards Articket de Santos ou Guarujá com venue permitido", () => {
+    const html = `<article><a href="/e/7358/sub-plants-halloween">Sub Plants Verilonguinho Santos</a></article><article><a href="/e/9000/evento-fora">Evento em São Paulo</a></article>`;
+    expect(discoverArticketEventLinks(html, "https://articket.com.br/", ["verilonguinho"])).toEqual(["https://articket.com.br/e/7358/sub-plants-halloween"]);
   });
 
   it("extrai somente eventos musicais futuros elegíveis da agenda Blue Med", () => {

@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { load } from "cheerio";
 import { invokeLLM } from "./_core/llm";
-import { assertEventDateIsCurrentOrFuture, getIngestionPayloadCache, listActiveLocationAliasValues, listIngestionSources, recordOperationalAlert, saveEvent, saveIngestionPayloadCache } from "./db";
+import { assertEventDateIsCurrentOrFuture, getIngestionPayloadCache, listActiveLocationAliasValues, listIngestionSources, recordOperationalAlert, saveEvent, saveIngestionPayloadCache, upsertDiscoveredArticketSource } from "./db";
 import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
 import { fetchExternal, isSandboxRestrictedError, readExternalBody, sanitizeExternalFetchError } from "./external-fetch";
 import { parsePayloadJsonColumn } from "./json-contracts";
@@ -217,7 +217,7 @@ export function areFuzzyDuplicateEvents(left: { title: string; eventDate: Date; 
 
 export function normalizeVenueCity(locationName: string, address: string, city: string) {
   const venue = normalizeText(`${locationName} ${address}`);
-  if ((/vallum|valluns/.test(venue) && /garden/.test(venue)) || /santos convention center|blue med convention center|mendes convention center/.test(venue)) return "Santos";
+  if ((/vallum|valluns/.test(venue) && /garden/.test(venue)) || /verilonguinho|santos convention center|blue med convention center|mendes convention center/.test(venue)) return "Santos";
   return city;
 }
 
@@ -266,6 +266,29 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
     }
   });
   $("script").each((_, script) => collectEmbeddedPath($(script).html() ?? ""));
+  return Array.from(links).slice(0, 60);
+}
+
+export function discoverArticketEventLinks(html: string, baseUrl: string, aliases: string[] = []) {
+  const absoluteBase = new URL(baseUrl);
+  if (!absoluteBase.hostname.endsWith("articket.com.br")) return [];
+  const $ = load(html, undefined, false);
+  const links = new Set<string>();
+  $("a[href]").each((_, anchor) => {
+    try {
+      const href = $(anchor).attr("href");
+      if (!href) return;
+      const url = new URL(href, absoluteBase);
+      if (url.origin !== absoluteBase.origin || !/^\/e\/[A-Za-z0-9_-]+/.test(url.pathname)) return;
+      const cardText = $(anchor).closest("article, li, [class*='event'], [class*='card'], section").first().text().replace(/\s+/g, " ").trim() || $(anchor).parent().text().replace(/\s+/g, " ").trim();
+      const searchable = normalizeText(cardText);
+      const venueMatch = aliases.some(alias => searchable.includes(normalizeText(alias)));
+      const cityMatch = /santos|guaruja/.test(searchable);
+      if (venueMatch || cityMatch) links.add(sanitizePublicSourceUrl(url.toString()));
+    } catch {
+      // Ignore malformed Articket links.
+    }
+  });
   return Array.from(links).slice(0, 60);
 }
 
@@ -795,8 +818,8 @@ export function parseArticketEventMetadata(html: string, url: string) {
   if (!parsed) return undefined;
   if (!parsed.title.trim() || !parsed.eventDate.trim() || !parsed.locationName.trim() || !parsed.city.trim()) return undefined;
   const searchable = normalizeText(`${parsed.title} ${parsed.text} ${parsed.locationName}`);
-  const genre = /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : /show|festival|m[uú]sica|dj|festa|balada|sertanejo|arrocha|pagode/.test(searchable) ? "house_eletronica" : "";
-  const category = /show|festival|concerto|banda/.test(searchable) ? "show" : genre ? "evento_musical" : "";
+  const genre = /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : /show|festival|m[uú]sica|dj|festa|balada|sertanejo|arrocha|pagode|halloween|open bar|plants/.test(searchable) ? "house_eletronica" : "";
+  const category = /show|festival|concerto|banda/.test(searchable) ? "show" : /samba|pagode/.test(searchable) ? "evento_musical" : genre ? "balada" : "";
   return { ...parsed, summary: parsed.text.slice(0, 4_000), category, genre };
 }
 
@@ -1127,7 +1150,7 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean; signal?
   }
 }
 
-async function discoverCandidatePages(options: IngestionPipelineOptions = {}) {
+async function discoverCandidatePages(options: IngestionPipelineOptions = {}, activeAliases: string[] = []) {
   const configuredBases = await getEnabledConfiguredSourceUrls();
   const bases = options.sourceKey
     ? configuredBases.filter(url => options.sourceKey === "public" || publicSourceKey(url) === options.sourceKey)
@@ -1140,6 +1163,13 @@ async function discoverCandidatePages(options: IngestionPipelineOptions = {}) {
     if (result.status !== "fulfilled") continue;
     const baseUrl = crawlBases[index];
     for (const link of extractPublicEventLinks(result.value.html, result.value.url)) discovered.add(link);
+    if (publicSourceKey(baseUrl) === "public:articket") {
+      const articketLinks = discoverArticketEventLinks(result.value.html, result.value.url, activeAliases);
+      for (const link of articketLinks) {
+        discovered.add(link);
+        await upsertDiscoveredArticketSource({ url: link }).catch(error => console.warn("[Articket discoverer] Could not persist discovered URL:", sanitizeFetchFailure(error).message));
+      }
+    }
     if (isMrIngressosCatalogUrl(baseUrl)) {
       for (const event of extractMrIngressosListingEvents(result.value.html, result.value.url)) discovered.add(event.url);
     }
@@ -1282,7 +1312,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
   const activeAliases = await listActiveLocationAliasValues();
   const matchesTargetVenue = (value: string) => containsTargetVenue(value, activeAliases);
   const matchesTargetContent = (value: string) => matchesTargetVenue(value) || matchesTrackedPublicBrand(value, options.sourceKey);
-  const candidateUrls = await discoverCandidatePages(options);
+  const candidateUrls = await discoverCandidatePages(options, activeAliases);
   if (candidateUrls.length === 0) return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: true, reason: "Nenhuma fonte de ingestão configurada", sourceReports: [] as IngestionSourceReport[] };
   const pages = await fetchWithConcurrency(candidateUrls, url => guardedFetchPublicPage(url, options), PUBLIC_FETCH_CONCURRENCY);
   const fulfilledPages = pages

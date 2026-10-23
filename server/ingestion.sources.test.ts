@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { filterDisabledPublicSourceUrls, getConfiguredSourceUrls, isIngresseCatalogRootUrl } from "./ingestion";
+import { discoverArticketEventLinks, filterDisabledPublicSourceUrls, getConfiguredSourceUrls, isIngresseCatalogRootUrl } from "./ingestion";
 
 describe("ingestion source configuration", () => {
   it("excludes URLs whose persisted public source is disabled", () => {
@@ -50,6 +50,10 @@ describe("JSON public source configuration", () => {
 });
 
 describe("public event discovery", () => {
+  it("expõe o discoverer Articket para o Cron de agenda pública", () => {
+    expect(discoverArticketEventLinks("<article><a href='/e/7358/sub-plants-halloween'>Verilonguinho Santos</a></article>", "https://articket.com.br/", ["verilonguinho"])).toEqual(["https://articket.com.br/e/7358/sub-plants-halloween"]);
+  });
+
   it("identifica a raiz HTML da Ingresse para usar somente o adaptador JSON nos eventos", () => {
     expect(isIngresseCatalogRootUrl("https://www.ingresse.com/")).toBe(true);
     expect(isIngresseCatalogRootUrl("https://www.ingresse.com/laroc-guaruja-apresenta-meduza/")).toBe(false);
