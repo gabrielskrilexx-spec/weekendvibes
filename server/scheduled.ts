@@ -46,24 +46,7 @@ export async function ingestEventsHandler(req: Request, res: Response) {
     }
     const { archived, result } = await agendaRoutine.runPublicAgendaStep();
     const fetchFailed = Number((result as { filteredByReason?: { fetchFailed?: unknown } }).filteredByReason?.fetchFailed ?? 0);
-    if (fetchFailed > 0) {
-      try {
-        await failureAlerts.handleIngestionFailureAlert({
-          routine: "public-agenda",
-          sourceKey: "public",
-          integration: "public",
-          status: 502,
-          errorCode: "fetch_failed",
-          alertType: "public_fetch_failed",
-          message: `${fetchFailed} fonte(s) pública(s) não responderam ou não puderam ser coletadas.`,
-          severity: "WARNING",
-        }, { notify: async notification => {
-          await notifyOwner({ title: "Falha de coleta na public-agenda", content: "Uma ou mais fontes públicas não puderam ser coletadas. Consulte o painel operacional para detalhes sanitizados." });
-        }});
-      } catch (alertError) {
-        console.warn("[Scheduled] Could not persist public fetch alert", redactError(alertError));
-      }
-    }
+    if (fetchFailed > 0) console.info("[Scheduled] Public source fetch failures isolated", JSON.stringify({ routine: "public-agenda", fetchFailed, alert: "not_created" }));
     const finishedAt = new Date().toISOString();
     const summary = buildPublicAutomationSummary(result, startedAt, finishedAt);
     const observability = await observeScheduledIngestion({ routine: "public-agenda", status: summary.status, startedAtMs });

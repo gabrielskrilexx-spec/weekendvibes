@@ -14,13 +14,13 @@ describe("scheduled ingestion handler", () => {
     expect((res as any).status).toHaveBeenCalledWith(403);
   });
 
-  it("persists and notifies a sanitized public fetch failure without breaking the response", async () => {
+  it("keeps isolated public fetch failures out of global alerts without breaking the response", async () => {
     vi.spyOn(sdk, "authenticateRequest").mockResolvedValue({ isCron: true } as never);
     vi.spyOn(agendaRoutine, "runPublicAgendaStep").mockResolvedValue({ archived: 0, result: { filteredByReason: { fetchFailed: 2 }, persisted: 0 } } as never);
     const alertSpy = vi.spyOn(failureAlerts, "handleIngestionFailureAlert").mockResolvedValue({ fingerprint: "fp", notified: true, reopened: false, deduplicated: false });
     const res = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() } as never;
     await ingestEventsHandler({ originalUrl: "/api/scheduled/ingest-events" } as never, res);
-    expect(alertSpy).toHaveBeenCalledWith(expect.objectContaining({ routine: "public-agenda", alertType: "public_fetch_failed", errorCode: "fetch_failed" }), expect.objectContaining({ notify: expect.any(Function) }));
+    expect(alertSpy).not.toHaveBeenCalled();
     expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, fetchFailed: 2 }));
   });
 

@@ -931,7 +931,13 @@ async function guardedFetchPublicPage(url: string, options: { dryRun?: boolean; 
   } catch (error) {
     const failure = sanitizeFetchFailure(error);
     logPublicFailureDiagnostics(url, error);
-    if (!options.dryRun) await registerSourceFailure({ sourceKey, routine: "public-agenda", status: failure.status ?? undefined, message: failure.message });
+    if (!options.dryRun) {
+      try {
+        await registerSourceFailure({ sourceKey, routine: "public-agenda", status: failure.status ?? undefined, message: failure.message });
+      } catch (registrationError) {
+        console.warn("[Ingestion] Could not persist isolated public source failure:", sanitizeFetchFailure(registrationError).message);
+      }
+    }
     throw Object.assign(error instanceof Error ? error : new Error(failure.message), { fetchFailure: failure, fetchDurationMs: Math.max(0, Date.now() - startedAt) });
   }
 }
