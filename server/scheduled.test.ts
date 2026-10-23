@@ -18,9 +18,11 @@ describe("scheduled ingestion handler", () => {
     vi.spyOn(sdk, "authenticateRequest").mockResolvedValue({ isCron: true } as never);
     vi.spyOn(agendaRoutine, "runPublicAgendaStep").mockResolvedValue({ archived: 0, result: { filteredByReason: { fetchFailed: 2 }, persisted: 0 } } as never);
     const alertSpy = vi.spyOn(failureAlerts, "handleIngestionFailureAlert").mockResolvedValue({ fingerprint: "fp", notified: true, reopened: false, deduplicated: false });
+    const summarySpy = vi.spyOn(failureAlerts, "notifyIngestionSummary").mockResolvedValue({ sent: false, skipped: false });
     const res = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() } as never;
     await ingestEventsHandler({ originalUrl: "/api/scheduled/ingest-events" } as never, res);
     expect(alertSpy).not.toHaveBeenCalled();
+    expect(summarySpy).not.toHaveBeenCalled();
     expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, fetchFailed: 2 }));
   });
 
