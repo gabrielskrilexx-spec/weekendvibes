@@ -4,7 +4,12 @@ const token = process.env.APIFY_API_TOKEN?.trim();
 if (!token) throw new Error("APIFY_API_TOKEN ausente no runtime.");
 
 const actor = process.env.APIFY_STORIES_ACTOR_ID?.trim() || "zaver.api~instagram-stories-highlights-scraper";
-const target = INSTAGRAM_TARGETS[0];
+const requestedUsernames = (process.env.APIFY_TEST_USERNAMES || "plantssantos")
+  .split(",")
+  .map((username) => username.trim().replace(/^@/, "").toLowerCase())
+  .filter(Boolean)
+  .slice(0, 2);
+const targets = requestedUsernames.map((username) => INSTAGRAM_TARGETS.find((candidate) => candidate.username === username) || { username });
 const headers = {
   Accept: "application/json",
   "Content-Type": "application/json",
@@ -24,7 +29,7 @@ console.log(JSON.stringify({
 }));
 if (!authResponse.ok) process.exit(2);
 
-const payload = buildInstagramStoriesScraperPayload([target]);
+const payload = buildInstagramStoriesScraperPayload(targets);
 const controller = new AbortController();
 const timeout = setTimeout(() => controller.abort(), 60_000);
 let response;
@@ -40,7 +45,7 @@ try {
   console.log(JSON.stringify({
     check: "one-profile-stories",
     actor,
-    profile: target.username,
+    profiles: requestedUsernames,
     httpStatus: null,
     ok: false,
     error: error instanceof Error && error.name === "AbortError" ? "actor_timeout" : "network_error",
@@ -54,7 +59,7 @@ const stories = items.filter((item) => String(item?.item_type ?? item?.type ?? i
 console.log(JSON.stringify({
   check: "one-profile-stories",
   actor,
-  profile: target.username,
+  profiles: requestedUsernames,
   httpStatus: response.status,
   ok: response.ok,
   itemsRead: items.length,

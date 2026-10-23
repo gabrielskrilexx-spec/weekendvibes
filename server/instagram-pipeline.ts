@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { INSTAGRAM_AGENDA_SOURCE_TYPE, claimApifyDailyRequest, listActiveLocationAliasValues, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent } from "./db";
+import { INSTAGRAM_AGENDA_SOURCE_TYPE, claimApifyDailyRequest, listActiveLocationAliasValues, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent, upsertDiscoveredInstagramLinkSource } from "./db";
 import { fetchExternal, isSandboxRestrictedError, readExternalBody } from "./external-fetch";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import { containsTargetVenue } from "./ingestion";
@@ -222,6 +222,37 @@ export function buildInstagramStoriesScraperPayload(targets: ReadonlyArray<{ use
     maxHighlights: 2,
     onlyNew: true,
   } as const;
+}
+
+const DISCOVERABLE_INSTAGRAM_LINK_HOSTS = /(^|\.)((ingresse|sympla|zig|weticket|ticket360|blacktag|articket)\.com(?:\.br)?|ticket360\.com\.br)$/i;
+
+export function extractDiscoverableInstagramLinks(text: string) {
+  const links = new Set<string>();
+  const matcher = /https?:\/\/[^\s<>"')]+/gi;
+  let match: RegExpExecArray | null;
+  while ((match = matcher.exec(text)) !== null) {
+    const candidate = match[0].replace(/[.,!?;:]+$/, "");
+    try {
+      const url = new URL(candidate);
+      if (url.protocol !== "https:" || !DISCOVERABLE_INSTAGRAM_LINK_HOSTS.test(url.hostname)) continue;
+      url.hash = "";
+      links.add(url.toString());
+    } catch {
+      // Ignore malformed OCR/caption fragments.
+    }
+  }
+  return Array.from(links);
+}
+
+export async function persistDiscoverableInstagramLinks(posts: ReadonlyArray<InstagramPost>) {
+  const discovered = new Map<string, string | undefined>();
+  for (const post of posts) {
+    const username = post.ownerUsername ?? post.username;
+    const text = [post.caption, post.text, post.ocrText].filter(Boolean).join("\n");
+    for (const url of extractDiscoverableInstagramLinks(text)) discovered.set(url, username);
+  }
+  const sources = await Promise.all(Array.from(discovered, ([url, username]) => upsertDiscoveredInstagramLinkSource({ url, username })));
+  return { discovered: sources.length, sources };
 }
 
 export function limitInstagramStoriesForCost(posts: InstagramPost[], now = new Date()) {

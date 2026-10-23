@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import { eq, or } from "drizzle-orm";
 import { ingestionSources } from "../drizzle/schema";
 import { getDb } from "./db";
+import { extractDiscoverableInstagramLinks } from "./instagram-pipeline";
 import { isMetaInvalidUserError, createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, isMetaCredentialFailure, extractMetaGraphErrorMessage, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRecentApifySignal, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest, limitInstagramStoriesForCost, INSTAGRAM_OCR_CONCURRENCY, validateMetaBusinessDiscoveryProfile } from "./instagram-pipeline";
 
 it("reconhece o erro Meta code 110 sem tratá-lo como credencial expirada", () => {
@@ -53,6 +54,9 @@ describe("Instagram weekend pipeline", () => {
       if (previous === undefined) delete process.env.APIFY_ACTOR_MAX_RUNTIME_SECS;
       else process.env.APIFY_ACTOR_MAX_RUNTIME_SECS = previous;
     }
+  });
+  it("extrai apenas links públicos suportados e os deduplica", () => {
+    expect(extractDiscoverableInstagramLinks("Ingressos: https://www.sympla.com.br/evento/festa/123. https://www.sympla.com.br/evento/festa/123#lote https://instagram.com/p/abc https://example.com/fora")).toEqual(["https://www.sympla.com.br/evento/festa/123"]);
   });
 
   it("aplica a trava financeira local: Stories em 24h e no máximo 2 Highlights por perfil", () => {

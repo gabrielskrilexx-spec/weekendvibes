@@ -280,6 +280,13 @@ async function processDataset(run: Awaited<ReturnType<typeof findIngestionRunByA
       fingerprints.push(fingerprint);
     }
     if (posts.length > 0) {
+      try {
+        const { persistDiscoverableInstagramLinks } = await import("./instagram-pipeline");
+        const discoveredLinks = await persistDiscoverableInstagramLinks(posts);
+        aggregate.discoveredLinks = (aggregate.discoveredLinks ?? 0) + discoveredLinks.discovered;
+      } catch (error) {
+        console.warn("[Apify] Could not persist discovered public links", redactError(error));
+      }
       const result = await runInstagramPipeline({ storiesOnly: true, dryRun: false, postsOverride: posts });
       aggregate.receivedPosts += result.receivedPosts;
       aggregate.approvedPosts += result.approvedPosts;

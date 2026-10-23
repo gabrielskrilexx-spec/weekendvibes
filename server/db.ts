@@ -697,6 +697,28 @@ export async function upsertDiscoveredArticketSource(input: { url: string; name?
   return source;
 }
 
+export async function upsertDiscoveredInstagramLinkSource(input: { url: string; username?: string }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const url = input.url.trim();
+  const digest = createHash("sha256").update(url).digest("hex").slice(0, 24);
+  const sourceKey = `public:instagram-${digest}`;
+  await upsert(db.insert(ingestionSources).values({
+    sourceKey,
+    name: `Instagram${input.username ? ` @${input.username.replace(/^@+/, "")}` : ""} — link descoberto`.slice(0, 180),
+    kind: "public",
+    handle: null,
+    url: url.slice(0, 1000),
+    isEnabled: 1,
+    priority: 60,
+    frequencyMinutes: 2880,
+    p95LatencyThresholdMs: 30000,
+  }), ingestionSources.sourceKey, { url: url.slice(0, 1000), isEnabled: 1, updatedAt: new Date() });
+  const [source] = await db.select({ id: ingestionSources.id, sourceKey: ingestionSources.sourceKey }).from(ingestionSources).where(eq(ingestionSources.sourceKey, sourceKey)).limit(1);
+  if (!source) throw new Error("Instagram discovered source upsert failed");
+  return source;
+}
+
 export async function updateIngestionSource(id: number, input: { isEnabled: boolean; priority: number; frequencyMinutes: number; p95LatencyThresholdMs?: number; handle?: string | null; changedByOpenId?: string | null }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) throw new Error("Database unavailable");
