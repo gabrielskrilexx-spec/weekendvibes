@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { load } from "cheerio";
 import { invokeLLM } from "./_core/llm";
-import { assertEventDateIsCurrentOrFuture, getIngestionPayloadCache, listActiveLocationAliasValues, listIngestionSources, recordOperationalAlert, saveEvent, saveIngestionPayloadCache, upsertDiscoveredArticketSource } from "./db";
+import { assertEventDateIsCurrentOrFuture, formatArticketSourceName, getIngestionPayloadCache, listActiveLocationAliasValues, listIngestionSources, recordOperationalAlert, saveEvent, saveIngestionPayloadCache, updateDiscoveredArticketSourceName, upsertDiscoveredArticketSource } from "./db";
 import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
 import { fetchExternal, isSandboxRestrictedError, readExternalBody, sanitizeExternalFetchError } from "./external-fetch";
 import { parsePayloadJsonColumn } from "./json-contracts";
@@ -1167,7 +1167,7 @@ async function discoverCandidatePages(options: IngestionPipelineOptions = {}, ac
       const articketLinks = discoverArticketEventLinks(result.value.html, result.value.url, activeAliases);
       for (const link of articketLinks) {
         discovered.add(link);
-        await upsertDiscoveredArticketSource({ url: link }).catch(error => console.warn("[Articket discoverer] Could not persist discovered URL:", sanitizeFetchFailure(error).message));
+        await upsertDiscoveredArticketSource({ url: link, name: formatArticketSourceName(link) }).catch(error => console.warn("[Articket discoverer] Could not persist discovered URL:", sanitizeFetchFailure(error).message));
       }
     }
     if (isMrIngressosCatalogUrl(baseUrl)) {
@@ -1329,6 +1329,16 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
   const fetchFailed = fetchFailures.length;
   const outsideTargetVenue = fulfilledPages.filter(page => !matchesTargetContent(page.text)).length;
   const sourcePages = fulfilledPages.filter(page => matchesTargetContent(page.text));
+  await Promise.all(sourcePages
+    .filter(page => page.adapter === "articket" && !Array.isArray(page.structured) && typeof page.structured?.title === "string")
+    .map(page => {
+      const title = !Array.isArray(page.structured) ? page.structured?.title : undefined;
+      if (typeof title !== "string") return { updated: false };
+      return updateDiscoveredArticketSourceName({ url: page.url, title }).catch(error => {
+        console.warn("[Articket parser] Could not update discovered source name:", sanitizeFetchFailure(error).message);
+        return { updated: false };
+      });
+    }));
   const filteredByReason = { fetchFailed, outsideTargetVenue, invalidStructuredEvent: 0, pastEvent: 0, duplicate: 0 };
   const filteredSourceUrls = pages.flatMap((result, index) => result.status === "rejected" || !matchesTargetContent(result.status === "fulfilled" ? result.value.text : "") ? [candidateUrls[index]] : []);
 

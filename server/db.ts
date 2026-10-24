@@ -674,6 +674,16 @@ export async function createIngestionSource(input: { name: string; kind: "instag
   return { id: created.id, sourceKey: created.sourceKey };
 }
 
+export function formatArticketSourceName(url: string) {
+  try {
+    const slug = new URL(url).pathname.match(/\/e\/[A-Za-z0-9_-]+\/([^/]+)/i)?.[1];
+    if (!slug) return "";
+    return decodeURIComponent(slug).split(/[-_]+/).filter(Boolean).map(word => `${word.charAt(0).toUpperCase()}${word.slice(1).toLowerCase()}`).join(" ").slice(0, 180);
+  } catch {
+    return "";
+  }
+}
+
 export async function upsertDiscoveredArticketSource(input: { url: string; name?: string }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -681,9 +691,10 @@ export async function upsertDiscoveredArticketSource(input: { url: string; name?
   const eventId = url.match(/\/e\/([A-Za-z0-9_-]+)/i)?.[1];
   const digest = createHash("sha256").update(url).digest("hex").slice(0, 24);
   const sourceKey = `public:articket-${(eventId ?? digest).toLowerCase()}`.slice(0, 120);
+  const provisionalName = input.name?.trim() || formatArticketSourceName(url) || `ArTicket — ${eventId ?? "evento descoberto"}`;
   await upsert(db.insert(ingestionSources).values({
     sourceKey,
-    name: (input.name?.trim() || `ArTicket — ${eventId ?? "evento descoberto"}`).slice(0, 180),
+    name: provisionalName.slice(0, 180),
     kind: "public",
     handle: null,
     url: url.slice(0, 1000),
@@ -695,6 +706,20 @@ export async function upsertDiscoveredArticketSource(input: { url: string; name?
   const [source] = await db.select({ id: ingestionSources.id, sourceKey: ingestionSources.sourceKey }).from(ingestionSources).where(eq(ingestionSources.sourceKey, sourceKey)).limit(1);
   if (!source) throw new Error("Discovered Articket source upsert failed");
   return source;
+}
+
+export async function updateDiscoveredArticketSourceName(input: { url: string; title: string }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const url = input.url.trim();
+  const eventId = url.match(/\/e\/([A-Za-z0-9_-]+)/i)?.[1];
+  const digest = createHash("sha256").update(url).digest("hex").slice(0, 24);
+  const sourceKey = `public:articket-${(eventId ?? digest).toLowerCase()}`.slice(0, 120);
+  const [source] = await db.select({ id: ingestionSources.id, name: ingestionSources.name }).from(ingestionSources).where(eq(ingestionSources.sourceKey, sourceKey)).limit(1);
+  const title = input.title.trim().slice(0, 180);
+  if (!source || !title || !/^ArTicket\s+—/i.test(String(source.name ?? ""))) return { updated: false, sourceKey };
+  await db.update(ingestionSources).set({ name: title, updatedAt: new Date() }).where(eq(ingestionSources.sourceKey, sourceKey));
+  return { updated: true, sourceKey, name: title };
 }
 
 export async function upsertDiscoveredInstagramLinkSource(input: { url: string; username?: string }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
