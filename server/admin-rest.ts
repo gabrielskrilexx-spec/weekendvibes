@@ -3,6 +3,7 @@ import { z } from "zod";
 import { deleteLocationAlias, deleteEvents, updateEventsPublication } from "./db";
 import { runIngestionSourceChunk } from "./manual-ingestion";
 import { sdk } from "./_core/sdk";
+import { isAdminUser } from "./_core/admin-auth";
 
 const idsInput = z.object({
   ids: z.array(z.number().int().positive()).min(1).max(100),
@@ -40,7 +41,7 @@ function sendFailure(req: Request, res: Response, error: unknown, fallback: stri
 async function requireAdminMiddleware(req: Request, res: Response, next: NextFunction) {
   try {
     const user = await sdk.authenticateRequest(req);
-    if (user.role !== "admin") {
+    if (!isAdminUser(user)) {
       return res.status(403).json({ success: false, message: "Permissão administrativa necessária." });
     }
     res.locals.adminUser = user;

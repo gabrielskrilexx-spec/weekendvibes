@@ -85,6 +85,7 @@ import { runDryRun } from "./dry-run";
 import { normalizeJsonForTransport } from "./transport";
 import { consolidatedCatalogFilename, consolidatedCatalogToCsv } from "./consolidated-export";
 import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
+import { isAdminUser } from "./_core/admin-auth";
 import { runObservabilitySnapshotMaintenance } from "./scheduled-observability-maintenance";
 import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts, getExportJobsMetricsTrend, getExportJobAlertDetail, getExportJobsAlertSettings, updateExportJobsAlertSettings, getExportJobsTrendBucket, getExportJobsAlertEfficiency, compareExportJobsEfficiency, listExportJobsAlertSettingsHistory, recordExportAlertEvaluationSnapshot, listExportAlertEvaluationSnapshots, getExportJobsEfficiencyBucket, getExportJobsAlertEfficiencyTrend } from "./filtered-story-export-jobs";
 import { compareHeartbeatExecutionStats, evaluateHeartbeatHealth, evaluateHeartbeatPerformance, getHeartbeatExecutionStats, getHeartbeatHealthSettings, getHeartbeatExecutionSummary, listHeartbeatExecutionEvents, listHeartbeatHealthSettingsHistory, listHeartbeatIncidentsByRegression, recordHeartbeatExecutionEvent, updateHeartbeatHealthSettings, type HeartbeatEventType, type HeartbeatHealthEnvironment } from "./heartbeat-observability";
@@ -516,7 +517,7 @@ const reprocessOutput = z.union([reprocessResultOutput, reprocessSandboxOutput])
 export const appRouter = router({
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query(opts => normalizeJsonForTransport(opts.ctx.user)),
+    me: publicProcedure.query(opts => normalizeJsonForTransport(opts.ctx.user ? { ...opts.ctx.user, isAdmin: isAdminUser(opts.ctx.user) } : null)),
     logout: publicProcedure
       .output(z.object({ success: z.literal(true) }).strict())
       .mutation(({ ctx }) => {

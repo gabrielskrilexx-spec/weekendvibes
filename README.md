@@ -24,7 +24,7 @@ Instale Node.js 20 ou superior, pnpm e acesso a um banco MySQL/TiDB compatível 
 pnpm install
 ```
 
-2. Configure as variáveis de ambiente no gerenciador de segredos do projeto. Não versione arquivos `.env` com credenciais. Os principais valores usados pelo servidor incluem `DATABASE_URL`, `JWT_SECRET`, `APIFY_API_TOKEN`, `APIFY_INSTAGRAM_SESSION_COOKIE`, `OPENAI_API_KEY`, `INTERNAL_CRON_SECRET` e os valores de storage/OAuth fornecidos pelo ambiente Manus.
+2. Configure as variáveis de ambiente no gerenciador de segredos do projeto. Não versione arquivos `.env` com credenciais. Os principais valores usados pelo servidor incluem `DATABASE_URL`, `JWT_SECRET`, `ADMIN_EMAILS` (lista separada por vírgulas), `APIFY_API_TOKEN`, `APIFY_INSTAGRAM_SESSION_COOKIE`, `OPENAI_API_KEY`, `INTERNAL_CRON_SECRET` e os valores de storage/OAuth fornecidos pelo ambiente Manus. O painel administrativo autoriza somente usuários com `role=admin` ou e-mail presente em `ADMIN_EMAILS`.
 
 3. Gere migrações Drizzle quando o schema for alterado e aplique-as conforme o fluxo do projeto. Não execute comandos destrutivos contra o banco de produção sem revisão.
 
