@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { archiveExpiredSoldOutEvents, runIngestionPipeline } = vi.hoisted(() => ({
+const { archiveExpiredSoldOutEvents, deactivateExpiredSources, runIngestionPipeline } = vi.hoisted(() => ({
   archiveExpiredSoldOutEvents: vi.fn().mockResolvedValue(1),
+  deactivateExpiredSources: vi.fn().mockResolvedValue({ deactivatedCount: 0, sourceKeys: [] }),
   runIngestionPipeline: vi.fn().mockResolvedValue({ imported: 0 }),
 }));
 
-vi.mock("./db", () => ({ archiveExpiredSoldOutEvents }));
+vi.mock("./db", () => ({ archiveExpiredSoldOutEvents, deactivateExpiredSources }));
 vi.mock("./ingestion", () => ({ runIngestionPipeline }));
 vi.mock("./ingestion-failure-alerts", () => ({ notifyIngestionSummary: vi.fn().mockResolvedValue({ sent: false, skipped: true }) }));
 

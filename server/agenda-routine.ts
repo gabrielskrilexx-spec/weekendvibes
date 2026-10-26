@@ -1,4 +1,4 @@
-import { archiveExpiredSoldOutEvents } from "./db";
+import { archiveExpiredSoldOutEvents, deactivateExpiredSources } from "./db";
 import { runIngestionPipeline } from "./ingestion";
 import { getMetaFailureStatus, isGracefullyDegradedMetaFailure, runInstagramPipeline } from "./instagram-pipeline";
 
@@ -213,8 +213,10 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
 export async function runPublicAgendaStep(options: AgendaStepOptions = {}) {
   const execute = async () => {
     const archived = options.archive === false ? 0 : await archiveExpiredSoldOutEvents();
+    const expiredSources = await deactivateExpiredSources();
+    console.info("[Agenda routine] Expired single-event sources deactivated", JSON.stringify({ routine: "public-agenda", deactivated: expiredSources.deactivatedCount, sourceKeys: expiredSources.sourceKeys }));
     const result = await runIngestionPipeline({ sourceKey: options.sourceKey, signal: options.signal });
-    return { archived, result };
+    return { archived, expiredSources, result };
   };
   return options.track === false ? execute() : trackedStep("public-agenda", options.sourceKey ?? "public", execute, options);
 }
@@ -439,4 +441,4 @@ export async function runAgendaStepForScheduler(step: "public" | "instagram") {
   return step === "public" ? runPublicAgendaStep() : runInstagramAgendaStep();
 }
 
-export const AGENDA_ROUTINE_COMPOSITION = ["archiveExpiredSoldOutEvents", "runIngestionPipeline", "runInstagramPipeline"] as const;
+export const AGENDA_ROUTINE_COMPOSITION = ["archiveExpiredSoldOutEvents", "deactivateExpiredSources", "runIngestionPipeline", "runInstagramPipeline"] as const;

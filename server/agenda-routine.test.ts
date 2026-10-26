@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   archiveExpiredSoldOutEvents: vi.fn().mockResolvedValue(4),
+  deactivateExpiredSources: vi.fn().mockResolvedValue({ deactivatedCount: 0, sourceKeys: [] }),
   runIngestionPipeline: vi.fn().mockResolvedValue({ imported: 2 }),
   runInstagramPipeline: vi.fn().mockResolvedValue({ imported: 1 }),
   startIngestionRun: vi.fn().mockResolvedValue(123),
@@ -9,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   processPendingGeocoding: vi.fn().mockResolvedValue({ processed: 0, succeeded: 0, failed: 0, pending: 0 }),
 }));
 
-vi.mock("./db", () => ({ archiveExpiredSoldOutEvents: mocks.archiveExpiredSoldOutEvents }));
+vi.mock("./db", () => ({ archiveExpiredSoldOutEvents: mocks.archiveExpiredSoldOutEvents, deactivateExpiredSources: mocks.deactivateExpiredSources }));
 vi.mock("./ingestion", () => ({ runIngestionPipeline: mocks.runIngestionPipeline }));
 vi.mock("./instagram-pipeline", () => ({ runInstagramPipeline: mocks.runInstagramPipeline, isGracefullyDegradedMetaFailure: vi.fn().mockReturnValue(false), getMetaFailureStatus: vi.fn().mockReturnValue(null) }));
 vi.mock("./ingestion-reports", () => ({ startIngestionRun: mocks.startIngestionRun, finishIngestionRun: mocks.finishIngestionRun }));
@@ -64,9 +65,10 @@ describe("agenda routine composition", () => {
     await runPublicAgendaStep();
     await runInstagramAgendaStep();
     expect(mocks.archiveExpiredSoldOutEvents).toHaveBeenCalledTimes(2);
+    expect(mocks.deactivateExpiredSources).toHaveBeenCalledTimes(1);
     expect(mocks.runIngestionPipeline).toHaveBeenCalledTimes(1);
     expect(mocks.runInstagramPipeline).toHaveBeenCalledTimes(1);
-    expect(AGENDA_ROUTINE_COMPOSITION).toEqual(["archiveExpiredSoldOutEvents", "runIngestionPipeline", "runInstagramPipeline"]);
+    expect(AGENDA_ROUTINE_COMPOSITION).toEqual(["archiveExpiredSoldOutEvents", "deactivateExpiredSources", "runIngestionPipeline", "runInstagramPipeline"]);
   });
 
   it("converte falha de transporte do Instagram em fallback mock no preview", async () => {

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   archiveExpiredSoldOutEvents: vi.fn().mockResolvedValue(0),
+  deactivateExpiredSources: vi.fn().mockResolvedValue({ deactivatedCount: 0, sourceKeys: [] }),
   runIngestionPipeline: vi.fn().mockResolvedValue({ imported: 2 }),
   runInstagramPipeline: vi.fn().mockResolvedValue({ imported: 1 }),
   listHeartbeatJobs: vi.fn(),
@@ -12,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   finishIngestionRun: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("./db", () => ({ archiveExpiredSoldOutEvents: mocks.archiveExpiredSoldOutEvents, recordOperationalAlert: vi.fn(), getDb: mocks.getDb, acquireIngestionLease: mocks.acquireIngestionLease, releaseIngestionLease: mocks.releaseIngestionLease }));
+vi.mock("./db", () => ({ archiveExpiredSoldOutEvents: mocks.archiveExpiredSoldOutEvents, deactivateExpiredSources: mocks.deactivateExpiredSources, recordOperationalAlert: vi.fn(), getDb: mocks.getDb, acquireIngestionLease: mocks.acquireIngestionLease, releaseIngestionLease: mocks.releaseIngestionLease }));
 vi.mock("./ingestion", () => ({ runIngestionPipeline: mocks.runIngestionPipeline }));
 vi.mock("./instagram-pipeline", () => ({ InstagramIntegrationFailure: class InstagramIntegrationFailure extends Error {}, runInstagramPipeline: mocks.runInstagramPipeline }));
 vi.mock("./_core/notification", () => ({ notifyOwner: vi.fn() }));
@@ -85,10 +86,11 @@ describe("manual Wednesday routine", () => {
     await expect(second).rejects.toThrow("execução manual em andamento");
     await first;
     expect(mocks.archiveExpiredSoldOutEvents).toHaveBeenCalledTimes(1);
+    expect(mocks.deactivateExpiredSources).toHaveBeenCalledTimes(1);
     expect(mocks.runIngestionPipeline).toHaveBeenCalledTimes(1);
     expect(mocks.runInstagramPipeline).toHaveBeenCalledTimes(1);
-    expect(mocks.archiveExpiredSoldOutEvents.mock.invocationCallOrder[0]).toBeLessThan(mocks.runIngestionPipeline.mock.invocationCallOrder[0]);
-    expect(mocks.runIngestionPipeline.mock.invocationCallOrder[0]).toBeLessThan(mocks.runInstagramPipeline.mock.invocationCallOrder[0]);
+    expect(mocks.archiveExpiredSoldOutEvents.mock.invocationCallOrder[0]).toBeLessThan(mocks.deactivateExpiredSources.mock.invocationCallOrder[0]);
+    expect(mocks.deactivateExpiredSources.mock.invocationCallOrder[0]).toBeLessThan(mocks.runIngestionPipeline.mock.invocationCallOrder[0]);
   });
 
   it("expõe progresso consultável durante a execução manual e marca a conclusão", async () => {

@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, notInArray, or, sql } from "drizzle-orm";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots, ingestionLeases, adminMagicLinks } from "../drizzle/schema";
@@ -591,6 +591,44 @@ export async function deleteExpiredIngestionRecords(days = 30, now = new Date(),
   ]);
   const counts = { ingestionRuns: deletedRowCount(runs), actionAuditLogs: deletedRowCount(actions), handleAuditLogs: deletedRowCount(handles), healthTransitions: deletedRowCount(transitions) };
   return { ...counts, total: counts.ingestionRuns + counts.actionAuditLogs + counts.handleAuditLogs + counts.healthTransitions };
+}
+
+const CONTINUOUS_PUBLIC_SOURCE_KEYS = [
+  "public:articket",
+  "public:blackpass",
+  "public:blacktag",
+  "public:ingresse",
+  "public:mringressos",
+  "public:sympla",
+  "public:ticket360",
+  "public:weticket",
+  "public:zig",
+] as const;
+
+export function isContinuousIngestionSource(source: Pick<IngestionSource, "kind" | "sourceKey">) {
+  return source.kind === "instagram" || (CONTINUOUS_PUBLIC_SOURCE_KEYS as readonly string[]).includes(source.sourceKey);
+}
+
+export async function deactivateExpiredSources(now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return { deactivatedCount: 0, sourceKeys: [] as string[] };
+  const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const expired = await db.selectDistinct({ sourceKey: ingestionSources.sourceKey }).from(ingestionSources).innerJoin(events, eq(ingestionSources.url, events.sourceUrl)).where(and(
+    eq(ingestionSources.kind, "public"),
+    eq(ingestionSources.isEnabled, 1),
+    isNotNull(events.sourceUrl),
+    notInArray(ingestionSources.sourceKey, [...CONTINUOUS_PUBLIC_SOURCE_KEYS]),
+    lt(sql`COALESCE(${events.endDate}, ${events.eventDate})`, cutoff),
+  ));
+  const sourceKeys = expired.map(row => row.sourceKey);
+  if (sourceKeys.length === 0) return { deactivatedCount: 0, sourceKeys };
+  await db.update(ingestionSources).set({
+    isEnabled: 0,
+    lastStatus: "skipped",
+    lastMessage: "Fonte de evento único desativada automaticamente após o término do evento.",
+    updatedAt: new Date(),
+  }).where(inArray(ingestionSources.sourceKey, sourceKeys));
+  return { deactivatedCount: sourceKeys.length, sourceKeys };
 }
 
 export async function listSystemHealthTransitions(limit = 10, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
