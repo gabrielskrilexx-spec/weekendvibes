@@ -14,11 +14,13 @@ describe("VenueSpotlight", () => {
     expect(initial).toContain("Arena Club");
     expect(initial).toContain("Laroc Club Guarujá");
     expect(initial).toContain("Guarujá Golf Club");
+    expect(initial).toContain("Curvão Surf House");
     expect(initial).toContain("Goat Club");
     expect(initial).toContain("https://weekendvib-jscaalye.manus.space/manus-storage/laroc-guaruja_13c232b6.jpg");
     expect(initial).toContain("R. Tuyuti, 86");
     expect(initial).toContain("Rua do Comércio, 63");
-    expect(initial).toContain("vallum-tuyuti-converted_987b11a3.jpg");
+    expect(initial).toContain("/venues/vallum-garden.webp");
+    expect(initial).toContain("/venues/curvao-surf-house.jpg");
     expect(initial).toContain("goat-comercio_72feaa77.jpg");
     expect(initial).toContain('aria-label="Carrossel de espaços da Baixada"');
     expect(initial).toContain('aria-label="Mostrar espaços anteriores"');
@@ -35,9 +37,12 @@ describe("VenueSpotlight", () => {
     expect(guaruja).toContain("Praia do Perequê");
     const vallum = renderToStaticMarkup(<VenueSpotlight selectedVenue="vallum-garden" onSelect={vi.fn()} events={[]} />);
     expect(vallum).toContain("R. Tuyuti, 86");
-    expect(vallum).toContain("vallum-tuyuti-converted_987b11a3.jpg");
+    expect(vallum).toContain("/venues/vallum-garden.webp");
     const goat = renderToStaticMarkup(<VenueSpotlight selectedVenue="goat-club" onSelect={vi.fn()} events={[]} />);
     expect(goat).toContain("Rua do Comércio, 63");
     expect(goat).toContain("goat-comercio_72feaa77.jpg");
+    const curvao = renderToStaticMarkup(<VenueSpotlight selectedVenue="curvao-surf-house" onSelect={vi.fn()} events={[]} />);
+    expect(curvao).toContain("Av. Miguel Estefno, 2435");
+    expect(curvao).toContain("Guarujá");
   });
 });

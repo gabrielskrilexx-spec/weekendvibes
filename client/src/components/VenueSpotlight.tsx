@@ -2,7 +2,7 @@ import React from "react";
 import { Building2, CalendarDays, MapPin, X } from "lucide-react";
 import type { Event } from "../../../drizzle/schema";
 
-type VenueKey = "blue-med" | "parque-valongo" | "vallum-garden" | "arena-club" | "laroc-guaruja" | "guaruja-golf-club" | "goat-club";
+type VenueKey = "blue-med" | "parque-valongo" | "vallum-garden" | "arena-club" | "laroc-guaruja" | "guaruja-golf-club" | "curvao-surf-house" | "goat-club";
 
 type Venue = {
   key: VenueKey;
@@ -38,7 +38,7 @@ export const FEATURED_VENUES: Venue[] = [
     name: "Vallum Garden",
     aliases: "Centro · R. Tuyuti, 86 · Santos - SP · 11010-220",
     city: "Santos",
-    imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/vallum-tuyuti-converted_987b11a3.jpg",
+    imageUrl: "/venues/vallum-garden.webp",
     description: "Espaço de eventos e festas no Centro Histórico de Santos.",
     query: "Vallum Garden",
   },
@@ -68,6 +68,15 @@ export const FEATURED_VENUES: Venue[] = [
     imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/guaruja-golf-club_8ed2fd53.jpg",
     description: "Espaço amplo ao ar livre na Praia do Pernambuco para grandes festivais e festas.",
     query: "Guarujá Golf Club",
+  },
+  {
+    key: "curvao-surf-house",
+    name: "Curvão Surf House",
+    aliases: "Enseada · Av. Miguel Estefno, 2435 · Guarujá - SP",
+    city: "Guarujá",
+    imageUrl: "/venues/curvao-surf-house.jpg",
+    description: "Surf house à beira-mar com festas, sunsets e noites de música no Guarujá.",
+    query: "Curvão Surf House",
   },
   {
     key: "goat-club",
