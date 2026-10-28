@@ -604,6 +604,9 @@ export function isCronIngestionRoutineForTest(routine?: string | null) {
 }
 
 export function getEffectiveIngestionP95ThresholdForTest(run: { sourceKey?: string | null; routine?: string | null }, source?: { sourceKey?: string | null; kind?: string | null; p95LatencyThresholdMs?: number | null }) {
+  const isInstagramScheduled = run.sourceKey === "instagram" && run.routine === "instagram-agenda";
+  const isApifyRun = run.sourceKey?.startsWith("instagram:apify:") === true;
+  if (isInstagramScheduled || isApifyRun) return INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS;
   const isPublic = source?.kind === "public" || run.sourceKey === "public" || run.sourceKey?.startsWith("public:");
   if (isPublic && isCronIngestionRoutineForTest(run.routine)) return CRON_PUBLIC_P95_THRESHOLD_MS;
   if (isPublic) return DEFAULT_PUBLIC_P95_THRESHOLD_MS;
@@ -613,6 +616,7 @@ export function getEffectiveIngestionP95ThresholdForTest(run: { sourceKey?: stri
 export function findConsecutiveP95PerformanceAlertsForTest(runs: Array<{ sourceKey: string | null; routine?: string | null; status: string; startedAt: string | Date; durationMs?: number | null }>, thresholdMs: number | Map<string, number> | ((run: { sourceKey: string | null; routine?: string | null }) => number) = 3000) {
   const bySource = new Map<string, Array<{ startedAt: number; durationMs: number; thresholdMs: number }>>();
   for (const run of runs) {
+    if (run.status !== "succeeded") continue;
     const durationMs = Number(run.durationMs ?? 0);
     const startedAt = new Date(run.startedAt).getTime();
     if (!run.sourceKey || !Number.isFinite(durationMs) || durationMs <= 0 || !Number.isFinite(startedAt)) continue;

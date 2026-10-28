@@ -16,12 +16,19 @@ function isAbortError(error: unknown) {
   return Boolean(error && typeof error === "object" && "name" in error && String((error as { name?: unknown }).name) === "AbortError");
 }
 
+const pendingBodyTimeouts = new WeakMap<Response, { cleanup: () => void; didTimeout: () => boolean; timeoutMs: number }>();
+
 export async function fetchExternal(url: string, init: RequestInit = {}, timeoutMs = 12_000, allowHttpError = false, externalSignal?: AbortSignal): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
   const abortFromCaller = () => controller.abort();
   if (externalSignal?.aborted) controller.abort();
   else externalSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  const cleanup = () => {
+    clearTimeout(timer);
+    externalSignal?.removeEventListener("abort", abortFromCaller);
+  };
   const headers = new Headers(init.headers);
   if (!headers.has("user-agent")) headers.set("user-agent", DEFAULT_USER_AGENT);
   if (!headers.has("accept")) headers.set("accept", "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.1");
@@ -29,24 +36,32 @@ export async function fetchExternal(url: string, init: RequestInit = {}, timeout
   try {
     const response = await fetch(url, { ...init, headers, signal: controller.signal });
     if (!response.ok && !allowHttpError) {
+      cleanup();
       throw new ExternalFetchError(`Fonte externa respondeu HTTP ${response.status}`, "HTTP_ERROR", response.status);
     }
+    if (response.body) pendingBodyTimeouts.set(response, { cleanup, didTimeout: () => timedOut, timeoutMs });
+    else cleanup();
     return response;
   } catch (error) {
+    cleanup();
     if (error instanceof ExternalFetchError) throw error;
     if (isAbortError(error)) throw new ExternalFetchError(`Tempo limite de ${timeoutMs} ms excedido na fonte externa`, "TIMEOUT");
     throw new ExternalFetchError("Não foi possível conectar à fonte externa", "NETWORK_ERROR");
-  } finally {
-    clearTimeout(timer);
-    externalSignal?.removeEventListener("abort", abortFromCaller);
   }
 }
 
 export async function readExternalBody(response: Response) {
+  const pendingTimeout = pendingBodyTimeouts.get(response);
   try {
     return await response.text();
-  } catch {
+  } catch (error) {
+    if (pendingTimeout?.didTimeout() || isAbortError(error)) {
+      throw new ExternalFetchError(`Tempo limite de ${pendingTimeout?.timeoutMs ?? 12_000} ms excedido na leitura da fonte externa`, "TIMEOUT", response.status);
+    }
     throw new ExternalFetchError("A fonte externa retornou um corpo inválido", "NETWORK_ERROR", response.status);
+  } finally {
+    pendingTimeout?.cleanup();
+    pendingBodyTimeouts.delete(response);
   }
 }
 

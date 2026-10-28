@@ -75,6 +75,21 @@ describe("cron authentication and scheduled events callback", () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, status: "succeeded" }));
   });
 
+  it("returns a partial 2xx result when an external ticketing source times out", async () => {
+    vi.stubEnv("CRON_SECRET", "vercel-cron-secret-test");
+    vi.mocked(runPublicAgendaStep).mockResolvedValue({ archived: 0, result: {
+      imported: 1,
+      filteredByReason: { fetchFailed: 1 },
+      sourceReports: [{ sourceKey: "public:ticket360", errors: [{ status: null, message: "Tempo limite de 20.000 ms excedido na fonte externa" }] }],
+    } } as never);
+    const res = response();
+
+    await ingestEventsHandler({ headers: { authorization: "Bearer vercel-cron-secret-test" }, originalUrl: "/api/scheduled/ingest-public-sources" } as never, res);
+
+    expect(res.status).not.toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, status: "partial", fetchFailed: 1 }));
+  });
+
   it("returns 403 for a callback without a valid cron token", async () => {
     const res = response();
 
@@ -87,13 +102,17 @@ describe("cron authentication and scheduled events callback", () => {
 
   it("returns 500 with a generic error when ingestion fails internally", async () => {
     vi.spyOn(sdk, "authenticateRequest").mockResolvedValue({ isCron: true, taskUid: "task-1" } as never);
-    vi.mocked(runPublicAgendaStep).mockRejectedValue(new Error("database unavailable"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const failure = Object.assign(new Error("Tempo limite de 20.000 ms excedido na fonte externa"), { name: "AgendaStepFailure", integration: "pipeline", upstreamStatus: 504, degraded: false });
+    vi.mocked(runPublicAgendaStep).mockRejectedValue(failure);
     const res = response();
 
     await ingestEventsHandler({ originalUrl: "/api/scheduled/ingest-events" } as never, res);
 
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith({ error: "internal_error" });
+    expect(log).toHaveBeenCalledWith("[Scheduled] routine failed", expect.objectContaining({ integration: "pipeline", upstreamStatus: 504, failureKind: "upstream_timeout" }));
+    expect(JSON.stringify(log.mock.calls)).not.toContain("20.000 ms");
   });
 
   it("accepts Vercel Cron Authorization and alerts on a partial full-agenda run", async () => {

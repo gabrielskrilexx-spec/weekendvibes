@@ -65,7 +65,8 @@ export function isRetryableAgendaErrorForTest(error: unknown) {
   const status = error && typeof error === "object" && "upstreamStatus" in error ? Number((error as { upstreamStatus?: unknown }).upstreamStatus) : 0;
   if (status >= 400 && status < 500) return false;
   const message = error instanceof Error ? error.message : String(error);
-  return status >= 500 || /timeout|timed out|fetch failed|network|econn|temporarily unavailable|http\s*5\d{2}|status\s*5\d{2}/i.test(message);
+  const code = error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+  return status >= 500 || code === "TIMEOUT" || /timeout|timed out|tempo limite|fetch failed|network|econn|temporarily unavailable|http\s*5\d{2}|status\s*5\d{2}/i.test(message);
 }
 
 function retryHttpStatus(error: unknown) {

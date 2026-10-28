@@ -689,7 +689,7 @@ async function fetchPublicAdapterJson<T>(input: string, init: RequestInit = {}, 
     try {
       const response = await fetchExternal(input, init, timeoutMs, false, externalSignal);
       if (!response.ok) throw createFetchError(`Fonte pública respondeu ${response.status}`, response.status);
-      return await response.json() as T;
+      return JSON.parse(await readExternalBody(response)) as T;
     } catch (error) {
       lastError = error;
       const failure = sanitizeFetchFailure(error);
@@ -985,8 +985,9 @@ export const MR_INGRESSOS_RETRY_BASE_DELAY_MS = 250;
 
 export function isTimeoutFailure(error: unknown) {
   const name = error && typeof error === "object" && "name" in error ? String((error as { name?: unknown }).name ?? "") : "";
+  const code = error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
   const message = error instanceof Error ? error.message : String(error ?? "");
-  return name === "TimeoutError" || name === "AbortError" || /timeout|timed out|aborted/i.test(message);
+  return code === "TIMEOUT" || name === "TimeoutError" || name === "AbortError" || /timeout|timed out|aborted|tempo limite/i.test(message);
 }
 
 export async function fetchMrIngressosWithRetry(url: string, init: RequestInit, fetchImpl: typeof fetch = fetch) {

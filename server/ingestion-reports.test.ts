@@ -133,6 +133,24 @@ describe("public ingestion P95 SLA", () => {
     expect(getEffectiveSourceP95ThresholdForTest({ sourceKey: "manual" })).toBe(180_000);
   });
 
+  it("applies the Apify latency budget to scheduled Instagram runs and actor executions", () => {
+    expect(getEffectiveIngestionP95ThresholdForTest({ sourceKey: "instagram", routine: "instagram-agenda" }, { kind: "instagram", p95LatencyThresholdMs: 3_000 })).toBe(30_000);
+    expect(getEffectiveIngestionP95ThresholdForTest({ sourceKey: "instagram:apify:pending", routine: "instagram-stories-async" })).toBe(30_000);
+    const alerts = findConsecutiveP95PerformanceAlertsForTest([
+      { sourceKey: "instagram", routine: "instagram-agenda", status: "succeeded", startedAt: "2026-08-22T10:00:00.000Z", durationMs: 18_000 },
+      { sourceKey: "instagram", routine: "instagram-agenda", status: "succeeded", startedAt: "2026-08-22T09:00:00.000Z", durationMs: 21_000 },
+    ], run => getEffectiveIngestionP95ThresholdForTest(run, { kind: "instagram", p95LatencyThresholdMs: 3_000 }));
+    expect(alerts).toEqual([]);
+  });
+
+  it("does not turn failed or partial ingestion runs into performance alerts", () => {
+    const alerts = findConsecutiveP95PerformanceAlertsForTest([
+      { sourceKey: "instagram", routine: "instagram-agenda", status: "failed", startedAt: "2026-08-22T10:00:00.000Z", durationMs: 55_000 },
+      { sourceKey: "instagram", routine: "instagram-agenda", status: "partial", startedAt: "2026-08-22T09:00:00.000Z", durationMs: 50_000 },
+    ], run => getEffectiveIngestionP95ThresholdForTest(run, { kind: "instagram", p95LatencyThresholdMs: 3_000 }));
+    expect(alerts).toEqual([]);
+  });
+
   it("still evaluates direct public API runs against 3 seconds", () => {
     const runs = [
       { sourceKey: "public:articket", routine: "api", status: "succeeded", startedAt: "2026-08-22T10:00:00.000Z", durationMs: 3_500 },

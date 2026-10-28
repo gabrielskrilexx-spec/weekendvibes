@@ -8,6 +8,18 @@ import { notifyOwner } from "./_core/notification";
 import { hasValidInternalCronSecret, hasValidVercelCronSecret } from "./_core/cron-auth";
 import { observeScheduledIngestion } from "./scheduled-observability";
 
+function getScheduledFailureLogContext(error: unknown) {
+  const context = redactError(error);
+  if (!(error instanceof Error) || error.name !== "AgendaStepFailure") return context;
+  const failure = error as Error & { integration?: unknown; upstreamStatus?: unknown; degraded?: unknown };
+  const integration = ["meta", "ocr", "openai", "pipeline"].includes(String(failure.integration)) ? String(failure.integration) : "unknown";
+  const upstreamStatus = Number.isInteger(failure.upstreamStatus) && Number(failure.upstreamStatus) > 0 ? Number(failure.upstreamStatus) : null;
+  const failureKind = /timeout|timed out|tempo limite|aborted/i.test(error.message)
+    ? "upstream_timeout"
+    : upstreamStatus !== null ? "upstream_http_error" : "agenda_step_failure";
+  return { ...context, integration, upstreamStatus, degraded: failure.degraded === true, failureKind };
+}
+
 function buildPublicAutomationSummary(result: unknown, startedAt: string, finishedAt: string) {
   const value = result && typeof result === "object" ? result as Record<string, unknown> : {};
   const reports = Array.isArray(value.sourceReports) ? value.sourceReports.filter(item => item && typeof item === "object") as Array<Record<string, unknown>> : [];
@@ -63,7 +75,7 @@ export async function ingestEventsHandler(req: Request, res: Response) {
     return res.json({ ok: true, status: summary.status, summary, archived, result, fetchFailed, startedAt, finishedAt, durationMs: observability.durationMs, observability: observability.alerts });
   } catch (error) {
     await observeScheduledIngestion({ routine: "public-agenda", status: "failed", startedAtMs });
-    console.error("[Scheduled] routine failed", redactError(error));
+    console.error("[Scheduled] routine failed", getScheduledFailureLogContext(error));
     return res.status(500).json({ error: "internal_error" });
   }
 }

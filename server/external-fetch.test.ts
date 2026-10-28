@@ -38,6 +38,22 @@ describe("external fetch hardening", () => {
     await expect(readExternalBody(response)).rejects.toMatchObject({ code: "NETWORK_ERROR", statusCode: 200 });
   });
 
+  it("keeps the upstream timeout active until a stalled response body is consumed", async () => {
+    const fetchMock = vi.fn().mockImplementation((_input: string, init?: RequestInit) => Promise.resolve(new Response(new ReadableStream({
+      start(controller) {
+        init?.signal?.addEventListener("abort", () => {
+          const error = new Error("aborted");
+          error.name = "AbortError";
+          controller.error(error);
+        }, { once: true });
+      },
+    }), { status: 200 })));
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await fetchExternal("https://ticketing.example/events", {}, 10);
+    await expect(readExternalBody(response)).rejects.toMatchObject({ code: "TIMEOUT", statusCode: 200 });
+    vi.unstubAllGlobals();
+  });
+
   it("aborts the underlying fetch when the caller signal is cancelled", async () => {
     const fetchMock = vi.fn().mockImplementation((_input: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
       init?.signal?.addEventListener("abort", () => {
