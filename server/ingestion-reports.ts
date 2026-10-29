@@ -14,6 +14,7 @@ import {
 } from "./meta-alert-webhook";
 import { handleIngestionFailureAlert, notifyConsecutiveFailureWebhook, notifyPerformanceDegradationWebhook } from "./ingestion-failure-alerts";
 import { getDb, recordOperationalAlert } from "./db";
+import { registerBackgroundTask } from "./background-tasks";
 import {
   buildFreshnessCriticalAlert,
   buildReconciliationDivergenceAlert,
@@ -1908,6 +1909,7 @@ export function normalizeManualReprocessResultForTest(input: unknown) {
     },
     degraded: value.degraded === true,
     accepted: value.accepted === true,
+    ...(Number.isInteger(Number(value.runId)) && Number(value.runId) > 0 ? { runId: Number(value.runId) } : {}),
   } as const;
 }
 
@@ -1941,12 +1943,15 @@ export async function reprocessIngestionSource(
           error: "Não foi possível registrar a execução manual",
         };
       }
-      void runInstagramAgendaStep({ runId, trigger: "manual" }).catch(error => {
-        console.error("[Manual Instagram] Worker encerrado após registro", {
-          runId,
-          error: sanitizeReprocessErrorForTest(error),
-        });
-      });
+      registerBackgroundTask(
+        runInstagramAgendaStep({ runId, trigger: "manual" }).catch(error => {
+          console.error("[Manual Instagram] Worker encerrado após registro", {
+            runId,
+            error: sanitizeReprocessErrorForTest(error),
+          });
+        }),
+        `Instagram ingestion run ${runId}`,
+      );
       return normalizeManualReprocessResultForTest({
         ok: true,
         sourceKey: "instagram",
@@ -1955,6 +1960,7 @@ export async function reprocessIngestionSource(
         counts: { read: 0, filtered: 0, persisted: 0, duplicates: 0 },
         degraded: false,
         accepted: true,
+        runId,
       });
     }
     runId = await startIngestionRun({ routine: "manual-reprocess", sourceKey });

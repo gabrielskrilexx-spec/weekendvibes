@@ -36,12 +36,18 @@ const MAX_SCHEDULED_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 1000;
 export const DEFAULT_PUBLIC_AGENDA_TIMEOUT_MS = 25_000;
 export const DEFAULT_INSTAGRAM_AGENDA_TIMEOUT_MS = 30_000;
+export const DEFAULT_MANUAL_INSTAGRAM_AGENDA_TIMEOUT_MS = 50_000;
 export function getPublicAgendaTimeoutMs() {
   const configured = Number.parseInt(process.env.PUBLIC_AGENDA_TIMEOUT_MS ?? "", 10);
   if (!Number.isFinite(configured)) return DEFAULT_PUBLIC_AGENDA_TIMEOUT_MS;
   return Math.min(45_000, Math.max(5_000, configured));
 }
-export function getInstagramAgendaTimeoutMs() {
+export function getInstagramAgendaTimeoutMs(trigger?: "manual" | "scheduled") {
+  if (trigger === "manual") {
+    const configuredManual = Number.parseInt(process.env.MANUAL_INSTAGRAM_AGENDA_TIMEOUT_MS ?? "", 10);
+    if (!Number.isFinite(configuredManual)) return DEFAULT_MANUAL_INSTAGRAM_AGENDA_TIMEOUT_MS;
+    return Math.min(DEFAULT_MANUAL_INSTAGRAM_AGENDA_TIMEOUT_MS, Math.max(1_000, configuredManual));
+  }
   const configured = Number.parseInt(process.env.INSTAGRAM_AGENDA_TIMEOUT_MS ?? "", 10);
   if (!Number.isFinite(configured)) return DEFAULT_INSTAGRAM_AGENDA_TIMEOUT_MS;
   return Math.min(30_000, Math.max(1_000, configured));
@@ -225,7 +231,7 @@ export async function runPublicAgendaStep(options: AgendaStepOptions = {}) {
 export async function runInstagramAgendaStep(options: AgendaStepOptions = {}) {
   const execute = async () => {
     const archived = options.archive === false ? 0 : await archiveExpiredSoldOutEvents();
-    const result = await withAgendaTimeout(signal => runInstagramPipeline({ signal }), getInstagramAgendaTimeoutMs(), options.signal);
+    const result = await withAgendaTimeout(signal => runInstagramPipeline({ signal }), getInstagramAgendaTimeoutMs(options.trigger), options.signal);
     let geocoding = { processed: 0, succeeded: 0, failed: 0, pending: 0 };
     try {
       geocoding = await processPendingGeocoding(5);
@@ -393,7 +399,7 @@ export async function runFullAgendaRoutine(options: FullAgendaRoutineOptions = {
     reportProgress({ phase: "collecting", step: 2, totalSteps: 4, message: "Fontes públicas concluídas com erro.", sourceKey: "public", sourceStatus: "failed", error: safeAutomationError(error) });
     throw error;
   });
-  const instagramPromise = runInstagramAgendaStep({ archive: false, track: false }).then(value => {
+  const instagramPromise = runInstagramAgendaStep({ archive: false, track: false, trigger }).then(value => {
     const source = sourceReportsFromResult("instagram", value && typeof value === "object" && "result" in value ? (value as { result: unknown }).result : value)[0];
     reportProgress({ phase: "collecting", step: 2, totalSteps: 4, message: "Instagram concluído.", sourceKey: "instagram", sourceStatus: "succeeded", metrics: source ? { read: source.read, added: source.added, updated: source.updated, ignored: source.ignored } : undefined });
     return value;

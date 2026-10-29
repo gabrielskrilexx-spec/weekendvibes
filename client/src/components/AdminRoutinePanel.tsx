@@ -173,6 +173,7 @@ export default function AdminRoutinePanel() {
     type: "success" | "error";
     text: string;
   } | null>(null);
+  const [backgroundRunId, setBackgroundRunId] = useState<number | null>(null);
   const [authRecoveryOpen, setAuthRecoveryOpen] = useState(false);
   const [selectedOcrRun, setSelectedOcrRun] = useState<OcrAuditRun | null>(null);
   const [historyTab, setHistoryTab] = useState<"runs" | "filtered">("runs");
@@ -199,9 +200,18 @@ export default function AdminRoutinePanel() {
   const [ocrDraft, setOcrDraft] = useState("");
   const [rolloverDraft, setRolloverDraft] = useState<string | null>(null);
   const status = trpc.adminRoutine.status.useQuery(undefined, {
-    refetchInterval: cronRefreshSeconds > 0 ? cronRefreshSeconds * 1_000 : false,
-    refetchIntervalInBackground: false,
+    refetchInterval: backgroundRunId !== null ? 5_000 : cronRefreshSeconds > 0 ? cronRefreshSeconds * 1_000 : false,
+    refetchIntervalInBackground: backgroundRunId !== null,
   });
+  const backgroundRun = backgroundRunId === null ? undefined : status.data?.recentRuns?.find(run => run.id === backgroundRunId);
+  useEffect(() => {
+    if (backgroundRunId === null || !backgroundRun || backgroundRun.status === "running") return;
+    const succeeded = backgroundRun.status === "succeeded";
+    const text = succeeded ? `Execução #${backgroundRunId} concluída; o resultado já está no histórico.` : `Execução #${backgroundRunId} terminou com status ${backgroundRun.status}; consulte os detalhes no histórico.`;
+    setBackgroundRunId(null);
+    setFeedback({ type: succeeded ? "success" : "error", text });
+    sonnerToast[succeeded ? "success" : "warning"](succeeded ? "Ingestão concluída" : "Ingestão finalizada", { description: text });
+  }, [backgroundRunId, backgroundRun?.status]);
   const exportMetricsProcedure = (trpc.adminRoutine as unknown as { exportJobsMetrics?: { useQuery: (input: { windowHours: number }, options?: { refetchInterval?: number }) => unknown } }).exportJobsMetrics;
   const exportMetricsQuery = (exportMetricsProcedure ? exportMetricsProcedure.useQuery({ windowHours: exportMetricsWindow }, { refetchInterval: 30_000 }) : { data: undefined, isLoading: false, isError: false, isFetching: false, refetch: async () => ({ data: undefined }) }) as { data?: { windowHours: number; total: number; queued: number; processing: number; completed: number; failed: number; cancelled: number; expired: number; expiredLeases: number; recoveryExhausted: number; orphaned: number; fileDeletePending: number; fileDeletePendingPrevious: number; fileDeletePendingGrowth: number }; isLoading: boolean; isError: boolean; isFetching: boolean; refetch: () => Promise<unknown> };
   const [exportTrendWindow, setExportTrendWindow] = useState(30);
@@ -247,8 +257,16 @@ export default function AdminRoutinePanel() {
   const exportSettingsHistoryProcedure = (trpc.adminRoutine as unknown as { exportJobsAlertSettingsHistory?: { useQuery: (input: { environment: "development" | "preview" | "production"; offset: number; limit: number }, options?: { enabled?: boolean }) => unknown } }).exportJobsAlertSettingsHistory;
   const exportSettingsHistoryQuery = (exportSettingsHistoryProcedure ? exportSettingsHistoryProcedure.useQuery({ environment: exportSettingsEnvironment, offset: 0, limit: 10 }, { enabled: true }) : { data: undefined, isLoading: false, isError: false }) as { data?: { items: Array<{ id: string; environment: "development" | "preview" | "production"; previousValue: string; nextValue: string; changedByOpenId: string; changedAt: string }>; offset: number; limit: number; hasNextPage: boolean }; isLoading: boolean; isError: boolean };
   const legacyRunNow = trpc.adminRoutine.runNow.useMutation({
-    onSuccess: () => {
-      const text = "Rotina concluída: 2 eventos públicos e atualização do Instagram processados.";
+    onSuccess: result => {
+      if ("accepted" in result && result.accepted) {
+        setBackgroundRunId(result.runId);
+        const text = `Execução #${result.runId} aceita; a rotina continuará em segundo plano.`;
+        setFeedback({ type: "success", text });
+        sonnerToast.success("Ingestão iniciada", { description: text });
+        void status.refetch();
+        return;
+      }
+      const text = "Rotina concluída: eventos públicos e Instagram processados.";
       setFeedback({ type: "success", text });
       sonnerToast.success("Execução concluída", { description: text });
       void status.refetch();
@@ -262,7 +280,7 @@ export default function AdminRoutinePanel() {
   const sourcesProcedure = (trpc.adminRoutine as unknown as { sources?: { useQuery: typeof trpc.adminRoutine.status.useQuery } }).sources;
   const runSourceProcedure = (trpc.adminRoutine as unknown as { runSource?: { useMutation: typeof trpc.adminRoutine.runNow.useMutation } }).runSource;
   const chunkSources = (sourcesProcedure ? sourcesProcedure.useQuery() : { data: undefined }) as { data?: { sources?: string[] } };
-  const runSource = (runSourceProcedure ? runSourceProcedure.useMutation() : { isPending: false, mutateAsync: undefined }) as { isPending: boolean; mutateAsync?: (input: { sourceKey: string; dryRun: boolean }) => Promise<{ ok: boolean; message?: string }> };
+  const runSource = (runSourceProcedure ? runSourceProcedure.useMutation() : { isPending: false, mutateAsync: undefined }) as { isPending: boolean; mutateAsync?: (input: { sourceKey: string; dryRun: boolean }) => Promise<{ ok: boolean; message?: string; accepted?: boolean; runId?: number; status?: string }> };
   const [chunkRunning, setChunkRunning] = useState(false);
   const [chunkIndex, setChunkIndex] = useState(0);
   const [activeChunkRetry, setActiveChunkRetry] = useState<number | null>(null);
@@ -476,6 +494,7 @@ export default function AdminRoutinePanel() {
     setFeedback({ type: "success", text: `Ingestão iniciada. Processando 1 de ${sources.length}: ${sources[0]}.` });
     void (async () => {
       let completed = 0;
+      let acceptedRunId: number | null = null;
       let failures = 0;
       let success = 0;
       let timeout = 0;
@@ -485,7 +504,7 @@ export default function AdminRoutinePanel() {
           setChunkIndex(index);
           setActiveChunkRetry(null);
           setFeedback({ type: "success", text: `Processando fonte ${index + 1} de ${sources.length}: ${sourceKey}.` });
-          let result: { ok: boolean; message?: string } | undefined;
+          let result: { ok: boolean; message?: string; accepted?: boolean; runId?: number; status?: string } | undefined;
           let chunkError: unknown;
           try {
             result = await retryChunkNetwork(() => runSource.mutateAsync!({ sourceKey, dryRun: false }), 2, 150, attempt => {
@@ -494,6 +513,10 @@ export default function AdminRoutinePanel() {
             });
           } catch (error) {
             chunkError = error;
+          }
+          if (result?.accepted === true && result.runId) {
+            acceptedRunId = result.runId;
+            setBackgroundRunId(result.runId);
           }
           if (chunkError || result?.ok === false) {
             failures += 1;
@@ -512,9 +535,11 @@ export default function AdminRoutinePanel() {
         }
         const summary = { success, failure: failures - timeout, timeout };
         setChunkSummary(summary);
-        const text = failures > 0 ? `Ingestão concluída parcialmente: ${failures} fonte(s) falharam.` : `Ingestão concluída: ${completed} fonte(s) processada(s).`;
+        const text = acceptedRunId
+          ? `Instagram aceito para execução em segundo plano (#${acceptedRunId}); acompanhe o status no histórico. ${failures > 0 ? `${failures} outra(s) fonte(s) falharam.` : `${completed} etapa(s) foram aceitas/processadas.`}`
+          : failures > 0 ? `Ingestão concluída parcialmente: ${failures} fonte(s) falharam.` : `Ingestão concluída: ${completed} fonte(s) processada(s).`;
         setFeedback({ type: failures > 0 ? "error" : "success", text });
-        sonnerToast[failures > 0 ? "warning" : "success"]("Execução concluída", { description: text });
+        sonnerToast[failures > 0 ? "warning" : "success"](acceptedRunId ? "Instagram em segundo plano" : "Execução concluída", { description: text });
       } catch (error) {
         const text = friendlyAdminErrorMessage(error, "A rotina não pôde processar a fonte atual.");
         setFeedback({ type: "error", text });

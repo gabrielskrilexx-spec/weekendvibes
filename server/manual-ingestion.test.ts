@@ -21,7 +21,7 @@ vi.mock("./ingestion-failure-alerts", () => ({ notifyIngestionSummary: vi.fn().m
 vi.mock("./_core/heartbeat", () => ({ listHeartbeatJobs: mocks.listHeartbeatJobs }));
 vi.mock("./ingestion-reports", () => ({ startIngestionRun: mocks.startIngestionRun, finishIngestionRun: mocks.finishIngestionRun }));
 
-import { getInstagramManualConfigIssue, getNextWednesdayExecution, getWednesdayRoutineStatus, runWednesdayRoutineNow, withChunkTimeout } from "./manual-ingestion";
+import { getInstagramManualConfigIssue, getNextWednesdayExecution, getWednesdayRoutineStatus, runWednesdayRoutineNow, queueWednesdayRoutineNow, withChunkTimeout } from "./manual-ingestion";
 
 describe("manual Instagram configuration", () => {
   const original = {
@@ -91,6 +91,16 @@ describe("manual Wednesday routine", () => {
     expect(mocks.runInstagramPipeline).toHaveBeenCalledTimes(1);
     expect(mocks.archiveExpiredSoldOutEvents.mock.invocationCallOrder[0]).toBeLessThan(mocks.deactivateExpiredSources.mock.invocationCallOrder[0]);
     expect(mocks.deactivateExpiredSources.mock.invocationCallOrder[0]).toBeLessThan(mocks.runIngestionPipeline.mock.invocationCallOrder[0]);
+  });
+
+  it("retorna ACK com runId antes da conclusão da rotina background", async () => {
+    mocks.archiveExpiredSoldOutEvents.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve(0), 30)));
+    const accepted = await queueWednesdayRoutineNow();
+    expect(accepted).toMatchObject({ accepted: true, runId: 9001 });
+    expect(await getWednesdayRoutineStatus()).toMatchObject({ isRunning: true, progress: { runId: 9001, isRunning: true } });
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(mocks.finishIngestionRun).toHaveBeenCalledWith(9001, expect.objectContaining({ routine: "manual-agenda" }));
+    expect(mocks.releaseIngestionLease).toHaveBeenCalledWith("manual-agenda", "holder-1");
   });
 
   it("expõe progresso consultável durante a execução manual e marca a conclusão", async () => {

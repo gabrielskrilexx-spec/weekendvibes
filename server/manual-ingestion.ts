@@ -7,6 +7,7 @@ import { InstagramIntegrationFailure, runInstagramPipeline } from "./instagram-p
 import { runFullAgendaRoutine, runPublicAgendaStep, runInstagramAgendaStep, type AgendaProgressUpdate } from "./agenda-routine";
 import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
 import { startAsyncApifyStoriesRun } from "./apify-async";
+import { registerBackgroundTask } from "./background-tasks";
 
 type ManualProgressSource = { sourceKey: "public" | "instagram"; status: "pending" | "running" | "succeeded" | "failed"; read: number; added: number; updated: number; ignored: number; error: string | null };
 export type ManualRoutineProgress = { isRunning: boolean; runId: number | null; phase: AgendaProgressUpdate["phase"]; step: number; totalSteps: number; message: string; startedAt: string | null; updatedAt: string; error: string | null; sources: ManualProgressSource[] };
@@ -37,12 +38,25 @@ export type ManualRoutineResult = {
 
 const getIntegration = (error: unknown) => error instanceof InstagramIntegrationFailure ? error.integration : "pipeline" as const;
 
-async function executeRoutine(): Promise<ManualRoutineResult> {
+type PreparedManualExecution = { startedAt: string; startedAtMs: number; manualRunId: number | undefined };
+
+async function prepareManualExecution(requirePersistedRun = false): Promise<PreparedManualExecution> {
   const startedAt = new Date().toISOString();
   const startedAtMs = Date.now();
   manualProgress = { ...initialManualProgress(), isRunning: true, phase: "starting", step: 0, message: "Preparando a ingestão manual.", startedAt };
-  const manualRunId = await startIngestionRun({ routine: "manual-agenda", sourceKey: "manual" });
-  updateManualProgress({ runId: manualRunId ?? null, phase: "starting", step: 0, message: manualRunId ? "Execução registrada; iniciando as fontes." : "Iniciando sem registro de auditoria disponível." });
+  try {
+    const manualRunId = await startIngestionRun({ routine: "manual-agenda", sourceKey: "manual" });
+    if (requirePersistedRun && !manualRunId) throw new Error("Não foi possível registrar a execução manual para acompanhamento.");
+    updateManualProgress({ runId: manualRunId ?? null, phase: "starting", step: 0, message: manualRunId ? "Execução registrada; iniciando as fontes." : "Iniciando sem registro de auditoria disponível." });
+    return { startedAt, startedAtMs, manualRunId };
+  } catch (error) {
+    updateManualProgress({ isRunning: false, phase: "failed", step: 4, totalSteps: 4, message: "Não foi possível iniciar a execução manual.", error: messageForProgress(error) });
+    throw error;
+  }
+}
+
+async function executeRoutine(prepared?: PreparedManualExecution): Promise<ManualRoutineResult> {
+  const { startedAt, startedAtMs, manualRunId } = prepared ?? await prepareManualExecution();
   try {
     const result = await runFullAgendaRoutine({ trigger: "manual", runId: manualRunId, onProgress: update => updateManualProgress({ phase: update.phase, step: update.step, totalSteps: update.totalSteps, message: update.message, sourceKey: update.sourceKey, sourceStatus: update.sourceStatus, metrics: update.metrics, error: update.error ?? null }) });
     const finishedAt = new Date().toISOString();
@@ -92,6 +106,23 @@ export function runWednesdayRoutineNow() {
       await releaseIngestionLease("manual-agenda", lease.holderId);
     }
   })();
+}
+
+export async function queueWednesdayRoutineNow() {
+  const lease = await acquireIngestionLease("manual-agenda", 10 * 60_000);
+  if (!lease.acquired || !lease.holderId) throw new Error("Já existe uma execução manual em andamento.");
+  let prepared: PreparedManualExecution;
+  try {
+    prepared = await prepareManualExecution(true);
+  } catch (error) {
+    await releaseIngestionLease("manual-agenda", lease.holderId);
+    throw error;
+  }
+  const task = executeRoutine(prepared).finally(async () => {
+    await releaseIngestionLease("manual-agenda", lease.holderId);
+  });
+  registerBackgroundTask(task, `Manual agenda run ${prepared.manualRunId}`);
+  return { accepted: true as const, runId: prepared.manualRunId as number, startedAt: prepared.startedAt };
 }
 
 export function isWednesdayRoutineRunning() {
@@ -240,6 +271,7 @@ async function getRecentInstagramRuns() {
 
 export async function getWednesdayRoutineStatus(now = new Date()) {
   const recentRuns = await getRecentInstagramRuns();
+  const isRunning = isWednesdayRoutineRunning() || recentRuns.some(run => run.status === "running");
   const fallback = {
     enabled: false,
     runMode: null as string | null,
@@ -247,7 +279,7 @@ export async function getWednesdayRoutineStatus(now = new Date()) {
     cron: null as string | null,
     nextExecutionAt: null as string | null,
     lastExecutedAt: recentRuns[0]?.finishedAt ?? null,
-    isRunning: isWednesdayRoutineRunning(),
+    isRunning,
     progress: getManualRoutineProgress(),
     recentRuns,
     source: "metadata-unavailable" as const,
@@ -264,7 +296,7 @@ export async function getWednesdayRoutineStatus(now = new Date()) {
       cron: job.cronExpression,
       nextExecutionAt: job.nextExecutionAt ?? getNextWednesdayExecution(now),
       lastExecutedAt: recentRuns[0]?.finishedAt ?? job.lastExecutedAt ?? null,
-      isRunning: isWednesdayRoutineRunning(),
+      isRunning,
       progress: getManualRoutineProgress(),
       recentRuns,
       source: (hasCompleteMetadata ? "heartbeat" : "heartbeat-derived") as "heartbeat" | "heartbeat-derived",

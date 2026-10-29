@@ -107,6 +107,15 @@ describe("agenda routine composition", () => {
     expect(getInstagramAgendaTimeoutMs()).toBe(1_000);
   });
 
+  it("permite janela maior apenas para execução manual, limitada a 50 s", () => {
+    vi.stubEnv("MANUAL_INSTAGRAM_AGENDA_TIMEOUT_MS", "");
+    vi.stubEnv("INSTAGRAM_AGENDA_TIMEOUT_MS", "500");
+    expect(getInstagramAgendaTimeoutMs("manual")).toBe(50_000);
+    vi.stubEnv("MANUAL_INSTAGRAM_AGENDA_TIMEOUT_MS", "70000");
+    expect(getInstagramAgendaTimeoutMs("manual")).toBe(50_000);
+    expect(getInstagramAgendaTimeoutMs("scheduled")).toBe(1_000);
+  });
+
   it("limita o orçamento da etapa pública para finalizar parcialmente antes do timeout serverless", () => {
     vi.stubEnv("PUBLIC_AGENDA_TIMEOUT_MS", "45000");
     expect(getPublicAgendaTimeoutMs()).toBe(45_000);

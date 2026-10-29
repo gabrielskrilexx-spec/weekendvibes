@@ -51,10 +51,10 @@ import { isSandboxRestrictedError } from "./external-fetch";
 import { validateMetaBusinessDiscoveryProfile } from "./instagram-pipeline";
 import {
   getWednesdayRoutineStatus,
-  runWednesdayRoutineNow,
   getIngestionChunkSources,
   runIngestionSourceChunk,
   getInstagramManualConfigIssue,
+  queueWednesdayRoutineNow,
 } from "./manual-ingestion";
 import {
   listIngestionReport,
@@ -292,8 +292,16 @@ const adminRoutineFailureOutput = z
     details: z.array(z.string().max(240)).max(20),
   })
   .strict();
+const adminRoutineAcceptedOutput = z.object({
+  ok: z.literal(true),
+  accepted: z.literal(true),
+  runId: z.number().int().positive(),
+  startedAt: z.string(),
+  status: z.literal("running"),
+}).strict();
 const adminRoutineOutput = z.union([
   adminRoutineSuccessOutput,
+  adminRoutineAcceptedOutput,
   adminRoutineFailureOutput,
 ]);
 const ingestionChunkSuccessOutput = z.object({
@@ -309,6 +317,8 @@ const ingestionChunkSuccessOutput = z.object({
   durationMs: z.number().int().nonnegative(),
   sandboxRestricted: z.boolean().optional(),
   previewMock: z.boolean().optional(),
+  accepted: z.literal(true).optional(),
+  runId: z.number().int().positive().optional(),
 }).strict();
 const ingestionChunkFailureOutput = z.object({
   ok: z.literal(false),
@@ -501,6 +511,7 @@ const reprocessResultOutput = z
       .strict(),
     degraded: z.boolean(),
     accepted: z.boolean(),
+    runId: z.number().int().positive().optional(),
     error: z.string().nullable(),
   })
   .strict();
@@ -840,6 +851,18 @@ export const appRouter = router({
           });
         }
         try {
+          if (input.sourceKey === "instagram" && !input.dryRun && !shouldUseSandboxMocks()) {
+            const accepted = await reprocessIngestionSource("instagram");
+            const acceptedRunId = "runId" in accepted ? accepted.runId : undefined;
+            if ("accepted" in accepted && accepted.accepted && acceptedRunId) {
+              return { ok: true as const, sourceKey: "instagram", dryRun: false, status: "queued" as const, read: 0, added: 0, updated: 0, ignored: 0, errors: [], durationMs: Math.max(0, Date.now() - startedAt), accepted: true as const, runId: acceptedRunId };
+            }
+            if (accepted.ok === false) {
+              const message = "error" in accepted ? accepted.error : "Não foi possível iniciar a ingestão do Instagram.";
+              if (isInstagramConfigurationError(message)) throw new TRPCError({ code: "UNPROCESSABLE_CONTENT", message: "Configuração da integração Instagram/Apify ausente ou inválida." });
+              return { ok: false as const, sourceKey: "instagram", dryRun: false, status: "failed" as const, message: message.slice(0, 240), errors: ["A ingestão do Instagram não pôde ser iniciada."], durationMs: Math.max(1, Date.now() - startedAt) };
+            }
+          }
           const raw = await runIngestionSourceChunk(input);
           const durationMs = Date.now() - startedAt;
           const result = raw.result && typeof raw.result === "object" ? raw.result as Record<string, unknown> : {};
@@ -853,6 +876,7 @@ export const appRouter = router({
           const status = queued ? "queued" : errors.length > 0 || result.skipped === true ? "partial" : "succeeded";
           return { ok: true as const, sourceKey: raw.sourceKey, dryRun: raw.dryRun, status, read: Math.max(0, Math.trunc(read)), added: Math.max(0, Math.trunc(added)), updated: Math.max(0, Math.trunc(updated)), ignored: Math.max(0, Math.trunc(ignored)), errors, durationMs, sandboxRestricted: result.sandboxRestricted === true, previewMock: result.previewMock === true };
         } catch (error) {
+          if (error instanceof TRPCError && error.code === "UNPROCESSABLE_CONTENT") throw error;
           const message = error instanceof Error ? error.message : "Falha interna ao processar a fonte.";
           if (input.sourceKey === "instagram" && isInstagramConfigurationError(message)) {
             throw new TRPCError({
@@ -908,21 +932,13 @@ export const appRouter = router({
       }),
     runNow: adminOnly.output(adminRoutineOutput).mutation(async () => {
       try {
-        const result = await runWednesdayRoutineNow();
-        const importedFrom = (value: unknown) =>
-          value &&
-          typeof value === "object" &&
-          "imported" in value &&
-          typeof (value as { imported?: unknown }).imported === "number"
-            ? Math.max(0, Math.trunc((value as { imported: number }).imported))
-            : 0;
+        const result = await queueWednesdayRoutineNow();
         return {
           ok: true as const,
-          archived: Math.max(0, Math.trunc(result.archived)),
-          publicSources: { imported: importedFrom(result.publicSources) },
-          instagram: { imported: importedFrom(result.instagram) },
-          startedAt: String(result.startedAt),
-          finishedAt: String(result.finishedAt),
+          accepted: true as const,
+          runId: result.runId,
+          startedAt: result.startedAt,
+          status: "running" as const,
         };
       } catch {
         return {
