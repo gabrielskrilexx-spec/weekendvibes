@@ -339,14 +339,10 @@ export async function claimApifyDailyRequest(input: { now?: Date; units?: number
   if (await isApifyIngestionKillSwitchEnabled(db) && !isolatedManualRun) return { allowed: false, dateKey, requestCount: 0, dailyLimit, persistence: Boolean(db), blockedReason: "kill_switch" as const };
   if (!db) return { allowed: false, dateKey, requestCount: 0, dailyLimit, persistence: false, blockedReason: "budget_unavailable" as const };
   await upsert(db.insert(apifyDailyUsage).values({ dateKey, requestCount: 0, dailyLimit }), apifyDailyUsage.dateKey, { dailyLimit, updatedAt: new Date() });
-  const result = await db.update(apifyDailyUsage).set({ requestCount: sql`${apifyDailyUsage.requestCount} + ${units}`, updatedAt: new Date() }).where(and(eq(apifyDailyUsage.dateKey, dateKey), sql`${apifyDailyUsage.requestCount} + ${units} <= ${dailyLimit}`));
+  const updatedRows = await db.update(apifyDailyUsage).set({ requestCount: sql`${apifyDailyUsage.requestCount} + ${units}`, updatedAt: new Date() }).where(and(eq(apifyDailyUsage.dateKey, dateKey), sql`${apifyDailyUsage.requestCount} + ${units} <= ${dailyLimit}`)).returning({ dateKey: apifyDailyUsage.dateKey });
   const rows = await db.select({ requestCount: apifyDailyUsage.requestCount, dailyLimit: apifyDailyUsage.dailyLimit }).from(apifyDailyUsage).where(eq(apifyDailyUsage.dateKey, dateKey)).limit(1);
   const row = rows[0] ?? { requestCount: 0, dailyLimit };
-  const resultValue = result as unknown as { count?: number; affectedRows?: number } | [{ count?: number; affectedRows?: number }, unknown];
-  const affectedRows = Number(Array.isArray(resultValue)
-    ? resultValue[0]?.count ?? resultValue[0]?.affectedRows ?? 0
-    : resultValue.count ?? resultValue.affectedRows ?? 0);
-  const allowed = affectedRows > 0;
+  const allowed = updatedRows.length > 0;
   if (!allowed) await db.update(apifyDailyUsage).set({ lastBlockedAt: new Date(), updatedAt: new Date() }).where(eq(apifyDailyUsage.dateKey, dateKey));
   return { allowed, dateKey, requestCount: row.requestCount, dailyLimit: row.dailyLimit, persistence: true, units, blockedReason: allowed ? undefined : "daily_limit" as const };
 }

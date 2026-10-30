@@ -24,7 +24,8 @@ describe("Apify daily budget", () => {
 
   it("fails closed when the atomic increment cannot claim a request", async () => {
     process.env.APIFY_DAILY_REQUEST_LIMIT = "2";
-    const where = vi.fn().mockResolvedValue({ affectedRows: 0 });
+    const returning = vi.fn().mockResolvedValue([]);
+    const where = vi.fn().mockReturnValue({ returning });
     const set = vi.fn().mockReturnValue({ where });
     const fakeDb = {
       insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ onDuplicateKeyUpdate: vi.fn().mockResolvedValue(undefined) }) }),
@@ -33,11 +34,13 @@ describe("Apify daily budget", () => {
     } as never;
     await expect(claimApifyDailyRequest({ now: new Date("2026-09-19T12:00:00.000Z"), dbOverride: fakeDb })).resolves.toMatchObject({ allowed: false, requestCount: 2, dailyLimit: 2, dateKey: "2026-09-19", persistence: true });
     expect(where).toHaveBeenCalledTimes(2);
+    expect(returning).toHaveBeenCalledTimes(1);
   });
 
-  it("accepts postgres-js row-list count after atomically reserving the requested units", async () => {
+  it("accepts the returned updated row after atomically reserving the requested units", async () => {
     process.env.APIFY_DAILY_REQUEST_LIMIT = "100";
-    const where = vi.fn().mockResolvedValue({ count: 1 });
+    const returning = vi.fn().mockResolvedValue([{ dateKey: "2026-10-30" }]);
+    const where = vi.fn().mockReturnValue({ returning });
     const set = vi.fn().mockReturnValue({ where });
     const fakeDb = {
       insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ onDuplicateKeyUpdate: vi.fn().mockResolvedValue(undefined) }) }),
@@ -52,6 +55,7 @@ describe("Apify daily budget", () => {
       persistence: true,
     });
     expect(where).toHaveBeenCalledTimes(1);
+    expect(returning).toHaveBeenCalledTimes(1);
   });
 
   it("blocks all paid dispatches when the kill switch is enabled", async () => {
