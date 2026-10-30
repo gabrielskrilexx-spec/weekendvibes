@@ -32,7 +32,10 @@ export async function getDb() {
       });
       _db = drizzle(client);
     } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
+      const errorInfo = error && typeof error === "object" ? error as { name?: unknown; code?: unknown } : {};
+      const name = typeof errorInfo.name === "string" && /^[A-Za-z][A-Za-z0-9]{0,60}$/.test(errorInfo.name) ? errorInfo.name : "UnknownError";
+      const code = typeof errorInfo.code === "string" && /^[A-Z0-9_]{1,40}$/.test(errorInfo.code) ? errorInfo.code : undefined;
+      console.warn("[Database] Failed to connect", { name, ...(code ? { code } : {}) });
       _db = null;
     }
   }

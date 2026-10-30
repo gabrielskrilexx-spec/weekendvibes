@@ -3,6 +3,7 @@ import { eq, or } from "drizzle-orm";
 import { ingestionSources } from "../drizzle/schema";
 import { getDb } from "./db";
 import { extractDiscoverableInstagramLinks } from "./instagram-pipeline";
+import { selectInstagramApifyTargets } from "./instagram-pipeline";
 import { isMetaInvalidUserError, createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, isMetaCredentialFailure, extractMetaGraphErrorMessage, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRecentApifySignal, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest, limitInstagramStoriesForCost, INSTAGRAM_OCR_CONCURRENCY, validateMetaBusinessDiscoveryProfile } from "./instagram-pipeline";
 
 it("reconhece o erro Meta code 110 sem tratá-lo como credencial expirada", () => {
@@ -80,6 +81,15 @@ describe("Instagram weekend pipeline", () => {
     expect(hasRecentApifySignal(posts, "perfil-inativo", now)).toBe(true);
     expect(hasRecentApifySignal(posts, "outro-perfil", now)).toBe(false);
     expect(hasRecentApifySignal(posts, "meulugar.bar", new Date("2026-09-09T12:00:00.000Z"))).toBe(false);
+  });
+
+  it("força todos os perfis ativos no Apify sem depender do sinal ou sucesso da Meta", () => {
+    const inactiveHandles = new Set(["yellowhouse_santos", "mimadafesta"]);
+    const activeHandles = new Set(INSTAGRAM_TARGETS.map(target => target.username).filter(handle => !inactiveHandles.has(handle)));
+    const targets = selectInstagramApifyTargets({ posts: [], failedMetaProfiles: activeHandles, forceApifyAll: true, activeHandles });
+    expect(targets).toHaveLength(14);
+    expect(targets.map(target => target.username)).not.toContain("yellowhouse_santos");
+    expect(targets.map(target => target.username)).not.toContain("mimadafesta");
   });
 
   it("sanitizes OCR audit entries for the administrative history", () => {

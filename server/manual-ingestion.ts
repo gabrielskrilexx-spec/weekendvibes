@@ -39,6 +39,7 @@ export type ManualRoutineResult = {
 const getIntegration = (error: unknown) => error instanceof InstagramIntegrationFailure ? error.integration : "pipeline" as const;
 
 type PreparedManualExecution = { startedAt: string; startedAtMs: number; manualRunId: number | undefined };
+type ManualRoutineOptions = { forceApifyAll?: boolean };
 
 async function prepareManualExecution(requirePersistedRun = false): Promise<PreparedManualExecution> {
   const startedAt = new Date().toISOString();
@@ -55,10 +56,10 @@ async function prepareManualExecution(requirePersistedRun = false): Promise<Prep
   }
 }
 
-async function executeRoutine(prepared?: PreparedManualExecution): Promise<ManualRoutineResult> {
+async function executeRoutine(prepared?: PreparedManualExecution, options: ManualRoutineOptions = {}): Promise<ManualRoutineResult> {
   const { startedAt, startedAtMs, manualRunId } = prepared ?? await prepareManualExecution();
   try {
-    const result = await runFullAgendaRoutine({ trigger: "manual", runId: manualRunId, onProgress: update => updateManualProgress({ phase: update.phase, step: update.step, totalSteps: update.totalSteps, message: update.message, sourceKey: update.sourceKey, sourceStatus: update.sourceStatus, metrics: update.metrics, error: update.error ?? null }) });
+    const result = await runFullAgendaRoutine({ trigger: "manual", runId: manualRunId, forceApifyAll: options.forceApifyAll, onProgress: update => updateManualProgress({ phase: update.phase, step: update.step, totalSteps: update.totalSteps, message: update.message, sourceKey: update.sourceKey, sourceStatus: update.sourceStatus, metrics: update.metrics, error: update.error ?? null }) });
     const finishedAt = new Date().toISOString();
     await finishIngestionRun(manualRunId, {
       routine: "manual-agenda",
@@ -96,12 +97,12 @@ async function executeRoutine(prepared?: PreparedManualExecution): Promise<Manua
   }
 }
 
-export function runWednesdayRoutineNow() {
+export function runWednesdayRoutineNow(options: ManualRoutineOptions = {}) {
   return (async () => {
     const lease = await acquireIngestionLease("manual-agenda", 10 * 60_000);
     if (!lease.acquired || !lease.holderId) throw new Error("Já existe uma execução manual em andamento.");
     try {
-      return await executeRoutine();
+      return await executeRoutine(undefined, options);
     } finally {
       await releaseIngestionLease("manual-agenda", lease.holderId);
     }

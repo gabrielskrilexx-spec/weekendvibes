@@ -520,6 +520,23 @@ export function hasRecentApifySignal(posts: ReadonlyArray<InstagramPost>, userna
   });
 }
 
+export function selectInstagramApifyTargets(input: {
+  posts: ReadonlyArray<InstagramPost>;
+  failedMetaProfiles?: ReadonlySet<string>;
+  forceApifyAll?: boolean;
+  activeHandles?: ReadonlySet<string>;
+}) {
+  const normalizeHandle = (handle: string) => handle.replace(/^@/, "").toLowerCase();
+  if (input.forceApifyAll) {
+    const activeHandles = new Set(Array.from(input.activeHandles ?? []).map(normalizeHandle));
+    return INSTAGRAM_TARGETS.filter(target => activeHandles.has(target.username.toLowerCase()));
+  }
+  const failedMetaProfiles = new Set(Array.from(input.failedMetaProfiles ?? []).map(normalizeHandle));
+  return INSTAGRAM_TARGETS
+    .filter(target => !failedMetaProfiles.has(target.username.toLowerCase()))
+    .filter(target => hasRecentApifySignal(input.posts, target.username));
+}
+
 /**
  * Gate inicial deliberadamente permissivo: a OpenAI é a autoridade para
  * classificar relevância, data, cidade e gênero do evento.
@@ -895,7 +912,7 @@ export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean
   }
 }
 
-export async function fetchInstagramPostsDetailed(options: { dryRun?: boolean; signal?: AbortSignal } = {}) {
+export async function fetchInstagramPostsDetailed(options: { dryRun?: boolean; signal?: AbortSignal; forceApifyAll?: boolean; trigger?: "manual" | "scheduled" } = {}) {
   const token = requiredEnv("META_INSTAGRAM_TOKEN");
   const accountId = requiredEnv("META_INSTAGRAM_ACCOUNT_ID");
   let meta: { posts: InstagramPost[]; transportFailures: InstagramTransportFailure[] } = { posts: [], transportFailures: [] };
@@ -922,14 +939,32 @@ export async function fetchInstagramPostsDetailed(options: { dryRun?: boolean; s
   const failedMetaProfiles = new Set(meta.transportFailures
     .filter(failure => failure.username !== "meta-graph" && failure.username !== "apify-collector" && failure.status > 0)
     .map(failure => failure.username.toLowerCase()));
-  const eligibleApifyTargets = INSTAGRAM_TARGETS
-    .filter(target => !failedMetaProfiles.has(target.username.toLowerCase()))
-    .filter(target => hasRecentApifySignal(meta.posts, target.username));
+  const forceApifyAll = options.forceApifyAll === true;
+  const activeInstagramSources = forceApifyAll ? (await listEnabledInstagramSources()) ?? [] : [];
+  const activeHandles = forceApifyAll
+    ? new Set(activeInstagramSources.map(source => String(source.handle ?? "").replace(/^@/, "").toLowerCase()).filter(Boolean))
+    : undefined;
+  const eligibleApifyTargets = selectInstagramApifyTargets({ posts: meta.posts, failedMetaProfiles, forceApifyAll, activeHandles });
+  if (forceApifyAll && (activeInstagramSources.length === 0 || activeInstagramSources.length !== eligibleApifyTargets.length)) {
+    const message = activeInstagramSources.length === 0
+      ? "Nenhuma fonte Instagram ativa foi encontrada; a execução Apify forçada foi interrompida."
+      : `Há ${activeInstagramSources.length - eligibleApifyTargets.length} fonte(s) Instagram ativa(s) sem destino Apify correspondente; a execução foi interrompida.`;
+    return {
+      posts: meta.posts,
+      transportFailures: [...meta.transportFailures, { username: "apify-target-selection", status: 0, kind: "proxy_or_session" as const, message }],
+      apifyDispatch: "failed" as const,
+      apifyTargetCount: eligibleApifyTargets.length,
+      apifyTargetUsernames: eligibleApifyTargets.map(target => target.username),
+    };
+  }
+  const apifyTargetUsernames = eligibleApifyTargets.map(target => target.username);
   if (options.dryRun) {
     return {
       posts: meta.posts,
       transportFailures: meta.transportFailures,
       apifyDispatch: "dry_run_prefilter" as const,
+      apifyTargetCount: eligibleApifyTargets.length,
+      apifyTargetUsernames,
       apifyPrefilter: {
         eligibleUsernames: eligibleApifyTargets.map(target => target.username),
         skippedUsernames: INSTAGRAM_TARGETS.filter(target => !eligibleApifyTargets.some(candidate => candidate.username === target.username)).map(target => target.username),
@@ -938,18 +973,18 @@ export async function fetchInstagramPostsDetailed(options: { dryRun?: boolean; s
   }
   const apifyTargets = eligibleApifyTargets;
   if (apifyTargets.length === 0) {
-    return { posts: meta.posts, transportFailures: meta.transportFailures, apifyDispatch: "skipped_no_eligible_targets" as const };
+    return { posts: meta.posts, transportFailures: meta.transportFailures, apifyDispatch: "skipped_no_eligible_targets" as const, apifyTargetCount: 0, apifyTargetUsernames: [] as string[] };
   }
   try {
     const { startAsyncApifyStoriesRun } = await import("./apify-async");
-    const queued = await startAsyncApifyStoriesRun({ trigger: "automatic", targets: apifyTargets });
+    const queued = await startAsyncApifyStoriesRun({ trigger: options.trigger === "manual" ? "manual" : "automatic", targets: apifyTargets });
     console.info("[Instagram] Apify Actor dispatched asynchronously", { actorRunId: queued.actorRunId, runId: queued.runId });
-    return { posts: meta.posts, transportFailures: meta.transportFailures, apifyDispatch: "queued" as const, apifyRunId: queued.actorRunId, ingestionRunId: queued.runId };
+    return { posts: meta.posts, transportFailures: meta.transportFailures, apifyDispatch: "queued" as const, apifyTargetCount: apifyTargets.length, apifyTargetUsernames, apifyRunId: queued.actorRunId, ingestionRunId: queued.runId };
   } catch (error) {
     const message = normalizeDiagnosticText(error instanceof Error ? error.message : error) || "Falha ao despachar o Actor Apify.";
     const status = error && typeof error === "object" && "apifyStatus" in error ? Number((error as { apifyStatus?: unknown }).apifyStatus) || 0 : 0;
     console.warn("[Instagram] Apify dispatch failed; Meta results preserved", { message });
-    return { posts: meta.posts, transportFailures: [...meta.transportFailures, { username: "apify-dispatch", status, kind: "proxy_or_session" as const, message }], apifyDispatch: "failed" as const };
+    return { posts: meta.posts, transportFailures: [...meta.transportFailures, { username: "apify-dispatch", status, kind: "proxy_or_session" as const, message }], apifyDispatch: "failed" as const, apifyTargetCount: apifyTargets.length, apifyTargetUsernames };
   }
 }
 
@@ -1045,7 +1080,7 @@ export async function extractStructuredEventsForTest(referenceDate: string, appr
   return extractStructuredEvents(referenceDate, approvedPosts);
 }
 
-export type InstagramPipelineOptions = { dryRun?: boolean; storiesOnly?: boolean; postsOverride?: InstagramPost[]; persistIncompleteToManualReview?: boolean; signal?: AbortSignal };
+export type InstagramPipelineOptions = { dryRun?: boolean; storiesOnly?: boolean; postsOverride?: InstagramPost[]; persistIncompleteToManualReview?: boolean; forceApifyAll?: boolean; trigger?: "manual" | "scheduled"; signal?: AbortSignal };
 
 export async function runInstagramPipeline(options: InstagramPipelineOptions = {}) {
   const pipelineStartedAt = Date.now();
@@ -1058,7 +1093,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     ? { posts: options.postsOverride, transportFailures: [] as InstagramTransportFailure[] }
     : storiesOnly
       ? await fetchApifyStoriesAndHighlights({ dryRun, signal: options.signal })
-      : await fetchInstagramPostsDetailed({ dryRun, signal: options.signal });
+      : await fetchInstagramPostsDetailed({ dryRun, signal: options.signal, forceApifyAll: options.forceApifyAll, trigger: options.trigger });
   const sandboxRestricted = process.env.NODE_ENV !== "production" && fetched.posts.length === 0 && (fetched.transportFailures.length === 0 && storiesOnly ? !process.env.APIFY_API_TOKEN : fetched.transportFailures.length > 0 && fetched.transportFailures.every(failure => failure.status === 0 || failure.status === 403 || failure.status === 502 || failure.status === 503 || failure.status === 504 || isSandboxRestrictedError(new Error(failure.message))));
   if (sandboxRestricted && shouldUseSandboxMocks()) {
     const durationMs = Math.max(1, Date.now() - pipelineStartedAt);
@@ -1224,6 +1259,8 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     degraded: fetched.transportFailures.length > 0,
     providerIssue: "providerIssue" in fetched ? (fetched as { providerIssue?: InstagramProviderIssue }).providerIssue : undefined,
     apifyDispatch: "apifyDispatch" in fetched ? fetched.apifyDispatch : undefined,
+    apifyTargetCount: "apifyTargetCount" in fetched ? fetched.apifyTargetCount : undefined,
+    apifyTargetUsernames: "apifyTargetUsernames" in fetched ? fetched.apifyTargetUsernames : undefined,
     apifyRunId: "apifyRunId" in fetched ? fetched.apifyRunId : undefined,
     apifyIngestionRunId: "ingestionRunId" in fetched ? fetched.ingestionRunId : undefined,
     quotaExceeded: "providerIssue" in fetched && (fetched as { providerIssue?: InstagramProviderIssue }).providerIssue?.code === "APIFY_QUOTA_EXCEEDED",

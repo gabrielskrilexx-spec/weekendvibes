@@ -19,7 +19,7 @@ import { notifyIngestionSummary } from "./ingestion-failure-alerts";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import { reconcileIngestionResult } from "./reconciliation";
 
-export type AgendaStepOptions = { archive?: boolean; track?: boolean; sourceKey?: string; sourceUrls?: string[]; runId?: number; trigger?: "manual" | "scheduled"; signal?: AbortSignal };
+export type AgendaStepOptions = { archive?: boolean; track?: boolean; sourceKey?: string; sourceUrls?: string[]; runId?: number; trigger?: "manual" | "scheduled"; forceApifyAll?: boolean; signal?: AbortSignal };
 export type AgendaProgressUpdate = {
   phase: "starting" | "archiving" | "collecting" | "finalizing" | "completed" | "failed";
   step: number;
@@ -30,7 +30,7 @@ export type AgendaProgressUpdate = {
   metrics?: { read?: number; added?: number; updated?: number; ignored?: number };
   error?: string;
 };
-export type FullAgendaRoutineOptions = { trigger?: "manual" | "scheduled"; runId?: number; onProgress?: (update: AgendaProgressUpdate) => void };
+export type FullAgendaRoutineOptions = { trigger?: "manual" | "scheduled"; runId?: number; forceApifyAll?: boolean; onProgress?: (update: AgendaProgressUpdate) => void };
 export type RetryAttempt = { attempt: number; startedAt: string; failedAt: string; reason: string; httpStatus: number | null };
 const MAX_SCHEDULED_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 1000;
@@ -231,7 +231,7 @@ export async function runPublicAgendaStep(options: AgendaStepOptions = {}) {
 export async function runInstagramAgendaStep(options: AgendaStepOptions = {}) {
   const execute = async () => {
     const archived = options.archive === false ? 0 : await archiveExpiredSoldOutEvents();
-    const result = await withAgendaTimeout(signal => runInstagramPipeline({ signal }), getInstagramAgendaTimeoutMs(options.trigger), options.signal);
+    const result = await withAgendaTimeout(signal => runInstagramPipeline({ signal, forceApifyAll: options.forceApifyAll, trigger: options.trigger }), getInstagramAgendaTimeoutMs(options.trigger), options.signal);
     let geocoding = { processed: 0, succeeded: 0, failed: 0, pending: 0 };
     try {
       geocoding = await processPendingGeocoding(5);
@@ -399,7 +399,7 @@ export async function runFullAgendaRoutine(options: FullAgendaRoutineOptions = {
     reportProgress({ phase: "collecting", step: 2, totalSteps: 4, message: "Fontes públicas concluídas com erro.", sourceKey: "public", sourceStatus: "failed", error: safeAutomationError(error) });
     throw error;
   });
-  const instagramPromise = runInstagramAgendaStep({ archive: false, track: false, trigger }).then(value => {
+  const instagramPromise = runInstagramAgendaStep({ archive: false, track: false, trigger, forceApifyAll: options.forceApifyAll }).then(value => {
     const source = sourceReportsFromResult("instagram", value && typeof value === "object" && "result" in value ? (value as { result: unknown }).result : value)[0];
     reportProgress({ phase: "collecting", step: 2, totalSteps: 4, message: "Instagram concluído.", sourceKey: "instagram", sourceStatus: "succeeded", metrics: source ? { read: source.read, added: source.added, updated: source.updated, ignored: source.ignored } : undefined });
     return value;

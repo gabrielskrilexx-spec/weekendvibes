@@ -221,8 +221,10 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
     callbackToken,
     status: "QUEUED",
     trigger: options.trigger ?? "automatic",
-        sessionCookieConfigured: false,
-        actorInputContract: "zaver-instagram-stories-highlights-v1",
+    targetCount: targets.length,
+    targetUsernames: targets.map(target => target.username),
+    sessionCookieConfigured: false,
+    actorInputContract: "zaver-instagram-stories-highlights-v1",
   });
   return { runId, actorRunId, status: "QUEUED" as const };
 }

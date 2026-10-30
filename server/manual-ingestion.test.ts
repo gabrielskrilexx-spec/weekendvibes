@@ -133,4 +133,9 @@ describe("manual Wednesday routine", () => {
       details: expect.objectContaining({ trigger: "manual", instagram: expect.objectContaining({ persistedEventIds: [11, 12, 13] }) }),
     }));
   });
+
+  it("propaga forceApifyAll até a pipeline Instagram na execução manual", async () => {
+    await runWednesdayRoutineNow({ forceApifyAll: true });
+    expect(mocks.runInstagramPipeline).toHaveBeenCalledWith(expect.objectContaining({ forceApifyAll: true, trigger: "manual" }));
+  });
 });
