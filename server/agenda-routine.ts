@@ -19,7 +19,7 @@ import { notifyIngestionSummary } from "./ingestion-failure-alerts";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import { reconcileIngestionResult } from "./reconciliation";
 
-export type AgendaStepOptions = { archive?: boolean; track?: boolean; sourceKey?: string; runId?: number; trigger?: "manual" | "scheduled"; signal?: AbortSignal };
+export type AgendaStepOptions = { archive?: boolean; track?: boolean; sourceKey?: string; sourceUrls?: string[]; runId?: number; trigger?: "manual" | "scheduled"; signal?: AbortSignal };
 export type AgendaProgressUpdate = {
   phase: "starting" | "archiving" | "collecting" | "finalizing" | "completed" | "failed";
   step: number;
@@ -220,9 +220,9 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
 export async function runPublicAgendaStep(options: AgendaStepOptions = {}) {
   const execute = async () => {
     const archived = options.archive === false ? 0 : await archiveExpiredSoldOutEvents();
-    const expiredSources = await deactivateExpiredSources();
+    const expiredSources = options.sourceUrls ? { deactivatedCount: 0, sourceKeys: [] as string[] } : await deactivateExpiredSources();
     console.info("[Agenda routine] Expired single-event sources deactivated", JSON.stringify({ routine: "public-agenda", deactivated: expiredSources.deactivatedCount, sourceKeys: expiredSources.sourceKeys }));
-    const result = await runIngestionPipeline({ sourceKey: options.sourceKey, signal: options.signal });
+    const result = await runIngestionPipeline({ sourceKey: options.sourceKey, sourceUrls: options.sourceUrls, signal: options.signal });
     return { archived, expiredSources, result };
   };
   return options.track === false ? execute() : trackedStep("public-agenda", options.sourceKey ?? "public", execute, options);

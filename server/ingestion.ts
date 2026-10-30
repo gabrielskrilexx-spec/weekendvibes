@@ -141,6 +141,12 @@ export function filterDisabledPublicSourceUrls(urls: string[], disabledSourceKey
   return urls.filter(url => !disabledSourceKeys.has(publicSourceKey(url)));
 }
 
+export function filterExplicitPublicSourceUrls(urls: string[], requestedUrls?: string[]) {
+  if (requestedUrls === undefined) return urls;
+  const requested = new Set(requestedUrls.map(sanitizePublicSourceUrl));
+  return urls.filter(url => requested.has(sanitizePublicSourceUrl(url)));
+}
+
 async function getEnabledConfiguredSourceUrls() {
   const configuredUrls = getConfiguredSourceUrls();
   try {
@@ -233,7 +239,7 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
       if (url.origin !== absoluteBase.origin) return;
       const isArticket = url.pathname.startsWith("/e/") && url.hostname.includes("articket");
       const isBlacktag = url.pathname.startsWith("/eventos/") && url.hostname.includes("blacktag");
-      const isZig = url.pathname.startsWith("/eventos/") && (url.hostname === "zig.tickets" || url.hostname.endsWith(".zig.tickets"));
+      const isZig = /^\/eventos?\//.test(url.pathname) && (url.hostname === "zig.tickets" || url.hostname.endsWith(".zig.tickets"));
       const isIngresseEvent = url.hostname.includes("ingresse") && url.pathname !== "/" && !url.pathname.startsWith("/search");
       const isBlackPass = url.hostname.endsWith("blackpass.com.br") && /^\/event\/[A-Za-z0-9_-]+/.test(url.pathname);
       const isMrIngressos = url.hostname.endsWith("mringressos.com.br") && /^\/comprar\/[A-Za-z0-9_-]+/.test(url.pathname);
@@ -1152,7 +1158,8 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean; signal?
 }
 
 async function discoverCandidatePages(options: IngestionPipelineOptions = {}, activeAliases: string[] = []) {
-  const configuredBases = await getEnabledConfiguredSourceUrls();
+  const requestedSourceUrls = options.sourceUrls?.map(sanitizePublicSourceUrl);
+  const configuredBases = filterExplicitPublicSourceUrls(await getEnabledConfiguredSourceUrls(), requestedSourceUrls);
   const bases = options.sourceKey
     ? configuredBases.filter(url => options.sourceKey === "public" || publicSourceKey(url) === options.sourceKey)
     : configuredBases;
@@ -1184,7 +1191,8 @@ async function discoverCandidatePages(options: IngestionPipelineOptions = {}, ac
     try {
       const host = new URL(url).hostname;
       const belongsToSource = !options.sourceKey || options.sourceKey === "public" || publicSourceKey(url) === options.sourceKey;
-      return belongsToSource && (!host.endsWith("zig.tickets") || url !== "https://zig.tickets/pt-BR");
+      const belongsToRequestedSource = !requestedSourceUrls || requestedSourceUrls.includes(sanitizePublicSourceUrl(url));
+      return belongsToSource && belongsToRequestedSource && (!host.endsWith("zig.tickets") || url !== "https://zig.tickets/pt-BR");
     } catch { return false; }
   }).slice(0, 120);
 }
@@ -1205,7 +1213,7 @@ export type IngestionSourceReport = {
   rejectionReasons: { fetchFailed: number; outsideTargetVenue: number; invalidStructuredEvent: number; duplicate: number; pastEvent: number };
 };
 
-export type IngestionPipelineOptions = { dryRun?: boolean; sourceKey?: string; signal?: AbortSignal };
+export type IngestionPipelineOptions = { dryRun?: boolean; sourceKey?: string; sourceUrls?: string[]; signal?: AbortSignal };
 type PublicSourceReportInput = {
   candidateUrls: string[];
   pages: PromiseSettledResult<PublicPage>[];

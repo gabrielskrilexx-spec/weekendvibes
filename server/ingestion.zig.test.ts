@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { containsTargetVenue, extractPublicEventLinks, getConfiguredSourceUrls, parseZigEventMetadata, sanitizePublicSourceUrl, ZIG_FETCH_TIMEOUT_MS } from "./ingestion";
+import { containsTargetVenue, extractPublicEventLinks, filterExplicitPublicSourceUrls, getConfiguredSourceUrls, parseZigEventMetadata, sanitizePublicSourceUrl, ZIG_FETCH_TIMEOUT_MS } from "./ingestion";
 
 describe("Zig Tickets adapter", () => {
   it("extrai Curvão e Praia Verde a partir do Markdown entregue sob CAPTCHA", () => {
@@ -13,6 +13,7 @@ describe("Zig Tickets adapter", () => {
     const html = `
       <a href="/eventos/froid-santos"><span>Froid em Santos</span><small>Santos</small></a>
       <a href="https://zig.tickets/eventos/laroc-guaruja"><span>Laroc Guarujá</span><small>Guarujá</small></a>
+      <a href="/evento/halloween-na-curvao"><span>Halloween na Curvão</span><small>Curvão Surf House, Guarujá</small></a>
       <a href="/eventos/japa-faz-a-festa-cabelinho">Japa Vila Velha</a>
       <a href="/categorias/funk">Funk</a>
       <a href="https://example.com/eventos/fora-da-fonte">External</a>
@@ -21,7 +22,18 @@ describe("Zig Tickets adapter", () => {
     expect(extractPublicEventLinks(html, "https://zig.tickets/pt-BR")).toEqual([
       "https://zig.tickets/eventos/froid-santos",
       "https://zig.tickets/eventos/laroc-guaruja",
+      "https://zig.tickets/evento/halloween-na-curvao",
     ]);
+  });
+
+  it("limits public ingestion to the explicitly selected source URLs", () => {
+    const configured = [
+      "https://zig.tickets/evento/halloween-na-curvao",
+      "https://zig.tickets/eventos/reveillon-curvao-2027",
+      "https://zig.tickets/pt-BR",
+    ];
+    expect(filterExplicitPublicSourceUrls(configured, ["https://zig.tickets/evento/halloween-na-curvao?utm_source=admin"])).toEqual([configured[0]]);
+    expect(filterExplicitPublicSourceUrls(configured)).toEqual(configured);
   });
 
   it("parses Zig JSON-LD metadata with precise schedule and price", () => {
