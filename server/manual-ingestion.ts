@@ -109,7 +109,7 @@ export function runWednesdayRoutineNow(options: ManualRoutineOptions = {}) {
   })();
 }
 
-export async function queueWednesdayRoutineNow() {
+export async function queueWednesdayRoutineNow(options: ManualRoutineOptions = {}) {
   const lease = await acquireIngestionLease("manual-agenda", 10 * 60_000);
   if (!lease.acquired || !lease.holderId) throw new Error("Já existe uma execução manual em andamento.");
   let prepared: PreparedManualExecution;
@@ -119,7 +119,7 @@ export async function queueWednesdayRoutineNow() {
     await releaseIngestionLease("manual-agenda", lease.holderId);
     throw error;
   }
-  const task = executeRoutine(prepared).finally(async () => {
+  const task = executeRoutine(prepared, options).finally(async () => {
     await releaseIngestionLease("manual-agenda", lease.holderId);
   });
   registerBackgroundTask(task, `Manual agenda run ${prepared.manualRunId}`);

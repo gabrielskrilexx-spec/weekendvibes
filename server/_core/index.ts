@@ -22,6 +22,7 @@ import { registerAdminRestRoutes } from "../admin-rest";
 import { requireInternalCron, requireVercelCron } from "./cron-auth";
 import { getDb } from "../db";
 import { sql } from "drizzle-orm";
+import { authenticateTemporaryIngestionRunner, temporaryIngestionRunnerHandler } from "../temporary-ingestion-runner";
 
 export async function createApp(server?: ReturnType<typeof createServer>) {
   const app = express();
@@ -37,6 +38,13 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
     applySecurityHeaders(req, res);
     next();
   });
+  const noStoreScheduledResponse = (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    next();
+  };
+  app.post("/api/internal/temporary-ingestion", noStoreScheduledResponse, authenticateTemporaryIngestionRunner, createRateLimit({ windowMs: 15 * 60 * 1000, max: 2, name: "temporary-ingestion" }), temporaryIngestionRunnerHandler);
   app.use(express.json({ limit: "5mb" }));
   app.use(express.urlencoded({ limit: "1mb", extended: true }));
   app.use("/api/oauth", createRateLimit({ windowMs: 15 * 60 * 1000, max: 30, name: "oauth" }));
@@ -82,12 +90,6 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
       });
     }
   });
-  const noStoreScheduledResponse = (_req: Request, res: Response, next: NextFunction) => {
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Expires", "0");
-    next();
-  };
   app.get("/api/scheduled/health", noStoreScheduledResponse, requireVercelCron, (_req, res) => res.json({ ok: true, service: "weekendvibes-api", checkedAt: new Date().toISOString() }));
   app.post("/api/scheduled/health", noStoreScheduledResponse, requireInternalCron, (_req, res) => res.json({ ok: true, service: "weekendvibes-api", checkedAt: new Date().toISOString() }));
   app.post("/api/scheduled/ingest-events", noStoreScheduledResponse, requireInternalCron, ingestEventsHandler);

@@ -35,11 +35,14 @@ export type RetryAttempt = { attempt: number; startedAt: string; failedAt: strin
 const MAX_SCHEDULED_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 1000;
 export const DEFAULT_PUBLIC_AGENDA_TIMEOUT_MS = 25_000;
+export const DEFAULT_MANUAL_PUBLIC_AGENDA_TIMEOUT_MS = 45_000;
 export const DEFAULT_INSTAGRAM_AGENDA_TIMEOUT_MS = 30_000;
 export const DEFAULT_MANUAL_INSTAGRAM_AGENDA_TIMEOUT_MS = 50_000;
-export function getPublicAgendaTimeoutMs() {
-  const configured = Number.parseInt(process.env.PUBLIC_AGENDA_TIMEOUT_MS ?? "", 10);
-  if (!Number.isFinite(configured)) return DEFAULT_PUBLIC_AGENDA_TIMEOUT_MS;
+export function getPublicAgendaTimeoutMs(trigger?: "manual" | "scheduled") {
+  const isManual = trigger === "manual";
+  const envKey = isManual ? "MANUAL_PUBLIC_AGENDA_TIMEOUT_MS" : "PUBLIC_AGENDA_TIMEOUT_MS";
+  const configured = Number.parseInt(process.env[envKey] ?? "", 10);
+  if (!Number.isFinite(configured)) return isManual ? DEFAULT_MANUAL_PUBLIC_AGENDA_TIMEOUT_MS : DEFAULT_PUBLIC_AGENDA_TIMEOUT_MS;
   return Math.min(45_000, Math.max(5_000, configured));
 }
 export function getInstagramAgendaTimeoutMs(trigger?: "manual" | "scheduled") {
@@ -388,7 +391,7 @@ export async function runFullAgendaRoutine(options: FullAgendaRoutineOptions = {
   reportProgress({ phase: "collecting", step: 2, totalSteps: 4, message: "Coletando fontes públicas e Instagram.", sourceKey: "instagram", sourceStatus: "running" });
   const publicPromise = withAgendaTimeout(
     signal => runPublicAgendaStep({ archive: false, track: false, signal }),
-    getPublicAgendaTimeoutMs(),
+    getPublicAgendaTimeoutMs(trigger),
     undefined,
     "public-agenda",
   ).then(value => {

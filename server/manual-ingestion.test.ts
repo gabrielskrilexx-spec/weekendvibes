@@ -103,6 +103,13 @@ describe("manual Wednesday routine", () => {
     expect(mocks.releaseIngestionLease).toHaveBeenCalledWith("manual-agenda", "holder-1");
   });
 
+  it("propaga forceApifyAll pela rotina enfileirada até o pipeline Instagram", async () => {
+    mocks.archiveExpiredSoldOutEvents.mockResolvedValue(0);
+    const accepted = await queueWednesdayRoutineNow({ forceApifyAll: true });
+    expect(accepted).toMatchObject({ accepted: true, runId: 9001 });
+    await vi.waitFor(() => expect(mocks.runInstagramPipeline).toHaveBeenCalledWith(expect.objectContaining({ forceApifyAll: true })));
+  });
+
   it("expõe progresso consultável durante a execução manual e marca a conclusão", async () => {
     mocks.archiveExpiredSoldOutEvents.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve(0), 20)));
     const running = runWednesdayRoutineNow();

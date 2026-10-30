@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   setIngestionRunDetails: vi.fn().mockResolvedValue(true),
   finishIngestionRun: vi.fn().mockResolvedValue(undefined),
   findIngestionRunByApifyActor: vi.fn(),
+  claimApifyDailyRequest: vi.fn().mockResolvedValue({ allowed: true, dateKey: "2026-09-18", requestCount: 1, dailyLimit: 100, persistence: true }),
+  recordOperationalAlert: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("./ingestion-reports", () => ({
@@ -17,8 +19,8 @@ vi.mock("./ingestion-reports", () => ({
 }));
 
 vi.mock("./db", () => ({
-  claimApifyDailyRequest: vi.fn().mockResolvedValue({ allowed: true, dateKey: "2026-09-18", requestCount: 1, dailyLimit: 100, persistence: true }),
-  recordOperationalAlert: vi.fn().mockResolvedValue(undefined),
+  claimApifyDailyRequest: mocks.claimApifyDailyRequest,
+  recordOperationalAlert: mocks.recordOperationalAlert,
 }));
 
 import { apifyInstagramWebhookHandler, asyncIngestInstagramHandler, getConfiguredApifyStoriesActorId, startAsyncApifyStoriesRun } from "./apify-async";
@@ -29,6 +31,7 @@ describe("Apify async Stories", () => {
     mocks.startIngestionRun.mockResolvedValue(42);
     mocks.linkIngestionRunToApifyActor.mockResolvedValue(true);
     mocks.setIngestionRunDetails.mockResolvedValue(true);
+    mocks.claimApifyDailyRequest.mockResolvedValue({ allowed: true, dateKey: "2026-09-18", requestCount: 1, dailyLimit: 100, persistence: true });
     process.env.APIFY_API_TOKEN = "test-token";
     process.env.SCHEDULED_TASK_ENDPOINT_BASE = "https://weekendvib-jscaalye.manus.space";
     process.env.INTERNAL_CRON_SECRET = "cron-secret";
@@ -49,6 +52,24 @@ describe("Apify async Stories", () => {
     expect(mocks.linkIngestionRunToApifyActor).toHaveBeenCalledWith({ runId: 42, actorRunId: "actor-run-1" });
     expect(mocks.setIngestionRunDetails).toHaveBeenCalledWith(42, expect.objectContaining({ actorRunId: "actor-run-1", datasetId: "dataset-1", status: "QUEUED" }));
     fetchMock.mockRestore();
+  });
+
+  it("não deixa o override de alvos contornar orçamento nem kill switch", async () => {
+    const targets = Array.from({ length: 14 }, (_, index) => ({ username: `venue${index}` }));
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    mocks.claimApifyDailyRequest.mockResolvedValueOnce({ allowed: false, dateKey: "2026-10-30", requestCount: 95, dailyLimit: 100, persistence: true, units: 14, blockedReason: "daily_limit" });
+    await expect(startAsyncApifyStoriesRun({ trigger: "manual", targets })).rejects.toThrow("Limite diário de chamadas Apify atingido");
+    expect(mocks.claimApifyDailyRequest).toHaveBeenCalledWith({ units: 14 });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.startIngestionRun).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+
+    const killSwitchFetch = vi.spyOn(globalThis, "fetch");
+    mocks.claimApifyDailyRequest.mockResolvedValueOnce({ allowed: false, dateKey: "2026-10-30", requestCount: 0, dailyLimit: 100, persistence: true, units: 14, blockedReason: "kill_switch" });
+    await expect(startAsyncApifyStoriesRun({ trigger: "manual", targets })).rejects.toThrow("kill switch operacional");
+    expect(killSwitchFetch).not.toHaveBeenCalled();
+    expect(mocks.recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ alertType: "apify_kill_switch_active", severity: "CRITICAL" }));
+    killSwitchFetch.mockRestore();
   });
 
   it("retorna diagnóstico sanitizado quando o Actor público não existe", async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { eq, or } from "drizzle-orm";
 import { ingestionSources } from "../drizzle/schema";
+import * as dbModule from "./db";
 import { getDb } from "./db";
 import { extractDiscoverableInstagramLinks } from "./instagram-pipeline";
 import { selectInstagramApifyTargets } from "./instagram-pipeline";
@@ -90,6 +91,32 @@ describe("Instagram weekend pipeline", () => {
     expect(targets).toHaveLength(14);
     expect(targets.map(target => target.username)).not.toContain("yellowhouse_santos");
     expect(targets.map(target => target.username)).not.toContain("mimadafesta");
+  });
+
+  it("continua o disparo Apify forçado quando as credenciais Meta estão ausentes", async () => {
+    const previousToken = process.env.META_INSTAGRAM_TOKEN;
+    const previousAccountId = process.env.META_INSTAGRAM_ACCOUNT_ID;
+    const inactiveHandles = new Set(["yellowhouse_santos", "mimadafesta"]);
+    const activeTargets = INSTAGRAM_TARGETS.filter(target => !inactiveHandles.has(target.username));
+    const sourceSpy = vi.spyOn(dbModule, "listEnabledInstagramSources").mockResolvedValue(
+      activeTargets.map(target => ({ handle: target.username })) as unknown as Awaited<ReturnType<typeof dbModule.listEnabledInstagramSources>>,
+    );
+    const apifyModule = await import("./apify-async");
+    const dispatchSpy = vi.spyOn(apifyModule, "startAsyncApifyStoriesRun").mockResolvedValue({ runId: 777, actorRunId: "actor-test", status: "QUEUED" });
+    try {
+      delete process.env.META_INSTAGRAM_TOKEN;
+      delete process.env.META_INSTAGRAM_ACCOUNT_ID;
+      const result = await fetchInstagramPostsDetailed({ forceApifyAll: true, trigger: "manual" });
+      expect(result).toMatchObject({ apifyDispatch: "queued", apifyTargetCount: 14 });
+      expect(dispatchSpy).toHaveBeenCalledWith({ trigger: "manual", targets: activeTargets });
+    } finally {
+      sourceSpy.mockRestore();
+      dispatchSpy.mockRestore();
+      if (previousToken === undefined) delete process.env.META_INSTAGRAM_TOKEN;
+      else process.env.META_INSTAGRAM_TOKEN = previousToken;
+      if (previousAccountId === undefined) delete process.env.META_INSTAGRAM_ACCOUNT_ID;
+      else process.env.META_INSTAGRAM_ACCOUNT_ID = previousAccountId;
+    }
   });
 
   it("sanitizes OCR audit entries for the administrative history", () => {

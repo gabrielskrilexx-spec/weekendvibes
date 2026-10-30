@@ -913,12 +913,13 @@ export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean
 }
 
 export async function fetchInstagramPostsDetailed(options: { dryRun?: boolean; signal?: AbortSignal; forceApifyAll?: boolean; trigger?: "manual" | "scheduled" } = {}) {
-  const token = requiredEnv("META_INSTAGRAM_TOKEN");
-  const accountId = requiredEnv("META_INSTAGRAM_ACCOUNT_ID");
   let meta: { posts: InstagramPost[]; transportFailures: InstagramTransportFailure[] } = { posts: [], transportFailures: [] };
   try {
+    const token = requiredEnv("META_INSTAGRAM_TOKEN");
+    const accountId = requiredEnv("META_INSTAGRAM_ACCOUNT_ID");
     meta = await fetchMetaBusinessDiscoveryPostsDetailed(token, accountId, options);
   } catch (error) {
+    if (options.forceApifyAll !== true) throw error;
     const rawMessage = error instanceof Error ? error.message : String(error);
     const credentialFailure = /oauthexception|invalid oauth|access token|expired|token.*invalid|META_INSTAGRAM_TOKEN|session.*expired/i.test(rawMessage);
     const statusMatch = rawMessage.match(/\b([45]\d{2})\b/);

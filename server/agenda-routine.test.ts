@@ -123,6 +123,15 @@ describe("agenda routine composition", () => {
     expect(getPublicAgendaTimeoutMs()).toBe(5_000);
   });
 
+  it("permite janela de 45 s para fontes públicas manuais sem alterar o cron", () => {
+    vi.stubEnv("PUBLIC_AGENDA_TIMEOUT_MS", "25000");
+    vi.stubEnv("MANUAL_PUBLIC_AGENDA_TIMEOUT_MS", "");
+    expect(getPublicAgendaTimeoutMs("scheduled")).toBe(25_000);
+    expect(getPublicAgendaTimeoutMs("manual")).toBe(45_000);
+    vi.stubEnv("MANUAL_PUBLIC_AGENDA_TIMEOUT_MS", "70000");
+    expect(getPublicAgendaTimeoutMs("manual")).toBe(45_000);
+  });
+
   it("não repete erro 4xx nem execução manual", async () => {
     expect(isRetryableAgendaErrorForTest(Object.assign(new Error("permission denied"), { status: 403 }))).toBe(false);
     const state = { history: [] as Array<{ attempt: number; startedAt: string; failedAt: string; reason: string; httpStatus: number | null }> };
