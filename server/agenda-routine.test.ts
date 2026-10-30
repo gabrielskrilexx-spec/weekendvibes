@@ -71,6 +71,19 @@ describe("agenda routine composition", () => {
     expect(AGENDA_ROUTINE_COMPOSITION).toEqual(["archiveExpiredSoldOutEvents", "deactivateExpiredSources", "runIngestionPipeline", "runInstagramPipeline"]);
   });
 
+  it("continua a coleta pública mesmo se a limpeza prévia de fontes expiradas falhar", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mocks.deactivateExpiredSources.mockRejectedValueOnce(new Error("temporary database query failure"));
+    try {
+      await expect(runPublicAgendaStep({ track: false })).resolves.toEqual(expect.objectContaining({ result: { imported: 2 } }));
+      expect(mocks.deactivateExpiredSources).toHaveBeenCalledOnce();
+      expect(mocks.runIngestionPipeline).toHaveBeenCalledOnce();
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining("continuing public ingestion"), "temporary database query failure");
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
   it("converte falha de transporte do Instagram em fallback mock no preview", async () => {
     vi.stubEnv("NODE_ENV", "development");
     mocks.runInstagramPipeline.mockRejectedValueOnce(new Error("ECONNREFUSED: sandbox proxy"));

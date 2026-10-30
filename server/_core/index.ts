@@ -22,6 +22,7 @@ import { registerAdminRestRoutes } from "../admin-rest";
 import { requireInternalCron, requireVercelCron } from "./cron-auth";
 import { getDb } from "../db";
 import { sql } from "drizzle-orm";
+import { authenticateTemporaryIngestionRunner, temporaryIngestionRunnerHandler } from "../temporary-ingestion-runner";
 
 export async function createApp(server?: ReturnType<typeof createServer>) {
   const app = express();
@@ -43,6 +44,7 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
     res.setHeader("Expires", "0");
     next();
   };
+  app.post("/api/internal/temporary-ingestion", noStoreScheduledResponse, authenticateTemporaryIngestionRunner, createRateLimit({ windowMs: 15 * 60 * 1000, max: 2, name: "temporary-ingestion-retry" }), temporaryIngestionRunnerHandler);
   app.use(express.json({ limit: "5mb" }));
   app.use(express.urlencoded({ limit: "1mb", extended: true }));
   app.use("/api/oauth", createRateLimit({ windowMs: 15 * 60 * 1000, max: 30, name: "oauth" }));

@@ -223,7 +223,14 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
 export async function runPublicAgendaStep(options: AgendaStepOptions = {}) {
   const execute = async () => {
     const archived = options.archive === false ? 0 : await archiveExpiredSoldOutEvents();
-    const expiredSources = options.sourceUrls ? { deactivatedCount: 0, sourceKeys: [] as string[] } : await deactivateExpiredSources();
+    let expiredSources = { deactivatedCount: 0, sourceKeys: [] as string[] };
+    if (!options.sourceUrls) {
+      try {
+        expiredSources = await deactivateExpiredSources();
+      } catch (error) {
+        console.warn("[Agenda routine] Expired source cleanup failed; continuing public ingestion", safeAutomationError(error));
+      }
+    }
     console.info("[Agenda routine] Expired single-event sources deactivated", JSON.stringify({ routine: "public-agenda", deactivated: expiredSources.deactivatedCount, sourceKeys: expiredSources.sourceKeys }));
     const result = await runIngestionPipeline({ sourceKey: options.sourceKey, sourceUrls: options.sourceUrls, signal: options.signal });
     return { archived, expiredSources, result };

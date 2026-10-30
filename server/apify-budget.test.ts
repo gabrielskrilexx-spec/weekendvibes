@@ -35,6 +35,25 @@ describe("Apify daily budget", () => {
     expect(where).toHaveBeenCalledTimes(2);
   });
 
+  it("accepts postgres-js row-list count after atomically reserving the requested units", async () => {
+    process.env.APIFY_DAILY_REQUEST_LIMIT = "100";
+    const where = vi.fn().mockResolvedValue({ count: 1 });
+    const set = vi.fn().mockReturnValue({ where });
+    const fakeDb = {
+      insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ onDuplicateKeyUpdate: vi.fn().mockResolvedValue(undefined) }) }),
+      update: vi.fn().mockReturnValue({ set }),
+      select: vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ requestCount: 14, dailyLimit: 100 }]) }) }) }),
+    } as never;
+    await expect(claimApifyDailyRequest({ units: 14, now: new Date("2026-10-30T17:11:42.000Z"), dbOverride: fakeDb })).resolves.toMatchObject({
+      allowed: true,
+      units: 14,
+      requestCount: 14,
+      dailyLimit: 100,
+      persistence: true,
+    });
+    expect(where).toHaveBeenCalledTimes(1);
+  });
+
   it("blocks all paid dispatches when the kill switch is enabled", async () => {
     process.env.APIFY_INGESTION_KILL_SWITCH = "true";
     const fakeDb = {} as never;
