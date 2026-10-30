@@ -65,16 +65,15 @@ function getWebhookBaseUrl() {
   return process.env.SCHEDULED_TASK_ENDPOINT_BASE?.trim().replace(/\/$/, "") ?? "";
 }
 
-function encodeWebhooks(webhookUrl: string) {
-  const signature = process.env.APIFY_WEBHOOK_SECRET?.trim() || process.env.INTERNAL_CRON_SECRET?.trim();
+function encodeWebhooks(webhookUrl: string, callbackToken: string) {
   return Buffer.from(JSON.stringify([
     {
       eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.TIMED_OUT"],
       requestUrl: webhookUrl,
-      ...(signature ? { requestHeaders: { "x-apify-signature": signature } } : {}),
+      headersTemplate: JSON.stringify({ "x-apify-signature": callbackToken }),
       payloadTemplate: '{"resource":{{resource}}}',
     },
-  ])).toString("base64url");
+  ])).toString("base64");
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = getApifySyncTimeoutMs()) {
@@ -149,12 +148,12 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
 
   const callbackToken = randomUUID();
   const webhookUrl = `${baseUrl}/api/webhooks/apify/instagram`;
-  const query = new URLSearchParams({ token, webhooks: encodeWebhooks(webhookUrl) });
+  const query = new URLSearchParams({ webhooks: encodeWebhooks(webhookUrl, callbackToken) });
   let response: globalThis.Response;
   try {
     response = await fetchWithTimeout(`https://api.apify.com/v2/acts/${ACTOR_ID}/runs?${query.toString()}`, {
       method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "WeekendVibes/1.0" },
+      headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: `Bearer ${token}`, "User-Agent": "WeekendVibes/1.0" },
       body: JSON.stringify(buildInstagramStoriesScraperPayload(targets)),
     });
   } catch (error) {
@@ -260,7 +259,7 @@ async function processDataset(run: Awaited<ReturnType<typeof findIngestionRunByA
   };
   const startedAt = Date.now();
   for (let offset = 0; ; offset += DATASET_PAGE_SIZE) {
-    const response = await fetchWithTimeout(`https://api.apify.com/v2/datasets/${encodeURIComponent(datasetId)}/items?token=${encodeURIComponent(token)}&clean=true&limit=${DATASET_PAGE_SIZE}&offset=${offset}`, { headers: { Accept: "application/json", "User-Agent": "WeekendVibes/1.0" } }, DATASET_TIMEOUT_MS);
+    const response = await fetchWithTimeout(`https://api.apify.com/v2/datasets/${encodeURIComponent(datasetId)}/items?clean=true&limit=${DATASET_PAGE_SIZE}&offset=${offset}`, { headers: { Accept: "application/json", Authorization: `Bearer ${token}`, "User-Agent": "WeekendVibes/1.0" } }, DATASET_TIMEOUT_MS);
     const payload = await readJson(response);
     if (!response.ok || !Array.isArray(payload)) {
       await finishIngestionRun(run.id, { status: "failed", failedCount: 1, httpStatus: response.status || 502, details: { provider: "apify", actorRunId, error: "DATASET_READ_FAILED", status: response.status || 502, offset } });

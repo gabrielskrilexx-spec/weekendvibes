@@ -42,13 +42,29 @@ describe("Apify async Stories", () => {
       new Response(JSON.stringify({ data: { id: "actor-run-1", defaultDatasetId: "dataset-1" } }), { status: 201, headers: { "content-type": "application/json" } })
     );
 
-    const result = await startAsyncApifyStoriesRun();
+    const result = await startAsyncApifyStoriesRun({ targets: [{ username: "venue-test" }] });
 
     expect(result).toEqual({ runId: 42, actorRunId: "actor-run-1", status: "QUEUED" });
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(getConfiguredApifyStoriesActorId()).toBe("zaver.api~instagram-stories-highlights-scraper");
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/v2/acts/zaver.api~instagram-stories-highlights-scraper/runs?");
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("webhooks=");
+    const requestUrl = new URL(String(fetchMock.mock.calls[0]?.[0]));
+    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    const webhookInput = requestUrl.searchParams.get("webhooks") ?? "";
+    const webhooks = JSON.parse(Buffer.from(webhookInput, "base64").toString("utf8")) as Array<Record<string, unknown>>;
+    const runDetails = mocks.setIngestionRunDetails.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(requestUrl.searchParams.has("token")).toBe(false);
+    expect(webhookInput).toBe(Buffer.from(JSON.stringify(webhooks), "utf8").toString("base64"));
+    expect(requestInit?.headers).toMatchObject({ Authorization: "Bearer test-token" });
+    expect(JSON.parse(String(requestInit?.body))).toEqual({ targets: ["venue-test"], scrapeType: "both", maxHighlights: 2, onlyNew: true });
+    expect(webhooks).toEqual([expect.objectContaining({
+      eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.TIMED_OUT"],
+      requestUrl: "https://weekendvib-jscaalye.manus.space/api/webhooks/apify/instagram",
+      headersTemplate: JSON.stringify({ "x-apify-signature": runDetails.callbackToken }),
+      payloadTemplate: '{"resource":{{resource}}}',
+    })]);
+    expect(webhooks[0]).not.toHaveProperty("requestHeaders");
     expect(mocks.linkIngestionRunToApifyActor).toHaveBeenCalledWith({ runId: 42, actorRunId: "actor-run-1" });
     expect(mocks.setIngestionRunDetails).toHaveBeenCalledWith(42, expect.objectContaining({ actorRunId: "actor-run-1", datasetId: "dataset-1", status: "QUEUED" }));
     fetchMock.mockRestore();
