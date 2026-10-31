@@ -71,6 +71,20 @@ describe("adapters de ticketeiras oficiais", () => {
     expect(extractPublicEventLinks(html, "https://blackpass.com.br/events")).toEqual(["https://blackpass.com.br/event/700", "https://blackpass.com.br/event/692"]);
   });
 
+  it("normaliza variações de rotas Blacktag e slugs personalizados do Ingresse", () => {
+    const blacktag = `<a href="/evento/halloween-curvao?utm_source=feed#ingressos">Halloween</a><a href="/eventos/house-night?fbclid=abc">House Night</a><div data-url="/events/sunset-session?gclid=track"></div>`;
+    expect(extractPublicEventLinks(blacktag, "https://blacktag.com.br/")).toEqual([
+      "https://blacktag.com.br/evento/halloween-curvao",
+      "https://blacktag.com.br/eventos/house-night",
+      "https://blacktag.com.br/events/sunset-session",
+    ]);
+    const ingresse = `<a href="/laroc-guaruja-apresenta-dubdogz-nostalgia/?utm_campaign=agenda">Dubdogz</a>`;
+    expect(extractPublicEventLinks(ingresse, "https://www.ingresse.com/")).toEqual([
+      "https://www.ingresse.com/laroc-guaruja-apresenta-dubdogz-nostalgia/",
+    ]);
+    expect(extractPublicEventLinks('<script>"/eventos/santos-sp"</script>', "https://www.sympla.com.br/eventos/santos-sp")).toEqual([]);
+  });
+
   it("normaliza o estado JSON público de um evento Sympla", () => {
     const state = { props: { pageProps: { hydrationData: { eventHydration: { event: {
       name: "Festa House no GOAT CLUB", logoUrl: "https://images.sympla.com.br/event.jpg",

@@ -16,6 +16,8 @@
     "monitor:ticketing": "node scripts/monitor-ticketing-sources.mjs --watch",
     "monitor:ticketing:once": "node scripts/monitor-ticketing-sources.mjs",
     "ingest:curvao-zig": "tsx scripts/run-curvao-zig-ingestion.mts",
+    "audit:public-ticketing": "tsx scripts/audit-public-ticketing-sources.mts",
+    "ingest:all-public-ticketing": "tsx scripts/run-all-public-ticketing-ingestion.mts",
     "admin:magic-link": "tsx scripts/generate-admin-magic-link.mts",
     "seed:events": "DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes tsx scripts/seed-events.mts",
     "db:push": "DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes drizzle-kit generate && DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes drizzle-kit migrate"

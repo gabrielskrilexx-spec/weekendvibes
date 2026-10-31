@@ -231,6 +231,7 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
   const links = new Set<string>();
   const absoluteBase = new URL(baseUrl);
   const $ = load(html, undefined, false);
+  const addNormalizedLink = (url: URL) => links.add(sanitizePublicSourceUrl(url.href));
   $("a[href]").each((_, anchor) => {
     try {
       const href = $(anchor).attr("href");
@@ -238,30 +239,35 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
       const url = new URL(href, absoluteBase);
       if (url.origin !== absoluteBase.origin) return;
       const isArticket = url.pathname.startsWith("/e/") && url.hostname.includes("articket");
-      const isBlacktag = url.pathname.startsWith("/eventos/") && url.hostname.includes("blacktag");
-      const isZig = /^\/eventos?\//.test(url.pathname) && (url.hostname === "zig.tickets" || url.hostname.endsWith(".zig.tickets"));
-      const isIngresseEvent = url.hostname.includes("ingresse") && url.pathname !== "/" && !url.pathname.startsWith("/search");
+      const isBlacktag = /^\/(?:evento|eventos|event|events)\/[A-Za-z0-9._~-]+(?:\/|$)/i.test(url.pathname) && url.hostname.includes("blacktag");
+      const isZig = /^\/eventos?\//i.test(url.pathname) && (url.hostname === "zig.tickets" || url.hostname.endsWith(".zig.tickets"));
+      const isIngresseEvent = url.hostname.includes("ingresse") && url.pathname !== "/" && !url.pathname.toLowerCase().startsWith("/search");
       const isBlackPass = url.hostname.endsWith("blackpass.com.br") && /^\/event\/[A-Za-z0-9_-]+/.test(url.pathname);
       const isMrIngressos = url.hostname.endsWith("mringressos.com.br") && /^\/comprar\/[A-Za-z0-9_-]+/.test(url.pathname);
       const isSympla = url.hostname.endsWith("sympla.com.br") && /^\/evento\/[A-Za-z0-9-]+\/[0-9]+/.test(url.pathname);
       const isWeTicket = url.hostname.endsWith("weticket.com.br") && /^\/[A-Za-z0-9][A-Za-z0-9-]+$/.test(url.pathname) && !["/perguntas-frequentes", "/politica-de-privacidade", "/termos-de-uso"].includes(url.pathname.toLowerCase());
       const anchorText = $(anchor).text().replace(/\s+/g, " ").trim();
       const isZigRegional = !isZig || /santos|guaruj[aá]/i.test(normalizeText(anchorText));
-      if ((isArticket || isBlacktag || isZig || isIngresseEvent || isBlackPass || isMrIngressos || isSympla || isWeTicket) && isZigRegional) links.add(url.href);
+      if ((isArticket || isBlacktag || isZig || isIngresseEvent || isBlackPass || isMrIngressos || isSympla || isWeTicket) && isZigRegional) addNormalizedLink(url);
     } catch {
       // Ignore malformed public links.
     }
   });
   const collectEmbeddedPath = (value: string) => {
     try {
-      const path = value.match(/(?:^|["'\\])((?:\/event\/[A-Za-z0-9_-]+)|(?:\/comprar\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)?))(?:["'\\]|$)/)?.[1];
+      const path = value.match(/(?:^|["'\\])((?:\/(?:evento|eventos|event|events)\/[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~-]+)?|\/e\/\d+(?:\/[A-Za-z0-9._~-]+)?|\/comprar\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)?))(?:\?[^"'\\\s]*)?(?:#[^"'\\\s]*)?(?:["'\\]|$)/i)?.[1];
       if (path) {
         const url = new URL(path, absoluteBase);
-        if (url.origin === absoluteBase.origin && (url.pathname.startsWith("/event/") || url.pathname.startsWith("/comprar/"))) links.add(url.href);
+        const host = url.hostname.toLowerCase();
+        const isBlacktagRoute = host.includes("blacktag") && /^\/(?:evento|eventos|event|events)\/[A-Za-z0-9._~-]+(?:\/|$)/i.test(url.pathname);
+        const isArticketRoute = host.includes("articket") && /^\/e\/\d+(?:\/|$)/i.test(url.pathname);
+        const isBlackPassRoute = host.endsWith("blackpass.com.br") && /^\/event\/[A-Za-z0-9_-]+(?:\/|$)/i.test(url.pathname);
+        const isMrIngressosRoute = host.endsWith("mringressos.com.br") && /^\/comprar\/[A-Za-z0-9_-]+(?:\/|$)/i.test(url.pathname);
+        if (url.origin === absoluteBase.origin && (isBlacktagRoute || isArticketRoute || isBlackPassRoute || isMrIngressosRoute)) addNormalizedLink(url);
       }
       for (const match of Array.from(value.matchAll(/(?:https:\/\/www\.sympla\.com\.br)?(\/evento\/[A-Za-z0-9-]+\/[0-9]+)/g))) {
         const url = new URL(match[1], "https://www.sympla.com.br");
-        if (url.origin === absoluteBase.origin) links.add(url.href);
+        if (url.origin === absoluteBase.origin) addNormalizedLink(url);
       }
     } catch { /* ignore malformed embedded paths */ }
   };
