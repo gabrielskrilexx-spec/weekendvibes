@@ -1196,8 +1196,8 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean; signal?
       signal: AbortSignal.timeout(isMrIngressosEventUrl(url) ? MR_INGRESSOS_FETCH_TIMEOUT_MS : publicFetchTimeoutMs(url)),
     };
     const response = isMrIngressosEventUrl(url)
-      ? await fetchMrIngressosWithRetry(url, requestInit, (targetUrl: string | URL | Request, targetInit?: RequestInit) => fetchExternal(targetUrl instanceof Request ? targetUrl.url : String(targetUrl), targetInit ?? {}, MR_INGRESSOS_FETCH_TIMEOUT_MS))
-      : await fetchExternal(url, requestInit, publicFetchTimeoutMs(url));
+      ? await fetchMrIngressosWithRetry(url, requestInit, (targetUrl: string | URL | Request, targetInit?: RequestInit) => fetchExternal(targetUrl instanceof Request ? targetUrl.url : String(targetUrl), targetInit ?? {}, MR_INGRESSOS_FETCH_TIMEOUT_MS, false, options.signal))
+      : await fetchExternal(url, requestInit, publicFetchTimeoutMs(url), false, options.signal);
     const html = await readExternalBody(response);
     const meta = readMetaTags(html);
     const $ = load(html, undefined, false);
