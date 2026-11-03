@@ -71,8 +71,27 @@ export function getConfiguredApifyStoriesActorId() {
   return ACTOR_ID;
 }
 
+export function sanitizeApifyWebhookBaseUrl(value: string) {
+  const raw = value.trim();
+  const markdownLink = raw.match(/^\[[^\]]+\]\((https?:\/\/[^)]+)\)(.*)$/i);
+  const candidate = (markdownLink ? `${markdownLink[1]}${markdownLink[2]}` : raw).trim();
+  let url: URL;
+  try {
+    url = new URL(candidate);
+  } catch {
+    throw new Error("SCHEDULED_TASK_ENDPOINT_BASE deve ser uma URL HTTPS absoluta válida.");
+  }
+  if (url.protocol !== "https:") {
+    throw new Error("SCHEDULED_TASK_ENDPOINT_BASE deve usar HTTPS.");
+  }
+  url.hash = "";
+  url.search = "";
+  return url.toString().replace(/\/$/, "");
+}
+
 function getWebhookBaseUrl() {
-  return process.env.SCHEDULED_TASK_ENDPOINT_BASE?.trim().replace(/\/$/, "") ?? "";
+  const configured = process.env.SCHEDULED_TASK_ENDPOINT_BASE?.trim();
+  return configured ? sanitizeApifyWebhookBaseUrl(configured) : "";
 }
 
 function encodeWebhooks(webhookUrl: string, callbackToken: string) {

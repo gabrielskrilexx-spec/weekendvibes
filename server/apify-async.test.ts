@@ -31,7 +31,7 @@ vi.mock("./db", () => ({
   recordOperationalAlert: mocks.recordOperationalAlert,
 }));
 
-import { apifyInstagramWebhookHandler, asyncIngestInstagramHandler, getConfiguredApifyStoriesActorId, normalizeApifyActorId, readApifyErrorDetail, sanitizeApifyDiagnostic, startAsyncApifyStoriesRun } from "./apify-async";
+import { apifyInstagramWebhookHandler, asyncIngestInstagramHandler, getConfiguredApifyStoriesActorId, normalizeApifyActorId, readApifyErrorDetail, sanitizeApifyDiagnostic, sanitizeApifyWebhookBaseUrl, startAsyncApifyStoriesRun } from "./apify-async";
 
 describe("Apify async Stories", () => {
   beforeEach(() => {
@@ -48,6 +48,15 @@ describe("Apify async Stories", () => {
   it("normaliza o identificador autor/actor para o separador exigido pela API v2", () => {
     expect(normalizeApifyActorId("zaver.api/instagram-stories-highlights-scraper")).toBe("zaver.api~instagram-stories-highlights-scraper");
     expect(normalizeApifyActorId(" zaver.api~instagram-stories-highlights-scraper ")).toBe("zaver.api~instagram-stories-highlights-scraper");
+  });
+
+  it("remove Markdown da URL base do webhook e exige HTTPS absoluto", () => {
+    expect(sanitizeApifyWebhookBaseUrl("[https://weekendvibes-dh6w.vercel.app](https://weekendvibes-dh6w.vercel.app)/"))
+      .toBe("https://weekendvibes-dh6w.vercel.app");
+    expect(sanitizeApifyWebhookBaseUrl(" https://example.test/base/?ignored=yes#fragment "))
+      .toBe("https://example.test/base");
+    expect(() => sanitizeApifyWebhookBaseUrl("http://example.test")).toThrow("HTTPS");
+    expect(() => sanitizeApifyWebhookBaseUrl("[not-a-url](not-a-url)")).toThrow("URL HTTPS absoluta válida");
   });
 
   it("extrai details do erro e remove credenciais e parâmetros sensíveis", () => {
