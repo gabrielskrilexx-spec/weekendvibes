@@ -42,9 +42,9 @@ export async function getDb() {
   return _db;
 }
 
-export async function checkDatabaseHealth() {
+export async function checkDatabaseHealth(getDbProvider: typeof getDb = getDb) {
   const startedAt = Date.now();
-  const db = await getDb();
+  const db = await getDbProvider();
   if (!db) return { ok: false as const, database: "unavailable" as const, rateLimiter: "unavailable" as const, userPersistence: "unavailable" as const, latencyMs: Date.now() - startedAt };
   try {
     const [row] = await db.execute(sql`

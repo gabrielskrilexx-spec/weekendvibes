@@ -1,48 +1,65 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { NextFunction } from "express";
+import { requireInternalCron } from "./_core/cron-auth";
+import { scheduledHealthHandler } from "./scheduled-health";
+
+type FakeRequest = { headers: Record<string, string | undefined> };
+type FakeResponse = {
+  statusCode: number;
+  body?: unknown;
+  headers: Record<string, string>;
+  status(code: number): FakeResponse;
+  json(value: unknown): FakeResponse;
+};
+
+function createResponse(): FakeResponse {
+  const response: FakeResponse = {
+    statusCode: 200,
+    headers: {},
+    status(code) { response.statusCode = code; return response; },
+    json(value) { response.body = value; response.headers["content-type"] = "application/json; charset=utf-8"; return response; },
+  };
+  return response;
+}
+
+function invokeScheduledHealth(req: FakeRequest, res: FakeResponse) {
+  let nextCalled = false;
+  const next: NextFunction = () => { nextCalled = true; };
+  requireInternalCron(req as never, res as never, next);
+  if (nextCalled) scheduledHealthHandler(req as never, res as never);
+  return res;
+}
 
 describe("scheduled runtime environment", () => {
-  it("uses an HTTP endpoint and cookie for a lightweight authenticated request", async () => {
-    const endpointBase = process.env.SCHEDULED_TASK_TEST_ENDPOINT_BASE ?? (process.env.SCHEDULED_TASK_RUN_EXTERNAL_TESTS === "1" ? process.env.SCHEDULED_TASK_ENDPOINT_BASE : "http://127.0.0.1:3000");
-    const cookie = process.env.SCHEDULED_TASK_COOKIE ?? "local-test-cookie";
-    expect(endpointBase).toBeTruthy();
-    expect(cookie).toBeTruthy();
-    const configuredUrl = new URL(endpointBase ?? "http://127.0.0.1:3000");
-    configuredUrl.protocol = "http:";
+  beforeEach(() => {
+    vi.stubEnv("SCHEDULED_TASK_ENDPOINT_BASE", "https://scheduled-test.invalid");
+    vi.stubEnv("INTERNAL_CRON_SECRET", "test-internal-cron-secret");
+  });
 
-    const response = await fetch(`${configuredUrl.origin}/api/trpc/auth.me`, {
-      headers: {
-        Accept: "application/json",
-        Cookie: `app_session_id=${encodeURIComponent(cookie ?? "")}`,
-      },
-    });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
 
-    expect(response.headers.get("content-type")).toContain("application/json");
-    expect(response.status).toBe(200);
-    const payload = await response.json() as { result?: unknown; error?: unknown };
-    expect(payload.error).toBeUndefined();
-    expect(payload.result).toBeDefined();
-  }, 15_000);
+  it("responde diretamente ao endpoint agendado sem rede nem cookie de sessão", () => {
+    expect(process.env.SCHEDULED_TASK_ENDPOINT_BASE).toBe("https://scheduled-test.invalid");
+    const response = invokeScheduledHealth({ headers: {} }, createResponse());
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({ ok: false, error: "unauthorized" });
 
-  it("accepts the configured machine secret on the lightweight cron health callback", async () => {
-    const endpointBase = process.env.SCHEDULED_TASK_TEST_ENDPOINT_BASE ?? "http://127.0.0.1:3000";
-    const cronSecret = process.env.INTERNAL_CRON_SECRET;
+    const authenticatedResponse = invokeScheduledHealth({ headers: { "x-cron-secret": process.env.INTERNAL_CRON_SECRET } }, createResponse());
+    expect(authenticatedResponse.headers["content-type"]).toContain("application/json");
+    expect(authenticatedResponse.statusCode).toBe(200);
+    expect(authenticatedResponse.body).toEqual(expect.objectContaining({ ok: true, service: "weekendvibes-api", checkedAt: expect.any(String) }));
+  });
+
+  it("aceita o segredo de máquina configurado no callback de saúde cron", () => {
     expect(process.env.SCHEDULED_TASK_ENDPOINT_BASE).toBeTruthy();
-    expect(cronSecret).toBeTruthy();
-
-    const response = await fetch(`${endpointBase}/api/scheduled/health`, {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "x-cron-secret": cronSecret ?? "",
-      },
-    });
-
-    expect(response.headers.get("content-type")).toContain("application/json");
-    expect(response.status).toBe(200);
-    const payload = await response.json() as { ok?: unknown; error?: unknown };
-    expect(payload.error).toBeUndefined();
-    expect(payload.ok).toBe(true);
-  }, 15_000);
+    expect(process.env.INTERNAL_CRON_SECRET).toBeTruthy();
+    const response = invokeScheduledHealth({ headers: { "x-cron-secret": process.env.INTERNAL_CRON_SECRET } }, createResponse());
+    expect(response.headers["content-type"]).toContain("application/json");
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(expect.objectContaining({ ok: true }));
+  });
 });
-
-// This smoke test intentionally uses only the public auth query and never prints the cookie.

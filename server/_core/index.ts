@@ -15,6 +15,7 @@ import { exportJobsRecoveryHandler } from "../scheduled-export-recovery";
 import { ticketingMonitorHandler } from "../scheduled-ticketing-monitor";
 import { executiveObservabilityReportHandler } from "../scheduled-executive-report";
 import { weeklyExecutiveReportHandler } from "../scheduled-weekly-report";
+import { scheduledHealthHandler } from "../scheduled-health";
 import { serveStatic } from "./static";
 import { applySecurityHeaders, createRateLimit, createStrictCors } from "./security";
 import { registerMapsJavascriptRoute } from "../maps-javascript";
@@ -88,8 +89,8 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
       });
     }
   });
-  app.get("/api/scheduled/health", noStoreScheduledResponse, requireVercelCron, (_req, res) => res.json({ ok: true, service: "weekendvibes-api", checkedAt: new Date().toISOString() }));
-  app.post("/api/scheduled/health", noStoreScheduledResponse, requireInternalCron, (_req, res) => res.json({ ok: true, service: "weekendvibes-api", checkedAt: new Date().toISOString() }));
+  app.get("/api/scheduled/health", noStoreScheduledResponse, requireVercelCron, scheduledHealthHandler);
+  app.post("/api/scheduled/health", noStoreScheduledResponse, requireInternalCron, scheduledHealthHandler);
   app.post("/api/scheduled/ingest-events", noStoreScheduledResponse, requireInternalCron, ingestEventsHandler);
   app.get("/api/scheduled/ingest-public-sources", noStoreScheduledResponse, requireVercelCron, ingestEventsHandler);
   app.post("/api/scheduled/ingest-full-agenda", noStoreScheduledResponse, requireInternalCron, ingestFullAgendaHandler);
