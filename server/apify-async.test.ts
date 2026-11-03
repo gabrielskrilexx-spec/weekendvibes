@@ -31,7 +31,7 @@ vi.mock("./db", () => ({
   recordOperationalAlert: mocks.recordOperationalAlert,
 }));
 
-import { apifyInstagramWebhookHandler, asyncIngestInstagramHandler, getConfiguredApifyStoriesActorId, readApifyErrorDetail, sanitizeApifyDiagnostic, startAsyncApifyStoriesRun } from "./apify-async";
+import { apifyInstagramWebhookHandler, asyncIngestInstagramHandler, getConfiguredApifyStoriesActorId, normalizeApifyActorId, readApifyErrorDetail, sanitizeApifyDiagnostic, startAsyncApifyStoriesRun } from "./apify-async";
 
 describe("Apify async Stories", () => {
   beforeEach(() => {
@@ -43,6 +43,11 @@ describe("Apify async Stories", () => {
     process.env.APIFY_API_TOKEN = "test-token";
     process.env.SCHEDULED_TASK_ENDPOINT_BASE = "https://weekendvib-jscaalye.manus.space";
     process.env.INTERNAL_CRON_SECRET = "cron-secret";
+  });
+
+  it("normaliza o identificador autor/actor para o separador exigido pela API v2", () => {
+    expect(normalizeApifyActorId("zaver.api/instagram-stories-highlights-scraper")).toBe("zaver.api~instagram-stories-highlights-scraper");
+    expect(normalizeApifyActorId(" zaver.api~instagram-stories-highlights-scraper ")).toBe("zaver.api~instagram-stories-highlights-scraper");
   });
 
   it("extrai details do erro e remove credenciais e parâmetros sensíveis", () => {

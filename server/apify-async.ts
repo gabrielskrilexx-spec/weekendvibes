@@ -21,7 +21,17 @@ import { redactError } from "./_core/security";
 import { claimApifyDailyRequest, claimApifyProcessedItem, completeApifyProcessedItem, getApifyBudgetBlockAlert, recordOperationalAlert } from "./db";
 
 export const DEFAULT_APIFY_STORIES_ACTOR_ID = "zaver.api~instagram-stories-highlights-scraper";
-const ACTOR_ID = process.env.APIFY_STORIES_ACTOR_ID?.trim() || DEFAULT_APIFY_STORIES_ACTOR_ID;
+
+export function normalizeApifyActorId(value: string) {
+  const actorId = value.trim();
+  if (!actorId) return DEFAULT_APIFY_STORIES_ACTOR_ID;
+  const separatorIndex = actorId.indexOf("/");
+  return separatorIndex >= 0
+    ? `${actorId.slice(0, separatorIndex)}~${actorId.slice(separatorIndex + 1)}`
+    : actorId;
+}
+
+const ACTOR_ID = normalizeApifyActorId(process.env.APIFY_STORIES_ACTOR_ID || DEFAULT_APIFY_STORIES_ACTOR_ID);
 const DATASET_TIMEOUT_MS = 30_000;
 const DATASET_PAGE_SIZE = 100;
 
@@ -173,7 +183,8 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
   const query = new URLSearchParams({ webhooks: encodeWebhooks(webhookUrl, callbackToken) });
   let response: globalThis.Response;
   try {
-    response = await fetchWithTimeout(`https://api.apify.com/v2/acts/${ACTOR_ID}/runs?${query.toString()}`, {
+    const actorPath = encodeURIComponent(ACTOR_ID).replace(/%7E/gi, "~");
+    response = await fetchWithTimeout(`https://api.apify.com/v2/acts/${actorPath}/runs?${query.toString()}`, {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: `Bearer ${token}`, "User-Agent": "WeekendVibes/1.0" },
       body: JSON.stringify(buildInstagramStoriesScraperPayload(targets)),
