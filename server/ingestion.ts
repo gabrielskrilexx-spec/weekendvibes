@@ -311,11 +311,17 @@ function readJsonLd(html: string) {
     if (found) return false;
     try {
       const parsed = JSON.parse($(script).contents().text().trim()) as unknown;
-      const values = Array.isArray(parsed) ? parsed : [parsed];
+      const roots = Array.isArray(parsed) ? parsed : [parsed];
+      const values = roots.flatMap(value => {
+        if (!value || typeof value !== "object") return [];
+        const record = value as Record<string, unknown>;
+        return Array.isArray(record["@graph"]) ? record["@graph"] : [value];
+      });
       const event = values.find(value => {
         if (!value || typeof value !== "object") return false;
         const record = value as Record<string, unknown>;
-        return String(record["@type"] ?? "").toLowerCase() === "event" || "startDate" in record;
+        const types = Array.isArray(record["@type"]) ? record["@type"] : [record["@type"]];
+        return types.some(type => String(type ?? "").toLowerCase() === "event") || "startDate" in record;
       });
       if (event && typeof event === "object") found = event as Record<string, unknown>;
     } catch {
@@ -600,6 +606,7 @@ export function parseWeTicketEventMetadata(html: string, url: string) {
   const jsonLd = readJsonLd(html);
   const location = jsonLd?.location && typeof jsonLd.location === "object" ? jsonLd.location as Record<string, unknown> : {};
   const address = location.address && typeof location.address === "object" ? location.address as Record<string, unknown> : {};
+  const offers = Array.isArray(jsonLd?.offers) ? jsonLd.offers[0] as Record<string, unknown> | undefined : jsonLd?.offers && typeof jsonLd.offers === "object" ? jsonLd.offers as Record<string, unknown> : undefined;
   const meta = readMetaTags(html);
   const $ = load(html, undefined, false);
   $("script, style, noscript").remove();
@@ -610,7 +617,7 @@ export function parseWeTicketEventMetadata(html: string, url: string) {
   const city = typeof address.addressLocality === "string" ? address.addressLocality : (/guaruj[aá]/i.test(visibleText) ? "Guarujá" : /santos/i.test(visibleText) ? "Santos" : "");
   const street = typeof address.streetAddress === "string" ? address.streetAddress : "";
   const priceMatch = visibleText.match(/r\$\s*([\d.]+(?:,\d{2})?)/i);
-  const priceCents = priceMatch ? Math.round(Number(priceMatch[1].replace(/\./g, "").replace(",", ".")) * 100) : 0;
+  const priceCents = readPriceCents(offers?.price ?? offers?.lowPrice) || (priceMatch ? Math.round(Number(priceMatch[1].replace(/\./g, "").replace(",", ".")) * 100) : 0);
   const searchable = normalizeText(`${title} ${visibleText}`);
   const genre = /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : "house_eletronica";
   const category = /show|festival|concerto|banda/.test(searchable) ? "show" : "balada";
@@ -644,23 +651,28 @@ function readSymplaEventState(html: string): SymplaEventState | undefined {
 
 export function parseSymplaEventMetadata(html: string, url: string) {
   const state = readSymplaEventState(html);
+  const jsonLd = readJsonLd(html);
   const meta = readMetaTags(html);
   const $ = load(html, undefined, false);
   $("script, style, noscript").remove();
   const visibleText = $.root().text().replace(/\s+/g, " ").trim();
+  const jsonLocation = jsonLd?.location && typeof jsonLd.location === "object" ? jsonLd.location as Record<string, unknown> : {};
+  const jsonAddress = jsonLocation.address && typeof jsonLocation.address === "object" ? jsonLocation.address as Record<string, unknown> : {};
+  const jsonGeo = jsonLocation.geo && typeof jsonLocation.geo === "object" ? jsonLocation.geo as Record<string, unknown> : {};
+  const jsonOffers = Array.isArray(jsonLd?.offers) ? jsonLd.offers[0] as Record<string, unknown> | undefined : jsonLd?.offers && typeof jsonLd.offers === "object" ? jsonLd.offers as Record<string, unknown> : undefined;
   const address = state?.eventsAddress ?? {};
-  const title = String(state?.name ?? meta("og:title") ?? "").trim();
-  const eventDate = String(state?.startDateMultiFormat?.ISO8601 ?? state?.startDate ?? meta("event:start_time") ?? "").trim();
-  const locationName = String(address.name ?? "").trim();
-  const city = String(address.city ?? "").trim();
-  const addressLine = [address.address, address.addressNum, address.neighborhood, city, address.state].filter(value => typeof value === "string" && value.trim()).join(", ");
-  const detail = typeof state?.strippedDetail === "string" ? state.strippedDetail : typeof state?.detail === "string" ? stripHtml(state.detail) : meta("og:description");
-  const coordinates = address.geolocation ?? {};
+  const title = String(state?.name ?? jsonLd?.name ?? meta("og:title") ?? "").trim();
+  const eventDate = String(state?.startDateMultiFormat?.ISO8601 ?? state?.startDate ?? jsonLd?.startDate ?? meta("event:start_time") ?? "").trim();
+  const locationName = String(address.name ?? jsonLocation.name ?? (typeof jsonLd?.location === "string" ? jsonLd.location : "")).trim();
+  const city = String(address.city ?? jsonAddress.addressLocality ?? "").trim();
+  const addressLine = [address.address ?? jsonAddress.streetAddress, address.addressNum, address.neighborhood, city, address.state ?? jsonAddress.addressRegion].filter(value => typeof value === "string" && value.trim()).join(", ");
+  const detail = typeof state?.strippedDetail === "string" ? state.strippedDetail : typeof state?.detail === "string" ? stripHtml(state.detail) : typeof jsonLd?.description === "string" ? stripHtml(jsonLd.description) : meta("og:description");
+  const coordinates = address.geolocation ?? { latitude: jsonGeo.latitude, longitude: jsonGeo.longitude };
   const searchable = normalizeText(`${title} ${detail} ${locationName}`);
   const genre = /\bfunk\b/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : /house|eletronic|dj|balada|festa/.test(searchable) ? "house_eletronica" : "";
   const category = /show|festival|concerto|banda/.test(searchable) ? "show" : /balada|festa|dj|boate/.test(searchable) ? "balada" : genre ? "evento_musical" : "";
   const priceMatch = `${visibleText} ${detail}`.match(/r\$\s*([\d.]+(?:,\d{2})?)/i);
-  const priceCents = priceMatch ? Math.round(Number(priceMatch[1].replace(/\./g, "").replace(",", ".")) * 100) : 0;
+  const priceCents = readPriceCents(jsonOffers?.price ?? jsonOffers?.lowPrice) || (priceMatch ? Math.round(Number(priceMatch[1].replace(/\./g, "").replace(",", ".")) * 100) : 0);
   if (!title || !eventDate || !city || !locationName) return undefined;
   return {
     title,
@@ -673,7 +685,7 @@ export function parseSymplaEventMetadata(html: string, url: string) {
     genre,
     priceCents,
     sourceUrl: url,
-    imageUrl: String(state?.logoUrl ?? meta("og:image") ?? ""),
+    imageUrl: String(state?.logoUrl || meta("og:image") || (typeof jsonLd?.image === "string" ? jsonLd.image : Array.isArray(jsonLd?.image) ? jsonLd.image[0] : "") || ""),
     latitude: String(coordinates.latitude ?? ""),
     longitude: String(coordinates.longitude ?? ""),
     text: [title, detail, locationName, addressLine, city].filter(Boolean).join(" ").slice(0, 16_000),

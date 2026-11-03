@@ -26,12 +26,50 @@ describe("fixtures dos conectores públicos", () => {
     expect(parseSymplaEventMetadata(fixture("sympla-santos.html"), "https://www.sympla.com.br/evento/festa-house/123")).toMatchObject({ title: "Festa House no GOAT CLUB", city: "Santos", locationName: "GOAT CLUB", priceCents: 8000, imageUrl: "https://images.sympla.com.br/event.jpg" });
   });
 
+  it("usa JSON-LD @graph como fallback do schema interno da Sympla", () => {
+    expect(parseSymplaEventMetadata(fixture("sympla-event-jsonld.html"), "https://www.sympla.com.br/evento/sunset-goat/12345")).toMatchObject({
+      title: "Sunset no GOAT CLUB",
+      eventDate: "2031-09-22T22:00:00-03:00",
+      locationName: "GOAT CLUB",
+      address: "Rua Example, 100, Santos, SP",
+      city: "Santos",
+      priceCents: 8000,
+      imageUrl: "https://images.sympla.com.br/sunset.jpg",
+      sourceUrl: "https://www.sympla.com.br/evento/sunset-goat/12345",
+    });
+  });
+
   it("normaliza Zig a partir de JSON-LD", () => {
     expect(parseZigEventMetadata(fixture("zig-santos.html"), "https://zig.tickets/eventos/osuco-black-and-white")).toMatchObject({ title: "Osuco Black And White", city: "Santos", locationName: "Santos Convention Center", priceCents: 8000, imageUrl: "https://cdn.zig.tickets/osuco.jpg" });
   });
 
+  it("normaliza Zig a partir de @graph com @type em array", () => {
+    expect(parseZigEventMetadata(fixture("zig-event-graph.html"), "https://zig.tickets/eventos/inside-002-curvao")).toMatchObject({
+      title: "INSIDE 002 — Curvão",
+      eventDate: "2031-01-02T20:00:00-03:00",
+      locationName: "Curvão Surf House",
+      city: "Guarujá",
+      priceCents: 9990,
+      imageUrl: "https://cdn.zig.tickets/inside-002.jpg",
+      sourceUrl: "https://zig.tickets/eventos/inside-002-curvao",
+    });
+  });
+
   it("normaliza WeTicket com preço em português", () => {
     expect(parseWeTicketEventMetadata(fixture("weticket-santos.html"), "https://www.weticket.com.br/ape-22-especial-halloween")).toMatchObject({ title: "APÊ 22 — Especial Halloween", city: "Santos", priceCents: 4500, imageUrl: "https://cdn.weticket.com.br/ape22.jpg" });
+  });
+
+  it("normaliza WeTicket a partir de JSON-LD @graph", () => {
+    expect(parseWeTicketEventMetadata(fixture("weticket-event-jsonld.html"), "https://www.weticket.com.br/ape-22-sunset")).toMatchObject({
+      title: "APÊ 22 — Sunset",
+      eventDate: "2031-03-12T22:00:00-03:00",
+      locationName: "O BECO",
+      address: "Rua Example, 22",
+      city: "Santos",
+      priceCents: 4500,
+      imageUrl: "https://cdn.weticket.com.br/ape22-sunset.jpg",
+      sourceUrl: "https://www.weticket.com.br/ape-22-sunset",
+    });
   });
 
   it("normaliza Articket com JSON-LD e imagem", () => {

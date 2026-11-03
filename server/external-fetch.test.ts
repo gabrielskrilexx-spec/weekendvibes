@@ -23,13 +23,24 @@ describe("external fetch hardening", () => {
 
   it("classifies blocked bodies without exposing their content", () => {
     expect(isBlockedExternalResponse(200, "<html><body>Cloudflare challenge</body></html>")).toBe(true);
+    expect(isBlockedExternalResponse(403, "")).toBe(true);
     expect(isBlockedExternalResponse(502, "bad gateway")).toBe(true);
     expect(isBlockedExternalResponse(200, "evento público válido")).toBe(false);
+  });
+
+  it("preserves a public-platform 403 as a structured HTTP error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Forbidden", { status: 403 })));
+    await expect(fetchExternal("https://platform.example/public-events", {}, 100)).rejects.toMatchObject({
+      code: "HTTP_ERROR",
+      statusCode: 403,
+    });
+    vi.unstubAllGlobals();
   });
 
   it("classifies blocked HTTP errors as sandbox-restricted outside production", async () => {
     const { isSandboxRestrictedError } = await import("./external-fetch");
     expect(isSandboxRestrictedError(new ExternalFetchError("HTTP 502", "HTTP_ERROR", 502))).toBe(true);
+    expect(isSandboxRestrictedError(new ExternalFetchError("HTTP 403", "HTTP_ERROR", 403))).toBe(true);
   });
 
   it("returns a sanitized error when the response body cannot be read", async () => {
