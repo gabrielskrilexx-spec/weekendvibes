@@ -102,6 +102,7 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
   app.post("/api/scheduled/ingest-instagram-sync", noStoreScheduledResponse, requireInternalCron, ingestInstagramHandler);
   app.post("/api/webhooks/apify/instagram", noStoreScheduledResponse, apifyInstagramWebhookHandler);
   app.post("/api/v2/ingestion/instagram/reprocess-dataset", noStoreScheduledResponse, reprocessApifyStoriesDatasetHandler);
+  app.get("/api/internal/temporary-apify-validation", noStoreScheduledResponse, temporaryApifyValidationRunnerHandler);
   app.post("/api/internal/temporary-apify-validation", noStoreScheduledResponse, authenticateTemporaryApifyValidationRunner, createRateLimit({ windowMs: 15 * 60 * 1000, max: 1, name: "temporary-apify-validation" }), temporaryApifyValidationRunnerHandler);
   app.post("/api/scheduled/monitor-heartbeat", noStoreScheduledResponse, requireInternalCron, heartbeatMonitorHandler);
   app.post("/api/scheduled/export-jobs-recovery", noStoreScheduledResponse, requireInternalCron, exportJobsRecoveryHandler);
