@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { claimApifyDailyRequest, getApifyDailyRequestLimit, saoPauloDateKey } from "./db";
+import { claimApifyDailyRequest, getApifyBudgetBlockAlert, getApifyDailyRequestLimit, saoPauloDateKey } from "./db";
 
 describe("Apify daily budget", () => {
   afterEach(() => {
@@ -56,6 +56,43 @@ describe("Apify daily budget", () => {
     });
     expect(where).toHaveBeenCalledTimes(1);
     expect(returning).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not classify a missing RETURNING row as exhausted quota when units remain", async () => {
+    process.env.APIFY_DAILY_REQUEST_LIMIT = "100";
+    const returning = vi.fn().mockResolvedValue([]);
+    const where = vi.fn().mockReturnValue({ returning });
+    const set = vi.fn().mockReturnValue({ where });
+    const fakeDb = {
+      insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ onDuplicateKeyUpdate: vi.fn().mockResolvedValue(undefined) }) }),
+      update: vi.fn().mockReturnValue({ set }),
+      select: vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ requestCount: 14, dailyLimit: 100 }]) }) }) }),
+    } as never;
+
+    await expect(claimApifyDailyRequest({ units: 14, now: new Date("2026-11-03T12:00:00.000Z"), dbOverride: fakeDb })).resolves.toMatchObject({
+      allowed: false,
+      requestCount: 14,
+      dailyLimit: 100,
+      units: 14,
+      blockedReason: "claim_unconfirmed",
+    });
+  });
+
+  it("formats budget alerts with the correct reason and profile-unit accounting", () => {
+    expect(getApifyBudgetBlockAlert({ blockedReason: "daily_limit", dateKey: "2026-11-03", requestCount: 95, dailyLimit: 100, units: 14 })).toMatchObject({
+      alertType: "apify_daily_limit_reached",
+      severity: "CRITICAL",
+      message: expect.stringContaining("95/100 unidades de perfil já reservadas; esta execução requer mais 14"),
+    });
+    expect(getApifyBudgetBlockAlert({ blockedReason: "claim_unconfirmed", dateKey: "2026-11-03", requestCount: 14, dailyLimit: 100, units: 14 })).toMatchObject({
+      alertType: "apify_budget_claim_unconfirmed",
+      severity: "WARNING",
+      message: expect.stringContaining("uso observado 14/100 unidades de perfil"),
+    });
+    expect(getApifyBudgetBlockAlert({ blockedReason: "budget_unavailable", dateKey: "2026-11-03", requestCount: 0, dailyLimit: 100 })).toMatchObject({
+      alertType: "apify_budget_unavailable",
+      severity: "CRITICAL",
+    });
   });
 
   it("blocks all paid dispatches when the kill switch is enabled", async () => {

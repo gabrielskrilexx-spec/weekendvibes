@@ -18,7 +18,7 @@ import {
 } from "./ingestion-reports";
 import { hasValidInternalCronSecret } from "./_core/cron-auth";
 import { redactError } from "./_core/security";
-import { claimApifyDailyRequest, claimApifyProcessedItem, completeApifyProcessedItem, recordOperationalAlert } from "./db";
+import { claimApifyDailyRequest, claimApifyProcessedItem, completeApifyProcessedItem, getApifyBudgetBlockAlert, recordOperationalAlert } from "./db";
 
 export const DEFAULT_APIFY_STORIES_ACTOR_ID = "zaver.api~instagram-stories-highlights-scraper";
 const ACTOR_ID = process.env.APIFY_STORIES_ACTOR_ID?.trim() || DEFAULT_APIFY_STORIES_ACTOR_ID;
@@ -134,13 +134,9 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
   const targets = options.targets ?? INSTAGRAM_TARGETS;
   const budget = await claimApifyDailyRequest({ units: targets.length });
   if (!budget.allowed) {
-    const message = budget.blockedReason === "kill_switch"
-      ? "Extração Apify bloqueada pelo kill switch operacional; nenhuma chamada paga foi iniciada."
-      : budget.blockedReason === "budget_unavailable"
-        ? "Extração Apify bloqueada porque o orçamento persistido não está disponível; nenhuma chamada paga foi iniciada."
-        : `Limite diário de chamadas Apify atingido (${budget.requestCount}/${budget.dailyLimit}) em ${budget.dateKey}; novas extrações bloqueadas até a meia-noite de Brasília.`;
-    await recordOperationalAlert({ integration: "pipeline", alertType: budget.blockedReason === "kill_switch" ? "apify_kill_switch_active" : "apify_daily_limit_reached", severity: "CRITICAL", title: "Extração Apify bloqueada", message });
-    throw new Error(message);
+    const alert = getApifyBudgetBlockAlert(budget);
+    await recordOperationalAlert({ integration: "pipeline", ...alert, title: "Extração Apify bloqueada" });
+    throw new Error(alert.message);
   }
 
   const runId = await startIngestionRun({ routine: "instagram-stories-async", sourceKey: "instagram:apify:pending" });

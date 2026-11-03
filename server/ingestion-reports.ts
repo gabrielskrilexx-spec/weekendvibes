@@ -586,6 +586,7 @@ export function buildWafProviderHistoryForTest(runs: Array<{ sourceKey: string |
 
 export const DEFAULT_PUBLIC_P95_THRESHOLD_MS = 3_000;
 export const CRON_PUBLIC_P95_THRESHOLD_MS = 40_000;
+export const INSTAGRAM_AGENDA_P95_THRESHOLD_MS = 20_000;
 export const INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS = 30_000;
 export const MANUAL_AGENDA_P95_THRESHOLD_MS = 180_000;
 
@@ -593,6 +594,7 @@ export function getEffectiveSourceP95ThresholdForTest(source: { sourceKey?: stri
   if (source.sourceKey === "instagram:apify:pending") return INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS;
   if (source.sourceKey === "manual" || source.sourceKey === "all") return MANUAL_AGENDA_P95_THRESHOLD_MS;
   const configured = Number(source.p95LatencyThresholdMs ?? 0);
+  if (source.kind === "instagram" && (!Number.isFinite(configured) || configured <= DEFAULT_PUBLIC_P95_THRESHOLD_MS)) return INSTAGRAM_AGENDA_P95_THRESHOLD_MS;
   if (source.kind === "public" && (!Number.isFinite(configured) || configured <= 3_000)) {
     const fromEnv = Number.parseInt(process.env.PUBLIC_INGESTION_P95_THRESHOLD_MS ?? "", 10);
     return Number.isFinite(fromEnv) ? Math.min(60_000, Math.max(DEFAULT_PUBLIC_P95_THRESHOLD_MS, fromEnv)) : DEFAULT_PUBLIC_P95_THRESHOLD_MS;
@@ -607,7 +609,8 @@ export function isCronIngestionRoutineForTest(routine?: string | null) {
 export function getEffectiveIngestionP95ThresholdForTest(run: { sourceKey?: string | null; routine?: string | null }, source?: { sourceKey?: string | null; kind?: string | null; p95LatencyThresholdMs?: number | null }) {
   const isInstagramScheduled = run.sourceKey === "instagram" && run.routine === "instagram-agenda";
   const isApifyRun = run.sourceKey?.startsWith("instagram:apify:") === true;
-  if (isInstagramScheduled || isApifyRun) return INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS;
+  if (isInstagramScheduled) return source ? getEffectiveSourceP95ThresholdForTest(source) : INSTAGRAM_AGENDA_P95_THRESHOLD_MS;
+  if (isApifyRun) return INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS;
   const isPublic = source?.kind === "public" || run.sourceKey === "public" || run.sourceKey?.startsWith("public:");
   if (isPublic && isCronIngestionRoutineForTest(run.routine)) return CRON_PUBLIC_P95_THRESHOLD_MS;
   if (isPublic) return DEFAULT_PUBLIC_P95_THRESHOLD_MS;

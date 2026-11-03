@@ -7,6 +7,13 @@ const mocks = vi.hoisted(() => ({
   finishIngestionRun: vi.fn().mockResolvedValue(undefined),
   findIngestionRunByApifyActor: vi.fn(),
   claimApifyDailyRequest: vi.fn().mockResolvedValue({ allowed: true, dateKey: "2026-09-18", requestCount: 1, dailyLimit: 100, persistence: true }),
+  getApifyBudgetBlockAlert: vi.fn((budget: { blockedReason?: string }) => budget.blockedReason === "kill_switch"
+    ? { alertType: "apify_kill_switch_active", severity: "CRITICAL" as const, message: "Extração Apify bloqueada pelo kill switch operacional." }
+    : budget.blockedReason === "claim_unconfirmed"
+      ? { alertType: "apify_budget_claim_unconfirmed", severity: "WARNING" as const, message: "Reserva de orçamento Apify não confirmada; o dispatch foi bloqueado por segurança." }
+      : budget.blockedReason === "budget_unavailable"
+        ? { alertType: "apify_budget_unavailable", severity: "CRITICAL" as const, message: "Orçamento Apify indisponível; o dispatch foi bloqueado." }
+        : { alertType: "apify_daily_limit_reached", severity: "CRITICAL" as const, message: "Cota diária Apify insuficiente; o dispatch não foi iniciado." }),
   recordOperationalAlert: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -20,6 +27,7 @@ vi.mock("./ingestion-reports", () => ({
 
 vi.mock("./db", () => ({
   claimApifyDailyRequest: mocks.claimApifyDailyRequest,
+  getApifyBudgetBlockAlert: mocks.getApifyBudgetBlockAlert,
   recordOperationalAlert: mocks.recordOperationalAlert,
 }));
 
@@ -74,11 +82,19 @@ describe("Apify async Stories", () => {
     const targets = Array.from({ length: 14 }, (_, index) => ({ username: `venue${index}` }));
     const fetchMock = vi.spyOn(globalThis, "fetch");
     mocks.claimApifyDailyRequest.mockResolvedValueOnce({ allowed: false, dateKey: "2026-10-30", requestCount: 95, dailyLimit: 100, persistence: true, units: 14, blockedReason: "daily_limit" });
-    await expect(startAsyncApifyStoriesRun({ trigger: "manual", targets })).rejects.toThrow("Limite diário de chamadas Apify atingido");
+    await expect(startAsyncApifyStoriesRun({ trigger: "manual", targets })).rejects.toThrow("Cota diária Apify insuficiente");
     expect(mocks.claimApifyDailyRequest).toHaveBeenCalledWith({ units: 14 });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(mocks.startIngestionRun).not.toHaveBeenCalled();
+    expect(mocks.recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ alertType: "apify_daily_limit_reached", severity: "CRITICAL" }));
     fetchMock.mockRestore();
+
+    const unconfirmedFetch = vi.spyOn(globalThis, "fetch");
+    mocks.claimApifyDailyRequest.mockResolvedValueOnce({ allowed: false, dateKey: "2026-10-30", requestCount: 14, dailyLimit: 100, persistence: true, units: 14, blockedReason: "claim_unconfirmed" });
+    await expect(startAsyncApifyStoriesRun({ trigger: "manual", targets })).rejects.toThrow("Reserva de orçamento Apify não confirmada");
+    expect(unconfirmedFetch).not.toHaveBeenCalled();
+    expect(mocks.recordOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({ alertType: "apify_budget_claim_unconfirmed", severity: "WARNING" }));
+    unconfirmedFetch.mockRestore();
 
     const killSwitchFetch = vi.spyOn(globalThis, "fetch");
     mocks.claimApifyDailyRequest.mockResolvedValueOnce({ allowed: false, dateKey: "2026-10-30", requestCount: 0, dailyLimit: 100, persistence: true, units: 14, blockedReason: "kill_switch" });

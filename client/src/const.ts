@@ -34,9 +34,46 @@ export function completePendingLogin() {
   startLoginWithoutConsent(returnTo);
 }
 
+export function normalizeOAuthPortalOrigin(value: unknown, pageProtocol: string): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const url = new URL(value.trim());
+    if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username || url.password || url.search || url.hash) return null;
+    if (url.pathname !== "/" && url.pathname !== "") return null;
+    if (pageProtocol === "https:" && url.protocol !== "https:") return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+export function buildOAuthPortalAuthUrl(input: { portalUrl: unknown; pageProtocol: string; appId: unknown; redirectUri: string; state: string }): string | null {
+  const portalOrigin = normalizeOAuthPortalOrigin(input.portalUrl, input.pageProtocol);
+  const appId = typeof input.appId === "string" ? input.appId.trim() : "";
+  if (!portalOrigin || !appId) return null;
+  try {
+    const url = new URL("/app-auth", portalOrigin);
+    url.searchParams.set("appId", appId);
+    url.searchParams.set("redirectUri", input.redirectUri);
+    url.searchParams.set("state", input.state);
+    url.searchParams.set("type", "signIn");
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 function startLoginWithoutConsent(requestedReturnTo?: string) {
   const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
   const appId = import.meta.env.VITE_APP_ID;
+  const portalOrigin = normalizeOAuthPortalOrigin(oauthPortalUrl, window.location.protocol);
+  const normalizedAppId = typeof appId === "string" ? appId.trim() : "";
+  if (!portalOrigin || !normalizedAppId) {
+    const missingEnv = !portalOrigin ? "VITE_OAUTH_PORTAL_URL" : "VITE_APP_ID";
+    console.error(`[OAuth] Login indisponível: configure ${missingEnv} no ambiente de build da aplicação.`);
+    window.dispatchEvent(new CustomEvent("weekendvibes:oauth-configuration-error", { detail: { missingEnv } }));
+    return;
+  }
   const redirectUri = getOAuthCallbackUri(window.location.origin);
 
   const nonce = crypto.randomUUID();
@@ -44,14 +81,13 @@ function startLoginWithoutConsent(requestedReturnTo?: string) {
   const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   const returnTo = getSafeReturnPath(requestedReturnTo ?? currentPath);
   const state = encodeOAuthState({ redirectUri, nonce, returnTo });
-
-  const url = new URL(`${oauthPortalUrl}/app-auth`);
-  url.searchParams.set("appId", appId);
-  url.searchParams.set("redirectUri", redirectUri);
-  url.searchParams.set("state", state);
-  url.searchParams.set("type", "signIn");
-
-  window.location.href = url.toString();
+  const url = buildOAuthPortalAuthUrl({ portalUrl: portalOrigin, pageProtocol: window.location.protocol, appId: normalizedAppId, redirectUri, state });
+  if (!url) {
+    console.error("[OAuth] Login indisponível: a configuração do portal OAuth não é válida.");
+    window.dispatchEvent(new CustomEvent("weekendvibes:oauth-configuration-error", { detail: { missingEnv: "VITE_OAUTH_PORTAL_URL" } }));
+    return;
+  }
+  window.location.href = url;
 }
 
 // Start the Manus OAuth login. Call this from an event handler or effect at the

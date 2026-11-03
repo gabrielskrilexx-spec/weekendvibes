@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { INSTAGRAM_AGENDA_SOURCE_TYPE, claimApifyDailyRequest, listActiveLocationAliasValues, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent, upsertDiscoveredInstagramLinkSource } from "./db";
+import { INSTAGRAM_AGENDA_SOURCE_TYPE, claimApifyDailyRequest, getApifyBudgetBlockAlert, listActiveLocationAliasValues, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent, upsertDiscoveredInstagramLinkSource } from "./db";
 import { fetchExternal, isSandboxRestrictedError, readExternalBody } from "./external-fetch";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import { containsTargetVenue } from "./ingestion";
@@ -845,13 +845,9 @@ export async function claimApifyBudgetOrReport(input: { units?: number; allowIso
   const units = Math.min(100, Math.max(1, Math.trunc(input.units ?? INSTAGRAM_TARGETS.length)));
   const budget = await claimApifyDailyRequest({ units, allowIsolatedManualRun: input.allowIsolatedManualRun });
   if (budget.allowed) return budget;
-  const message = budget.blockedReason === "kill_switch"
-    ? "Extração Apify bloqueada pelo kill switch operacional; nenhuma chamada paga foi iniciada."
-    : budget.blockedReason === "budget_unavailable"
-      ? "Extração Apify bloqueada porque o orçamento persistido não está disponível; nenhuma chamada paga foi iniciada."
-      : `Limite diário de chamadas Apify atingido (${budget.requestCount}/${budget.dailyLimit}) em ${budget.dateKey}; novas extrações bloqueadas até a meia-noite de Brasília.`;
-  await recordOperationalAlert({ integration: "pipeline", alertType: budget.blockedReason === "kill_switch" ? "apify_kill_switch_active" : "apify_daily_limit_reached", severity: "CRITICAL", title: "Extração Apify bloqueada", message });
-  return { ...budget, blockedMessage: message };
+  const alert = getApifyBudgetBlockAlert(budget);
+  await recordOperationalAlert({ integration: "pipeline", ...alert, title: "Extração Apify bloqueada" });
+  return { ...budget, blockedMessage: alert.message };
 }
 
 export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean; targets?: ReadonlyArray<{ username: string }>; allowIsolatedManualRun?: boolean; signal?: AbortSignal } = {}) {
@@ -860,7 +856,7 @@ export async function fetchApifyStoriesAndHighlights(options: { dryRun?: boolean
   const targets = options.targets ?? INSTAGRAM_TARGETS;
   const budget = await claimApifyBudgetOrReport({ units: targets.length, allowIsolatedManualRun: options.allowIsolatedManualRun });
   if (!budget.allowed) {
-    const message = "blockedMessage" in budget ? budget.blockedMessage : "Limite diário de chamadas Apify atingido.";
+    const message = "blockedMessage" in budget ? budget.blockedMessage : "Dispatch Apify bloqueado pela proteção de orçamento.";
     return { posts: [] as InstagramPost[], transportFailures: [{ username: "apify-budget", status: 429, kind: "quota" as const, message }] };
   }
     const payload = buildInstagramStoriesScraperPayload(targets);

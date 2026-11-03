@@ -1307,7 +1307,7 @@ export const appRouter = router({
           isEnabled: z.boolean(),
           priority: z.number().int().min(1).max(1000),
           frequencyMinutes: z.number().int().min(60).max(525600),
-          p95LatencyThresholdMs: z.number().int().min(500).max(180000).default(3000),
+          p95LatencyThresholdMs: z.number().int().min(500).max(180000).optional(),
           handle: z.string().trim().max(180).nullable().optional(),
         })
       )
@@ -1334,14 +1334,15 @@ export const appRouter = router({
             }
           }
         }
-        await updateIngestionSource(input.id, { ...input, changedByOpenId: ctx.user.openId });
+        const updatedSources = await updateIngestionSource(input.id, { ...input, changedByOpenId: ctx.user.openId });
+        const updatedSource = updatedSources.find(source => source.id === input.id);
         return {
           ok: true as const,
           id: input.id,
           isEnabled: input.isEnabled,
           priority: input.priority,
           frequencyMinutes: input.frequencyMinutes,
-          p95LatencyThresholdMs: input.p95LatencyThresholdMs,
+          p95LatencyThresholdMs: updatedSource?.p95LatencyThresholdMs ?? input.p95LatencyThresholdMs ?? 3_000,
         };
       }),
     reactivate: adminOnly

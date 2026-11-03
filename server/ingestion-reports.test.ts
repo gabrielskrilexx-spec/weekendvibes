@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv, sortFilteredStoriesForTest, DEFAULT_PUBLIC_P95_THRESHOLD_MS, CRON_PUBLIC_P95_THRESHOLD_MS, INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS, MANUAL_AGENDA_P95_THRESHOLD_MS, getEffectiveSourceP95ThresholdForTest, getEffectiveIngestionP95ThresholdForTest, findConsecutiveP95PerformanceAlertsForTest, classifyIngestionRunCategoryForTest, findConsecutiveWafBlocksForTest, buildWafProviderHistoryForTest } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv, sortFilteredStoriesForTest, DEFAULT_PUBLIC_P95_THRESHOLD_MS, CRON_PUBLIC_P95_THRESHOLD_MS, INSTAGRAM_AGENDA_P95_THRESHOLD_MS, INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS, MANUAL_AGENDA_P95_THRESHOLD_MS, getEffectiveSourceP95ThresholdForTest, getEffectiveIngestionP95ThresholdForTest, findConsecutiveP95PerformanceAlertsForTest, classifyIngestionRunCategoryForTest, findConsecutiveWafBlocksForTest, buildWafProviderHistoryForTest } from "./ingestion-reports";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
 import { sanitizeAgendaStepErrorForTest } from "./agenda-routine";
 
@@ -119,28 +119,35 @@ describe("freshness and source reconciliation", () => {
   });
 });
 
-describe("public ingestion P95 SLA", () => {
-  it("uses 3 seconds for public APIs and 40 seconds for scheduled public ingestion", () => {
+describe("ingestion P95 thresholds", () => {
+  it("uses 3s for direct public APIs, 40s for scheduled public, 20s for Instagram and 30s for the Apify Actor", () => {
     expect(DEFAULT_PUBLIC_P95_THRESHOLD_MS).toBe(3_000);
     expect(CRON_PUBLIC_P95_THRESHOLD_MS).toBe(40_000);
+    expect(INSTAGRAM_AGENDA_P95_THRESHOLD_MS).toBe(20_000);
     expect(getEffectiveSourceP95ThresholdForTest({ kind: "public", p95LatencyThresholdMs: 3_000 })).toBe(3_000);
     expect(getEffectiveIngestionP95ThresholdForTest({ sourceKey: "public:articket", routine: "public-agenda" }, { kind: "public", p95LatencyThresholdMs: 3_000 })).toBe(40_000);
     expect(getEffectiveIngestionP95ThresholdForTest({ sourceKey: "public:articket", routine: "api" }, { kind: "public", p95LatencyThresholdMs: 3_000 })).toBe(3_000);
-    expect(getEffectiveSourceP95ThresholdForTest({ kind: "instagram", p95LatencyThresholdMs: 3_000 })).toBe(3_000);
+    expect(getEffectiveSourceP95ThresholdForTest({ kind: "instagram", p95LatencyThresholdMs: 3_000 })).toBe(20_000);
     expect(INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS).toBe(30_000);
     expect(MANUAL_AGENDA_P95_THRESHOLD_MS).toBe(180_000);
     expect(getEffectiveSourceP95ThresholdForTest({ sourceKey: "instagram:apify:pending" })).toBe(30_000);
     expect(getEffectiveSourceP95ThresholdForTest({ sourceKey: "manual" })).toBe(180_000);
   });
 
-  it("applies the Apify latency budget to scheduled Instagram runs and actor executions", () => {
-    expect(getEffectiveIngestionP95ThresholdForTest({ sourceKey: "instagram", routine: "instagram-agenda" }, { kind: "instagram", p95LatencyThresholdMs: 3_000 })).toBe(30_000);
+  it("ignores normal Meta latency but alerts after two scheduled Instagram runs exceed 20 seconds", () => {
+    expect(getEffectiveIngestionP95ThresholdForTest({ sourceKey: "instagram", routine: "instagram-agenda" }, { kind: "instagram", p95LatencyThresholdMs: 3_000 })).toBe(20_000);
+    expect(getEffectiveIngestionP95ThresholdForTest({ sourceKey: "instagram", routine: "instagram-agenda" }, { kind: "instagram", p95LatencyThresholdMs: 45_000 })).toBe(45_000);
     expect(getEffectiveIngestionP95ThresholdForTest({ sourceKey: "instagram:apify:pending", routine: "instagram-stories-async" })).toBe(30_000);
-    const alerts = findConsecutiveP95PerformanceAlertsForTest([
-      { sourceKey: "instagram", routine: "instagram-agenda", status: "succeeded", startedAt: "2026-08-22T10:00:00.000Z", durationMs: 18_000 },
+    const belowThreshold = findConsecutiveP95PerformanceAlertsForTest([
+      { sourceKey: "instagram", routine: "instagram-agenda", status: "succeeded", startedAt: "2026-08-22T10:00:00.000Z", durationMs: 9_973 },
+      { sourceKey: "instagram", routine: "instagram-agenda", status: "succeeded", startedAt: "2026-08-22T09:00:00.000Z", durationMs: 18_000 },
+    ], run => getEffectiveIngestionP95ThresholdForTest(run, { kind: "instagram", p95LatencyThresholdMs: 3_000 }));
+    expect(belowThreshold).toEqual([]);
+    const consecutiveSlowRuns = findConsecutiveP95PerformanceAlertsForTest([
+      { sourceKey: "instagram", routine: "instagram-agenda", status: "succeeded", startedAt: "2026-08-22T10:00:00.000Z", durationMs: 20_500 },
       { sourceKey: "instagram", routine: "instagram-agenda", status: "succeeded", startedAt: "2026-08-22T09:00:00.000Z", durationMs: 21_000 },
     ], run => getEffectiveIngestionP95ThresholdForTest(run, { kind: "instagram", p95LatencyThresholdMs: 3_000 }));
-    expect(alerts).toEqual([]);
+    expect(consecutiveSlowRuns).toMatchObject([{ sourceKey: "instagram", thresholdMs: 20_000, consecutiveRuns: 2 }]);
   });
 
   it("does not turn failed or partial ingestion runs into performance alerts", () => {

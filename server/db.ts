@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots, ingestionLeases, adminMagicLinks } from "../drizzle/schema";
@@ -298,6 +298,45 @@ const normalizeApifyDailyRequestLimit = (value: unknown) => {
   return Number.isFinite(parsed) ? Math.min(100, Math.max(1, Math.trunc(parsed))) : getApifyDailyRequestLimit();
 };
 
+export type ApifyBudgetBlockedReason = "kill_switch" | "budget_unavailable" | "daily_limit" | "claim_unconfirmed";
+
+export function getApifyBudgetBlockAlert(input: {
+  blockedReason?: ApifyBudgetBlockedReason;
+  dateKey: string;
+  requestCount: number;
+  dailyLimit: number;
+  units?: number;
+}) {
+  const units = Math.min(100, Math.max(1, Math.trunc(Number(input.units ?? 1))));
+  const requestCount = Math.max(0, Math.trunc(Number(input.requestCount) || 0));
+  const dailyLimit = Math.max(1, Math.trunc(Number(input.dailyLimit) || 1));
+  const remaining = Math.max(0, dailyLimit - requestCount);
+  switch (input.blockedReason) {
+    case "kill_switch":
+      return { alertType: "apify_kill_switch_active", severity: "CRITICAL" as const, message: "Extração Apify bloqueada pelo kill switch operacional; nenhum dispatch pago foi iniciado." };
+    case "budget_unavailable":
+      return { alertType: "apify_budget_unavailable", severity: "CRITICAL" as const, message: "Extração Apify bloqueada porque o orçamento persistido não está disponível; nenhum dispatch pago foi iniciado." };
+    case "claim_unconfirmed":
+      return {
+        alertType: "apify_budget_claim_unconfirmed",
+        severity: "WARNING" as const,
+        message: `Reserva de orçamento Apify não confirmada: uso observado ${requestCount}/${dailyLimit} unidades de perfil; a execução requer ${units}, com saldo observado ${remaining}. O dispatch foi bloqueado por segurança; verifique o ledger.`,
+      };
+    case "daily_limit":
+      return {
+        alertType: "apify_daily_limit_reached",
+        severity: "CRITICAL" as const,
+        message: `Cota diária Apify insuficiente: ${requestCount}/${dailyLimit} unidades de perfil já reservadas; esta execução requer mais ${units}, com saldo ${remaining}. Nenhum dispatch foi iniciado; a cota renova após ${input.dateKey}, à meia-noite de Brasília.`,
+      };
+    default:
+      return {
+        alertType: "apify_budget_claim_unconfirmed",
+        severity: "WARNING" as const,
+        message: `Reserva de orçamento Apify não confirmada: uso observado ${requestCount}/${dailyLimit} unidades de perfil. O dispatch foi bloqueado por segurança; verifique o ledger.`,
+      };
+  }
+}
+
 async function getConfiguredApifyDailyRequestLimit(db: Awaited<ReturnType<typeof getDb>>) {
   if (!db) return getApifyDailyRequestLimit();
   const [setting] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, APIFY_DAILY_REQUEST_LIMIT_KEY)).limit(1);
@@ -337,14 +376,17 @@ export async function claimApifyDailyRequest(input: { now?: Date; units?: number
   if (/^(1|true|yes|on)$/i.test(process.env.APIFY_INGESTION_KILL_SWITCH?.trim() ?? "") && !isolatedManualRun) return { allowed: false, dateKey, requestCount: 0, dailyLimit: getApifyDailyRequestLimit(), persistence: Boolean(db), units, blockedReason: "kill_switch" as const };
   const dailyLimit = await getConfiguredApifyDailyRequestLimit(db);
   if (await isApifyIngestionKillSwitchEnabled(db) && !isolatedManualRun) return { allowed: false, dateKey, requestCount: 0, dailyLimit, persistence: Boolean(db), blockedReason: "kill_switch" as const };
-  if (!db) return { allowed: false, dateKey, requestCount: 0, dailyLimit, persistence: false, blockedReason: "budget_unavailable" as const };
+  if (!db) return { allowed: false, dateKey, requestCount: 0, dailyLimit, persistence: false, units, blockedReason: "budget_unavailable" as const };
   await upsert(db.insert(apifyDailyUsage).values({ dateKey, requestCount: 0, dailyLimit }), apifyDailyUsage.dateKey, { dailyLimit, updatedAt: new Date() });
   const updatedRows = await db.update(apifyDailyUsage).set({ requestCount: sql`${apifyDailyUsage.requestCount} + ${units}`, updatedAt: new Date() }).where(and(eq(apifyDailyUsage.dateKey, dateKey), sql`${apifyDailyUsage.requestCount} + ${units} <= ${dailyLimit}`)).returning({ dateKey: apifyDailyUsage.dateKey });
   const rows = await db.select({ requestCount: apifyDailyUsage.requestCount, dailyLimit: apifyDailyUsage.dailyLimit }).from(apifyDailyUsage).where(eq(apifyDailyUsage.dateKey, dateKey)).limit(1);
   const row = rows[0] ?? { requestCount: 0, dailyLimit };
   const allowed = updatedRows.length > 0;
   if (!allowed) await db.update(apifyDailyUsage).set({ lastBlockedAt: new Date(), updatedAt: new Date() }).where(eq(apifyDailyUsage.dateKey, dateKey));
-  return { allowed, dateKey, requestCount: row.requestCount, dailyLimit: row.dailyLimit, persistence: true, units, blockedReason: allowed ? undefined : "daily_limit" as const };
+  const requestCount = Number(row.requestCount ?? 0);
+  const persistedLimit = Number(row.dailyLimit ?? dailyLimit);
+  const blockedReason = allowed ? undefined : requestCount + units > persistedLimit ? "daily_limit" as const : "claim_unconfirmed" as const;
+  return { allowed, dateKey, requestCount, dailyLimit: persistedLimit, persistence: true, units, blockedReason };
 }
 
 export async function getApifyDailyUsageStatus(input: { now?: Date; dbOverride?: Awaited<ReturnType<typeof getDb>> } = {}) {
@@ -463,7 +505,8 @@ export const DEFAULT_INGESTION_SOURCES = [
 async function ensureDefaultIngestionSources(db: Awaited<ReturnType<typeof getDb>>) {
   if (!db) return;
   for (const source of DEFAULT_INGESTION_SOURCES) {
-    await upsert(db.insert(ingestionSources).values(source), ingestionSources.sourceKey, { name: source.name, url: source.url, handle: source.handle });
+    const values = source.kind === "instagram" ? { ...source, p95LatencyThresholdMs: 20_000 } : source;
+    await upsert(db.insert(ingestionSources).values(values), ingestionSources.sourceKey, { name: source.name, url: source.url, handle: source.handle });
   }
 }
 
@@ -610,18 +653,54 @@ export function isContinuousIngestionSource(source: Pick<IngestionSource, "kind"
   return source.kind === "instagram" || (CONTINUOUS_PUBLIC_SOURCE_KEYS as readonly string[]).includes(source.sourceKey);
 }
 
+const TRACKING_QUERY_KEYS = new Set(["fbclid", "gclid", "igshid", "mc_cid", "mc_eid"]);
+
+export function normalizeExpiredSourceMatchUrl(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const url = new URL(value.trim());
+    if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) return null;
+    for (const key of Array.from(url.searchParams.keys())) {
+      const normalizedKey = key.toLowerCase();
+      if (normalizedKey.startsWith("utm_") || TRACKING_QUERY_KEYS.has(normalizedKey)) url.searchParams.delete(key);
+    }
+    url.searchParams.sort();
+    url.hash = "";
+    const pathname = url.pathname.replace(/\/+$/, "") || "/";
+    return `${url.origin}${pathname === "/" ? "" : pathname}${url.search}`;
+  } catch {
+    return null;
+  }
+}
+
+export function findExpiredSourceKeysForTest(
+  sources: ReadonlyArray<Pick<IngestionSource, "sourceKey" | "kind" | "isEnabled" | "url">>,
+  expiredEventUrls: ReadonlyArray<string | null | undefined>,
+) {
+  const expiredUrls = new Set(expiredEventUrls.map(normalizeExpiredSourceMatchUrl).filter((url): url is string => Boolean(url)));
+  return Array.from(new Set(sources
+    .filter(source => source.kind === "public" && source.isEnabled === 1 && !isContinuousIngestionSource(source))
+    .filter(source => {
+      const normalizedUrl = normalizeExpiredSourceMatchUrl(source.url);
+      return normalizedUrl !== null && expiredUrls.has(normalizedUrl);
+    })
+    .map(source => source.sourceKey)));
+}
+
 export async function deactivateExpiredSources(now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) return { deactivatedCount: 0, sourceKeys: [] as string[] };
   const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const expired = await db.selectDistinct({ sourceKey: ingestionSources.sourceKey }).from(ingestionSources).innerJoin(events, eq(ingestionSources.url, events.sourceUrl)).where(and(
-    eq(ingestionSources.kind, "public"),
-    eq(ingestionSources.isEnabled, 1),
-    isNotNull(events.sourceUrl),
-    notInArray(ingestionSources.sourceKey, [...CONTINUOUS_PUBLIC_SOURCE_KEYS]),
-    lt(sql`COALESCE(${events.endDate}, ${events.eventDate})`, cutoff),
-  ));
-  const sourceKeys = expired.map(row => row.sourceKey);
+  const [expiredEvents, publicSources] = await Promise.all([
+    db.select({ sourceUrl: events.sourceUrl }).from(events).where(and(
+      isNotNull(events.sourceUrl),
+      lt(sql`COALESCE(${events.endDate}, ${events.eventDate})`, cutoff),
+    )),
+    db.select({ sourceKey: ingestionSources.sourceKey, kind: ingestionSources.kind, isEnabled: ingestionSources.isEnabled, url: ingestionSources.url })
+      .from(ingestionSources)
+      .where(and(eq(ingestionSources.kind, "public"), eq(ingestionSources.isEnabled, 1))),
+  ]);
+  const sourceKeys = findExpiredSourceKeysForTest(publicSources, expiredEvents.map(row => row.sourceUrl));
   if (sourceKeys.length === 0) return { deactivatedCount: 0, sourceKeys };
   await db.update(ingestionSources).set({
     isEnabled: 0,
@@ -706,7 +785,7 @@ export async function createIngestionSource(input: { name: string; kind: "instag
     isEnabled: 1,
     priority: 50,
     frequencyMinutes: 10080,
-    p95LatencyThresholdMs: input.kind === "public" ? 15_000 : 3_000,
+    p95LatencyThresholdMs: input.kind === "public" ? 15_000 : 20_000,
   });
   const [created] = await db.select({ id: ingestionSources.id, sourceKey: ingestionSources.sourceKey }).from(ingestionSources).where(eq(ingestionSources.sourceKey, sourceKey)).limit(1);
   if (!created) throw new Error("Source creation failed");
@@ -788,9 +867,10 @@ export async function updateIngestionSource(id: number, input: { isEnabled: bool
   if (!db) throw new Error("Database unavailable");
   const priority = Math.min(Math.max(Math.round(input.priority), 1), 1000);
   const frequencyMinutes = Math.min(Math.max(Math.round(input.frequencyMinutes), 60), 525600);
-  const p95LatencyThresholdMs = Math.min(Math.max(Math.round(input.p95LatencyThresholdMs ?? 3000), 500), 180000);
   const handle = input.handle === undefined ? undefined : input.handle?.trim().replace(/^@+/, "").replace(/\/$/, "") || null;
-  const [existing] = await db.select({ sourceKey: ingestionSources.sourceKey, handle: ingestionSources.handle }).from(ingestionSources).where(eq(ingestionSources.id, id)).limit(1);
+  const [existing] = await db.select({ sourceKey: ingestionSources.sourceKey, handle: ingestionSources.handle, kind: ingestionSources.kind, p95LatencyThresholdMs: ingestionSources.p95LatencyThresholdMs }).from(ingestionSources).where(eq(ingestionSources.id, id)).limit(1);
+  const fallbackP95 = existing?.p95LatencyThresholdMs ?? (existing?.kind === "instagram" ? 20_000 : 3_000);
+  const p95LatencyThresholdMs = Math.min(Math.max(Math.round(input.p95LatencyThresholdMs ?? fallbackP95), 500), 180000);
   if (existing && handle !== undefined && existing.handle !== handle) {
     await db.insert(ingestionSourceHandleAuditLogs).values({ sourceKey: existing.sourceKey, previousHandle: existing.handle, nextHandle: handle, changedByOpenId: input.changedByOpenId ?? null });
   }
