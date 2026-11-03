@@ -33,15 +33,15 @@ type ApifyDispatchFailure = Error & {
 
 function createApifyDispatchFailure(status: number, detail: string): ApifyDispatchFailure {
   const actorFailure = status === 404;
+  const suffix = detail ? ` Detalhe sanitizado: ${detail}` : "";
   const error = new Error(
     actorFailure
-      ? "Erro na Apify (404): Actor público ou credencial não encontrada. Verifique APIFY_STORIES_ACTOR_ID e APIFY_API_TOKEN."
-      : "Erro na Apify (400): payload do Actor ou credencial rejeitada. Verifique a configuração da integração."
+      ? `Erro na Apify (404): Actor público ou credencial não encontrada. Verifique APIFY_STORIES_ACTOR_ID e APIFY_API_TOKEN.${suffix}`
+      : `Erro na Apify (400): payload do Actor ou credencial rejeitada. Verifique a configuração da integração.${suffix}`
   ) as ApifyDispatchFailure;
   error.apifyStatus = status;
   error.apifyCode = actorFailure ? "APIFY_ACTOR_NOT_FOUND" : "APIFY_ACTOR_REQUEST_INVALID";
   error.safeMessage = error.message;
-  void detail;
   return error;
 }
 
@@ -106,10 +106,36 @@ function isApifyTimeoutError(error: unknown) {
   return error instanceof Error && (error.name === "AbortError" || /aborted|timeout|timed out|tempo limite/i.test(error.message));
 }
 
-function readApifyErrorDetail(payload: Record<string, unknown>) {
+export function sanitizeApifyDiagnostic(value: unknown) {
+  const text = typeof value === "string" ? value : JSON.stringify(value ?? "");
+  return text
+    .replace(/([?&](?:access[_-]?token|api[_-]?key|authorization|cookie|password|secret|signature|token|webhook)=)[^&#\s]+/gi, "$1[redacted]")
+    .replace(/(Bearer\s+|Basic\s+|apify_api_)[A-Za-z0-9._~+\/-]+/gi, "$1[redacted]")
+    .replace(/((?:token|secret|api[_-]?key|cookie|authorization|password|signature)\s*[:=]\s*["']?)[^\s,"'}]+/gi, "$1[redacted]")
+    .replace(/https?:\/\/[^\s"']+/gi, match => {
+      try {
+        const url = new URL(match);
+        for (const key of Array.from(url.searchParams.keys())) {
+          if (/access[_-]?token|api[_-]?key|authorization|cookie|password|secret|signature|token|webhook/i.test(key)) url.searchParams.set(key, "[redacted]");
+        }
+        return url.toString();
+      } catch {
+        return match;
+      }
+    })
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+}
+
+export function readApifyErrorDetail(payload: Record<string, unknown>) {
   const error = payload.error && typeof payload.error === "object" ? payload.error as Record<string, unknown> : {};
-  const candidates = [error.message, payload.message, payload.raw];
-  return candidates.find((value): value is string => typeof value === "string" && value.trim().length > 0)?.trim().slice(0, 240) ?? "";
+  const candidates = [error.message, error.details, payload.message, payload.details, payload.raw];
+  const parts = candidates
+    .filter(value => (typeof value === "string" && value.trim().length > 0) || (value && typeof value === "object"))
+    .map(value => sanitizeApifyDiagnostic(value))
+    .filter(Boolean);
+  return Array.from(new Set(parts)).join(" | ").slice(0, 500);
 }
 
 function isSessionCredentialFailure(status: number, detail: string) {
@@ -186,12 +212,13 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
               : "ACTOR_START_FAILED",
         kind: sessionFailure ? "session_credentials" : response.status === 404 || response.status === 400 ? "actor_configuration" : "actor_start",
         status: response.status,
+        ...(detail ? { providerDetail: detail } : {}),
         message: sessionFailure
           ? "Credencial de sessão do Actor ausente, inválida ou expirada; atualize o segredo autorizado."
           : response.status === 404
             ? "Actor público ou credencial não encontrada; verifique APIFY_STORIES_ACTOR_ID, APIFY_API_TOKEN e a disponibilidade do Actor na conta."
             : response.status === 400
-              ? "Payload do Actor ou credencial rejeitada pela Apify; verifique a configuração da integração."
+              ? detail || "Payload do Actor ou credencial rejeitada pela Apify; verifique a configuração da integração."
               : "Apify rejeitou o disparo do Actor.",
       },
     });

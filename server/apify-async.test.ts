@@ -31,7 +31,7 @@ vi.mock("./db", () => ({
   recordOperationalAlert: mocks.recordOperationalAlert,
 }));
 
-import { apifyInstagramWebhookHandler, asyncIngestInstagramHandler, getConfiguredApifyStoriesActorId, startAsyncApifyStoriesRun } from "./apify-async";
+import { apifyInstagramWebhookHandler, asyncIngestInstagramHandler, getConfiguredApifyStoriesActorId, readApifyErrorDetail, sanitizeApifyDiagnostic, startAsyncApifyStoriesRun } from "./apify-async";
 
 describe("Apify async Stories", () => {
   beforeEach(() => {
@@ -43,6 +43,17 @@ describe("Apify async Stories", () => {
     process.env.APIFY_API_TOKEN = "test-token";
     process.env.SCHEDULED_TASK_ENDPOINT_BASE = "https://weekendvib-jscaalye.manus.space";
     process.env.INTERNAL_CRON_SECRET = "cron-secret";
+  });
+
+  it("extrai details do erro e remove credenciais e parâmetros sensíveis", () => {
+    const payload = { error: { message: "Input invalid", details: { field: "targets", token: "apify_api_secret", url: "https://api.example.test/run?token=secret&keep=yes" } } };
+    const detail = readApifyErrorDetail(payload);
+    expect(detail).toContain("targets");
+    expect(detail).toContain("token");
+    expect(detail).not.toContain("apify_api_secret");
+    expect(detail).not.toContain("token=secret");
+    expect(sanitizeApifyDiagnostic("Authorization: Bearer very-secret-value")).toContain("[redacted]");
+    expect(sanitizeApifyDiagnostic("Authorization: Bearer very-secret-value")).not.toContain("very-secret-value");
   });
 
   it("inicia o Actor sem esperar o dataset e vincula o ingestionRun", async () => {
@@ -117,7 +128,7 @@ describe("Apify async Stories", () => {
       error: "APIFY_ACTOR_NOT_FOUND",
       message: expect.stringContaining("Erro na Apify (404)"),
     });
-    expect(JSON.stringify((res as any).json.mock.calls)).not.toContain("Task not found");
+    expect(JSON.stringify((res as any).json.mock.calls)).toContain("Task not found");
     fetchMock.mockRestore();
   });
 
@@ -133,6 +144,16 @@ describe("Apify async Stories", () => {
       error: "APIFY_ACTOR_REQUEST_INVALID",
       message: expect.stringContaining("Erro na Apify (400)"),
     }));
+    fetchMock.mockRestore();
+  });
+
+  it("persiste o detalhe sanitizado devolvido pela Apify no HTTP 400", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { message: "Input is not valid", details: { field: "targets", token: "apify_api_secret" } } }), { status: 400, headers: { "content-type": "application/json" } })
+    );
+    await expect(startAsyncApifyStoriesRun({ targets: [{ username: "meulugar.bar" }] })).rejects.toThrow("targets");
+    expect(mocks.finishIngestionRun).toHaveBeenCalledWith(42, expect.objectContaining({ details: expect.objectContaining({ providerDetail: expect.stringContaining("targets") }) }));
+    expect(JSON.stringify(mocks.finishIngestionRun.mock.calls)).not.toContain("apify_api_secret");
     fetchMock.mockRestore();
   });
 
