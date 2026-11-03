@@ -72,7 +72,7 @@ describe("resiliência dos adaptadores", () => {
       .mockResolvedValueOnce({ openedNow: true, failureCount: 2, nextAttemptAt: new Date("2026-09-12T02:00:00.000Z") });
     await circuit.registerSourceFailure({ sourceKey, routine: "instagram-agenda", status: 401, message: "session cookie expired" });
     await circuit.registerSourceFailure({ sourceKey, routine: "instagram-agenda", status: 401, message: "session cookie expired" });
-    expect(dbMocks.recordCircuitFailure).toHaveBeenLastCalledWith(sourceKey, "session cookie expired", 401, expect.any(Date), undefined, true);
+    expect(dbMocks.recordCircuitFailure).toHaveBeenLastCalledWith(sourceKey, "session cookie expired", 401, expect.any(Date), undefined, true, undefined);
     expect(webhook).toHaveBeenCalledTimes(1);
     const body = JSON.parse(String(webhook.mock.calls[0][1]?.body));
     expect(body).toMatchObject({ type: "circuit_opened", sourceKey, failureCount: 2 });
@@ -93,6 +93,17 @@ describe("resiliência dos adaptadores", () => {
     const body = JSON.parse(String(webhook.mock.calls[0][1]?.body));
     expect(body).toMatchObject({ type: "source_http_403_blocked", sourceKey, failureCount: 3 });
     expect(JSON.stringify(body)).not.toContain("token");
+  });
+
+  it("classifica HTTP 403 público como BLOCKED_BY_PLATFORM e solicita cooldown de sete dias", async () => {
+    const policy = circuit.getSourceFailureCooldownMs({ sourceKey: "public:zig", status: 403 });
+    expect(policy).toEqual({ failureReason: "BLOCKED_BY_PLATFORM", cooldownMs: 7 * 24 * 60 * 60 * 1000 });
+    expect(circuit.getSourceFailureCooldownMs({ sourceKey: "instagram:profile", status: 403 })).toBeUndefined();
+    dbMocks.recordCircuitFailure.mockResolvedValue({ openedNow: true, failureCount: 1, nextAttemptAt: new Date("2026-11-10T00:00:00.000Z") });
+
+    await circuit.registerSourceFailure({ sourceKey: "public:zig", routine: "public-agenda", status: 403, message: "Fonte pública respondeu HTTP 403" });
+
+    expect(dbMocks.recordCircuitFailure).toHaveBeenCalledWith("public:zig", "Fonte pública respondeu HTTP 403", 403, expect.any(Date), undefined, true, policy);
   });
 
   it("persiste alerta específico quando Meta code 110 pausa a fonte", async () => {

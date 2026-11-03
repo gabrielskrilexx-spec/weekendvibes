@@ -1,6 +1,14 @@
 import { getCircuitBreakerStatus, recordCircuitFailure, recordSource403Failure, recordCircuitSuccess, resetSource403State, recordOperationalAlert } from "./db";
 
 const HTTP_403_ALERT_THRESHOLD = 3;
+export const BLOCKED_BY_PLATFORM = "BLOCKED_BY_PLATFORM" as const;
+export const PLATFORM_BLOCK_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function getSourceFailureCooldownMs(input: { sourceKey: string; status?: number }) {
+  return input.sourceKey.startsWith("public:") && input.status === 403
+    ? { failureReason: BLOCKED_BY_PLATFORM, cooldownMs: PLATFORM_BLOCK_COOLDOWN_MS }
+    : undefined;
+}
 
 function severeFailureThreshold() {
   const configured = Number(process.env.INGESTION_CIRCUIT_BREAKER_FAILURE_THRESHOLD ?? 3);
@@ -85,7 +93,8 @@ export async function registerSourceFailure(input: { sourceKey: string; routine:
     : !severe
       ? (await resetSource403State(input.sourceKey, now), { count: 0, shouldAlert: false })
       : { count: 0, shouldAlert: false };
-  const result = await recordCircuitFailure(input.sourceKey, input.message, input.status, now, undefined, severe);
+  const cooldownOverrideMs = getSourceFailureCooldownMs(input);
+  const result = await recordCircuitFailure(input.sourceKey, input.message, input.status, now, undefined, severe, cooldownOverrideMs);
   if (result.openedNow && result.nextAttemptAt) {
     const payload = buildCircuitOpenedPayload({ sourceKey: input.sourceKey, routine: input.routine, nextAttemptAt: result.nextAttemptAt, failureCount: result.failureCount, message: input.message });
     await notifyCircuitOpened(payload);

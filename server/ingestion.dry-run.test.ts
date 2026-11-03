@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runIngestionPipeline } from "./ingestion";
+import { allowSourceAttempt } from "./circuit-breaker";
 
 const mocks = vi.hoisted(() => ({
   saveEvent: vi.fn(),
@@ -30,6 +31,7 @@ describe("public ingestion dry-run", () => {
     vi.unstubAllGlobals();
     mocks.saveEvent.mockClear();
     mocks.invokeLLM.mockClear();
+    vi.mocked(allowSourceAttempt).mockResolvedValue({ sourceKey: "public:unknown", state: "closed", failureCount: 0, allowed: true, nextAttemptAt: null });
   });
 
   it("applies parsing and validation while never calling saveEvent", async () => {
@@ -49,5 +51,18 @@ describe("public ingestion dry-run", () => {
     expect(result.persisted).toBe(0);
     expect(result.sourceReports).toEqual([expect.objectContaining({ sourceKey: "public:unknown", read: 1, persistable: 1 })]);
     expect(mocks.saveEvent).not.toHaveBeenCalled();
+  });
+
+  it("pula fonte pública em cooldown sem realizar uma requisição HTTP", async () => {
+    process.env.INGESTION_FOCUS_URLS = "https://www.sympla.com.br/eventos/santos-sp";
+    vi.mocked(allowSourceAttempt).mockResolvedValue({ sourceKey: "public:sympla", state: "open", failureCount: 1, allowed: false, nextAttemptAt: new Date("2026-11-10T00:00:00.000Z") });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await runIngestionPipeline();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(vi.mocked(allowSourceAttempt)).toHaveBeenCalledWith("public:sympla");
+    expect(result).toMatchObject({ fetchFailures: [expect.objectContaining({ message: "Fonte pausada pelo Circuit Breaker durante o cooldown." })] });
   });
 });

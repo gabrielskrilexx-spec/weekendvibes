@@ -522,7 +522,7 @@ export type IngestionSourceListFilters = { openOnly?: boolean; failureCategory?:
 
 export function classifyIngestionSourceFailure(source: Pick<IngestionSource, "lastMessage" | "lastFailureReason" | "lastHttpStatus">): IngestionSourceFailureCategory | null {
   const text = `${source.lastMessage ?? ""} ${source.lastFailureReason ?? ""}`.toLowerCase();
-  if (source.lastHttpStatus === 403 || /waf|cloudflare|akamai|bloqueado/.test(text)) return "waf";
+  if (source.lastHttpStatus === 403 || /blocked_by_platform|waf|cloudflare|akamai|bloqueado/.test(text)) return "waf";
   if (/code 110|invalid user id|id inválido|desconectado da meta/.test(text)) return "meta110";
   if (/timeout|timed out|network|rede|econn|socket|fetch failed/.test(text) || source.lastHttpStatus === 408 || source.lastHttpStatus === 504) return "network";
   return null;
@@ -539,7 +539,7 @@ export async function getIngestionSourceSummary(dbOverride?: Awaited<ReturnType<
     const result = await db.execute(sql`
       SELECT count(*) FILTER (WHERE "isEnabled" = 1)::int AS active_total,
         count(*) FILTER (WHERE "circuitState" = 'open')::int AS open_total,
-        count(*) FILTER (WHERE "lastHttpStatus" = 403 OR lower(coalesce("lastMessage", '') || ' ' || coalesce("lastFailureReason", '')) ~ 'waf|cloudflare|akamai|bloqueado')::int AS waf_total,
+        count(*) FILTER (WHERE "lastHttpStatus" = 403 OR lower(coalesce("lastMessage", '') || ' ' || coalesce("lastFailureReason", '')) ~ 'blocked_by_platform|waf|cloudflare|akamai|bloqueado')::int AS waf_total,
         count(*) FILTER (WHERE lower(coalesce("lastMessage", '') || ' ' || coalesce("lastFailureReason", '')) ~ 'code[[:space:]]*110|invalid user id|id inválido|desconectado da meta')::int AS meta110_total,
         count(*) FILTER (WHERE "lastHttpStatus" IN (408, 504) OR lower(coalesce("lastMessage", '') || ' ' || coalesce("lastFailureReason", '')) ~ 'timeout|timed out|network|rede|econn|socket|fetch failed')::int AS network_total
       FROM "ingestionSources"
@@ -1012,17 +1012,24 @@ function sanitizedFailureReason(status: number | undefined, message: string) {
   return normalized.slice(0, 500) || "Falha de rede";
 }
 
-export async function recordCircuitFailure(sourceKey: string, message: string, status?: number, now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>, severe = true) {
+export function resolveIngestionSourceFailureReason(input: { sourceKey: string; status?: number; message: string; platformBlockCooldownMs?: number }) {
+  return input.sourceKey.startsWith("public:") && input.status === 403 && input.platformBlockCooldownMs !== undefined
+    ? "BLOCKED_BY_PLATFORM"
+    : sanitizedFailureReason(input.status, input.message);
+}
+
+export async function recordCircuitFailure(sourceKey: string, message: string, status?: number, now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>, severe = true, sourceFailurePolicy?: { failureReason: "BLOCKED_BY_PLATFORM"; cooldownMs: number }) {
   const db = dbOverride ?? await getDb();
   if (!db) return { state: "closed" as const, failureCount: 0, openedNow: false, nextAttemptAt: null };
   const [source] = await db.select({ circuitState: ingestionSources.circuitState, circuitFailureCount: ingestionSources.circuitFailureCount }).from(ingestionSources).where(eq(ingestionSources.sourceKey, sourceKey)).limit(1);
   if (!source) return { state: "closed" as const, failureCount: 0, openedNow: false, nextAttemptAt: null };
+  const blockedByPlatform = status === 403 && sourceFailurePolicy?.failureReason === "BLOCKED_BY_PLATFORM";
   const threshold = circuitFailureThreshold();
   const failureCount = severe ? (source.circuitState === "half_open" ? threshold : source.circuitFailureCount + 1) : 0;
-  const shouldOpen = severe && failureCount >= threshold;
-  const nextAttemptAt = shouldOpen ? new Date(now.getTime() + circuitCooldownMs()) : null;
+  const shouldOpen = severe && (failureCount >= threshold || blockedByPlatform);
+  const nextAttemptAt = shouldOpen ? new Date(now.getTime() + (sourceFailurePolicy?.cooldownMs ?? circuitCooldownMs())) : null;
   const safeMessage = `${status ? `HTTP ${status}: ` : ""}${message}`.replace(/(token|secret|key|cookie|authorization)=[^\s&]+/gi, "$1=[redacted]").slice(0, 1000);
-  await db.update(ingestionSources).set({ circuitState: shouldOpen ? "open" : "closed", circuitFailureCount: failureCount, circuitOpenedAt: shouldOpen ? now : null, circuitNextAttemptAt: nextAttemptAt, circuitLastError: safeMessage, lastAttemptAt: now, lastStatus: "failed", lastMessage: safeMessage, lastHttpStatus: status ?? null, lastFailureReason: sanitizedFailureReason(status, message), updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
+  await db.update(ingestionSources).set({ circuitState: shouldOpen ? "open" : "closed", circuitFailureCount: failureCount, circuitOpenedAt: shouldOpen ? now : null, circuitNextAttemptAt: nextAttemptAt, circuitLastError: safeMessage, lastAttemptAt: now, lastStatus: "failed", lastMessage: safeMessage, lastHttpStatus: status ?? null, lastFailureReason: resolveIngestionSourceFailureReason({ sourceKey, status, message, platformBlockCooldownMs: sourceFailurePolicy?.cooldownMs }), updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
   return { state: shouldOpen ? "open" as const : "closed" as const, failureCount, openedNow: shouldOpen && source.circuitState !== "open", nextAttemptAt };
 }
 
