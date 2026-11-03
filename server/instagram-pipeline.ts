@@ -244,6 +244,35 @@ export function extractDiscoverableInstagramLinks(text: string) {
   return Array.from(links);
 }
 
+export function decodeInstagramRedirectUrl(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (url.hostname !== "l.instagram.com") return /^https:\/\//i.test(raw) ? raw : null;
+    const encoded = url.searchParams.get("u");
+    if (!encoded) return null;
+    const decoded = decodeURIComponent(encoded);
+    return /^https:\/\//i.test(decoded) ? decoded : null;
+  } catch {
+    return null;
+  }
+}
+
+export function extractInstagramRedirectedLinks(value: unknown) {
+  const values = Array.isArray(value) ? value : [value];
+  return Array.from(new Set(values.map(decodeInstagramRedirectUrl).filter((link): link is string => Boolean(link))));
+}
+
+function normalizeInstagramTimestamp(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return Math.abs(value) < 1_000_000_000_000 ? value * 1000 : value;
+  if (typeof value === "string" && /^\d+(?:\.\d+)?$/.test(value.trim())) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? (Math.abs(numeric) < 1_000_000_000_000 ? numeric * 1000 : numeric) : value;
+  }
+  return value;
+}
+
 export async function persistDiscoverableInstagramLinks(posts: ReadonlyArray<InstagramPost>) {
   const discovered = new Map<string, string | undefined>();
   for (const post of posts) {
@@ -287,19 +316,26 @@ export function normalizeInstagramMediaItem(item: Record<string, unknown>, fallb
   const highlight = item.highlight && typeof item.highlight === "object" ? item.highlight as Record<string, unknown> : undefined;
   const username = String(item.source_username ?? item.ownerUsername ?? item.username ?? owner?.username ?? fallbackUsername);
   const highlightTitle = String(item.highlightTitle ?? item.highlight_title ?? highlight?.title ?? item.title ?? "");
-  if (!imageUrl && !item.caption && !item.text) return null;
-  if (normalizedType === "highlight" && !isAgendaHighlightTitle(highlightTitle)) return null;
+  const redirectedLinks = extractInstagramRedirectedLinks(item.link_urls ?? item.linkUrls);
+  const fallbackText = [highlightTitle, ...redirectedLinks].filter(Boolean).join("\n");
+  const caption = String(item.caption ?? item.text ?? fallbackText ?? "");
+  if (!imageUrl && !caption) return null;
+  if (normalizedType === "highlight" && !isAgendaHighlightTitle(highlightTitle) && redirectedLinks.length === 0) return null;
+  const timestamp = normalizeInstagramTimestamp(item.timestamp ?? item.postedAt ?? item.taken_at);
+  const takenAt = normalizeInstagramTimestamp(item.takenAt ?? item.taken_at);
+  const postedAt = normalizeInstagramTimestamp(item.postedAt ?? item.taken_at);
+  const expiresAt = normalizeInstagramTimestamp(item.expiresAt ?? item.expiring_at);
   return {
-    id: item.id ? String(item.id) : undefined,
+    id: item.id ? String(item.id) : item.media_id ? String(item.media_id) : undefined,
     shortCode: item.shortCode ? String(item.shortCode) : undefined,
     url: item.url ? String(item.url) : username ? `https://www.instagram.com/${username.replace(/^@/, "")}/` : undefined,
     permalink: item.permalink ? String(item.permalink) : undefined,
-    caption: item.caption ? String(item.caption) : undefined,
-    text: item.text ? String(item.text) : undefined,
-    timestamp: typeof (item.timestamp ?? item.postedAt ?? item.taken_at) === "number" || typeof (item.timestamp ?? item.postedAt ?? item.taken_at) === "string" ? (item.timestamp ?? item.postedAt ?? item.taken_at) as string | number : undefined,
-    takenAt: typeof (item.takenAt ?? item.taken_at) === "number" || typeof (item.takenAt ?? item.taken_at) === "string" ? (item.takenAt ?? item.taken_at) as string | number : undefined,
-    postedAt: typeof (item.postedAt ?? item.taken_at) === "number" || typeof (item.postedAt ?? item.taken_at) === "string" ? (item.postedAt ?? item.taken_at) as string | number : undefined,
-    expiresAt: typeof (item.expiresAt ?? item.expiring_at) === "number" || typeof (item.expiresAt ?? item.expiring_at) === "string" ? (item.expiresAt ?? item.expiring_at) as string | number : undefined,
+    caption: caption || undefined,
+    text: item.text ? String(item.text) : redirectedLinks.length > 0 ? redirectedLinks.join("\n") : undefined,
+    timestamp: typeof timestamp === "number" || typeof timestamp === "string" ? timestamp : undefined,
+    takenAt: typeof takenAt === "number" || typeof takenAt === "string" ? takenAt : undefined,
+    postedAt: typeof postedAt === "number" || typeof postedAt === "string" ? postedAt : undefined,
+    expiresAt: typeof expiresAt === "number" || typeof expiresAt === "string" ? expiresAt : undefined,
     displayUrl: imageUrl || undefined,
     imageUrl: imageUrl || undefined,
     thumbnailUrl: thumbnailUrl || undefined,

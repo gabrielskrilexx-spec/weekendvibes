@@ -5,7 +5,7 @@ import * as dbModule from "./db";
 import { getDb } from "./db";
 import { extractDiscoverableInstagramLinks } from "./instagram-pipeline";
 import { selectInstagramApifyTargets } from "./instagram-pipeline";
-import { isMetaInvalidUserError, createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, isMetaCredentialFailure, extractMetaGraphErrorMessage, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRecentApifySignal, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest, limitInstagramStoriesForCost, INSTAGRAM_OCR_CONCURRENCY, validateMetaBusinessDiscoveryProfile } from "./instagram-pipeline";
+import { isMetaInvalidUserError, createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, isMetaCredentialFailure, extractMetaGraphErrorMessage, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRecentApifySignal, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest, limitInstagramStoriesForCost, INSTAGRAM_OCR_CONCURRENCY, validateMetaBusinessDiscoveryProfile, decodeInstagramRedirectUrl, extractInstagramRedirectedLinks } from "./instagram-pipeline";
 
 it("reconhece o erro Meta code 110 sem tratá-lo como credencial expirada", () => {
   expect(isMetaInvalidUserError(400, '{"error":{"message":"Invalid user id","code":110}}')).toBe(true);
@@ -59,6 +59,22 @@ describe("Instagram weekend pipeline", () => {
   });
   it("extrai apenas links públicos suportados e os deduplica", () => {
     expect(extractDiscoverableInstagramLinks("Ingressos: https://www.sympla.com.br/evento/festa/123. https://www.sympla.com.br/evento/festa/123#lote https://instagram.com/p/abc https://example.com/fora")).toEqual(["https://www.sympla.com.br/evento/festa/123"]);
+  });
+
+  it("decodifica links l.instagram.com e normaliza os 2 highlights do Actor", () => {
+    const eventUrl = "https://articket.com.br/e/7358/sub-plants-halloween";
+    expect(decodeInstagramRedirectUrl(`https://l.instagram.com/?u=${encodeURIComponent(eventUrl)}&e=sample`)).toBe(eventUrl);
+    expect(extractInstagramRedirectedLinks([`https://l.instagram.com/?u=${encodeURIComponent(eventUrl)}`])).toEqual([eventUrl]);
+    const datasetItems = [
+      { source_username: "plantssantos", source_user_id: "59533766974", item_type: "highlight", media_id: "4011699950081408074", media_type: "video", taken_at: 1793721600, image_url: "https://cdn.example.test/inside-1.jpg", video_url: "https://cdn.example.test/inside-1.mp4", video_duration: 8, link_urls: [`https://l.instagram.com/?u=${encodeURIComponent(eventUrl)}`], highlight_id: "highlight:17911679562286768", highlight_title: "LISTA" },
+      { source_username: "plantssantos", source_user_id: "59533766974", item_type: "highlight", media_id: "4011699614352478881", media_type: "video", taken_at: 1793721600, image_url: "https://cdn.example.test/inside-2.jpg", video_url: "https://cdn.example.test/inside-2.mp4", video_duration: 9, link_urls: [`https://l.instagram.com/?u=${encodeURIComponent("https://www.ingresse.com/evento-plantssantos")}`], highlight_id: "highlight:18103685812586436", highlight_title: "INGRESSOS" },
+    ];
+    const posts = normalizeInstagramMediaPayload(datasetItems);
+    expect(posts).toHaveLength(2);
+    expect(posts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "4011699950081408074", mediaType: "highlight", ownerUsername: "plantssantos", highlightTitle: "LISTA", caption: expect.stringContaining(eventUrl), takenAt: 1793721600000 }),
+      expect.objectContaining({ id: "4011699614352478881", mediaType: "highlight", ownerUsername: "plantssantos", highlightTitle: "INGRESSOS", caption: expect.stringContaining("https://www.ingresse.com/evento-plantssantos"), takenAt: 1793721600000 }),
+    ]));
   });
 
   it("aplica a trava financeira local: Stories em 24h e no máximo 2 Highlights por perfil", () => {
