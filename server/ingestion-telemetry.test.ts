@@ -43,6 +43,21 @@ describe("telemetria por fonte", () => {
     expect(consecutiveSlow).toEqual([expect.objectContaining({ sourceKey: "mringressos", p95LatencyMs: 4200, thresholdMs: 3000, consecutiveRuns: 2 })]);
   });
 
+  it("usa o limiar de Cron para fontes públicas identificadas por prefixo", () => {
+    const alerts = findConsecutiveP95PerformanceAlertsForTest([
+      { sourceKey: "public:ingresse", status: "succeeded", startedAt: "2026-08-26T13:00:00.000Z", durationMs: 41_000 },
+      { sourceKey: "public:ingresse", status: "succeeded", startedAt: "2026-08-26T12:00:00.000Z", durationMs: 42_000 },
+    ]);
+    expect(alerts[0]).toMatchObject({ sourceKey: "public:ingresse", thresholdMs: 40_000 });
+  });
+
+  it("não transforma timeout ou falha de fonte em falso alerta de latência", () => {
+    expect(findConsecutiveP95PerformanceAlertsForTest([
+      { sourceKey: "public:ingresse", status: "failed", startedAt: "2026-08-26T13:00:00.000Z", durationMs: 41_000 },
+      { sourceKey: "public:ingresse", status: "failed", startedAt: "2026-08-26T12:00:00.000Z", durationMs: 42_000 },
+    ])).toEqual([]);
+  });
+
   it("agrupa o histórico por dia e fonte com latência média e taxa de sucesso", () => {
     const result = buildSourceTelemetryHistoryForTest([
       { sourceKey: "blackpass", status: "succeeded", startedAt: "2026-08-25T12:00:00.000Z", durationMs: 100 },
