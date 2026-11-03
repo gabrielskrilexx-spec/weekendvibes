@@ -394,17 +394,29 @@ function detailsTrigger(rawDetails: string | null) {
 
 export async function apifyInstagramWebhookHandler(req: Request, res: Response) {
   const resource = readResource(req.body);
-  if (!resource.id) return res.status(400).json({ ok: false, error: "APIFY_RUN_ID_MISSING" });
+  if (!resource.id) {
+    console.warn("[Apify webhook] rejected callback", { reason: "run_id_missing" });
+    return res.status(400).json({ ok: false, error: "APIFY_RUN_ID_MISSING" });
+  }
   const run = await findIngestionRunByApifyActor(resource.id);
-  if (!run) return res.status(404).json({ ok: false, error: "APIFY_RUN_NOT_FOUND" });
+  if (!run) {
+    console.warn("[Apify webhook] rejected callback", { reason: "run_not_found", actorRunId: resource.id });
+    return res.status(404).json({ ok: false, error: "APIFY_RUN_NOT_FOUND" });
+  }
   let details: Record<string, unknown> = {};
-  try { details = run.details ? JSON.parse(run.details) as Record<string, unknown> : {}; } catch { return res.status(500).json({ ok: false, error: "RUN_DETAILS_INVALID" }); }
+  try { details = run.details ? JSON.parse(run.details) as Record<string, unknown> : {}; } catch {
+    console.error("[Apify webhook] invalid run details", { runId: run.id, actorRunId: resource.id });
+    return res.status(500).json({ ok: false, error: "RUN_DETAILS_INVALID" });
+  }
   const rawHeader = typeof req.header === "function" ? req.header("x-apify-signature") : req.headers?.["x-apify-signature"];
   const headerSignature = Array.isArray(rawHeader) ? rawHeader[0] ?? "" : typeof rawHeader === "string" ? rawHeader : "";
   const callbackSignature = String(details.callbackToken ?? "");
   const configuredSignature = process.env.APIFY_WEBHOOK_SECRET?.trim() || process.env.INTERNAL_CRON_SECRET?.trim() || "";
   const authenticatedBySecret = hasValidInternalCronSecret(req);
-  if (!safeTokenEqual(headerSignature, callbackSignature) && !safeTokenEqual(headerSignature, configuredSignature) && !authenticatedBySecret) return res.status(403).json({ ok: false, error: "WEBHOOK_SIGNATURE_INVALID" });
+  if (!safeTokenEqual(headerSignature, callbackSignature) && !safeTokenEqual(headerSignature, configuredSignature) && !authenticatedBySecret) {
+    console.warn("[Apify webhook] rejected callback", { reason: "signature_invalid", runId: run.id, actorRunId: resource.id });
+    return res.status(403).json({ ok: false, error: "WEBHOOK_SIGNATURE_INVALID" });
+  }
   if (run.status !== "running") return res.status(200).json({ ok: true, duplicate: true });
 
   const status = resource.status.toUpperCase();
@@ -417,12 +429,31 @@ export async function apifyInstagramWebhookHandler(req: Request, res: Response) 
   }
   const tokenValue = process.env.APIFY_API_TOKEN?.trim();
   const datasetId = resource.defaultDatasetId || String(details.datasetId ?? "");
-  if (!tokenValue || !datasetId) return res.status(500).json({ ok: false, error: "DATASET_REFERENCE_MISSING" });
+  if (!tokenValue || !datasetId) {
+    console.error("[Apify webhook] dataset reference missing", { runId: run.id, actorRunId: resource.id, hasToken: Boolean(tokenValue), hasDataset: Boolean(datasetId) });
+    return res.status(500).json({ ok: false, error: "DATASET_REFERENCE_MISSING" });
+  }
   void processDataset(run, datasetId, resource.id, tokenValue).catch(async error => {
     console.error("[Apify webhook] dataset worker failed", { runId: run.id, actorRunId: resource.id, error: redactError(error) });
     await finishIngestionRun(run.id, { status: "failed", failedCount: 1, httpStatus: 500, details: { provider: "apify", actorRunId: resource.id, error: "DATASET_WORKER_FAILED" } });
   });
   return res.status(202).json({ ok: true, accepted: true, status: "PROCESSING" });
+}
+
+export async function reprocessApifyStoriesRunById(runId: number) {
+  const token = process.env.APIFY_API_TOKEN?.trim();
+  if (!token) throw new Error("APIFY_TOKEN_MISSING");
+  const run = await findIngestionRunById(runId);
+  if (!run) throw new Error("INGESTION_RUN_NOT_FOUND");
+  if (run.status !== "running") return { runId, status: run.status, skipped: true } as const;
+  let details: Record<string, unknown> = {};
+  try { details = run.details ? JSON.parse(run.details) as Record<string, unknown> : {}; } catch { throw new Error("RUN_DETAILS_INVALID"); }
+  const actorRunId = typeof details.actorRunId === "string" ? details.actorRunId : (run.sourceKey ?? "").replace(/^instagram:apify:/, "");
+  const datasetId = typeof details.datasetId === "string" ? details.datasetId : "";
+  if (!actorRunId || !datasetId) throw new Error("DATASET_REFERENCE_MISSING");
+  await processDataset(run, datasetId, actorRunId, token);
+  const updated = await findIngestionRunById(runId);
+  return { runId, status: updated?.status ?? "unknown", importedCount: updated?.importedCount ?? 0, failedCount: updated?.failedCount ?? 0 } as const;
 }
 
 export async function reprocessApifyStoriesDatasetHandler(req: Request, res: Response) {

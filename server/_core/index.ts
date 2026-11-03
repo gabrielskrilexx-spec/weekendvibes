@@ -13,6 +13,7 @@ import { asyncIngestInstagramHandler, apifyInstagramWebhookHandler, reprocessApi
 import { heartbeatMonitorHandler } from "../scheduled-heartbeat-monitor";
 import { exportJobsRecoveryHandler } from "../scheduled-export-recovery";
 import { ticketingMonitorHandler } from "../scheduled-ticketing-monitor";
+import { temporaryApifyDatasetSyncHandler } from "../temporary-apify-dataset-sync-runner";
 import { executiveObservabilityReportHandler } from "../scheduled-executive-report";
 import { weeklyExecutiveReportHandler } from "../scheduled-weekly-report";
 import { serveStatic } from "./static";
@@ -101,6 +102,7 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
   app.post("/api/scheduled/ingest-instagram-sync", noStoreScheduledResponse, requireInternalCron, ingestInstagramHandler);
   app.post("/api/webhooks/apify/instagram", noStoreScheduledResponse, apifyInstagramWebhookHandler);
   app.post("/api/v2/ingestion/instagram/reprocess-dataset", noStoreScheduledResponse, reprocessApifyStoriesDatasetHandler);
+  app.get("/api/internal/temporary-apify-dataset-sync", noStoreScheduledResponse, temporaryApifyDatasetSyncHandler);
   app.post("/api/scheduled/monitor-heartbeat", noStoreScheduledResponse, requireInternalCron, heartbeatMonitorHandler);
   app.post("/api/scheduled/export-jobs-recovery", noStoreScheduledResponse, requireInternalCron, exportJobsRecoveryHandler);
   app.get("/api/scheduled/ticketing-monitor", noStoreScheduledResponse, requireVercelCron, ticketingMonitorHandler);
