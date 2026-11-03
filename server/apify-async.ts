@@ -97,7 +97,7 @@ function getWebhookBaseUrl() {
 function encodeWebhooks(webhookUrl: string, callbackToken: string) {
   return Buffer.from(JSON.stringify([
     {
-      eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.TIMED_OUT"],
+      eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.TIMED_OUT", "ACTOR.RUN.ABORTED"],
       requestUrl: webhookUrl,
       headersTemplate: JSON.stringify({ "x-apify-signature": callbackToken }),
       payloadTemplate: '{"resource":{{resource}}}',
@@ -410,8 +410,10 @@ export async function apifyInstagramWebhookHandler(req: Request, res: Response) 
   const status = resource.status.toUpperCase();
   if (status !== "SUCCEEDED") {
     const actorTimedOut = status === "TIMED_OUT";
-    await finishIngestionRun(run.id, { status: "failed", failedCount: 1, httpStatus: actorTimedOut ? 504 : 502, details: { provider: "apify", actorRunId: resource.id, status: status || "FAILED", error: actorTimedOut ? "ACTOR_TIMEOUT" : "ACTOR_NOT_SUCCEEDED", kind: actorTimedOut ? "actor_timeout" : "actor_failed" } });
-    return res.status(202).json({ ok: true, accepted: true, status: actorTimedOut ? "TIMEOUT" : "FAILED" });
+    const actorAborted = status === "ABORTED";
+    const failureCode = actorTimedOut ? "ACTOR_TIMEOUT" : actorAborted ? "ACTOR_ABORTED" : "ACTOR_NOT_SUCCEEDED";
+    await finishIngestionRun(run.id, { status: "failed", failedCount: 1, httpStatus: actorTimedOut ? 504 : 502, details: { provider: "apify", actorRunId: resource.id, status: status || "FAILED", error: failureCode, kind: actorTimedOut ? "actor_timeout" : actorAborted ? "actor_aborted" : "actor_failed" } });
+    return res.status(202).json({ ok: true, accepted: true, status: actorTimedOut ? "TIMEOUT" : actorAborted ? "ABORTED" : "FAILED" });
   }
   const tokenValue = process.env.APIFY_API_TOKEN?.trim();
   const datasetId = resource.defaultDatasetId || String(details.datasetId ?? "");

@@ -92,7 +92,7 @@ describe("Apify async Stories", () => {
     expect(requestInit?.headers).toMatchObject({ Authorization: "Bearer test-token" });
     expect(JSON.parse(String(requestInit?.body))).toEqual({ targets: ["venue-test"], scrapeType: "both", maxHighlights: 2, onlyNew: true });
     expect(webhooks).toEqual([expect.objectContaining({
-      eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.TIMED_OUT"],
+      eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.TIMED_OUT", "ACTOR.RUN.ABORTED"],
       requestUrl: "https://weekendvib-jscaalye.manus.space/api/webhooks/apify/instagram",
       headersTemplate: JSON.stringify({ "x-apify-signature": runDetails.callbackToken }),
       payloadTemplate: '{"resource":{{resource}}}',
@@ -197,6 +197,20 @@ describe("Apify async Stories", () => {
     await apifyInstagramWebhookHandler({ headers: { "x-apify-signature": "expected" }, body: { resource: { id: "actor-run-failed", status: "FAILED" } } } as never, res);
     expect((res as any).status).toHaveBeenCalledWith(202);
     expect(mocks.finishIngestionRun).toHaveBeenCalledWith(78, expect.objectContaining({ status: "failed", httpStatus: 502 }));
+  });
+
+  it("finaliza como failed quando o Actor é abortado", async () => {
+    mocks.findIngestionRunByApifyActor.mockResolvedValueOnce({ id: 79, status: "running", details: JSON.stringify({ callbackToken: "expected" }) });
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() } as never;
+    await apifyInstagramWebhookHandler({ headers: { "x-apify-signature": "expected" }, body: { resource: { id: "actor-run-aborted", status: "ABORTED" } } } as never, res);
+    expect((res as any).status).toHaveBeenCalledWith(202);
+    expect((res as any).json).toHaveBeenCalledWith({ ok: true, accepted: true, status: "ABORTED" });
+    expect(mocks.finishIngestionRun).toHaveBeenCalledWith(79, expect.objectContaining({
+      status: "failed",
+      failedCount: 1,
+      httpStatus: 502,
+      details: expect.objectContaining({ error: "ACTOR_ABORTED", kind: "actor_aborted", status: "ABORTED" }),
+    }));
   });
 
   it("valida o segredo M2M no endpoint leve sem expô-lo", async () => {
