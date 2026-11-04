@@ -24,4 +24,9 @@ describe("ingestion deduplication and venue normalization", () => {
     expect(normalizeVenueCity("Vallum Garden", "", "Guarujá")).toBe("Santos");
     expect(normalizeVenueCity("Laroc Club", "Guarujá", "Guarujá")).toBe("Guarujá");
   });
+
+  it("normalizes Lucky Scope to Guarujá when ticketing metadata omits or mislabels the city", () => {
+    expect(normalizeVenueCity("Lucky Scope", "", "")).toBe("Guarujá");
+    expect(normalizeVenueCity("Lucky Scope", "", "Santos")).toBe("Guarujá");
+  });
 });

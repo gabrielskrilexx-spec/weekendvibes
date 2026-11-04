@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { INSTAGRAM_AGENDA_SOURCE_TYPE, claimApifyDailyRequest, getApifyBudgetBlockAlert, listActiveLocationAliasValues, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent, upsertDiscoveredInstagramLinkSource } from "./db";
 import { fetchExternal, isSandboxRestrictedError, readExternalBody } from "./external-fetch";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
-import { containsTargetVenue } from "./ingestion";
+import { containsTargetVenue, normalizeVenueCity } from "./ingestion";
 import { parseMetaBusinessDiscovery } from "./contracts/external";
 import { resolveRegionalCoordinates } from "./geocoding";
 import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
@@ -128,7 +128,7 @@ export const INSTAGRAM_TARGETS = [
   { name: "Moby House", username: "mobydicksantos", directUrl: "https://www.instagram.com/mobydicksantos/" },
   { name: "Projac Bar", username: "projac.bar", directUrl: "https://www.instagram.com/projac.bar/" },
   { name: "Meu Lugar Bar e Entretenimento", username: "meulugar.bar", directUrl: "https://www.instagram.com/meulugar.bar/" },
-  { name: "Nosso After", username: "nossoafterguaruja", directUrl: "https://www.instagram.com/nossoafterguaruja/" },
+  { name: "Nosso After — Guarujá", username: "nossoafterguaruja", directUrl: "https://www.instagram.com/nossoafterguaruja/", city: "Guarujá" },
   { name: "Curvão Surf House", username: "curvaosurfhouse", directUrl: "https://www.instagram.com/curvaosurfhouse/" },
   { name: "Flamingo Bar", username: "flamingomusicbar", directUrl: "https://www.instagram.com/flamingomusicbar/" },
   { name: "Rocket Sea Club", username: "rocketseaclub", directUrl: "https://www.instagram.com/rocketseaclub/" },
@@ -142,6 +142,12 @@ export const INSTAGRAM_TARGETS = [
   { name: "Yellow House", username: "yellowhouse_santos", directUrl: "https://www.instagram.com/yellowhouse_santos/" },
   { name: "Mimada Festa", username: "mimadafesta", directUrl: "https://www.instagram.com/mimadafesta/" },
 ] as const;
+
+export function getInstagramTargetCity(username: string): "Santos" | "Guarujá" | undefined {
+  const normalizedUsername = username.replace(/^@/, "").toLowerCase();
+  const target = INSTAGRAM_TARGETS.find(item => item.username.toLowerCase() === normalizedUsername);
+  return target && "city" in target ? target.city : undefined;
+}
 
 export type InstagramPost = {
   id?: string;
@@ -511,6 +517,11 @@ export function validateStructuredInstagramEvent(event: Partial<StructuredEvent>
   if (!ALLOWED_CATEGORIES.has(String(event.category))) reasons.push("invalid_category");
   if (!ALLOWED_GENRES.has(String(event.genre))) reasons.push("invalid_genre");
   return Array.from(new Set(reasons));
+}
+
+export function resolveInstagramEventCity(event: Pick<Partial<StructuredEvent>, "locationName" | "address" | "city">, profileCity?: string) {
+  const reportedCity = typeof event.city === "string" && event.city.trim() ? event.city : profileCity ?? "";
+  return normalizeVenueCity(String(event.locationName ?? ""), String(event.address ?? ""), reportedCity);
 }
 
 export function summarizeStructuredRejections(rejections: StructuredEventRejection[]) {
@@ -1084,11 +1095,13 @@ const STRUCTURED_EVENT_RESPONSE_FORMAT = { type: "json_schema", json_schema: { n
 } } } as const;
 
 function structuredEventsSystemPrompt(referenceDate: string) {
-  return `Extraia somente eventos futuros de fim de semana, públicos e musicais, localizados exclusivamente em Santos ou Guarujá. Data de Referência: ${referenceDate}. Ignore rigorosamente qualquer postagem ou evento que se refira a data anterior à Data de Referência; não tente inferir datas passadas como futuras. A data mínima aceita é ${referenceDate}. Para MEDIA_ORIGIN story ou highlight, trate RAW_POST_TEXT como OCR da arte gráfica e extraia Nome do Evento, Data, Horário e Atrações somente do texto reconhecido. Se a legenda informar dia e mês, mas omitir o ano, infira o ano atual ou futuro que torne a data válida a partir da Data de Referência; nunca use um ano passado por padrão. Retorne eventDate em ISO 8601. Use apenas informações presentes no texto bruto. Se data, cidade, endereço ou gênero não forem verificáveis, descarte o evento. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Não invente preços; use 0 quando o texto não informar preço.`;
+  return `Extraia somente eventos futuros de fim de semana, públicos e musicais, localizados exclusivamente em Santos ou Guarujá. Data de Referência: ${referenceDate}. Ignore rigorosamente qualquer postagem ou evento que se refira a data anterior à Data de Referência; não tente inferir datas passadas como futuras. A data mínima aceita é ${referenceDate}. Para MEDIA_ORIGIN story ou highlight, trate RAW_POST_TEXT como OCR da arte gráfica e extraia Nome do Evento, Data, Horário e Atrações somente do texto reconhecido. Se a legenda informar dia e mês, mas omitir o ano, infira o ano atual ou futuro que torne a data válida a partir da Data de Referência; nunca use um ano passado por padrão. Retorne eventDate em ISO 8601. Use apenas informações presentes no texto bruto. ACCOUNT_CITY é a cidade cadastrada para a conta oficial monitorada: use-a como cidade do evento somente quando o texto não indicar outra cidade, e não infira endereço. Se data, cidade, endereço ou gênero não forem verificáveis, descarte o evento. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Não invente preços; use 0 quando o texto não informar preço.`;
 }
 
 function serializeApprovedPost({ post, rawText }: { post: InstagramPost; rawText: string }) {
-  return `SOURCE_URL: ${postUrl(post)}\nACCOUNT: ${post.ownerUsername ?? post.username ?? ""}\nMEDIA_ORIGIN: ${post.mediaType ?? "post"}${post.highlightTitle ? `\nHIGHLIGHT_TITLE: ${post.highlightTitle}` : ""}\nRAW_POST_TEXT: ${rawText.slice(0, 2500)}`;
+  const username = post.ownerUsername ?? post.username ?? "";
+  const accountCity = getInstagramTargetCity(username);
+  return `SOURCE_URL: ${postUrl(post)}\nACCOUNT: ${username}${accountCity ? `\nACCOUNT_CITY: ${accountCity}` : ""}\nMEDIA_ORIGIN: ${post.mediaType ?? "post"}${post.highlightTitle ? `\nHIGHLIGHT_TITLE: ${post.highlightTitle}` : ""}\nRAW_POST_TEXT: ${rawText.slice(0, 2500)}`;
 }
 
 async function extractStructuredEvents(referenceDate: string, approvedPosts: Array<{ post: InstagramPost; rawText: string }>) {
@@ -1180,6 +1193,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
 
   const structuredEvents = await extractStructuredEvents(referenceDate, approvedPosts);
   const mediaOriginBySourceUrl = new Map(approvedPosts.map(({ post }) => [postUrl(post), post.mediaType ?? "post"]));
+  const profileCityBySourceUrl = new Map(approvedPosts.map(({ post }) => [postUrl(post), getInstagramTargetCity(String(post.ownerUsername ?? post.username ?? ""))]));
   let imported = 0;
   let added = 0;
   let updated = 0;
@@ -1190,20 +1204,22 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   const persistedEventIds: number[] = [];
   for (let index = 0; index < structuredEvents.length; index += 1) {
     const event = structuredEvents[index];
-    const reasons = validateStructuredInstagramEvent(event, activeAliases);
+    const normalizedCity = resolveInstagramEventCity(event, profileCityBySourceUrl.get(event.sourceUrl));
+    const normalizedEvent = { ...event, city: normalizedCity as StructuredEvent["city"] };
+    const reasons = validateStructuredInstagramEvent(normalizedEvent, activeAliases);
     if (reasons.length > 0) {
-      rejectedEvents.push(createStructuredEventRejection(event, index, reasons));
+      rejectedEvents.push(createStructuredEventRejection(normalizedEvent, index, reasons));
       continue;
     }
     const eventDate = normalizeStructuredEventDate(event.eventDate);
-    const coordinates = await resolveRegionalCoordinates({ locationName: event.locationName, address: event.address, city: event.city });
+    const coordinates = await resolveRegionalCoordinates({ locationName: event.locationName, address: event.address, city: normalizedEvent.city });
     const sourceUrl = event.sourceUrl;
     const mediaOrigin = mediaOriginBySourceUrl.get(sourceUrl) ?? "post";
     const sourceType = mediaOrigin === "story" ? "instagram_story" : mediaOrigin === "highlight" ? "instagram_highlight" : INSTAGRAM_AGENDA_SOURCE_TYPE;
     const sourceHash = crypto.createHash("md5").update(`${sourceUrl}|${eventDate.toISOString().slice(0, 10)}|${event.title}`).digest("hex");
     const saved = dryRun ? { created: true, id: undefined, updated: false } : await saveEvent({
       title: event.title, slug: `${event.title.toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}-${eventDate.getTime()}`,
-      description: event.summary, eventDate, locationName: event.locationName, address: event.address, city: event.city,
+      description: event.summary, eventDate, locationName: event.locationName, address: event.address, city: normalizedEvent.city,
       category: event.category, genre: event.genre, priceCents: event.priceCents || 0, priceNote: event.priceCents ? undefined : "Preço não informado na agenda do Instagram",
       ticketStatus: event.priceCents ? "available" : "unknown", sourceUrl, imageUrl: event.imageUrl || undefined, latitude: coordinates?.latitude, longitude: coordinates?.longitude,
       neighborhood: coordinates?.neighborhood ?? undefined, formattedAddress: coordinates?.formattedAddress ?? undefined, locationPrecision: coordinates ? (coordinates.confidence === "low" ? "approximate" : "exact") : undefined,
@@ -1221,7 +1237,10 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   const filteredCount = Math.max(0, posts.length - persistedCount);
   const explicitFilteredCount = Object.entries(rejectionReasons).reduce((sum, [reason, count]) => reason === "fetch_failed" ? sum : sum + Math.max(0, Number(count) || 0), 0);
   if (filteredCount > explicitFilteredCount) rejectionReasons.unclassified_filtered = filteredCount - explicitFilteredCount;
-  const acceptedSourceUrls = new Set(structuredEvents.filter((event, index) => validateStructuredInstagramEvent(event, activeAliases).length === 0).map(event => event.sourceUrl));
+  const acceptedSourceUrls = new Set(structuredEvents.filter(event => {
+    const normalizedEvent = { ...event, city: resolveInstagramEventCity(event, profileCityBySourceUrl.get(event.sourceUrl)) as StructuredEvent["city"] };
+    return validateStructuredInstagramEvent(normalizedEvent, activeAliases).length === 0;
+  }).map(event => event.sourceUrl));
   const rejectedBySourceUrl = new Map(rejectedEvents.map(rejection => [rejection.sourceUrl, rejection.reasons]));
   let manualReviewInserted = 0;
   const filteredStories: FilteredInstagramStory[] = ocrAuditCandidates

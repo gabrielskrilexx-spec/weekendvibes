@@ -223,6 +223,7 @@ export function areFuzzyDuplicateEvents(left: { title: string; eventDate: Date; 
 
 export function normalizeVenueCity(locationName: string, address: string, city: string) {
   const venue = normalizeText(`${locationName} ${address}`);
+  if (/lucky\s*scope/.test(venue)) return "Guarujá";
   if ((/vallum|valluns/.test(venue) && /garden/.test(venue)) || /verilonguinho|santos convention center|blue med convention center|mendes convention center/.test(venue)) return "Santos";
   return city;
 }

@@ -5,7 +5,7 @@ import * as dbModule from "./db";
 import { getDb } from "./db";
 import { extractDiscoverableInstagramLinks } from "./instagram-pipeline";
 import { selectInstagramApifyTargets } from "./instagram-pipeline";
-import { isMetaInvalidUserError, createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, isMetaCredentialFailure, extractMetaGraphErrorMessage, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRecentApifySignal, hasRegionalHashtag, INSTAGRAM_TARGETS, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest, limitInstagramStoriesForCost, INSTAGRAM_OCR_CONCURRENCY, validateMetaBusinessDiscoveryProfile, decodeInstagramRedirectUrl, extractInstagramRedirectedLinks } from "./instagram-pipeline";
+import { isMetaInvalidUserError, createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, isMetaCredentialFailure, extractMetaGraphErrorMessage, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRecentApifySignal, hasRegionalHashtag, INSTAGRAM_TARGETS, getInstagramTargetCity, resolveInstagramEventCity, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest, limitInstagramStoriesForCost, INSTAGRAM_OCR_CONCURRENCY, validateMetaBusinessDiscoveryProfile, decodeInstagramRedirectUrl, extractInstagramRedirectedLinks } from "./instagram-pipeline";
 
 it("reconhece o erro Meta code 110 sem tratá-lo como credencial expirada", () => {
   expect(isMetaInvalidUserError(400, '{"error":{"message":"Invalid user id","code":110}}')).toBe(true);
@@ -244,6 +244,14 @@ describe("Instagram weekend pipeline", () => {
       "goatclubsantos", "praioguaruja", "botecoalmare", "doloresbarerestaurante", "yellowhouse_santos", "mimadafesta",
     ]);
     expect(INSTAGRAM_TARGETS.every(target => target.directUrl.startsWith("https://www.instagram.com/"))).toBe(true);
+    expect(INSTAGRAM_TARGETS.find(target => target.username === "nossoafterguaruja")).toMatchObject({ name: "Nosso After — Guarujá", city: "Guarujá", directUrl: "https://www.instagram.com/nossoafterguaruja/" });
+    expect(getInstagramTargetCity("@nossoafterguaruja")).toBe("Guarujá");
+  });
+
+  it("uses a configured Instagram profile city only as fallback and corrects known venue cities", () => {
+    expect(resolveInstagramEventCity({ locationName: "Laroc Club", address: "", city: "" }, "Guarujá")).toBe("Guarujá");
+    expect(resolveInstagramEventCity({ locationName: "Laroc Club", address: "", city: "Santos" }, "Guarujá")).toBe("Santos");
+    expect(resolveInstagramEventCity({ locationName: "Lucky Scope", address: "", city: "Santos" }, "Guarujá")).toBe("Guarujá");
   });
 
   it("requires the official Meta credentials and never falls back to public collection", async () => {
