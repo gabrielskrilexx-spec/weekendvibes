@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const records = new Map<string, Record<string, unknown>>();
+let mockOperationalAlerts: Record<string, unknown>[] = [];
+let mockCooldownSources: Record<string, unknown>[] = [];
 const fakeDb = {
   insert: () => ({ values(value: Record<string, unknown>) { records.set(String(value.id ?? value.key), value); return { onDuplicateKeyUpdate: async () => undefined }; } }),
-  select: () => ({ from() { return this; }, where() { return this; }, orderBy() { return this; }, offset() { return this; }, limit() { return this; }, then(resolve: (rows: Record<string, unknown>[]) => unknown) { return Promise.resolve(Array.from(records.values())).then(resolve); } }),
+  select: (projection?: Record<string, unknown>) => {
+    const keys = Object.keys(projection ?? {});
+    const rows = keys.includes("alertType") ? mockOperationalAlerts : keys.includes("sourceKey") ? mockCooldownSources : Array.from(records.values());
+    return { from() { return this; }, where() { return this; }, orderBy() { return this; }, offset() { return this; }, limit() { return this; }, then(resolve: (rows: Record<string, unknown>[]) => unknown) { return Promise.resolve(rows).then(resolve); } };
+  },
   update: () => ({ set(patch: Record<string, unknown>) { return { where: async () => { for (const [id, row] of records) records.set(id, { ...row, ...patch }); return { affectedRows: 1 }; } }; } }),
   delete: () => ({ where: async () => { records.clear(); } }),
 };
@@ -22,6 +28,8 @@ import { cancelPersistentExportJob, createPersistentExportJob, getPersistentExpo
 describe("persistent filtered stories export jobs", () => {
   beforeEach(() => {
     records.clear();
+    mockOperationalAlerts = [];
+    mockCooldownSources = [];
     vi.mocked(listAllFilteredStories).mockReset();
     vi.mocked(buildFilteredStoriesCsv).mockClear();
     recordOperationalAlertMock.mockClear();
@@ -70,6 +78,21 @@ describe("persistent filtered stories export jobs", () => {
     record.status = "completed";
     const status = await getPersistentExportJobStatus(job.jobId, "admin-open-id");
     expect(status).toMatchObject({ status: "expired", fileDeletePending: true });
+  });
+
+  it("exclui alertas WAF em cooldown ativo das métricas totais e em aberto", async () => {
+    const now = new Date();
+    mockOperationalAlerts = [
+      { alertType: "source_http_403_blocked", title: "403 blocked", message: "Source public:sympla returned 403", isResolved: 0, createdAt: new Date(now.getTime() - 60_000), updatedAt: now },
+      { alertType: "source_http_403_blocked", title: "403 blocked", message: "Source public:zig returned 403", isResolved: 0, createdAt: new Date(now.getTime() - 60_000), updatedAt: now },
+      { alertType: "pipeline_failure", title: "Pipeline incident", message: "Unexpected failure", isResolved: 0, createdAt: new Date(now.getTime() - 60_000), updatedAt: now },
+    ];
+    mockCooldownSources = [
+      { sourceKey: "public:sympla", lastFailureReason: "BLOCKED_BY_PLATFORM", circuitState: "open", circuitNextAttemptAt: new Date(now.getTime() + 7 * 86_400_000) },
+      { sourceKey: "public:zig", lastFailureReason: "BLOCKED_BY_PLATFORM", circuitState: "open", circuitNextAttemptAt: new Date(now.getTime() + 7 * 86_400_000) },
+    ];
+    const result = await getExportJobsAlertEfficiency({ windowDays: 7 });
+    expect(result).toMatchObject({ total: 1, openCount: 1, pausedCount: 2, resolved: 0 });
   });
 
   it("mantém arquivo referenciado como pendência durante a limpeza lógica", async () => {
@@ -142,6 +165,7 @@ describe("persistent filtered stories export jobs", () => {
     const trend = await getExportJobsMetricsTrend(7);
     expect(trend.points).toHaveLength(7);
     expect(trend.points.some(point => point.pendingDelete === 1 && point.expiredLeases === 1)).toBe(true);
+    expect(trend.points.map(point => point.bucketStart)).toContain(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
   });
 
   it("normaliza e persiste limiares por ambiente sem expor estado complexo", async () => {
@@ -178,6 +202,7 @@ describe("persistent filtered stories export jobs", () => {
     const trend = await getExportJobsAlertEfficiencyTrend(7);
     expect(trend.windowDays).toBe(7);
     expect(trend.points).toHaveLength(7);
+    expect(trend.points.map(point => point.bucketStart)).toContain(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
     expect(trend.points[0]).toMatchObject({ total: 0, resolved: 0, resolutionRate: 0, averageAgeMs: 0 });
   });
 

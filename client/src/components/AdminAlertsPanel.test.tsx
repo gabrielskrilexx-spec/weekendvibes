@@ -12,6 +12,7 @@ const mutateArchiveBefore = vi.fn();
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     ingestionReports: { summary: { useQuery: () => ({ ...reportState, refetch }) } },
+    circuitBreaker: { statuses: { useQuery: () => ({ data: [], isLoading: false, isError: false, isFetching: false, refetch }) } },
     operationalAlerts: { resolve: { useMutation: () => ({ isPending: false, mutate }) }, resolveAll: { useMutation: () => ({ isPending: false, mutate: mutateAll }) }, archiveBefore: { useMutation: () => ({ isPending: false, mutate: mutateArchiveBefore }) } },
   },
 }));

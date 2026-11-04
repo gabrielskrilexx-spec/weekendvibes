@@ -54,6 +54,7 @@ const refetch = vi.fn();
 let statusQueryOptions: Record<string, unknown> | undefined;
 let rolloverHourState = { data: { rolloverHour: 6 }, isLoading: false, isError: false, refetch: vi.fn() };
 let exportMetricsState = { data: undefined as undefined | { windowHours: number; total: number; queued: number; processing: number; completed: number; failed: number; cancelled: number; expired: number; expiredLeases: number; recoveryExhausted: number; orphaned: number; fileDeletePending: number; fileDeletePendingPrevious: number; fileDeletePendingGrowth: number }, isLoading: false, isError: false, isFetching: false, refetch: vi.fn() };
+let exportEfficiencyState = { data: undefined as undefined | { windowDays: number; total: number; resolved: number; resolutionRate: number; averageAgeMs: number; openCount: number; pausedCount: number; expiredLeases: number }, isLoading: false, isError: false };
 
 beforeEach(() => {
   mutate.mockClear();
@@ -63,6 +64,7 @@ beforeEach(() => {
   mutationState = { isPending: false };
   rolloverHourState = { data: { rolloverHour: 6 }, isLoading: false, isError: false, refetch: vi.fn() };
   exportMetricsState = { data: undefined, isLoading: false, isError: false, isFetching: false, refetch: vi.fn() };
+  exportEfficiencyState = { data: undefined, isLoading: false, isError: false };
 });
 
 vi.mock("@/lib/trpc", () => ({
@@ -79,6 +81,9 @@ vi.mock("@/lib/trpc", () => ({
       },
       exportJobsMetrics: {
         useQuery: () => exportMetricsState,
+      },
+      exportJobsAlertEfficiency: {
+        useQuery: () => exportEfficiencyState,
       },
       setRolloverHour: {
         useMutation: (options: { onSuccess?: (result: { success: true; rolloverHour: number }) => void; onError?: (error: Error) => void }) => ({
@@ -349,10 +354,17 @@ describe("AdminRoutinePanel", () => {
   it("exibe o dashboard de métricas e a variação da fila pendente", async () => {
     statusState = { isLoading: false, isError: false, data: { nextExecutionAt: "2026-08-28T10:00:00.000Z", timezone: "America/Sao_Paulo", runMode: "automatic", isRunning: false } };
     exportMetricsState = { data: { windowHours: 24, total: 12, queued: 2, processing: 1, completed: 6, failed: 1, cancelled: 1, expired: 1, expiredLeases: 3, recoveryExhausted: 2, orphaned: 1, fileDeletePending: 8, fileDeletePendingPrevious: 3, fileDeletePendingGrowth: 5 }, isLoading: false, isError: false, isFetching: false, refetch: vi.fn() };
+    exportEfficiencyState = { data: { windowDays: 7, total: 1, resolved: 0, resolutionRate: 0, averageAgeMs: 60_000, openCount: 1, pausedCount: 2, expiredLeases: 0 }, isLoading: false, isError: false };
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminRoutinePanel />); });
     const rendered = JSON.stringify(tree!.toJSON());
     expect(rendered).toContain("Saúde dos jobs no Autoscale");
+    expect(rendered).toContain("Tendência histórica");
+    expect(rendered).toContain("Alertas totais");
+    expect(rendered).toContain("Pausados/Aguardando");
+    expect(rendered).toContain('"2"');
+    expect(rendered).not.toContain("Não foi possível consultar as métricas de exportação");
+    expect(rendered).not.toContain("Não foi possível consultar a tendência histórica");
     expect(rendered).toContain("Leases expiradas");
     expect(rendered).toContain("Tentativas esgotadas");
     expect(rendered).toContain("Crescimento da fila");

@@ -1,12 +1,13 @@
-import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { filteredStoryExportJobs, operationalAlerts, appSettings, exportJobsAlertSettingsAudit, exportAlertEvaluationSnapshots } from "../drizzle/schema";
+import { filteredStoryExportJobs, operationalAlerts, appSettings, exportJobsAlertSettingsAudit, exportAlertEvaluationSnapshots, ingestionSources } from "../drizzle/schema";
 import { getDb, recordOperationalAlert } from "./db";
 import { storageGet, storagePut } from "./storage";
 import { buildFilteredStoriesCsv, listAllFilteredStories, type FilteredStoriesFilter } from "./ingestion-reports";
 import { getHeartbeatStatsExportRows, listHeartbeatExecutionEventsForExport, type HeartbeatEventType } from "./heartbeat-observability";
 import { upsert } from "./pg-upsert";
+import { activePlatformCooldownSourceKeys, partitionPlatformCooldownAlerts } from "./paused-platform-alerts";
 
 type ExportFormat = "csv" | "json";
 type PersistentExportStatus = "queued" | "processing" | "completed" | "failed" | "cancelled" | "expired";
@@ -297,7 +298,8 @@ export async function getExportJobsMetricsTrend(windowDays = 30) {
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
   const days = Math.min(90, Math.max(1, Math.trunc(windowDays)));
   const now = new Date();
-  const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const cutoff = new Date(today.getTime() - (days - 1) * 86_400_000);
   const rows = await db.select({ createdAt: filteredStoryExportJobs.createdAt, leaseExpiresAt: filteredStoryExportJobs.leaseExpiresAt, status: filteredStoryExportJobs.status, fileDeletePending: filteredStoryExportJobs.fileDeletePending }).from(filteredStoryExportJobs).where(sql`${filteredStoryExportJobs.createdAt} >= ${cutoff}`).limit(10000);
   const buckets = new Map<string, { pendingDelete: number; expiredLeases: number }>();
   for (let index = 0; index < days; index += 1) {
@@ -352,13 +354,17 @@ async function getExportJobsAlertEfficiencyForRange(input: { from: string; to: s
   const from = new Date(input.from);
   const to = new Date(input.to);
   if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from >= to) throw new TRPCError({ code: "BAD_REQUEST", message: "Intervalo temporal inválido." });
-  const rows = await db.select({ isResolved: operationalAlerts.isResolved, createdAt: operationalAlerts.createdAt, updatedAt: operationalAlerts.updatedAt }).from(operationalAlerts).where(and(gte(operationalAlerts.createdAt, from), lt(operationalAlerts.createdAt, to))).limit(5000);
+  const rows = await db.select({ alertType: operationalAlerts.alertType, title: operationalAlerts.title, message: operationalAlerts.message, isResolved: operationalAlerts.isResolved, createdAt: operationalAlerts.createdAt, updatedAt: operationalAlerts.updatedAt }).from(operationalAlerts).where(and(gte(operationalAlerts.createdAt, from), lt(operationalAlerts.createdAt, to))).limit(5000);
+  const now = new Date();
+  const cooldownRows = await db.select({ sourceKey: ingestionSources.sourceKey, lastFailureReason: ingestionSources.lastFailureReason, circuitState: ingestionSources.circuitState, circuitNextAttemptAt: ingestionSources.circuitNextAttemptAt }).from(ingestionSources).where(and(eq(ingestionSources.lastFailureReason, "BLOCKED_BY_PLATFORM"), eq(ingestionSources.circuitState, "open"), gt(ingestionSources.circuitNextAttemptAt, now)));
+  const pausedKeys = activePlatformCooldownSourceKeys(cooldownRows, now);
+  const { activeAlerts, pausedCount } = partitionPlatformCooldownAlerts(rows, pausedKeys);
   const leaseRows = await db.select({ status: filteredStoryExportJobs.status, leaseExpiresAt: filteredStoryExportJobs.leaseExpiresAt }).from(filteredStoryExportJobs).where(and(gte(filteredStoryExportJobs.createdAt, from), lt(filteredStoryExportJobs.createdAt, to), eq(filteredStoryExportJobs.status, "processing"))).limit(5000);
-  const total = rows.length;
-  const resolved = rows.filter(row => row.isResolved === 1).length;
-  const ages = rows.map(row => Math.max(0, (row.isResolved === 1 ? row.updatedAt : new Date()).getTime() - row.createdAt.getTime()));
+  const total = activeAlerts.length;
+  const resolved = activeAlerts.filter(row => row.isResolved === 1).length;
+  const ages = activeAlerts.map(row => Math.max(0, (row.isResolved === 1 ? row.updatedAt : now).getTime() - row.createdAt.getTime()));
   const expiredLeases = leaseRows.filter(row => row.leaseExpiresAt && row.leaseExpiresAt.getTime() < Date.now()).length;
-  return { from: from.toISOString(), to: to.toISOString(), total, resolved, resolutionRate: total ? resolved / total : 0, averageAgeMs: ages.length ? Math.round(ages.reduce((sum, value) => sum + value, 0) / ages.length) : 0, openCount: total - resolved, expiredLeases };
+  return { from: from.toISOString(), to: to.toISOString(), total, resolved, resolutionRate: total ? resolved / total : 0, averageAgeMs: ages.length ? Math.round(ages.reduce((sum, value) => sum + value, 0) / ages.length) : 0, openCount: total - resolved, pausedCount, expiredLeases };
 }
 
 export async function getExportJobsAlertEfficiency(input: { windowDays?: number; ownerOpenId?: string }) {
@@ -366,7 +372,7 @@ export async function getExportJobsAlertEfficiency(input: { windowDays?: number;
   const to = new Date();
   const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
   const summary = await getExportJobsAlertEfficiencyForRange({ from: from.toISOString(), to: to.toISOString(), ownerOpenId: input.ownerOpenId });
-  return { windowDays: days, total: summary.total, resolved: summary.resolved, resolutionRate: summary.resolutionRate, averageAgeMs: summary.averageAgeMs, openCount: summary.openCount, expiredLeases: summary.expiredLeases };
+  return { windowDays: days, total: summary.total, resolved: summary.resolved, resolutionRate: summary.resolutionRate, averageAgeMs: summary.averageAgeMs, openCount: summary.openCount, pausedCount: summary.pausedCount, expiredLeases: summary.expiredLeases };
 }
 
 export async function compareExportJobsEfficiency(input: { first: { from: string; to: string }; second: { from: string; to: string }; ownerOpenId?: string }) {
@@ -568,7 +574,8 @@ export async function getExportJobsAlertEfficiencyTrend(windowDays = 30) {
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
   const days = Math.min(90, Math.max(1, Math.trunc(windowDays)));
   const now = new Date();
-  const start = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const start = new Date(today.getTime() - (days - 1) * 86_400_000);
   const rows = await db.select({ isResolved: operationalAlerts.isResolved, createdAt: operationalAlerts.createdAt, updatedAt: operationalAlerts.updatedAt }).from(operationalAlerts).where(gte(operationalAlerts.createdAt, start)).limit(5000);
   const buckets = new Map<string, { total: number; resolved: number; ageTotal: number }>();
   for (let index = 0; index < days; index += 1) buckets.set(new Date(start.getTime() + index * 86_400_000).toISOString().slice(0, 10), { total: 0, resolved: 0, ageTotal: 0 });

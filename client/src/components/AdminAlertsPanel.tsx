@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, XCircle } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { isAlertPausedForPlatformCooldown, isPlatformCooldownActive } from "./paused-platform-alerts";
 
 const integrationLabels: Record<string, string> = {
   meta: "Meta Graph API",
@@ -17,6 +18,10 @@ export default function AdminAlertsPanel() {
   const [resolvingId, setResolvingId] = useState<number | null>(null);
   const [archiveBefore, setArchiveBefore] = useState("");
   const report = trpc.ingestionReports.summary.useQuery(undefined, { refetchInterval: 30_000 });
+  const circuitStatuses = trpc.circuitBreaker.statuses.useQuery(undefined, { refetchInterval: 30_000 });
+  const now = new Date();
+  const pausedSourceKeys = new Set((circuitStatuses.data ?? []).filter(source => isPlatformCooldownActive(source, now)).map(source => source.sourceKey));
+  const isPaused = (alert: { alertType?: string | null; title: string; message: string }) => isAlertPausedForPlatformCooldown(alert, pausedSourceKeys);
   const resolveAll = trpc.operationalAlerts.resolveAll.useMutation({
     onSuccess: async result => {
       await report.refetch();
@@ -43,10 +48,12 @@ export default function AdminAlertsPanel() {
   const alerts = useMemo(() => (report.data?.alerts ?? []).filter(alert => {
     const statusMatches = status === "all" || (status === "open" ? alert.isResolved === 0 : alert.isResolved === 1);
     const integrationMatches = integration === "all" || alert.integration === integration;
-    return statusMatches && integrationMatches;
-  }), [report.data?.alerts, status, integration]);
-  const openCount = (report.data?.alerts ?? []).filter(alert => alert.isResolved === 0).length;
-  const resolvedCount = (report.data?.alerts ?? []).filter(alert => alert.isResolved === 1).length;
+    return statusMatches && integrationMatches && !isPaused(alert);
+  }), [report.data?.alerts, status, integration, circuitStatuses.data]);
+  const activeAlerts = (report.data?.alerts ?? []).filter(alert => !isPaused(alert));
+  const pausedCount = (report.data?.alerts ?? []).filter(alert => alert.isResolved === 0 && isPaused(alert)).length;
+  const openCount = activeAlerts.filter(alert => alert.isResolved === 0).length;
+  const resolvedCount = activeAlerts.filter(alert => alert.isResolved === 1).length;
   const refresh = () => void report.refetch();
 
   return <section aria-labelledby="admin-alerts-heading" className="mt-6 rounded-3xl border border-red-300/20 bg-red-300/[0.04] p-5 sm:p-7">
@@ -62,10 +69,11 @@ export default function AdminAlertsPanel() {
       </div>
     </div>
 
-    <div className="mt-5 grid gap-3 sm:grid-cols-3">
+    <div className="mt-5 grid gap-3 sm:grid-cols-4">
       <div className="rounded-2xl border border-red-300/20 bg-red-300/10 p-4"><XCircle size={17} className="text-red-200" /><p className="mt-3 text-2xl font-black">{openCount}</p><p className="text-xs text-zinc-400">Em aberto</p></div>
       <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-4"><CheckCircle2 size={17} className="text-emerald-200" /><p className="mt-3 text-2xl font-black">{resolvedCount}</p><p className="text-xs text-zinc-400">Resolvidos</p></div>
-      <div className="rounded-2xl border border-yellow-300/20 bg-yellow-300/10 p-4"><AlertTriangle size={17} className="text-yellow-200" /><p className="mt-3 text-2xl font-black">{report.data?.criticalAlerts.length ?? 0}</p><p className="text-xs text-zinc-400">Críticos identificados</p></div>
+      <div className="rounded-2xl border border-yellow-300/20 bg-yellow-300/10 p-4"><AlertTriangle size={17} className="text-yellow-200" /><p className="mt-3 text-2xl font-black">{(report.data?.criticalAlerts ?? []).filter(alert => !isPaused(alert)).length}</p><p className="text-xs text-zinc-400">Críticos identificados</p></div>
+      <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4"><AlertTriangle size={17} className="text-cyan-200" /><p className="mt-3 text-2xl font-black">{pausedCount}</p><p className="text-xs text-zinc-400">Pausados/Aguardando</p></div>
     </div>
 
           <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-yellow-300/20 bg-yellow-300/[0.05] p-4 sm:flex-row sm:items-end sm:justify-between" data-testid="obsolete-alert-cleanup"><label className="grid flex-1 gap-1 text-xs font-bold text-yellow-100">Arquivar alertas anteriores a<input type="datetime-local" value={archiveBefore} onChange={event => setArchiveBefore(event.target.value)} className="mt-1 min-h-11 rounded-xl border border-white/10 bg-zinc-900 px-3 text-sm text-white" aria-label="Data limite para arquivar alertas obsoletos" /></label><button type="button" onClick={() => { if (!archiveBefore || archiveBeforeMutation.isPending) return; if (window.confirm("Arquivar os alertas de governança e reconciliação anteriores a esta data? O histórico será preservado como resolvido.")) archiveBeforeMutation.mutate({ before: new Date(`${archiveBefore}:00-03:00`).toISOString(), alertTypes: ["reconciliation_divergence", "freshness_critical", "structured_not_persisted", "circuit_opened", "source_http_403_blocked"] }); }} disabled={!archiveBefore || archiveBeforeMutation.isPending || report.isFetching} aria-busy={archiveBeforeMutation.isPending} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-yellow-300/30 px-4 text-xs font-black text-yellow-100 hover:bg-yellow-300/10 disabled:cursor-not-allowed disabled:opacity-50">{archiveBeforeMutation.isPending ? <><Loader2 size={15} className="animate-spin" /> Arquivando...</> : "Arquivar obsoletos"}</button></div>
