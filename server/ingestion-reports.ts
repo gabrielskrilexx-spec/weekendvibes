@@ -13,7 +13,8 @@ import {
   sendCriticalMetaAlert,
 } from "./meta-alert-webhook";
 import { handleIngestionFailureAlert, notifyConsecutiveFailureWebhook, notifyPerformanceDegradationWebhook } from "./ingestion-failure-alerts";
-import { getDb, recordOperationalAlert } from "./db";
+import { getDb, recordIngestionSourceReportSummary, recordOperationalAlert } from "./db";
+import { buildIngestionSourceReportSummaries } from "./ingestion-source-report";
 import { registerBackgroundTask } from "./background-tasks";
 import {
   buildFreshnessCriticalAlert,
@@ -1230,6 +1231,15 @@ export async function finishIngestionRun(
         finishedAt,
       })
       .where(eq(ingestionRuns.id, id));
+    const sourceSummaries = buildIngestionSourceReportSummaries(input.details);
+    await Promise.all(sourceSummaries.map(async summary => {
+      try {
+        await recordIngestionSourceReportSummary(summary.sourceKey, summary.message, db);
+      } catch (error) {
+        const name = error && typeof error === "object" && "name" in error ? String((error as { name?: unknown }).name ?? "Error") : "Error";
+        console.warn("[Ingestion reports] Could not update source report summary", { sourceKey: summary.sourceKey, error: name });
+      }
+    }));
     const failureText = serializedDetails ?? "";
     const criticalMetaReason = classifyCriticalMetaReason(failureText);
     if (criticalMetaReason) {

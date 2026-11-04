@@ -1086,6 +1086,14 @@ export async function markIngestionSourceResult(sourceKey: string, result: { sta
   await db.update(ingestionSources).set({ lastAttemptAt: now, lastStatus: result.status, lastSuccessAt: result.status === "succeeded" ? now : undefined, lastMessage: result.message?.slice(0, 1000) ?? null, ...(result.executionFeedback !== undefined ? { lastExecutionFeedback: result.executionFeedback?.slice(0, 1000) ?? null } : {}), updatedAt: now }).where(eq(ingestionSources.sourceKey, sourceKey));
 }
 
+export async function recordIngestionSourceReportSummary(sourceKey: string, message: string, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return;
+  await db.update(ingestionSources)
+    .set({ lastMessage: message.slice(0, 1000), updatedAt: new Date() })
+    .where(eq(ingestionSources.sourceKey, sourceKey));
+}
+
 export async function getIngestionPayloadCache(cacheKey: string, dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<IngestionPayloadCache | undefined> {
   const db = dbOverride ?? await getDb();
   if (!db) return undefined;
@@ -1543,5 +1551,15 @@ export async function archiveExpiredSoldOutEvents(dbOverride?: Awaited<ReturnTyp
       sql`COALESCE(${events.endDate}, ${events.eventDate}) < NOW()`,
       eq(events.ticketStatus, "sold_out"),
     ));
+  return Number((result as { affectedRows?: number }).affectedRows ?? 0);
+}
+
+export async function archivePastEvents(dbOverride?: Awaited<ReturnType<typeof getDb>>, now = new Date()) {
+  const db = dbOverride ?? await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const cutoff = saoPauloDayStartUtc(now);
+  const result = await db.update(events)
+    .set({ isArchived: 1, updatedAt: now })
+    .where(and(eq(events.isArchived, 0), lt(events.eventDate, cutoff)));
   return Number((result as { affectedRows?: number }).affectedRows ?? 0);
 }

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "./_core/sdk";
 import { ingestInstagramHandler } from "./scheduled-instagram";
 import { hasRegionalHashtag, runInstagramPipeline, InstagramIntegrationFailure } from "./instagram-pipeline";
-import { archiveExpiredSoldOutEvents, claimApifyDailyRequest, listActiveLocationAliasValues, saveEvent } from "./db";
+import { archiveExpiredSoldOutEvents, archivePastEvents, claimApifyDailyRequest, listActiveLocationAliasValues, saveEvent } from "./db";
 import { handleIngestionFailureAlert } from "./ingestion-failure-alerts";
 
 vi.mock("./ingestion-failure-alerts", () => ({
@@ -12,6 +12,7 @@ vi.mock("./ingestion-failure-alerts", () => ({
 vi.mock("./db", () => ({
   INSTAGRAM_AGENDA_SOURCE_TYPE: "instagram_agenda_weekend",
   getDb: vi.fn().mockResolvedValue(null),
+  archivePastEvents: vi.fn().mockResolvedValue(0),
   archiveExpiredSoldOutEvents: vi.fn().mockResolvedValue(0),
   listActiveLocationAliasValues: vi.fn().mockResolvedValue(["moby house", "ativa house"]),
   listEnabledInstagramSources: vi.fn().mockResolvedValue([]),
@@ -31,6 +32,7 @@ describe("scheduled Instagram ingestion", () => {
     vi.mocked(listActiveLocationAliasValues).mockResolvedValue(["moby house", "ativa house"]);
     vi.mocked(claimApifyDailyRequest).mockResolvedValue({ allowed: true, dateKey: "2026-09-18", requestCount: 1, dailyLimit: 100, persistence: false });
     vi.mocked(saveEvent).mockClear();
+    vi.mocked(archivePastEvents).mockClear();
     vi.mocked(archiveExpiredSoldOutEvents).mockClear();
     vi.mocked(handleIngestionFailureAlert).mockClear();
     process.env.META_INSTAGRAM_TOKEN = "test-meta-token";
@@ -99,10 +101,12 @@ describe("scheduled Instagram ingestion", () => {
 
   it("archives first and executes the Instagram pipeline for cron callers", async () => {
     vi.spyOn(sdk, "authenticateRequest").mockResolvedValue({ isCron: true } as never);
+    vi.mocked(archivePastEvents).mockResolvedValueOnce(0);
     vi.mocked(archiveExpiredSoldOutEvents).mockResolvedValueOnce(2);
     const pipeline = vi.spyOn(await import("./instagram-pipeline"), "runInstagramPipeline").mockResolvedValueOnce({ receivedPosts: 1, approvedPosts: 1, structuredEvents: 1, imported: 1 });
     const res = { json: vi.fn().mockReturnThis(), status: vi.fn().mockReturnThis() } as never;
     await ingestInstagramHandler({} as never, res);
+    expect(archivePastEvents).toHaveBeenCalledOnce();
     expect(pipeline).toHaveBeenCalledOnce();
     expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, archived: 2, result: expect.objectContaining({ imported: 1 }) }));
   });

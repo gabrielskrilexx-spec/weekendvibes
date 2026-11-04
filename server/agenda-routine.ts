@@ -1,4 +1,4 @@
-import { archiveExpiredSoldOutEvents, deactivateExpiredSources } from "./db";
+import { archiveExpiredSoldOutEvents, archivePastEvents, deactivateExpiredSources } from "./db";
 import { runIngestionPipeline } from "./ingestion";
 import { getMetaFailureStatus, isGracefullyDegradedMetaFailure, runInstagramPipeline } from "./instagram-pipeline";
 
@@ -34,6 +34,11 @@ export type FullAgendaRoutineOptions = { trigger?: "manual" | "scheduled"; runId
 export type RetryAttempt = { attempt: number; startedAt: string; failedAt: string; reason: string; httpStatus: number | null };
 const MAX_SCHEDULED_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 1000;
+async function archiveAgendaEvents() {
+  const pastEvents = await archivePastEvents();
+  const expiredSoldOutEvents = await archiveExpiredSoldOutEvents();
+  return pastEvents + expiredSoldOutEvents;
+}
 export const DEFAULT_PUBLIC_AGENDA_TIMEOUT_MS = 25_000;
 export const DEFAULT_MANUAL_PUBLIC_AGENDA_TIMEOUT_MS = 45_000;
 export const DEFAULT_INSTAGRAM_AGENDA_TIMEOUT_MS = 30_000;
@@ -222,7 +227,7 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
 
 export async function runPublicAgendaStep(options: AgendaStepOptions = {}) {
   const execute = async () => {
-    const archived = options.archive === false ? 0 : await archiveExpiredSoldOutEvents();
+    const archived = options.archive === false ? 0 : await archiveAgendaEvents();
     let expiredSources = { deactivatedCount: 0, sourceKeys: [] as string[] };
     if (!options.sourceUrls) {
       try {
@@ -240,7 +245,7 @@ export async function runPublicAgendaStep(options: AgendaStepOptions = {}) {
 
 export async function runInstagramAgendaStep(options: AgendaStepOptions = {}) {
   const execute = async () => {
-    const archived = options.archive === false ? 0 : await archiveExpiredSoldOutEvents();
+    const archived = options.archive === false ? 0 : await archiveAgendaEvents();
     const result = await withAgendaTimeout(signal => runInstagramPipeline({ signal, forceApifyAll: options.forceApifyAll, trigger: options.trigger }), getInstagramAgendaTimeoutMs(options.trigger), options.signal);
     let geocoding = { processed: 0, succeeded: 0, failed: 0, pending: 0 };
     try {
@@ -390,7 +395,7 @@ export async function runFullAgendaRoutine(options: FullAgendaRoutineOptions = {
   reportProgress({ phase: "starting", step: 0, totalSteps: 4, message: "Iniciando execução da ingestão." });
   reportProgress({ phase: "archiving", step: 1, totalSteps: 4, message: "Limpando eventos expirados." });
   try {
-    archived = await archiveExpiredSoldOutEvents();
+    archived = await archiveAgendaEvents();
   } catch (error) {
     archiveError = { sourceKey: "pipeline", status: automationErrorStatus(error), message: safeAutomationError(error) };
   }
@@ -458,4 +463,4 @@ export async function runAgendaStepForScheduler(step: "public" | "instagram") {
   return step === "public" ? runPublicAgendaStep() : runInstagramAgendaStep();
 }
 
-export const AGENDA_ROUTINE_COMPOSITION = ["archiveExpiredSoldOutEvents", "deactivateExpiredSources", "runIngestionPipeline", "runInstagramPipeline"] as const;
+export const AGENDA_ROUTINE_COMPOSITION = ["archivePastEvents", "archiveExpiredSoldOutEvents", "deactivateExpiredSources", "runIngestionPipeline", "runInstagramPipeline"] as const;

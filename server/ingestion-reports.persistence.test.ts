@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
   recordOperationalAlert: vi.fn().mockResolvedValue(undefined),
+  recordIngestionSourceReportSummary: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("./db", () => ({
   getDb: mocks.getDb,
   recordOperationalAlert: mocks.recordOperationalAlert,
+  recordIngestionSourceReportSummary: mocks.recordIngestionSourceReportSummary,
 }));
 
 import { finishIngestionRun } from "./ingestion-reports";
@@ -65,5 +67,26 @@ describe("ingestion run observability persistence", () => {
     expect(JSON.parse(persisted.counts)).toMatchObject({ read: 12, filtered: 4, structured: 5, persisted: 3, rejectedPastEvents: 2, rejectedOtherReasons: 1 });
     expect(JSON.parse(persisted.details)).toMatchObject({ trigger: "scheduled", retries: 1, retryHistory: [expect.objectContaining({ attempt: 1, httpStatus: 503 })] });
   });
-});
 
+  it("updates a source lastMessage from the latest successful sourceReport without changing failure fields", async () => {
+    const set = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    const db = {
+      select: vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ startedAt: new Date("2026-11-04T05:34:00.000Z") }]) }) }) }),
+      update: vi.fn().mockReturnValue({ set }),
+    };
+    mocks.getDb.mockResolvedValue(db);
+
+    await finishIngestionRun(44, {
+      status: "succeeded",
+      routine: "public-agenda",
+      sourceKey: "public",
+      details: { sourceReports: [{ sourceKey: "public:ingresse", read: 7, added: 0, updated: 2, ignored: 5, errors: [] }] },
+    });
+
+    expect(mocks.recordIngestionSourceReportSummary).toHaveBeenCalledWith(
+      "public:ingresse",
+      "Coleta concluída: 7 lidos, 0 novos, 2 atualizados, 5 ignorados; 0 erro(s).",
+      db,
+    );
+  });
+});

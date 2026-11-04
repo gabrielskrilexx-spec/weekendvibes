@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  archivePastEvents: vi.fn().mockResolvedValue(0),
   archiveExpiredSoldOutEvents: vi.fn().mockResolvedValue(0),
   deactivateExpiredSources: vi.fn().mockResolvedValue({ deactivatedCount: 0, sourceKeys: [] }),
   runIngestionPipeline: vi.fn().mockResolvedValue({ imported: 2 }),
@@ -13,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   finishIngestionRun: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("./db", () => ({ archiveExpiredSoldOutEvents: mocks.archiveExpiredSoldOutEvents, deactivateExpiredSources: mocks.deactivateExpiredSources, recordOperationalAlert: vi.fn(), getDb: mocks.getDb, acquireIngestionLease: mocks.acquireIngestionLease, releaseIngestionLease: mocks.releaseIngestionLease }));
+vi.mock("./db", () => ({ archivePastEvents: mocks.archivePastEvents, archiveExpiredSoldOutEvents: mocks.archiveExpiredSoldOutEvents, deactivateExpiredSources: mocks.deactivateExpiredSources, recordOperationalAlert: vi.fn(), getDb: mocks.getDb, acquireIngestionLease: mocks.acquireIngestionLease, releaseIngestionLease: mocks.releaseIngestionLease }));
 vi.mock("./ingestion", () => ({ runIngestionPipeline: mocks.runIngestionPipeline }));
 vi.mock("./instagram-pipeline", () => ({ InstagramIntegrationFailure: class InstagramIntegrationFailure extends Error {}, runInstagramPipeline: mocks.runInstagramPipeline }));
 vi.mock("./_core/notification", () => ({ notifyOwner: vi.fn() }));

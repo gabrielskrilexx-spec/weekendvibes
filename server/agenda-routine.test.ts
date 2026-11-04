@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  archivePastEvents: vi.fn().mockResolvedValue(0),
   archiveExpiredSoldOutEvents: vi.fn().mockResolvedValue(4),
   deactivateExpiredSources: vi.fn().mockResolvedValue({ deactivatedCount: 0, sourceKeys: [] }),
   runIngestionPipeline: vi.fn().mockResolvedValue({ imported: 2 }),
@@ -10,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   processPendingGeocoding: vi.fn().mockResolvedValue({ processed: 0, succeeded: 0, failed: 0, pending: 0 }),
 }));
 
-vi.mock("./db", () => ({ archiveExpiredSoldOutEvents: mocks.archiveExpiredSoldOutEvents, deactivateExpiredSources: mocks.deactivateExpiredSources }));
+vi.mock("./db", () => ({ archivePastEvents: mocks.archivePastEvents, archiveExpiredSoldOutEvents: mocks.archiveExpiredSoldOutEvents, deactivateExpiredSources: mocks.deactivateExpiredSources }));
 vi.mock("./ingestion", () => ({ runIngestionPipeline: mocks.runIngestionPipeline }));
 vi.mock("./instagram-pipeline", () => ({ runInstagramPipeline: mocks.runInstagramPipeline, isGracefullyDegradedMetaFailure: vi.fn().mockReturnValue(false), getMetaFailureStatus: vi.fn().mockReturnValue(null) }));
 vi.mock("./ingestion-reports", () => ({ startIngestionRun: mocks.startIngestionRun, finishIngestionRun: mocks.finishIngestionRun }));
@@ -42,6 +43,7 @@ describe("agenda routine composition", () => {
     const result = await runFullAgendaRoutine({ trigger: "manual" });
     expect(result).toEqual(expect.objectContaining({ archived: 4, publicSources: { imported: 2 }, instagram: { imported: 1 }, status: "succeeded", errors: [], automationSummary: expect.objectContaining({ routine: "full-agenda", status: "succeeded", added: 3 }) }));
     expect(mocks.archiveExpiredSoldOutEvents).toHaveBeenCalledTimes(1);
+    expect(mocks.archivePastEvents).toHaveBeenCalledTimes(1);
     expect(mocks.runIngestionPipeline).toHaveBeenCalledTimes(1);
     expect(mocks.runInstagramPipeline).toHaveBeenCalledTimes(1);
   });
@@ -65,10 +67,11 @@ describe("agenda routine composition", () => {
     await runPublicAgendaStep();
     await runInstagramAgendaStep();
     expect(mocks.archiveExpiredSoldOutEvents).toHaveBeenCalledTimes(2);
+    expect(mocks.archivePastEvents).toHaveBeenCalledTimes(2);
     expect(mocks.deactivateExpiredSources).toHaveBeenCalledTimes(1);
     expect(mocks.runIngestionPipeline).toHaveBeenCalledTimes(1);
     expect(mocks.runInstagramPipeline).toHaveBeenCalledTimes(1);
-    expect(AGENDA_ROUTINE_COMPOSITION).toEqual(["archiveExpiredSoldOutEvents", "deactivateExpiredSources", "runIngestionPipeline", "runInstagramPipeline"]);
+    expect(AGENDA_ROUTINE_COMPOSITION).toEqual(["archivePastEvents", "archiveExpiredSoldOutEvents", "deactivateExpiredSources", "runIngestionPipeline", "runInstagramPipeline"]);
   });
 
   it("continua a coleta pública mesmo se a limpeza prévia de fontes expiradas falhar", async () => {

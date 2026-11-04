@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { archiveExpiredSoldOutEvents, deleteExpiredEvents, filterEventsForPublicFeed, getEventBySlug, isPublicEventRecord, PUBLIC_EVENT_STATE, shouldArchiveExpiredSoldOutEvent } from "./db";
+import { archiveExpiredSoldOutEvents, archivePastEvents, deleteExpiredEvents, filterEventsForPublicFeed, getEventBySlug, isPublicEventRecord, PUBLIC_EVENT_STATE, saoPauloDayStartUtc, shouldArchiveExpiredSoldOutEvent } from "./db";
 
 describe("event archive eligibility", () => {
   const now = new Date("2026-08-20T12:00:00Z");
@@ -63,6 +63,25 @@ describe("event archive eligibility", () => {
     await expect(archiveExpiredSoldOutEvents(fakeDb)).resolves.toBe(1);
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ isArchived: 1, isPublished: 0 }));
     expect(where).toHaveBeenCalledOnce();
+  });
+
+  it("archives every unarchived event before the current São Paulo civil day without deleting or unpublishing it", async () => {
+    const now = new Date("2026-11-04T12:00:00.000Z");
+    const where = vi.fn().mockResolvedValue({ affectedRows: 18 });
+    const set = vi.fn().mockReturnValue({ where });
+    const fakeDb = { update: vi.fn().mockReturnValue({ set }) } as never;
+
+    expect(saoPauloDayStartUtc(now).toISOString()).toBe("2026-11-04T03:00:00.000Z");
+    await expect(archivePastEvents(fakeDb, now)).resolves.toBe(18);
+    expect(set).toHaveBeenCalledWith({ isArchived: 1, updatedAt: now });
+    expect(where).toHaveBeenCalledOnce();
+    const whereArgument = where.mock.calls[0][0] as { queryChunks?: unknown[] };
+    const serializedCondition = JSON.stringify(whereArgument, (_key, value) => {
+      if (value && typeof value === "object" && "name" in value && "table" in value) return { name: (value as { name: string }).name };
+      return value;
+    });
+    expect(serializedCondition).toContain("eventDate");
+    expect(serializedCondition).toContain("isArchived");
   });
 
   it("hard-deletes only rows matching the expired event timestamp and returns the exact count", async () => {
