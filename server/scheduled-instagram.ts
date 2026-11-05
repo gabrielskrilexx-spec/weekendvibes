@@ -67,12 +67,12 @@ export async function ingestInstagramHandler(req: Request, res: Response) {
       : undefined;
     if (metaStatus === 400) {
       try {
-        await handleIngestionFailureAlert({ routine: "instagram-agenda", sourceKey: "instagram", integration: "meta", status: 400, errorCode: "200", message: "A API da Meta rejeitou credenciais ou permissões.", severity: "CRITICAL" }, { notify: async notification => { await notifyOwner({ title: notification.title, content: notification.message }); } });
+        await handleIngestionFailureAlert({ routine: "instagram-agenda", sourceKey: "instagram", integration: "meta", status: 400, errorCode: "META_HTTP_400_REQUEST_REJECTED", message: "A Meta Graph API rejeitou uma requisição HTTP 400; consulte o diagnóstico sanitizado do run.", severity: "WARNING" }, { notify: async notification => { await notifyOwner({ title: notification.title, content: notification.message }); } });
       } catch (alertError) {
-        console.warn("[Instagram] Could not persist Meta credential alert", redactError(alertError));
+        console.warn("[Instagram] Could not persist Meta request-rejection alert", redactError(alertError));
       }
-      console.error("[Instagram] Meta credentials or permissions rejected", { integration: "meta", upstreamStatus: 400 });
-      return res.status(400).json({ ok: false, degraded: false, integration: "meta", error: "meta_credentials_or_permissions", upstreamStatus: 400, counts: { read: 0, filtered: 0, persisted: 0 }, durationMs: Date.now() - startedAtMs, startedAt, finishedAt: new Date().toISOString() });
+      console.error("[Instagram] Meta Graph API request rejected", { integration: "meta", upstreamStatus: 400 });
+      return res.status(400).json({ ok: false, degraded: false, integration: "meta", error: "meta_request_rejected", upstreamStatus: 400, counts: { read: 0, filtered: 0, persisted: 0 }, durationMs: Date.now() - startedAtMs, startedAt, finishedAt: new Date().toISOString() });
     }
     if (error instanceof AgendaStepFailure ? error.degraded : isGracefullyDegradedMetaFailure(error)) {
       const status = error instanceof AgendaStepFailure ? error.upstreamStatus : getMetaFailureStatus(error);

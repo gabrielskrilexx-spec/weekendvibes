@@ -5,11 +5,30 @@ import * as dbModule from "./db";
 import { getDb } from "./db";
 import { extractDiscoverableInstagramLinks } from "./instagram-pipeline";
 import { selectInstagramApifyTargets } from "./instagram-pipeline";
-import { isMetaInvalidUserError, createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, isMetaCredentialFailure, extractMetaGraphErrorMessage, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRecentApifySignal, hasRegionalHashtag, INSTAGRAM_TARGETS, getInstagramTargetCity, resolveInstagramEventCity, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest, limitInstagramStoriesForCost, INSTAGRAM_OCR_CONCURRENCY, validateMetaBusinessDiscoveryProfile, decodeInstagramRedirectUrl, extractInstagramRedirectedLinks } from "./instagram-pipeline";
+import { isMetaInvalidUserError, createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, isMetaCredentialFailure, isMetaPermissionFailure, extractMetaGraphErrorMessage, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRecentApifySignal, hasRegionalHashtag, INSTAGRAM_TARGETS, getInstagramTargetCity, resolveInstagramEventCity, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest, limitInstagramStoriesForCost, INSTAGRAM_OCR_CONCURRENCY, validateMetaBusinessDiscoveryProfile, decodeInstagramRedirectUrl, extractInstagramRedirectedLinks } from "./instagram-pipeline";
 
 it("reconhece o erro Meta code 110 sem tratá-lo como credencial expirada", () => {
   expect(isMetaInvalidUserError(400, '{"error":{"message":"Invalid user id","code":110}}')).toBe(true);
   expect(isMetaInvalidUserError(400, '{"error":{"message":"Invalid OAuth access token","code":190}}')).toBe(false);
+});
+
+it("distingue rejeição de requisição, permissão e credencial na resposta HTTP 400", () => {
+  const unsupportedRequest = JSON.stringify({ error: { message: "Unsupported get request for this profile", type: "OAuthException", code: 100 } });
+  const expiredToken = JSON.stringify({ error: { message: "OAuth token rejected", type: "OAuthException", code: 190 } });
+  const missingPermission = JSON.stringify({ error: { message: "Permission denied", type: "OAuthException", code: 10 } });
+  expect(isMetaCredentialFailure(400, unsupportedRequest)).toBe(false);
+  expect(isMetaPermissionFailure(400, unsupportedRequest)).toBe(false);
+  expect(isMetaCredentialFailure(400, expiredToken)).toBe(true);
+  expect(isMetaPermissionFailure(400, missingPermission)).toBe(true);
+  expect(isMetaCredentialFailure(400, missingPermission)).toBe(false);
+});
+
+it("redige tokens e query strings em respostas JSON ou não JSON da Meta", () => {
+  const unsafeBody = 'upstream error at https://graph.facebook.com/v26.0/me?access_token=meta-secret Bearer apify-secret';
+  const message = extractMetaGraphErrorMessage(unsafeBody, 400);
+  expect(message).toContain("[redacted]");
+  expect(message).not.toContain("meta-secret");
+  expect(message).not.toContain("apify-secret");
 });
 
 describe("validação prévia de perfis Meta", () => {
@@ -417,6 +436,38 @@ describe("Instagram weekend pipeline", () => {
   it("extrai a mensagem original da Graph API sem presumir token expirado", () => {
     expect(extractMetaGraphErrorMessage(JSON.stringify({ error: { message: "Unsupported get request for this profile", type: "OAuthException", code: 100 } }), 400))
       .toBe("Meta Graph API HTTP 400: Unsupported get request for this profile (OAuthException, code 100)");
+  });
+
+  it.each([
+    [JSON.stringify({ error: { message: "Unsupported get request for this profile", type: "OAuthException", code: 100 } }), "meta_request_rejected"],
+    [JSON.stringify({ error: { message: "Error validating access token", type: "OAuthException", code: 190 } }), "proxy_or_session"],
+  ] as const)("interrompe o restante dos perfis após um erro Graph 400 compartilhado", async (errorBody, expectedKind) => {
+    const originalFetch = globalThis.fetch;
+    const originalMetaToken = process.env.META_INSTAGRAM_TOKEN;
+    const originalAccountId = process.env.META_INSTAGRAM_ACCOUNT_ID;
+    const originalFocus = process.env.INGESTION_FOCUS_INSTAGRAM;
+    process.env.META_INSTAGRAM_TOKEN = "test-meta-token";
+    process.env.META_INSTAGRAM_ACCOUNT_ID = "17841438723866203";
+    delete process.env.INGESTION_FOCUS_INSTAGRAM;
+    const sourceLookup = vi.spyOn(dbModule, "listEnabledInstagramSources").mockResolvedValue([
+      { sourceKey: "instagram:mobydicksantos", handle: "mobydicksantos", priority: 1, frequencyMinutes: 0, lastSuccessAt: null },
+      { sourceKey: "instagram:projac.bar", handle: "projac.bar", priority: 2, frequencyMinutes: 0, lastSuccessAt: null },
+    ] as never);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(errorBody, { status: 400, headers: { "content-type": "application/json" } }));
+    globalThis.fetch = fetchMock as typeof fetch;
+    try {
+      const result = await fetchInstagramPostsDetailed({ dryRun: true });
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(result.transportFailures).toEqual(expect.arrayContaining([
+        expect.objectContaining({ username: "mobydicksantos", status: 400, kind: expectedKind }),
+      ]));
+    } finally {
+      globalThis.fetch = originalFetch;
+      sourceLookup.mockRestore();
+      if (originalMetaToken === undefined) delete process.env.META_INSTAGRAM_TOKEN; else process.env.META_INSTAGRAM_TOKEN = originalMetaToken;
+      if (originalAccountId === undefined) delete process.env.META_INSTAGRAM_ACCOUNT_ID; else process.env.META_INSTAGRAM_ACCOUNT_ID = originalAccountId;
+      if (originalFocus === undefined) delete process.env.INGESTION_FOCUS_INSTAGRAM; else process.env.INGESTION_FOCUS_INSTAGRAM = originalFocus;
+    }
   });
 
   it("degrades an expired Meta token without starting Apify in dry-run", async () => {

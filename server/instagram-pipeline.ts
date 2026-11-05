@@ -94,32 +94,76 @@ export function isInstagramTransportFailure(status: number, body = "") {
   return [401, 403, 502].includes(status) || /invalid proxy response|proxy response|session|forbidden|authentication/i.test(body);
 }
 
-/** OAuthException/invalid-token responses are isolated to Meta so Apify can still run. */
+type MetaGraphErrorDetails = { message: string; type: string; code?: number; subcode?: number };
+
+function parseMetaGraphError(body: string): MetaGraphErrorDetails {
+  let error: Record<string, unknown> = {};
+  try {
+    const root = JSON.parse(body) as unknown;
+    const candidate = root && typeof root === "object" ? (root as Record<string, unknown>).error : undefined;
+    if (candidate && typeof candidate === "object") error = candidate as Record<string, unknown>;
+  } catch {
+    // Retain the bounded, sanitized text below for non-JSON responses.
+  }
+  const numericCode = (value: unknown) => {
+    if (typeof value !== "number" && typeof value !== "string") return undefined;
+    if (typeof value === "string" && !value.trim()) return undefined;
+    const parsed = Number(value);
+    return Number.isInteger(parsed) ? parsed : undefined;
+  };
+  return {
+    message: typeof error.message === "string" ? error.message : body,
+    type: typeof error.type === "string" ? error.type : "",
+    code: numericCode(error.code),
+    subcode: numericCode(error.error_subcode),
+  };
+}
+
+function sanitizeMetaDiagnosticText(value: string) {
+  const sensitiveParameter = /^(?:access[_-]?token|token|api[_-]?key|authorization|cookie|password|secret|signature|webhook)$/i;
+  const redacted = value
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+\/-]+/gi, "$1[redacted]")
+    .replace(/([?&](?:access[_-]?token|token|api[_-]?key|authorization|cookie|password|secret|signature|webhook)=)[^&#\s"'<>]+/gi, "$1[redacted]")
+    .replace(/((?:access[_-]?token|token|api[_-]?key|authorization|cookie|password|secret|signature|webhook)\s*[:=]\s*["']?)[^,\s"'&}<>]+/gi, "$1[redacted]")
+    .replace(/https?:\/\/[^\s"'<>]+/gi, match => {
+      try {
+        const url = new URL(match);
+        for (const key of Array.from(url.searchParams.keys())) {
+          if (sensitiveParameter.test(key)) url.searchParams.set(key, "[redacted]");
+        }
+        return url.toString();
+      } catch {
+        return match;
+      }
+    });
+  return normalizeDiagnosticText(redacted, 240);
+}
+
+/** OAuth token errors are isolated from profile-specific and generic Graph API 400s. */
 export function isMetaInvalidUserError(status: number, body = "") {
-  return status === 400 && /invalid user id|code\s*[:=]?\s*110|oauth(?:exception)?[^\n]*(?:110|invalid user)/i.test(body);
+  const details = parseMetaGraphError(body);
+  return status === 400 && (details.code === 110 || /invalid user id|\bcode\s*[:=]?\s*110\b/i.test(details.message));
 }
 
 export function isMetaCredentialFailure(status: number, body = "") {
-  return status === 401 || (status === 400 && /oauthexception|invalid oauth|access token|expired|token.*invalid|session.*expired/i.test(body) && !isMetaInvalidUserError(status, body));
+  if (status === 401) return true;
+  if (status !== 400 || isMetaInvalidUserError(status, body)) return false;
+  const details = parseMetaGraphError(body);
+  return details.code === 190 || details.code === 102
+    || /invalid oauth(?:entication)?(?: access)? token|(?:access|oauth) token[^.\n]{0,80}\b(?:expired|invalid|revoked)\b|\b(?:expired|invalid|revoked)\b[^.\n]{0,80}(?:access|oauth) token|session[^.\n]{0,80}\b(?:expired|invalid)\b|token[^.\n]{0,80}\b(?:expired|invalid|revoked)\b/i.test(details.message);
+}
+
+export function isMetaPermissionFailure(status: number, body = "") {
+  if (![400, 403].includes(status) || isMetaInvalidUserError(status, body) || isMetaCredentialFailure(status, body)) return false;
+  const details = parseMetaGraphError(body);
+  return details.code === 10 || /permission denied|does not have permission|do not have permission|missing permissions|insufficient permissions|insufficient scope/i.test(details.message);
 }
 
 /** Extrai a mensagem pública da Graph API sem expor token, query string ou payload bruto. */
 export function extractMetaGraphErrorMessage(body: string, status?: number) {
-  let providerMessage = "";
-  let providerType = "";
-  let providerCode: number | undefined;
-  try {
-    const parsed = JSON.parse(body) as { error?: { message?: unknown; type?: unknown; code?: unknown } };
-    if (parsed.error && typeof parsed.error === "object") {
-      providerMessage = typeof parsed.error.message === "string" ? parsed.error.message : "";
-      providerType = typeof parsed.error.type === "string" ? parsed.error.type : "";
-      providerCode = Number.isFinite(Number(parsed.error.code)) ? Number(parsed.error.code) : undefined;
-    }
-  } catch {
-    // Fallback below keeps non-JSON upstream responses useful without logging the full body.
-  }
-  const detail = normalizeDiagnosticText(providerMessage || body, 240);
-  const metadata = [providerType, providerCode !== undefined ? `code ${providerCode}` : ""].filter(Boolean).join(", ");
+  const error = parseMetaGraphError(body);
+  const detail = sanitizeMetaDiagnosticText(error.message);
+  const metadata = [error.type, error.code !== undefined ? `code ${error.code}` : "", error.subcode !== undefined ? `subcode ${error.subcode}` : ""].filter(Boolean).join(", ");
   const prefix = status ? `Meta Graph API HTTP ${status}` : "Meta Graph API";
   return `${prefix}: ${detail || "erro sem mensagem"}${metadata ? ` (${metadata})` : ""}`;
 }
@@ -753,7 +797,7 @@ export async function validateMetaBusinessDiscoveryProfile(username: string, sig
   }
 }
 
-type InstagramTransportFailure = { username: string; status: number; kind: "proxy_or_session" | "circuit_open" | "quota" | "actor_timeout" | "meta_invalid_user"; message: string };
+type InstagramTransportFailure = { username: string; status: number; kind: "proxy_or_session" | "circuit_open" | "quota" | "actor_timeout" | "meta_invalid_user" | "meta_request_rejected"; message: string };
 type InstagramProviderIssue = { code: "APIFY_QUOTA_EXCEEDED"; status: 403; message: string };
 
 function logInstagramResponseDiagnostics(input: { username: string; status: number; contentType: string | null; body: string; parsed: boolean; mediaCount: number; maskedHtml: boolean }) {
@@ -851,7 +895,18 @@ export async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, acc
         }
         console.warn("[Instagram] Meta credential rejected; continuing with Apify", { username: target.username, status: response.status, reason: message });
         transportFailures.push({ username: target.username, status: response.status, kind: "proxy_or_session", message });
-        continue;
+        break;
+      }
+      if (response.status === 400) {
+        const message = extractMetaGraphErrorMessage(responseBody, response.status);
+        if (source && !options.dryRun) {
+          await registerSourceFailure({ sourceKey: source.sourceKey, routine: "instagram-agenda", status: response.status, message });
+          await markIngestionSourceResult(source.sourceKey, { status: "failed", message });
+        }
+        const category = isMetaPermissionFailure(response.status, responseBody) ? "permission_or_scope" : "request_rejected";
+        transportFailures.push({ username: target.username, status: response.status, kind: "meta_request_rejected", message });
+        console.warn("[Instagram] Meta HTTP 400 rejected the request; stopping remaining profile queries", { username: target.username, category, reason: message });
+        break;
       }
       if (isInstagramTransportFailure(response.status, responseBody)) {
         if (source && !options.dryRun) await markIngestionSourceResult(source.sourceKey, { status: "failed", message: `HTTP ${response.status}` });
@@ -860,7 +915,7 @@ export async function fetchMetaBusinessDiscoveryPostsDetailed(token: string, acc
         transportFailures.push({ username: target.username, status: response.status, kind: "proxy_or_session", message: `Meta respondeu HTTP ${response.status}; perfil ignorado nesta tentativa.` });
         continue;
       }
-      throw new InstagramIntegrationFailure("meta", `Meta Graph API request failed with ${response.status}: ${responseBody}`);
+      throw new InstagramIntegrationFailure("meta", extractMetaGraphErrorMessage(responseBody, response.status));
     }
     posts.push(...metaPostsFromPayload(parsedBody ?? JSON.parse(responseBody), target));
     if (source && !options.dryRun) {
@@ -964,9 +1019,9 @@ export async function fetchInstagramPostsDetailed(options: { dryRun?: boolean; s
   } catch (error) {
     if (options.forceApifyAll !== true) throw error;
     const rawMessage = error instanceof Error ? error.message : String(error);
-    const credentialFailure = /oauthexception|invalid oauth|access token|expired|token.*invalid|META_INSTAGRAM_TOKEN|session.*expired/i.test(rawMessage);
     const statusMatch = rawMessage.match(/\b([45]\d{2})\b/);
     const status = statusMatch ? Number(statusMatch[1]) : 0;
+    const credentialFailure = isMetaCredentialFailure(status, rawMessage);
     const message = credentialFailure
       ? extractMetaGraphErrorMessage(rawMessage, status || undefined)
       : `Falha isolada na Graph API da Meta${status ? ` (HTTP ${status})` : ""}; a extração da Apify continuará.`;
