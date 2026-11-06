@@ -1,11 +1,12 @@
 import crypto from "node:crypto";
 import { load } from "cheerio";
 import { invokeLLM } from "./_core/llm";
-import { assertEventDateIsCurrentOrFuture, formatArticketSourceName, getIngestionPayloadCache, listActiveLocationAliasValues, listIngestionSources, recordOperationalAlert, saveEvent, saveIngestionPayloadCache, updateDiscoveredArticketSourceName, upsertDiscoveredArticketSource } from "./db";
+import { assertEventDateIsCurrentOrFuture, formatArticketSourceName, getIngestionPayloadCache, listActiveLocationAliasValues, listActiveMonitoredBrands, listIngestionSources, recordOperationalAlert, saveEvent, saveIngestionPayloadCache, updateDiscoveredArticketSourceName, upsertDiscoveredArticketSource } from "./db";
 import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
 import { fetchExternal, isSandboxRestrictedError, readExternalBody, sanitizeExternalFetchError } from "./external-fetch";
 import { parsePayloadJsonColumn } from "./json-contracts";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
+import type { MonitoredBrand } from "../drizzle/schema";
 
 const DEFAULT_SOURCE_URLS = [
   "https://articket.com.br/e/6784/plants-happy-hour",
@@ -184,25 +185,65 @@ export function sanitizePublicSourceUrl(input: string) {
   }
 }
 
-const TRACKED_PUBLIC_BRANDS = [
+const LEGACY_TRACKED_PUBLIC_BRANDS = [
   { brand: "APÊ 22", sourceKey: "public:weticket", pattern: /ap(?:ê|e)\s*22/i },
   { brand: "OSUCO", sourceKey: "public:zig", pattern: /osuco/i },
 ] as const;
 
-export function getTrackedPublicBrand(value: string, sourceKey?: string) {
+type MonitoredBrandRule = Pick<MonitoredBrand, "name" | "cities" | "platforms" | "matchTerms">;
+
+const PUBLIC_PLATFORM_BY_SOURCE: Record<string, string> = {
+  "public:ingresse": "ingresse",
+  "public:sympla": "sympla",
+  "public:articket": "articket",
+  "public:eventos-litoral": "articket",
+  "public:zig": "zig",
+  "public:weticket": "weticket",
+  "public:ticket360": "ticket360",
+  "public:blacktag": "blacktag",
+  "public:blackpass": "blackpass",
+  "public:mringressos": "mringressos",
+};
+
+function monitoredBrandSupportsSource(brand: MonitoredBrandRule, sourceKey?: string) {
+  if (!sourceKey) return true;
+  const platform = PUBLIC_PLATFORM_BY_SOURCE[sourceKey];
+  return brand.platforms.some(configured => {
+    const normalized = normalizeSlug(configured);
+    if (normalized === "bilheterias-itinerantes") return sourceKey.startsWith("public:");
+    if (normalized === "instagram") return sourceKey.startsWith("instagram:");
+    return Boolean(platform && normalized === normalizeSlug(platform));
+  });
+}
+
+export function getMonitoredPublicBrand(value: string, sourceKey?: string, brands: MonitoredBrandRule[] = []) {
   const candidate = String(value ?? "");
-  return TRACKED_PUBLIC_BRANDS.find(item => (!sourceKey || item.sourceKey === sourceKey) && item.pattern.test(candidate))?.brand;
+  const normalizedCandidate = normalizeSlug(candidate);
+  return brands.find(brand =>
+    monitoredBrandSupportsSource(brand, sourceKey) &&
+    brand.matchTerms.some(term => {
+      const normalizedTerm = normalizeSlug(term);
+      return normalizedTerm.length >= 3 && normalizedCandidate.includes(normalizedTerm);
+    })
+  );
 }
 
-export function matchesTrackedPublicBrand(value: string, sourceKey?: string) {
-  return Boolean(getTrackedPublicBrand(value, sourceKey));
+export function getTrackedPublicBrand(value: string, sourceKey?: string, brands: MonitoredBrandRule[] = []) {
+  const candidate = String(value ?? "");
+  const monitored = getMonitoredPublicBrand(candidate, sourceKey, brands);
+  if (monitored) return monitored.name;
+  return LEGACY_TRACKED_PUBLIC_BRANDS.find(item => (!sourceKey || item.sourceKey === sourceKey) && item.pattern.test(candidate))?.brand;
 }
 
-export function buildPublicEventIdentity(sourceKey: string, title: string, eventDate: Date | string, sourceUrl: string) {
+export function matchesTrackedPublicBrand(value: string, sourceKey?: string, brands: MonitoredBrandRule[] = []) {
+  return Boolean(getTrackedPublicBrand(value, sourceKey, brands));
+}
+
+export function buildPublicEventIdentity(sourceKey: string, title: string, eventDate: Date | string, sourceUrl: string, brands: MonitoredBrandRule[] = []) {
   const day = new Date(eventDate).toISOString().slice(0, 10);
-  const brand = getTrackedPublicBrand(`${title} ${sourceUrl}`, sourceKey);
+  const brand = getTrackedPublicBrand(`${title} ${sourceUrl}`, sourceKey, brands);
   const articketId = sourceKey === "public:articket" ? sanitizePublicSourceUrl(sourceUrl).match(/\/e\/(\d+)(?:\/|$)/i)?.[1] : undefined;
-  const identity = articketId ? `${sourceKey}|${articketId}|${day}` : brand ? `${sourceKey}|${brand}|${day}` : `${normalizeSlug(sourceUrl)}|${normalizeSlug(title)}|${day}`;
+  const identity = brand ? `${sourceKey}|${brand}|${day}` : articketId ? `${sourceKey}|${articketId}|${day}` : `${normalizeSlug(sourceUrl)}|${normalizeSlug(title)}|${day}`;
   return crypto.createHash("md5").update(identity).digest("hex");
 }
 
@@ -1338,8 +1379,12 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
 export async function runIngestionPipeline(options: IngestionPipelineOptions = {}) {
   const dryRun = options.dryRun === true;
   const activeAliases = await listActiveLocationAliasValues();
+  const activeBrands = await listActiveMonitoredBrands();
   const matchesTargetVenue = (value: string) => containsTargetVenue(value, activeAliases);
-  const matchesTargetContent = (value: string) => matchesTargetVenue(value) || matchesTrackedPublicBrand(value, options.sourceKey);
+  const matchesTargetContent = (value: string, sourceUrl?: string) => {
+    const sourceKey = sourceUrl ? publicSourceKey(sourceUrl) : options.sourceKey;
+    return matchesTargetVenue(value) || matchesTrackedPublicBrand(value, sourceKey, activeBrands);
+  };
   const candidateUrls = await discoverCandidatePages(options, activeAliases);
   if (candidateUrls.length === 0) return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: true, reason: "Nenhuma fonte de ingestão configurada", sourceReports: [] as IngestionSourceReport[] };
   const pages = await fetchWithConcurrency(candidateUrls, url => guardedFetchPublicPage(url, options), PUBLIC_FETCH_CONCURRENCY);
@@ -1355,8 +1400,8 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
     ...rejectedPages.map((result, index) => ({ sourceUrl: candidateUrls[index], ...sanitizeFetchFailure(result.reason) })),
   ].map(failure => ({ sourceUrl: String(failure.sourceUrl).slice(0, 1000), status: failure.status ?? null, message: formatPublicFetchFailure({ status: failure.status ?? null, message: String(failure.message).slice(0, 240) }), fallbackUsed: "used" in failure && failure.used === true }));
   const fetchFailed = fetchFailures.length;
-  const outsideTargetVenue = fulfilledPages.filter(page => !matchesTargetContent(page.text)).length;
-  const sourcePages = fulfilledPages.filter(page => matchesTargetContent(page.text));
+  const outsideTargetVenue = fulfilledPages.filter(page => !matchesTargetContent(page.text, page.url)).length;
+  const sourcePages = fulfilledPages.filter(page => matchesTargetContent(page.text, page.url));
   await Promise.all(sourcePages
     .filter(page => page.adapter === "articket" && !Array.isArray(page.structured) && typeof page.structured?.title === "string")
     .map(page => {
@@ -1368,7 +1413,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
       });
     }));
   const filteredByReason = { fetchFailed, outsideTargetVenue, invalidStructuredEvent: 0, pastEvent: 0, duplicate: 0 };
-  const filteredSourceUrls = pages.flatMap((result, index) => result.status === "rejected" || !matchesTargetContent(result.status === "fulfilled" ? result.value.text : "") ? [candidateUrls[index]] : []);
+  const filteredSourceUrls = pages.flatMap((result, index) => result.status === "rejected" || !matchesTargetContent(result.status === "fulfilled" ? result.value.text : "", candidateUrls[index]) ? [candidateUrls[index]] : []);
 
   if (sourcePages.length === 0) {
     const sandboxFailure = rejectedPages.some(result => isSandboxRestrictedError(result.reason));
@@ -1391,11 +1436,14 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
     .map(page => `SOURCE_URL: ${page.url}\nIMAGE_URL: ${page.imageUrl}\nCONTENT: ${page.text}`)
     .join("\n\n")
     .slice(0, 48_000);
+  const monitoredBrandInstructions = activeBrands.length > 0
+    ? ` Além da allowlist de locais, extraia também eventos musicais futuros publicados pelas marcas monitoradas ${activeBrands.map(brand => `${brand.name} (termos: ${brand.matchTerms.join(", ")}; cidades permitidas: ${brand.cities.join(", ")})`).join("; ")}. Para esses casos, a marca precisa estar explícita no conteúdo e a cidade deve corresponder à configuração; o local do evento pode ser diferente dos venues da allowlist.`
+    : "";
 
   const structured = apiStructuredEvents.length > 0 ? { choices: [{ message: { content: JSON.stringify({ events: apiStructuredEvents }) } }] } : await invokeLLM({
     model: "gpt-4o-mini",
     messages: [
-      { role: "system", content: "Extraia somente eventos públicos de música, shows ou baladas nos locais oficiais Vallum Garden, Moby Dick, Ativa House, Casa 412, Verilonguinho, Meu Lugar, Goat Club, Laroc Club Guarujá, Lucky Scope, Curvão Surf House, Guarujá Golf Club, Praia Verde Beach Club, Praia Verde, Casa Grande Hotel Resort, Casa Grande Hotel, Praiô, Flamingos, Projac Bar, Boteco Almare, Dolores Restaurante e Bar, Arena Jequitimar, Parque Valongo, Armazém 3, Blue Med Convention Center ou Santos Convention Center, localizados exclusivamente em Santos ou Guarujá. Ignore eventos passados, cidades diferentes, locais fora dessa allowlist e eventos de gastronomia, esporte, teatro ou exposição sem música. Retorne somente JSON no schema. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Se o gênero não puder ser inferido com segurança, descarte o evento. Use o SOURCE_URL correspondente como sourceUrl e IMAGE_URL quando houver." },
+      { role: "system", content: `Extraia somente eventos públicos de música, shows ou baladas nos locais oficiais Vallum Garden, Moby Dick, Ativa House, Casa 412, Verilonguinho, Meu Lugar, Goat Club, Laroc Club Guarujá, Lucky Scope, Curvão Surf House, Guarujá Golf Club, Praia Verde Beach Club, Praia Verde, Casa Grande Hotel Resort, Casa Grande Hotel, Praiô, Flamingos, Projac Bar, Boteco Almare, Dolores Restaurante e Bar, Arena Jequitimar, Parque Valongo, Armazém 3, Blue Med Convention Center ou Santos Convention Center, localizados exclusivamente em Santos ou Guarujá. Ignore eventos passados, cidades diferentes, locais fora dessa allowlist e eventos de gastronomia, esporte, teatro ou exposição sem música. Retorne somente JSON no schema. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Se o gênero não puder ser inferido com segurança, descarte o evento. Use o SOURCE_URL correspondente como sourceUrl e IMAGE_URL quando houver.${monitoredBrandInstructions}` },
       { role: "user", content: rawText },
     ],
     response_format: { type: "json_schema", json_schema: { name: "event_batch", strict: true, schema: { type: "object", properties: { events: { type: "array", items: { type: "object", properties: { title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string" }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "samba_pagode", "rap_trap"] }, priceCents: { type: "integer" }, sourceUrl: { type: "string" }, imageUrl: { type: "string" }, latitude: { type: "string" }, longitude: { type: "string" } }, required: ["title", "summary", "eventDate", "locationName", "address", "city", "category", "genre", "priceCents", "sourceUrl", "imageUrl", "latitude", "longitude"], additionalProperties: false } } }, required: ["events"], additionalProperties: false } } },
@@ -1422,7 +1470,9 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
     const category = String(event.category);
     const genre = String(event.genre);
     const sourceKey = publicSourceKey(String(event.sourceUrl ?? ""));
-    if (Number.isNaN(date.getTime()) || (city !== "Santos" && city !== "Guarujá") || !matchesTargetVenue(`${locationName} ${address}`) || !["show", "balada", "evento_musical"].includes(category) || !["funk", "house_eletronica", "samba_pagode", "rap_trap"].includes(genre)) {
+    const eventBrand = getMonitoredPublicBrand(`${String(event.title)} ${String(event.summary ?? "")} ${String(event.sourceUrl ?? "")}`, sourceKey, activeBrands);
+    const brandCityMatches = Boolean(eventBrand?.cities.some(brandCity => normalizeText(brandCity) === normalizeText(city)));
+    if (Number.isNaN(date.getTime()) || (city !== "Santos" && city !== "Guarujá") || (!matchesTargetVenue(`${locationName} ${address}`) && !brandCityMatches) || !["show", "balada", "evento_musical"].includes(category) || !["funk", "house_eletronica", "samba_pagode", "rap_trap"].includes(genre)) {
       filteredByReason.invalidStructuredEvent += 1;
       rejectedEvents.push({ sourceKey, reason: "invalidStructuredEvent" });
       continue;
@@ -1432,7 +1482,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
     const fuzzyDuplicate = acceptedEvents.some(previous => areFuzzyDuplicateEvents(previous, { title: String(event.title), eventDate: date, city }));
     if (fuzzyDuplicate) { duplicates += 1; duplicateSourceKeys.push(sourceKey); continue; }
     acceptedEvents.push({ title: String(event.title), eventDate: date, city, sourceKey });
-    const sourceHash = buildPublicEventIdentity(sourceKey, String(event.title), date, sourceUrl);
+    const sourceHash = buildPublicEventIdentity(sourceKey, String(event.title), date, sourceUrl, activeBrands);
     const sourceType = sourceUrl.includes("ingresse.com") ? "ingresse" : sourceUrl.includes("blackpass.com.br") ? "blackpass" : sourceUrl.includes("mringressos.com.br") ? "mringressos" : sourceUrl.includes("sympla.com.br") ? "sympla" : sourceUrl.includes("weticket.com.br") ? "weticket" : sourceUrl.includes("zig.tickets") ? "zig" : sourceUrl.includes("articket.com.br") ? "articket" : "public_source";
     const latitude = String(event.latitude || "");
     const longitude = String(event.longitude || "");
@@ -1462,7 +1512,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
       sourceOutcomes.push({ sourceKey, created: false, updated: false });
     }
     if (saved && typeof saved === "object" && saved.created) {
-      const brand = getTrackedPublicBrand(String(event.title), sourceKey);
+      const brand = getTrackedPublicBrand(`${String(event.title)} ${String(event.sourceUrl ?? "")}`, sourceKey, activeBrands);
       if (brand) {
         const editionDate = date.toISOString().slice(0, 10);
         await recordOperationalAlert({

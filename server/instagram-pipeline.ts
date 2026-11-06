@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
-import { INSTAGRAM_AGENDA_SOURCE_TYPE, claimApifyDailyRequest, getApifyBudgetBlockAlert, listActiveLocationAliasValues, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent, upsertDiscoveredInstagramLinkSource } from "./db";
+import { INSTAGRAM_AGENDA_SOURCE_TYPE, claimApifyDailyRequest, getApifyBudgetBlockAlert, listActiveLocationAliasValues, listActiveMonitoredBrands, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent, upsertDiscoveredInstagramLinkSource } from "./db";
 import { fetchExternal, isSandboxRestrictedError, readExternalBody } from "./external-fetch";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
-import { containsTargetVenue, normalizeVenueCity } from "./ingestion";
+import { containsTargetVenue, getMonitoredPublicBrand, normalizeVenueCity } from "./ingestion";
 import { parseMetaBusinessDiscovery } from "./contracts/external";
 import { resolveRegionalCoordinates } from "./geocoding";
 import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
@@ -548,7 +548,7 @@ export function createStructuredEventRejection(event: Partial<StructuredEvent>, 
   };
 }
 
-export function validateStructuredInstagramEvent(event: Partial<StructuredEvent>, activeAliases: string[] = [], now = new Date()): StructuredRejectionReason[] {
+export function validateStructuredInstagramEvent(event: Partial<StructuredEvent>, activeAliases: string[] = [], now = new Date(), allowConfiguredBrandVenue = false): StructuredRejectionReason[] {
   const reasons: StructuredRejectionReason[] = [];
   const requiredFields = [event.title, event.summary, event.eventDate, event.locationName, event.address, event.city, event.category, event.genre, event.sourceUrl];
   if (requiredFields.some(value => typeof value !== "string" || value.trim().length === 0)) reasons.push("missing_required_field");
@@ -556,7 +556,7 @@ export function validateStructuredInstagramEvent(event: Partial<StructuredEvent>
   if (Number.isNaN(parsedDate.getTime())) reasons.push("invalid_date");
   else if (eventCalendarDate(event.eventDate, parsedDate) < saoPauloCalendarDate(now)) reasons.push("past_event");
   if (!ALLOWED_CITIES.has(String(event.city))) reasons.push("outside_target_venue");
-  if (!containsTargetVenue(`${String(event.locationName ?? "")} ${String(event.address ?? "")}`, activeAliases)) reasons.push("outside_target_venue");
+  if (!allowConfiguredBrandVenue && !containsTargetVenue(`${String(event.locationName ?? "")} ${String(event.address ?? "")}`, activeAliases)) reasons.push("outside_target_venue");
   if (typeof event.sourceUrl !== "string" || !isValidInstagramSourceUrl(event.sourceUrl)) reasons.push("invalid_source_url");
   if (!ALLOWED_CATEGORIES.has(String(event.category))) reasons.push("invalid_category");
   if (!ALLOWED_GENRES.has(String(event.genre))) reasons.push("invalid_genre");
@@ -1190,6 +1190,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   const referenceDate = getInstagramReferenceDate();
   if (!dryRun) await recordReferenceDateClockAlert(referenceDate);
   const activeAliases = await listActiveLocationAliasValues();
+  const activeBrands = await listActiveMonitoredBrands();
   const fetched = options.postsOverride
     ? { posts: options.postsOverride, transportFailures: [] as InstagramTransportFailure[] }
     : storiesOnly
@@ -1249,6 +1250,10 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   const structuredEvents = await extractStructuredEvents(referenceDate, approvedPosts);
   const mediaOriginBySourceUrl = new Map(approvedPosts.map(({ post }) => [postUrl(post), post.mediaType ?? "post"]));
   const profileCityBySourceUrl = new Map(approvedPosts.map(({ post }) => [postUrl(post), getInstagramTargetCity(String(post.ownerUsername ?? post.username ?? ""))]));
+  const profileBrandBySourceUrl = new Map(approvedPosts.map(({ post, rawText }) => {
+    const username = String(post.ownerUsername ?? post.username ?? "").replace(/^@/, "").trim();
+    return [postUrl(post), getMonitoredPublicBrand(`${username} ${rawText}`, `instagram:${username}`, activeBrands)] as const;
+  }));
   let imported = 0;
   let added = 0;
   let updated = 0;
@@ -1261,7 +1266,9 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     const event = structuredEvents[index];
     const normalizedCity = resolveInstagramEventCity(event, profileCityBySourceUrl.get(event.sourceUrl));
     const normalizedEvent = { ...event, city: normalizedCity as StructuredEvent["city"] };
-    const reasons = validateStructuredInstagramEvent(normalizedEvent, activeAliases);
+    const eventBrand = profileBrandBySourceUrl.get(event.sourceUrl);
+    const brandCityMatches = Boolean(eventBrand?.cities.some(city => city.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === normalizedCity.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")));
+    const reasons = validateStructuredInstagramEvent(normalizedEvent, activeAliases, new Date(), brandCityMatches);
     if (reasons.length > 0) {
       rejectedEvents.push(createStructuredEventRejection(normalizedEvent, index, reasons));
       continue;
@@ -1294,7 +1301,9 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   if (filteredCount > explicitFilteredCount) rejectionReasons.unclassified_filtered = filteredCount - explicitFilteredCount;
   const acceptedSourceUrls = new Set(structuredEvents.filter(event => {
     const normalizedEvent = { ...event, city: resolveInstagramEventCity(event, profileCityBySourceUrl.get(event.sourceUrl)) as StructuredEvent["city"] };
-    return validateStructuredInstagramEvent(normalizedEvent, activeAliases).length === 0;
+    const eventBrand = profileBrandBySourceUrl.get(event.sourceUrl);
+    const brandCityMatches = Boolean(eventBrand?.cities.some(city => city.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === String(normalizedEvent.city).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")));
+    return validateStructuredInstagramEvent(normalizedEvent, activeAliases, new Date(), brandCityMatches).length === 0;
   }).map(event => event.sourceUrl));
   const rejectedBySourceUrl = new Map(rejectedEvents.map(rejection => [rejection.sourceUrl, rejection.reasons]));
   let manualReviewInserted = 0;

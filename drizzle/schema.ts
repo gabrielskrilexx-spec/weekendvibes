@@ -56,6 +56,24 @@ export const appSettings = pgTable("appSettings", {
 export type AppSetting = typeof appSettings.$inferSelect;
 export type InsertAppSetting = typeof appSettings.$inferInsert;
 
+/** Dynamic producer/brand matching rules used during public ticketing ingestion. */
+export const monitoredBrands = pgTable("monitoredBrands", {
+  id: serial("id").primaryKey(),
+  slug: varchar("slug", { length: 160 }).notNull().unique(),
+  name: varchar("name", { length: 160 }).notNull(),
+  cities: text("cities").array().default(sql`'{}'::text[]`).notNull(),
+  platforms: text("platforms").array().default(sql`'{}'::text[]`).notNull(),
+  matchTerms: text("matchTerms").array().default(sql`'{}'::text[]`).notNull(),
+  isActive: integer("isActive").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, table => ({
+  activeIdx: index("monitoredBrands_active_idx").on(table.isActive),
+}));
+
+export type MonitoredBrand = typeof monitoredBrands.$inferSelect;
+export type InsertMonitoredBrand = typeof monitoredBrands.$inferInsert;
+
 export const heartbeatExecutionEvents = pgTable("heartbeatExecutionEvents", {
   id: varchar("id", { length: 128 }).primaryKey(),
   heartbeatExecutionId: varchar("heartbeatExecutionId", { length: 160 }).notNull(),

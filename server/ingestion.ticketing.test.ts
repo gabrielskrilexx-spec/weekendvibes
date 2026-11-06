@@ -1,8 +1,36 @@
 import { describe, expect, it } from "vitest";
 import { formatArticketSourceName } from "./db";
-import { BLACKPASS_FETCH_TIMEOUT_MS, BLUE_MED_FETCH_TIMEOUT_MS, containsTargetVenue, discoverArticketEventLinks, EVENTOS_LITORAL_FETCH_TIMEOUT_MS, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, PARQUE_VALONGO_FETCH_TIMEOUT_MS, parseArticketEventMetadata, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseBlueMedAgendaEvents, parseEventosLitoralOrganizerMetadata, parseMrIngressosEventMetadata, parseParqueValongoEventMetadata, parseSymplaEventMetadata, parseTicket360EventMetadata, parseTicketingEventMetadata, parseWeTicketEventMetadata, publicSourceKey, SYMPLA_FETCH_TIMEOUT_MS, WETICKET_FETCH_TIMEOUT_MS } from "./ingestion";
+import { BLACKPASS_FETCH_TIMEOUT_MS, BLUE_MED_FETCH_TIMEOUT_MS, buildPublicEventIdentity, containsTargetVenue, discoverArticketEventLinks, EVENTOS_LITORAL_FETCH_TIMEOUT_MS, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, getMonitoredPublicBrand, getTrackedPublicBrand, matchesTrackedPublicBrand, PARQUE_VALONGO_FETCH_TIMEOUT_MS, parseArticketEventMetadata, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseBlueMedAgendaEvents, parseEventosLitoralOrganizerMetadata, parseMrIngressosEventMetadata, parseParqueValongoEventMetadata, parseSymplaEventMetadata, parseTicket360EventMetadata, parseTicketingEventMetadata, parseWeTicketEventMetadata, publicSourceKey, SYMPLA_FETCH_TIMEOUT_MS, WETICKET_FETCH_TIMEOUT_MS } from "./ingestion";
 
 describe("adapters de ticketeiras oficiais", () => {
+  it("reconhece marcas monitoradas dinamicamente só nas plataformas configuradas", () => {
+    const brands = [{
+      name: "Plants Santos",
+      cities: ["Santos"],
+      platforms: ["Sympla", "Ingresse"],
+      matchTerms: ["Plants Santos", "PlantsSantos"],
+    }];
+
+    expect(getMonitoredPublicBrand("Festival PlantsSantos edição verão", "public:sympla", brands)?.name).toBe("Plants Santos");
+    expect(getTrackedPublicBrand("Festival Plants Santos edição verão", "public:ingresse", brands)).toBe("Plants Santos");
+    expect(matchesTrackedPublicBrand("Plants Santos", "public:zig", brands)).toBe(false);
+    const instagramBrand = [{ name: "Nosso After", cities: ["Guarujá", "Santos"], platforms: ["Instagram"], matchTerms: ["nossoafterguaruja"] }];
+    expect(getMonitoredPublicBrand("nossoafterguaruja agenda", "instagram:nossoafterguaruja", instagramBrand)?.name).toBe("Nosso After");
+  });
+
+  it("gera identidade consistente para edições da mesma marca monitorada", () => {
+    const brands = [{
+      name: "The Crew",
+      cities: ["Santos"],
+      platforms: ["ArTicket"],
+      matchTerms: ["The Crew"],
+    }];
+
+    const first = buildPublicEventIdentity("public:articket", "The Crew apresenta DJ A", "2030-11-20T23:00:00-03:00", "https://articket.com.br/e/9001/the-crew-dj-a", brands);
+    const second = buildPublicEventIdentity("public:articket", "The Crew apresenta DJ B", "2030-11-20T23:00:00-03:00", "https://articket.com.br/e/9002/the-crew-dj-b", brands);
+    expect(first).toBe(second);
+  });
+
   it("normaliza o payload embutido do Ticket360 e classifica Casa Grande", () => {
     const html = String.raw`<script>self.__next_f.push([1,"...\\"ev\\":{\\"id\\":\\"34199\\",\\"title\\":\\"Festa do Hawaii\\",\\"venue\\":\\"Casa Grande Hotel Resort \\u0026 Spa\\",\\"city\\":\\"Guarujá\\",\\"date\\":\\"2026-11-21\\",\\"doorsTime\\":\\"19h30\\",\\"image\\":\\"https://images.ticket360.com.br/hawaii.webp\\"}"])</script><h1>Festa do Hawaii</h1>`;
     expect(parseTicket360EventMetadata(html, "https://www.ticket360.com.br/evento/34199/ingressos-para-festa-do-hawaii/ingressos")).toMatchObject({

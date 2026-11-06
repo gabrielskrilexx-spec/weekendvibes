@@ -15,6 +15,7 @@ vi.mock("./db", () => ({
   archivePastEvents: vi.fn().mockResolvedValue(0),
   archiveExpiredSoldOutEvents: vi.fn().mockResolvedValue(0),
   listActiveLocationAliasValues: vi.fn().mockResolvedValue(["moby house", "ativa house"]),
+  listActiveMonitoredBrands: vi.fn().mockResolvedValue([]),
   listEnabledInstagramSources: vi.fn().mockResolvedValue([]),
   markIngestionSourceResult: vi.fn().mockResolvedValue(undefined),
   saveEvent: vi.fn().mockResolvedValue(undefined),

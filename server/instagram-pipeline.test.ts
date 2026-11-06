@@ -233,6 +233,26 @@ describe("Instagram weekend pipeline", () => {
     }, ["ativa house"], new Date("2026-08-20T12:00:00.000Z"))).toEqual([]);
   });
 
+  it("allows a monitored Instagram brand to publish at a non-aliased venue only when enabled by the caller", () => {
+    const event = {
+      title: "Nosso After — edição especial",
+      summary: "Festa em Guarujá",
+      eventDate: "2030-08-21T22:00:00.000Z",
+      locationName: "Espaço novo",
+      address: "Guarujá",
+      city: "Guarujá",
+      category: "balada" as const,
+      genre: "funk" as const,
+      priceCents: 0,
+      imageUrl: "",
+      sourceUrl: "https://www.instagram.com/p/abc123/",
+    };
+    const now = new Date("2030-08-20T12:00:00.000Z");
+    expect(validateStructuredInstagramEvent(event, [], now)).toContain("outside_target_venue");
+    expect(validateStructuredInstagramEvent(event, [], now, true)).toEqual([]);
+    expect(validateStructuredInstagramEvent({ ...event, city: "São Paulo" as "Santos" }, [], now, true)).toContain("outside_target_venue");
+  });
+
   it("accepts a future event from an allowed city, venue and Instagram URL", () => {
     expect(validateStructuredInstagramEvent({
       title: "Sexta musical",
