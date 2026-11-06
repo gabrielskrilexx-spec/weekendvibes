@@ -1119,7 +1119,7 @@ export const appRouter = router({
       return { sourceTelemetry: sourceTelemetryOutput.parse(report.sourceTelemetry) };
     }),
     brandMonitoring: adminOnly
-      .output(z.array(z.object({ brand: z.string(), sourceKey: z.string(), editionsDetected: z.number().int().nonnegative(), rescrapes: z.number().int().nonnegative(), latestEditionDate: z.string().datetime().nullable(), lastDetectedAt: z.string().datetime().nullable() }).strict()))
+      .output(z.array(z.object({ id: z.number().int().positive(), name: z.string(), slug: z.string(), platforms: z.array(z.string()), cities: z.array(z.string()), matchTerms: z.array(z.string()), isActive: z.boolean(), editionsDetected: z.number().int().nonnegative(), rescrapes: z.number().int().nonnegative(), latestEditionDate: z.string().datetime().nullable(), lastDetectedAt: z.string().datetime().nullable() }).strict()))
       .query(() => getBrandMonitoringMetrics()),
     dryRun: adminOnly.output(dryRunOutput).mutation(async () => {
       try {

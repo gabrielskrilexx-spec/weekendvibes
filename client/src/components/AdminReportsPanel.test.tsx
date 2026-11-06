@@ -13,6 +13,13 @@ const mocks = vi.hoisted(() => ({
   toastInfo: vi.fn(),
   summaryInput: undefined as unknown,
   apifyUsageData: { dateKey: "2026-09-19", requestCount: 1, dailyLimit: 3, remaining: 2, isLimitReached: false, nextReleaseAt: "2026-09-20T03:00:00.000Z", persistence: true },
+  brandMonitoringData: [
+    { id: 1, name: "Nosso After", slug: "nosso-after", platforms: ["Instagram", "Bilheterias itinerantes"], cities: ["Guarujá", "Santos"], matchTerms: ["nossoafterguaruja"], isActive: true, editionsDetected: 0, rescrapes: 0, latestEditionDate: null, lastDetectedAt: null },
+    { id: 2, name: "Plants Santos", slug: "plants-santos", platforms: ["Sympla", "Ingresse"], cities: ["Santos"], matchTerms: ["Plants Santos"], isActive: true, editionsDetected: 2, rescrapes: 1, latestEditionDate: "2026-10-30T22:00:00.000Z", lastDetectedAt: "2026-10-16T03:00:00.000Z" },
+    { id: 3, name: "The Crew", slug: "the-crew", platforms: ["ArTicket"], cities: ["Santos"], matchTerms: ["The Crew"], isActive: true, editionsDetected: 0, rescrapes: 0, latestEditionDate: null, lastDetectedAt: null },
+    { id: 4, name: "PANDANCE", slug: "pandance", platforms: ["ArTicket"], cities: ["Santos"], matchTerms: ["PANDANCE"], isActive: true, editionsDetected: 0, rescrapes: 0, latestEditionDate: null, lastDetectedAt: null },
+    { id: 5, name: "Mimada Festa", slug: "mimada-festa", platforms: ["Zig", "Sympla"], cities: ["Santos", "Guarujá"], matchTerms: ["Mimada Festa"], isActive: true, editionsDetected: 0, rescrapes: 0, latestEditionDate: null, lastDetectedAt: null },
+  ] as Array<{ id: number; name: string; slug: string; platforms: string[]; cities: string[]; matchTerms: string[]; isActive: boolean; editionsDetected: number; rescrapes: number; latestEditionDate: string | null; lastDetectedAt: string | null }>,
 }));
 
 
@@ -47,7 +54,7 @@ vi.mock("@/lib/trpc", () => ({
   trpc: {
     ingestionReports: {
       summary: { useQuery: (input: unknown) => { mocks.summaryInput = input; return { data: latestReportData, refetch: mocks.reportRefetch }; } },
-      brandMonitoring: { useQuery: () => ({ data: [{ brand: "APÊ 22", sourceKey: "public:weticket", editionsDetected: 2, rescrapes: 1, latestEditionDate: "2026-10-30T22:00:00.000Z", lastDetectedAt: "2026-10-16T03:00:00.000Z" }, { brand: "OSUCO", sourceKey: "public:zig", editionsDetected: 1, rescrapes: 0, latestEditionDate: "2026-10-16T22:00:00.000Z", lastDetectedAt: "2026-10-15T03:00:00.000Z" }], refetch: vi.fn() }) },
+      brandMonitoring: { useQuery: () => ({ data: mocks.brandMonitoringData, isLoading: false, isError: false, refetch: vi.fn() }) },
       apifyDailyUsage: { useQuery: () => ({ data: mocks.apifyUsageData, isLoading: false, isError: false, refetch: vi.fn() }) },
       setApifyDailyLimit: { useMutation: (options: { onSuccess?: (result: { dailyLimit: number }) => void }) => ({ isPending: false, mutate: vi.fn((input: { dailyLimit: number }) => options.onSuccess?.({ dailyLimit: input.dailyLimit })) }) },
       geocoding: { useQuery: () => ({ data: { pending: 0, processing: 0, succeeded: 0, failed: 0 }, refetch: vi.fn() }) },
@@ -70,6 +77,13 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     mocks.toastInfo.mockReset();
     mocks.summaryInput = undefined;
     mocks.apifyUsageData = { dateKey: "2026-09-19", requestCount: 1, dailyLimit: 3, remaining: 2, isLimitReached: false, nextReleaseAt: "2026-09-20T03:00:00.000Z", persistence: true };
+    mocks.brandMonitoringData = [
+      { id: 1, name: "Nosso After", slug: "nosso-after", platforms: ["Instagram", "Bilheterias itinerantes"], cities: ["Guarujá", "Santos"], matchTerms: ["nossoafterguaruja"], isActive: true, editionsDetected: 0, rescrapes: 0, latestEditionDate: null, lastDetectedAt: null },
+      { id: 2, name: "Plants Santos", slug: "plants-santos", platforms: ["Sympla", "Ingresse"], cities: ["Santos"], matchTerms: ["Plants Santos"], isActive: true, editionsDetected: 2, rescrapes: 1, latestEditionDate: "2026-10-30T22:00:00.000Z", lastDetectedAt: "2026-10-16T03:00:00.000Z" },
+      { id: 3, name: "The Crew", slug: "the-crew", platforms: ["ArTicket"], cities: ["Santos"], matchTerms: ["The Crew"], isActive: true, editionsDetected: 0, rescrapes: 0, latestEditionDate: null, lastDetectedAt: null },
+      { id: 4, name: "PANDANCE", slug: "pandance", platforms: ["ArTicket"], cities: ["Santos"], matchTerms: ["PANDANCE"], isActive: true, editionsDetected: 0, rescrapes: 0, latestEditionDate: null, lastDetectedAt: null },
+      { id: 5, name: "Mimada Festa", slug: "mimada-festa", platforms: ["Zig", "Sympla"], cities: ["Santos", "Guarujá"], matchTerms: ["Mimada Festa"], isActive: true, editionsDetected: 0, rescrapes: 0, latestEditionDate: null, lastDetectedAt: null },
+    ];
     mutationOptions = {};
     mutationState = { isPending: false };
   });
@@ -299,6 +313,30 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     await act(async () => { mutationOptions.onError?.(new Error("falha controlada"), { sourceKey: "instagram" }); });
     expect(mocks.reportRefetch).toHaveBeenCalledTimes(1);
     expect(mocks.toastError).toHaveBeenCalledWith("Não foi possível executar a ingestão", expect.objectContaining({ description: expect.stringContaining("falha controlada") }));
+  });
+
+  it("renderiza um cartão por marca ativa com plataformas, cidades e métricas", async () => {
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    expect(tree!.root.findByProps({ "data-testid": "brand-monitoring-panel" })).toBeTruthy();
+    expect(tree!.root.findByProps({ "data-testid": "monitored-brand-nosso-after" })).toBeTruthy();
+    expect(tree!.root.findByProps({ "data-testid": "monitored-brand-plants-santos" })).toBeTruthy();
+    const markup = JSON.stringify(tree!.toJSON());
+    expect(markup).toContain("The Crew");
+    expect(markup).toContain("PANDANCE");
+    expect(markup).toContain("Mimada Festa");
+    expect(markup).toContain("Bilheterias itinerantes");
+    expect(markup).toContain("Edições");
+    expect(markup).toContain("Re-scrapes");
+    expect(markup).not.toContain("APÊ 22 e OSUCO");
+  });
+
+  it("exibe estado inicial limpo quando não há marcas ativas cadastradas", async () => {
+    mocks.brandMonitoringData = [];
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    expect(JSON.stringify(tree!.toJSON())).toContain("Nenhuma marca ativa cadastrada.");
+    expect(tree!.root.findByProps({ "data-testid": "brand-monitoring-panel" })).toBeTruthy();
   });
 
   it("diferencia sessão administrativa ausente de falha de transporte", async () => {

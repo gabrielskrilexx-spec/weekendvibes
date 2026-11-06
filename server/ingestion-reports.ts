@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { extractOcrText, isGracefullyDegradedMetaFailure } from "./instagram-pipeline";
 import {
@@ -7,6 +7,7 @@ import {
   operationalAlerts,
   ingestionSources,
   events,
+  monitoredBrands,
 } from "../drizzle/schema";
 import {
   classifyCriticalMetaReason,
@@ -30,24 +31,45 @@ import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import { isWafBlockedFailure } from "./ingestion";
 import { serializeIngestionCounts, serializeIngestionDetails, serializeRoutineDetails, parseJsonObjectColumn } from "./json-contracts";
 import type { RunStatus } from "../shared/domain";
-const monitoredBrandFor = (title: string, sourceType: string | null) => {
-  if (sourceType === "weticket" && /ap(?:ê|e)\s*22/i.test(title)) return { brand: "APÊ 22", sourceKey: "public:weticket" } as const;
-  if (sourceType === "zig" && /osuco/i.test(title)) return { brand: "OSUCO", sourceKey: "public:zig" } as const;
-  return undefined;
+const PUBLIC_TICKETING_EVENT_TYPES = ["articket", "blackpass", "blacktag", "ingresse", "mringressos", "public_source", "sympla", "ticket360", "weticket", "zig"] as const;
+const BRAND_EVENT_TYPES_BY_PLATFORM: Record<string, readonly string[]> = {
+  articket: ["articket", "public_source"],
+  sympla: ["sympla"],
+  ingresse: ["ingresse"],
+  zig: ["zig"],
+  weticket: ["weticket"],
+  ticket360: ["ticket360"],
+  blacktag: ["blacktag", "public_source"],
+  blackpass: ["blackpass"],
+  mringressos: ["mringressos"],
+  instagram: ["instagram_agenda_weekend", "instagram_story", "instagram_highlight"],
 };
+const normalizeBrandMatch = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "");
 
-export async function getBrandMonitoringMetrics() {
-  const db = await getDb();
-  if (!db) return [];
-  const rows = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, sourceType: events.sourceType, createdAt: events.createdAt, updatedAt: events.updatedAt })
-    .from(events)
-    .where(or(eq(events.sourceType, "weticket"), eq(events.sourceType, "zig")))
-    .orderBy(desc(events.updatedAt));
-  const metrics = new Map<string, { brand: string; sourceKey: string; editionsDetected: number; rescrapes: number; latestEditionDate: string | null; lastDetectedAt: string | null }>();
+function platformMatchesEventType(platforms: string[], sourceType: string | null) {
+  if (!sourceType) return false;
+  const configured = platforms.map(normalizeBrandMatch);
+  if (configured.includes("bilheteriasitinerantes") && (PUBLIC_TICKETING_EVENT_TYPES as readonly string[]).includes(sourceType)) return true;
+  return configured.some(platform => BRAND_EVENT_TYPES_BY_PLATFORM[platform]?.includes(sourceType));
+}
+
+type MonitoredBrandConfig = { id: number; name: string; slug: string; platforms: string[]; cities: string[]; matchTerms: string[]; isActive: number };
+type MonitoredBrandEventRow = { title: string; sourceUrl: string | null; city: string | null; eventDate: Date; sourceType: string | null; createdAt: Date; updatedAt: Date };
+
+export function aggregateBrandMonitoringMetrics(brands: MonitoredBrandConfig[], rows: MonitoredBrandEventRow[]) {
+  const metrics = new Map(brands.map(brand => [brand.slug, { editionsDetected: 0, rescrapes: 0, latestEditionDate: null as string | null, lastDetectedAt: null as string | null }]));
   for (const row of rows) {
-    const match = monitoredBrandFor(row.title, row.sourceType);
+    const searchable = normalizeBrandMatch(`${row.title} ${row.sourceUrl ?? ""}`);
+    const match = brands.find(brand =>
+      platformMatchesEventType(brand.platforms, row.sourceType) &&
+      brand.cities.some(city => normalizeBrandMatch(city) === normalizeBrandMatch(row.city ?? "")) &&
+      brand.matchTerms.some(term => {
+        const normalizedTerm = normalizeBrandMatch(term);
+        return normalizedTerm.length >= 3 && searchable.includes(normalizedTerm);
+      })
+    );
     if (!match) continue;
-    const current = metrics.get(match.brand) ?? { brand: match.brand, sourceKey: match.sourceKey, editionsDetected: 0, rescrapes: 0, latestEditionDate: null, lastDetectedAt: null };
+    const current = metrics.get(match.slug)!;
     current.editionsDetected += 1;
     const createdAt = new Date(row.createdAt).getTime();
     const updatedAt = new Date(row.updatedAt).getTime();
@@ -56,9 +78,32 @@ export async function getBrandMonitoringMetrics() {
     if (!current.latestEditionDate || editionDate > current.latestEditionDate) current.latestEditionDate = editionDate;
     const detectedAt = new Date(row.updatedAt).toISOString();
     if (!current.lastDetectedAt || detectedAt > current.lastDetectedAt) current.lastDetectedAt = detectedAt;
-    metrics.set(match.brand, current);
   }
-  return ["APÊ 22", "OSUCO"].map(brand => metrics.get(brand) ?? ({ brand, sourceKey: brand === "APÊ 22" ? "public:weticket" : "public:zig", editionsDetected: 0, rescrapes: 0, latestEditionDate: null, lastDetectedAt: null })).map(item => ({ ...item, latestEditionDate: item.latestEditionDate ?? null, lastDetectedAt: item.lastDetectedAt ?? null }));
+  return brands.map(brand => ({
+    id: brand.id,
+    name: brand.name,
+    slug: brand.slug,
+    platforms: brand.platforms,
+    cities: brand.cities,
+    matchTerms: brand.matchTerms,
+    isActive: brand.isActive === 1,
+    ...metrics.get(brand.slug)!,
+  }));
+}
+
+export async function getBrandMonitoringMetrics() {
+  const db = await getDb();
+  if (!db) return [];
+  const brands = await db.select().from(monitoredBrands).where(eq(monitoredBrands.isActive, 1)).orderBy(asc(monitoredBrands.name));
+  if (brands.length === 0) return [];
+  const sourceTypes = Array.from(new Set(brands.flatMap(brand => brand.platforms.flatMap(platform => {
+    const normalized = normalizeBrandMatch(platform);
+    return normalized === "bilheteriasitinerantes" ? [...PUBLIC_TICKETING_EVENT_TYPES] : [...(BRAND_EVENT_TYPES_BY_PLATFORM[normalized] ?? [])];
+  }))));
+  const rows = sourceTypes.length === 0 ? [] : await db.select({ id: events.id, title: events.title, sourceUrl: events.sourceUrl, city: events.city, eventDate: events.eventDate, sourceType: events.sourceType, createdAt: events.createdAt, updatedAt: events.updatedAt })
+    .from(events)
+    .where(inArray(events.sourceType, sourceTypes));
+  return aggregateBrandMonitoringMetrics(brands, rows);
 }
 
 export function isCriticalIngestionFailure(details: unknown) {
