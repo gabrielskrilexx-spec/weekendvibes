@@ -106,6 +106,7 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
   app.post("/api/scheduled/export-jobs-recovery", noStoreScheduledResponse, requireInternalCron, exportJobsRecoveryHandler);
   app.get("/api/scheduled/ticketing-monitor", noStoreScheduledResponse, requireVercelCron, ticketingMonitorHandler);
   app.get("/api/scheduled/executive-report", noStoreScheduledResponse, requireInternalCron, executiveObservabilityReportHandler);
+  app.get("/api/scheduled/weekly-executive-report", noStoreScheduledResponse, requireVercelCron, weeklyExecutiveReportHandler);
   app.post("/api/scheduled/weekly-executive-report", noStoreScheduledResponse, requireInternalCron, weeklyExecutiveReportHandler);
   // tRPC API
   app.use(
