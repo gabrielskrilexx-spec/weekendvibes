@@ -5,7 +5,7 @@ import VenueSpotlight from "./VenueSpotlight";
 
 const event = { id: 1, title: "Jamboo Session Santos", eventDate: "2030-11-23T20:00:00-03:00", locationName: "Casa 412" } as never;
 const curatedVenues = [
-  ["curvao-surf-house", "Curvão Surf House"], ["guaruja-golf-club", "Guarujá Golf Club"], ["boteco-almare", "Boteco Al Mare"], ["flamingos", "Flamingos"], ["vallum-garden", "Vallum Garden"], ["blue-med-convention-center", "Blue Med Convention Center"], ["parque-valongo", "Parque Valongo"], ["casa-412", "Casa 412"], ["laroc-club", "Laroc Club"], ["o-beco", "O Beco"], ["dolores-restaurante-e-bar", "Dolores Restaurante e Bar"], ["projac-bar", "Projac Bar"], ["meu-lugar", "Meu Lugar"], ["moby-dick", "Moby Dick"],
+  ["guaruja-golf-club", "Guarujá Golf Club"], ["goat", "GOAT"], ["curvao-surf-house", "Curvão Surf House"], ["boteco-almare", "Boteco Al Mare"], ["flamingos", "Flamingos"], ["vallum-garden", "Vallum Garden"], ["blue-med-convention-center", "Blue Med Convention Center"], ["parque-valongo", "Parque Valongo"], ["casa-412", "Casa 412"], ["laroc-club", "Laroc Club"], ["o-beco", "O Beco"], ["dolores-restaurante-e-bar", "Dolores Restaurante e Bar"], ["projac-bar", "Projac Bar"], ["meu-lugar", "Meu Lugar"], ["moby-dick", "Moby Dick"],
 ] as const;
 
 function dynamicCatalog() {
@@ -16,7 +16,7 @@ describe("VenueSpotlight", () => {
   it("exibe somente os dez palcos oficiais com imagens e sem locais removidos", () => {
     const markup = renderToStaticMarkup(<VenueSpotlight selectedVenue="" onSelect={vi.fn()} events={[]} dynamicVenues={dynamicCatalog()} />);
     for (const [, name] of curatedVenues) expect(markup).toContain(name);
-    expect(markup.match(/https:\/\/example\.com\/venue-cover\.jpg/g)?.length).toBe(14);
+    expect(markup.match(/https:\/\/example\.com\/venue-cover\.jpg/g)?.length).toBe(15);
     for (const removed of ["Casa Grande Hotel Resort", "Goat Dining Club", "Mendes Convention Center", "Moby House", "Osuco", "Arcos do Valongo", "Arena Club", "Goat Club"]) expect(markup).not.toContain(removed);
     expect(markup).not.toContain("casa-412 · Casa 412");
   });

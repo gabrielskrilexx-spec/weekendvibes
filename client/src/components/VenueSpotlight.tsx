@@ -26,6 +26,7 @@ type Venue = {
 };
 
 export const FEATURED_VENUES: Venue[] = [
+  { key: "goat", name: "GOAT", aliases: "Centro · Rua do Comércio, 63 · Santos - SP", city: "Santos", imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/goat-comercio_72feaa77.jpg", description: "Club de música urbana e noites especiais no Centro de Santos.", query: "Goat Club" },
   { key: "curvao-surf-house", name: "Curvão Surf House", aliases: "Enseada · Av. Miguel Estefno, 2435 · Guarujá - SP", city: "Guarujá", imageUrl: "/venues/curvao-surf-house.jpg", description: "Surf house à beira-mar com festas, sunsets e noites de música no Guarujá.", query: "Curvão Surf House" },
   { key: "guaruja-golf-club", name: "Guarujá Golf Club", aliases: "Guarujá - SP", city: "Guarujá", imageUrl: "/venues/guaruja-golf-club.jpg", description: "Clube cercado de verde para experiências e eventos especiais no Guarujá.", query: "Guarujá Golf Club" },
   { key: "boteco-almare", name: "Boteco Al Mare", aliases: "Rua Atílio Gelsomini, 210 · Guarujá - SP", city: "Guarujá", imageUrl: "/venues/boteco-almare.svg", description: "Boteco de música e festas na Rua Atílio Gelsomini, em Guarujá.", query: "Boteco Al Mare" },

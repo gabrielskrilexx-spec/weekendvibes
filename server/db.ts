@@ -472,6 +472,7 @@ const OFFICIAL_VENUE_CATALOG: Array<{
   imageUrl: string;
   description: string;
 }> = [
+  { slug: "goat", canonicalName: "GOAT", city: "Santos", match: ["goat club", "goat dining club", "goat"], query: "Goat Club", imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/goat-comercio_72feaa77.jpg", description: "Club de música urbana e noites especiais no Centro de Santos." },
   { slug: "curvao-surf-house", canonicalName: "Curvão Surf House", city: "Guarujá", match: ["curvao surf house", "curvao"], query: "Curvão Surf House", imageUrl: "/venues/curvao-surf-house.jpg", description: "Surf house à beira-mar com festas, sunsets e noites de música no Guarujá." },
   { slug: "guaruja-golf-club", canonicalName: "Guarujá Golf Club", city: "Guarujá", match: ["guaruja golf club"], query: "Guarujá Golf Club", imageUrl: "/venues/guaruja-golf-club.jpg", description: "Clube cercado de verde para experiências e eventos especiais no Guarujá." },
   { slug: "boteco-almare", canonicalName: "Boteco Al Mare", city: "Guarujá", match: ["boteco al mare", "boteco almare"], query: "Boteco Al Mare", imageUrl: "/venues/boteco-almare.svg", description: "Boteco de música e festas na Rua Atílio Gelsomini, em Guarujá." },
