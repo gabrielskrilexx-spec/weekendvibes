@@ -3,12 +3,16 @@ import { Building2, CalendarDays, MapPin, X } from "lucide-react";
 import type { Event } from "../../../drizzle/schema";
 
 type VenueKey = string;
+const FALLBACK_IMAGE = "https://weekendvib-jscaalye.manus.space/manus-storage/santos-convention-center-fachada_67f02d28.jpg";
 
 export type DynamicVenue = {
   slug: string;
   canonicalName: string;
   city: string;
   aliases: string[];
+  query: string;
+  imageUrl: string;
+  description: string;
 };
 
 type Venue = {
@@ -22,78 +26,16 @@ type Venue = {
 };
 
 export const FEATURED_VENUES: Venue[] = [
-  {
-    key: "blue-med",
-    name: "Blue Med Convention Center",
-    aliases: "Santos Convention Center · antigo Mendes",
-    city: "Santos",
-    imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/santos-convention-center-fachada_67f02d28.jpg",
-    description: "Shows, espetáculos e grandes encontros na Ponta da Praia.",
-    query: "Santos Convention Center",
-  },
-  {
-    key: "parque-valongo",
-    name: "Parque Valongo",
-    aliases: "Centro histórico de Santos",
-    city: "Santos",
-    imageUrl: "https://turismosantos.com.br/sites/default/files/files_turismosantos/styles/node_wide/public/2026-09/japan_francisco_arrais_7397.jpg?h=501e7db7",
-    description: "Um novo polo aberto para música, cultura e experiências à beira do cais.",
-    query: "Parque Valongo",
-  },
-  {
-    key: "vallum-garden",
-    name: "Vallum Garden",
-    aliases: "Centro · R. Tuyuti, 86 · Santos - SP · 11010-220",
-    city: "Santos",
-    imageUrl: "/venues/vallum-garden.webp",
-    description: "Espaço de eventos e festas no Centro Histórico de Santos.",
-    query: "Vallum Garden",
-  },
-  {
-    key: "arena-club",
-    name: "Arena Club",
-    aliases: "Vila Mathias · Av. Pinheiro Machado, 33 · Santos",
-    city: "Santos",
-    imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/arena-club_2768a5f9.jpg",
-    description: "Casa de shows, rock, reggae e música alternativa na Vila Mathias.",
-    query: "Arena Club",
-  },
-  {
-    key: "laroc-guaruja",
-    name: "Laroc Club Guarujá",
-    aliases: "Praia do Perequê · Rod. Ariovaldo de Almeida de Viana · Guarujá",
-    city: "Guarujá",
-    imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/laroc-guaruja_13c232b6.jpg",
-    description: "Sunset e beach club de música eletrônica à beira-mar.",
-    query: "Laroc",
-  },
-  {
-    key: "guaruja-golf-club",
-    name: "Guarujá Golf Club",
-    aliases: "Praia de Pernambuco · Av. das Américas, 545 · Guarujá",
-    city: "Guarujá",
-    imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/guaruja-golf-club_8ed2fd53.jpg",
-    description: "Espaço amplo ao ar livre na Praia do Pernambuco para grandes festivais e festas.",
-    query: "Guarujá Golf Club",
-  },
-  {
-    key: "curvao-surf-house",
-    name: "Curvão Surf House",
-    aliases: "Enseada · Av. Miguel Estefno, 2435 · Guarujá - SP",
-    city: "Guarujá",
-    imageUrl: "/venues/curvao-surf-house.jpg",
-    description: "Surf house à beira-mar com festas, sunsets e noites de música no Guarujá.",
-    query: "Curvão Surf House",
-  },
-  {
-    key: "goat-club",
-    name: "Goat Club",
-    aliases: "Centro · Rua do Comércio, 63 · Santos - SP · 11010-141",
-    city: "Santos",
-    imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/goat-comercio_72feaa77.jpg",
-    description: "Club noturno focado em música urbana, funk e eletrônico no Centro de Santos.",
-    query: "Goat Club",
-  },
+  { key: "vallum-garden", name: "Vallum Garden", aliases: "Centro · R. Tuyuti, 86 · Santos - SP", city: "Santos", imageUrl: "/venues/vallum-garden.webp", description: "Espaço de eventos e festas no Centro Histórico de Santos.", query: "Vallum Garden" },
+  { key: "blue-med-convention-center", name: "Blue Med Convention Center", aliases: "Ponta da Praia · Santos - SP", city: "Santos", imageUrl: FALLBACK_IMAGE, description: "Shows, espetáculos e grandes encontros na Ponta da Praia.", query: "Santos Convention Center" },
+  { key: "parque-valongo", name: "Parque Valongo", aliases: "Centro histórico de Santos", city: "Santos", imageUrl: "https://turismosantos.com.br/sites/default/files/files_turismosantos/styles/node_wide/public/2026-09/japan_francisco_arrais_7397.jpg?h=501e7db7", description: "Polo aberto para música, cultura e experiências à beira do cais.", query: "Parque Valongo" },
+  { key: "casa-412", name: "Casa 412", aliases: "Vila Nova · Rua Braz Cubas, 412 · Santos - SP", city: "Santos", imageUrl: FALLBACK_IMAGE, description: "Espaço amplo e climatizado no centro histórico/Vila Nova, palco de festas e Jamboo Sessions.", query: "Casa 412" },
+  { key: "laroc-club", name: "Laroc Club", aliases: "Praia do Perequê · Guarujá - SP", city: "Guarujá", imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/laroc-guaruja_13c232b6.jpg", description: "Sunset e beach club de música eletrônica à beira-mar.", query: "Laroc Club Guarujá" },
+  { key: "o-beco", name: "O Beco", aliases: "Santos - SP", city: "Santos", imageUrl: FALLBACK_IMAGE, description: "Bar e espaço de festas com programação urbana em Santos.", query: "O Beco" },
+  { key: "dolores-restaurante-e-bar", name: "Dolores Restaurante e Bar", aliases: "Guarujá - SP", city: "Guarujá", imageUrl: FALLBACK_IMAGE, description: "Restaurante e bar com atmosfera descontraída para bons encontros.", query: "Dolores Restaurante e Bar" },
+  { key: "projac-bar", name: "Projac Bar", aliases: "Guarujá - SP", city: "Guarujá", imageUrl: FALLBACK_IMAGE, description: "Bar e palco para noites de música e experiências na Baixada.", query: "Projac Bar" },
+  { key: "meu-lugar", name: "Meu Lugar", aliases: "Santos - SP", city: "Santos", imageUrl: FALLBACK_IMAGE, description: "Espaço acolhedor para encontros, música e programação noturna.", query: "Meu Lugar" },
+  { key: "moby-dick", name: "Moby Dick", aliases: "Santos - SP", city: "Santos", imageUrl: FALLBACK_IMAGE, description: "Casa tradicional de shows e noites especiais em Santos.", query: "Moby Dick" },
 ];
 
 type VenueSpotlightProps = {
@@ -104,18 +46,9 @@ type VenueSpotlightProps = {
 };
 
 export default function VenueSpotlight({ selectedVenue, onSelect, events, dynamicVenues = [] }: VenueSpotlightProps) {
-  const dynamicFeatured = dynamicVenues
-    .filter(venue => !FEATURED_VENUES.some(featured => featured.key === venue.slug))
-    .map(venue => ({
-      key: venue.slug,
-      name: venue.canonicalName,
-      aliases: venue.canonicalName === "Casa 412" ? "Vila Nova · Rua Braz Cubas, 412 · Santos - SP" : venue.aliases.join(" · "),
-      city: venue.city as Venue["city"],
-      imageUrl: "",
-      description: venue.canonicalName === "Casa 412" ? "Espaço amplo e climatizado no centro histórico/Vila Nova em Santos, palco de festas e selos itinerantes como a Jamboo Sessions." : "Local ativo da Baixada Santista monitorado pelo WeekendVibes.",
-      query: venue.canonicalName,
-    }));
-  const venues = [...FEATURED_VENUES, ...dynamicFeatured];
+  const venues = dynamicVenues.length > 0
+    ? dynamicVenues.map(venue => ({ key: venue.slug, name: venue.canonicalName, aliases: venue.aliases.filter(alias => alias !== venue.canonicalName).join(" · ") || venue.canonicalName, city: venue.city as Venue["city"], imageUrl: venue.imageUrl || FALLBACK_IMAGE, description: venue.description, query: venue.query }))
+    : FEATURED_VENUES;
   const activeVenue = venues.find(venue => venue.key === selectedVenue);
   const carouselRef = React.useRef<HTMLDivElement>(null);
   const scrollCarousel = (direction: number) => carouselRef.current?.scrollBy({ left: direction * Math.max(carouselRef.current.clientWidth * 0.82, 280), behavior: "smooth" });
@@ -123,23 +56,15 @@ export default function VenueSpotlight({ selectedVenue, onSelect, events, dynami
     <section aria-labelledby="venues-heading" className="mx-auto max-w-7xl px-4 pt-10 sm:px-6">
       <div className="mb-5 flex items-end justify-between gap-4">
         <div><p className="text-xs font-black uppercase tracking-[0.2em] text-fuchsia-300">Explore por espaço</p><h2 id="venues-heading" className="mt-1 text-2xl font-black tracking-tight text-zinc-900 dark:text-white sm:text-3xl">Palcos da Baixada</h2></div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={() => scrollCarousel(-1)} aria-label="Mostrar espaços anteriores" className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white transition hover:border-orange-300/60 hover:text-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">←</button>
-          <button type="button" onClick={() => scrollCarousel(1)} aria-label="Mostrar próximos espaços" className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white transition hover:border-orange-300/60 hover:text-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">→</button>
-          {selectedVenue && <button type="button" onClick={() => onSelect("")} className="ml-1 text-xs font-black uppercase tracking-wider text-orange-300 hover:text-orange-200">Limpar local</button>}
-        </div>
+        <div className="flex items-center gap-2"><button type="button" onClick={() => scrollCarousel(-1)} aria-label="Mostrar espaços anteriores" className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white transition hover:border-orange-300/60 hover:text-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">←</button><button type="button" onClick={() => scrollCarousel(1)} aria-label="Mostrar próximos espaços" className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white transition hover:border-orange-300/60 hover:text-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">→</button>{selectedVenue && <button type="button" onClick={() => onSelect("")} className="ml-1 text-xs font-black uppercase tracking-wider text-orange-300 hover:text-orange-200">Limpar local</button>}</div>
       </div>
       <div id="venues-carousel" ref={carouselRef} aria-label="Carrossel de espaços da Baixada" tabIndex={0} className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3 scroll-smooth [scrollbar-width:thin] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">
         {venues.map(venue => {
           const active = selectedVenue === venue.key;
-          return <button key={venue.key} type="button" aria-pressed={active} onClick={() => onSelect(active ? "" : venue.key)} className={`group relative min-h-40 min-w-[82vw] snap-start overflow-hidden rounded-[24px] border text-left transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 sm:min-w-[calc(50%-0.5rem)] lg:min-w-[calc(33.333%-0.7rem)] ${active ? "border-orange-300 ring-2 ring-orange-300/30" : "border-white/10"}`}>
-            {venue.imageUrl && <img src={venue.imageUrl} alt={`Foto de ${venue.name}`} loading="lazy" onError={event => { event.currentTarget.style.display = "none"; }} className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105" />}
-            <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/55 to-transparent" />
-            <div className="relative flex min-h-40 flex-col justify-end p-5 text-white"><div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-orange-200"><Building2 size={14} /> {venue.city}</div><h3 className="mt-2 text-xl font-black leading-tight">{venue.name}</h3><p className="mt-1 text-xs text-zinc-300">{venue.aliases}</p></div>
-          </button>;
+          return <button key={venue.key} type="button" aria-pressed={active} onClick={() => onSelect(active ? "" : venue.key)} className={`group relative min-h-40 min-w-[82vw] snap-start overflow-hidden rounded-[24px] border text-left transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 sm:min-w-[calc(50%-0.5rem)] lg:min-w-[calc(33.333%-0.7rem)] ${active ? "border-orange-300 ring-2 ring-orange-300/30" : "border-white/10"}`}><img src={venue.imageUrl || FALLBACK_IMAGE} alt={`Foto de ${venue.name}`} loading="lazy" onError={event => { if (event.currentTarget.src !== FALLBACK_IMAGE) event.currentTarget.src = FALLBACK_IMAGE; }} className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105" /><div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/55 to-transparent" /><div className="relative flex min-h-40 flex-col justify-end p-5 text-white"><div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-orange-200"><Building2 size={14} /> {venue.city}</div><h3 className="mt-2 text-xl font-black leading-tight">{venue.name}</h3><p className="mt-1 text-xs text-zinc-300">{venue.aliases}</p></div></button>;
         })}
       </div>
-      {activeVenue && <div role="dialog" aria-modal="true" aria-labelledby="venue-dialog-title" className="fixed inset-0 z-50 grid place-items-center bg-zinc-950/80 p-4 backdrop-blur-sm" onClick={() => onSelect("")}><div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-white/10 bg-zinc-900 shadow-2xl" onClick={event => event.stopPropagation()}><div className="relative h-52 bg-gradient-to-br from-orange-950 via-fuchsia-950 to-zinc-900 sm:h-64">{activeVenue.imageUrl && <img src={activeVenue.imageUrl} alt={`Foto de ${activeVenue.name}`} onError={event => { event.currentTarget.style.display = "none"; }} className="h-full w-full object-cover" />}<div className="absolute inset-0 bg-gradient-to-t from-zinc-900 to-transparent" /><button type="button" onClick={() => onSelect("")} aria-label="Fechar detalhes do local" className="absolute right-4 top-4 inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-white/20 bg-zinc-950/70 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"><X size={18} /></button><div className="absolute bottom-5 left-5 right-5"><p className="text-xs font-black uppercase tracking-[0.18em] text-orange-200">Local em destaque</p><h3 id="venue-dialog-title" className="mt-1 text-3xl font-black text-white">{activeVenue.name}</h3></div></div><div className="p-5 sm:p-7"><p className="text-sm leading-relaxed text-zinc-300">{activeVenue.description}</p><div className="mt-5 flex items-center gap-2 text-xs font-bold text-zinc-400"><MapPin size={15} className="text-fuchsia-300" /> {activeVenue.city} · {activeVenue.aliases}</div><div className="mt-7 flex items-center gap-2"><CalendarDays size={17} className="text-orange-300" /><h4 className="font-black text-white">Próximos eventos confirmados</h4></div>{events.length > 0 ? <ul className="mt-3 space-y-3">{events.slice(0, 6).map(event => <li key={event.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4"><p className="font-black text-white">{event.title}</p><p className="mt-1 text-xs text-zinc-400">{new Date(event.eventDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} · {event.locationName}</p></li>)}</ul> : <p className="mt-3 rounded-2xl border border-dashed border-white/10 p-4 text-sm text-zinc-400">Nenhum evento futuro publicado neste local no momento.</p>}</div></div></div>}
+      {activeVenue && <div role="dialog" aria-modal="true" aria-labelledby="venue-dialog-title" className="fixed inset-0 z-50 grid place-items-center bg-zinc-950/80 p-4 backdrop-blur-sm" onClick={() => onSelect("")}><div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-white/10 bg-zinc-900 shadow-2xl" onClick={event => event.stopPropagation()}><div className="relative h-52 bg-gradient-to-br from-orange-950 via-fuchsia-950 to-zinc-900 sm:h-64"><img src={activeVenue.imageUrl || FALLBACK_IMAGE} alt={`Foto de ${activeVenue.name}`} onError={event => { if (event.currentTarget.src !== FALLBACK_IMAGE) event.currentTarget.src = FALLBACK_IMAGE; }} className="h-full w-full object-cover" /><div className="absolute inset-0 bg-gradient-to-t from-zinc-900 to-transparent" /><button type="button" onClick={() => onSelect("")} aria-label="Fechar detalhes do local" className="absolute right-4 top-4 inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-white/20 bg-zinc-950/70 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"><X size={18} /></button><div className="absolute bottom-5 left-5 right-5"><p className="text-xs font-black uppercase tracking-[0.18em] text-orange-200">Local em destaque</p><h3 id="venue-dialog-title" className="mt-1 text-3xl font-black text-white">{activeVenue.name}</h3></div></div><div className="p-5 sm:p-7"><p className="text-sm leading-relaxed text-zinc-300">{activeVenue.description}</p><div className="mt-5 flex items-center gap-2 text-xs font-bold text-zinc-400"><MapPin size={15} className="text-fuchsia-300" /> {activeVenue.city} · {activeVenue.aliases}</div><div className="mt-7 flex items-center gap-2"><CalendarDays size={17} className="text-orange-300" /><h4 className="font-black text-white">Próximos eventos confirmados</h4></div>{events.length > 0 ? <ul className="mt-3 space-y-3">{events.slice(0, 6).map(event => <li key={event.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4"><p className="font-black text-white">{event.title}</p><p className="mt-1 text-xs text-zinc-400">{new Date(event.eventDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} · {event.locationName}</p></li>)}</ul> : <p className="mt-3 rounded-2xl border border-dashed border-white/10 p-4 text-sm text-zinc-400">Nenhum evento futuro publicado neste local no momento.</p>}</div></div></div>}
     </section>
   );
 }

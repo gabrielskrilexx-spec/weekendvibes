@@ -3,50 +3,29 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import VenueSpotlight from "./VenueSpotlight";
 
-const event = { id: 1, title: "Pagodin com Belo", eventDate: "2030-11-23T20:00:00-03:00", locationName: "Santos Convention Center" } as never;
+const event = { id: 1, title: "Jamboo Session Santos", eventDate: "2030-11-23T20:00:00-03:00", locationName: "Casa 412" } as never;
+const curatedVenues = [
+  ["vallum-garden", "Vallum Garden"], ["blue-med-convention-center", "Blue Med Convention Center"], ["parque-valongo", "Parque Valongo"], ["casa-412", "Casa 412"], ["laroc-club", "Laroc Club"], ["o-beco", "O Beco"], ["dolores-restaurante-e-bar", "Dolores Restaurante e Bar"], ["projac-bar", "Projac Bar"], ["meu-lugar", "Meu Lugar"], ["moby-dick", "Moby Dick"],
+] as const;
+
+function dynamicCatalog() {
+  return curatedVenues.map(([slug, canonicalName]) => ({ slug, canonicalName, city: slug === "laroc-club" || slug === "dolores-restaurante-e-bar" || slug === "projac-bar" ? "Guarujá" : "Santos", aliases: [canonicalName], query: canonicalName, imageUrl: "https://example.com/venue-cover.jpg", description: "Local oficial da Baixada." }));
+}
 
 describe("VenueSpotlight", () => {
-  it("exibe os venues, endereços corrigidos e controles acessíveis do carrossel", () => {
-    const initial = renderToStaticMarkup(<VenueSpotlight selectedVenue="" onSelect={vi.fn()} events={[]} />);
-    expect(initial).toContain("Blue Med Convention Center");
-    expect(initial).toContain("Parque Valongo");
-    expect(initial).toContain("Vallum Garden");
-    expect(initial).toContain("Arena Club");
-    expect(initial).toContain("Laroc Club Guarujá");
-    expect(initial).toContain("Guarujá Golf Club");
-    expect(initial).toContain("Curvão Surf House");
-    expect(initial).toContain("Goat Club");
-    expect(initial).toContain("https://weekendvib-jscaalye.manus.space/manus-storage/laroc-guaruja_13c232b6.jpg");
-    expect(initial).toContain("R. Tuyuti, 86");
-    expect(initial).toContain("Rua do Comércio, 63");
-    expect(initial).toContain("/venues/vallum-garden.webp");
-    expect(initial).toContain("/venues/curvao-surf-house.jpg");
-    expect(initial).toContain("goat-comercio_72feaa77.jpg");
-    expect(initial).toContain('aria-label="Carrossel de espaços da Baixada"');
-    expect(initial).toContain('aria-label="Mostrar espaços anteriores"');
-    expect(initial).toContain('aria-label="Mostrar próximos espaços"');
-    expect(initial).toContain("Guarujá");
-    expect(initial).toContain("https://weekendvib-jscaalye.manus.space/manus-storage/santos-convention-center-fachada_67f02d28.jpg");
-    expect(initial).not.toContain("SHOW-ROBERTO-CARLOS.png");
-    const selected = renderToStaticMarkup(<VenueSpotlight selectedVenue="blue-med" onSelect={vi.fn()} events={[event]} />);
-    expect(selected).toContain('role="dialog"');
-    expect(selected).toContain("Pagodin com Belo");
-    expect(selected).toContain('aria-label="Fechar detalhes do local"');
-    const guaruja = renderToStaticMarkup(<VenueSpotlight selectedVenue="laroc-guaruja" onSelect={vi.fn()} events={[]} />);
-    expect(guaruja).toContain("Sunset e beach club de música eletrônica à beira-mar.");
-    expect(guaruja).toContain("Praia do Perequê");
-    const vallum = renderToStaticMarkup(<VenueSpotlight selectedVenue="vallum-garden" onSelect={vi.fn()} events={[]} />);
-    expect(vallum).toContain("R. Tuyuti, 86");
-    expect(vallum).toContain("/venues/vallum-garden.webp");
-    const goat = renderToStaticMarkup(<VenueSpotlight selectedVenue="goat-club" onSelect={vi.fn()} events={[]} />);
-    expect(goat).toContain("Rua do Comércio, 63");
-    expect(goat).toContain("goat-comercio_72feaa77.jpg");
-    const curvao = renderToStaticMarkup(<VenueSpotlight selectedVenue="curvao-surf-house" onSelect={vi.fn()} events={[]} />);
-    expect(curvao).toContain("Av. Miguel Estefno, 2435");
-    expect(curvao).toContain("Guarujá");
-    const dynamic = renderToStaticMarkup(<VenueSpotlight selectedVenue="casa-412" onSelect={vi.fn()} events={[]} dynamicVenues={[{ slug: "casa-412", canonicalName: "Casa 412", city: "Santos", aliases: ["casa 412", "casa412", "Casa 412"] }]} />);
-    expect(dynamic).toContain("Casa 412");
-    expect(dynamic).toContain("Rua Braz Cubas, 412");
-    expect(dynamic).toContain("Jamboo Sessions");
+  it("exibe somente os dez palcos oficiais com imagens e sem locais removidos", () => {
+    const markup = renderToStaticMarkup(<VenueSpotlight selectedVenue="" onSelect={vi.fn()} events={[]} dynamicVenues={dynamicCatalog()} />);
+    for (const [, name] of curatedVenues) expect(markup).toContain(name);
+    expect(markup.match(/https:\/\/example\.com\/venue-cover\.jpg/g)?.length).toBe(10);
+    for (const removed of ["Casa Grande Hotel Resort", "Flamingo", "Goat Dining Club", "Mendes Convention Center", "Moby House", "Osuco", "Arcos do Valongo", "Arena Club", "Goat Club", "Curvão Surf House"]) expect(markup).not.toContain(removed);
+    expect(markup).not.toContain("casa-412 · Casa 412");
+  });
+
+  it("mantém a vitrine visual quando o catálogo da API ainda não carregou", () => {
+    const markup = renderToStaticMarkup(<VenueSpotlight selectedVenue="casa-412" onSelect={vi.fn()} events={[event]} />);
+    expect(markup).toContain("Casa 412");
+    expect(markup).toContain("/venues/vallum-garden.webp");
+    expect(markup).toContain("Ponta da Praia · Santos - SP");
+    expect(markup).toContain("Jamboo Session Santos");
   });
 });

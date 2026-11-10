@@ -50,7 +50,7 @@ export default function Home() {
     city: quickFilter === "santos" ? "Santos" : quickFilter === "guaruja" ? "Guarujá" : city === "Santos" || city === "Guarujá" ? city : undefined,
     category: category === "show" || category === "balada" || category === "evento_musical" ? category : undefined,
     genre: genre === "funk" || genre === "house_eletronica" || genre === "samba_pagode" || genre === "rap_trap" ? genre : undefined,
-    venue: venue === "blue-med" ? "Santos Convention Center" : venue === "parque-valongo" ? "Parque Valongo" : venue === "vallum-garden" ? "Vallum Garden" : venue === "arena-club" ? "Arena Club" : venue === "laroc-guaruja" ? "Laroc" : venue === "guaruja-golf-club" ? "Guarujá Golf Club" : venue === "curvao-surf-house" ? "Curvão Surf House" : venue === "goat-club" ? "Goat Club" : activeVenues.find(item => item.slug === venue)?.canonicalName,
+    venue: activeVenues.find(item => item.slug === venue)?.query,
     size: 40,
   }, { retry: 1, refetchOnWindowFocus: false, refetchOnMount: "always", refetchInterval: 60_000 });
   const events = useMemo(() => eventsQuery.data ?? [], [eventsQuery.data]);

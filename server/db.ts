@@ -457,24 +457,41 @@ export type ActiveVenueCatalogItem = {
   canonicalName: string;
   city: string;
   aliases: string[];
+  query: string;
+  imageUrl: string;
+  description: string;
 };
+
+const VENUE_FALLBACK_IMAGE = "https://weekendvib-jscaalye.manus.space/manus-storage/santos-convention-center-fachada_67f02d28.jpg";
+const OFFICIAL_VENUE_CATALOG: Array<{
+  slug: string;
+  canonicalName: string;
+  city: string;
+  match: string[];
+  query: string;
+  imageUrl: string;
+  description: string;
+}> = [
+  { slug: "vallum-garden", canonicalName: "Vallum Garden", city: "Santos", match: ["vallum garden", "complexo vallum garden"], query: "Vallum Garden", imageUrl: "/venues/vallum-garden.webp", description: "Espaço de eventos e festas no Centro Histórico de Santos." },
+  { slug: "blue-med-convention-center", canonicalName: "Blue Med Convention Center", city: "Santos", match: ["blue med convention center", "santos convention center", "mendes convention center"], query: "Santos Convention Center", imageUrl: VENUE_FALLBACK_IMAGE, description: "Shows, espetáculos e grandes encontros na Ponta da Praia." },
+  { slug: "parque-valongo", canonicalName: "Parque Valongo", city: "Santos", match: ["parque valongo"], query: "Parque Valongo", imageUrl: "https://turismosantos.com.br/sites/default/files/files_turismosantos/styles/node_wide/public/2026-09/japan_francisco_arrais_7397.jpg?h=501e7db7", description: "Polo aberto para música, cultura e experiências à beira do cais." },
+  { slug: "casa-412", canonicalName: "Casa 412", city: "Santos", match: ["casa 412", "casa412"], query: "Casa 412", imageUrl: VENUE_FALLBACK_IMAGE, description: "Espaço amplo e climatizado no centro histórico/Vila Nova, palco de festas e Jamboo Sessions." },
+  { slug: "laroc-club", canonicalName: "Laroc Club", city: "Guarujá", match: ["laroc club", "laroc club guaruja", "laroc"], query: "Laroc Club Guarujá", imageUrl: "https://weekendvib-jscaalye.manus.space/manus-storage/laroc-guaruja_13c232b6.jpg", description: "Sunset e beach club de música eletrônica à beira-mar." },
+  { slug: "o-beco", canonicalName: "O Beco", city: "Santos", match: ["o beco", "o bēco"], query: "O Beco", imageUrl: VENUE_FALLBACK_IMAGE, description: "Bar e espaço de festas com programação urbana em Santos." },
+  { slug: "dolores-restaurante-e-bar", canonicalName: "Dolores Restaurante e Bar", city: "Guarujá", match: ["dolores restaurante e bar", "dolores bar e restaurante", "dolores"], query: "Dolores Restaurante e Bar", imageUrl: VENUE_FALLBACK_IMAGE, description: "Restaurante e bar com atmosfera descontraída para bons encontros." },
+  { slug: "projac-bar", canonicalName: "Projac Bar", city: "Guarujá", match: ["projac bar", "projac"], query: "Projac Bar", imageUrl: VENUE_FALLBACK_IMAGE, description: "Bar e palco para noites de música e experiências na Baixada." },
+  { slug: "meu-lugar", canonicalName: "Meu Lugar", city: "Santos", match: ["meu lugar"], query: "Meu Lugar", imageUrl: VENUE_FALLBACK_IMAGE, description: "Espaço acolhedor para encontros, música e programação noturna." },
+  { slug: "moby-dick", canonicalName: "Moby Dick", city: "Santos", match: ["moby dick"], query: "Moby Dick", imageUrl: VENUE_FALLBACK_IMAGE, description: "Casa tradicional de shows e noites especiais em Santos." },
+] as const;
 
 export async function listActiveVenueCatalog(dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<ActiveVenueCatalogItem[]> {
   const rows = (await listLocationAliases(dbOverride)).filter(row => row.isActive === 1);
-  const grouped = new Map<string, ActiveVenueCatalogItem>();
-  for (const row of rows) {
-    const key = `${row.city}:${row.canonicalName}`;
-    const current = grouped.get(key) ?? {
-      slug: normalizeAlias(row.canonicalName).replace(/\s+/g, "-"),
-      canonicalName: row.canonicalName,
-      city: row.city,
-      aliases: [],
-    };
-    if (!current.aliases.includes(row.alias)) current.aliases.push(row.alias);
-    if (!current.aliases.includes(row.canonicalName)) current.aliases.push(row.canonicalName);
-    grouped.set(key, current);
-  }
-  return Array.from(grouped.values()).sort((left, right) => left.city.localeCompare(right.city) || left.canonicalName.localeCompare(right.canonicalName));
+  return OFFICIAL_VENUE_CATALOG.flatMap(config => {
+    const matched = rows.filter(row => config.match.includes(normalizeAlias(row.alias)) || config.match.includes(normalizeAlias(row.canonicalName)));
+    if (matched.length === 0) return [];
+    const aliases = Array.from(new Set(matched.flatMap(row => [row.alias, row.canonicalName])));
+    return [{ slug: config.slug, canonicalName: config.canonicalName, city: config.city, aliases, query: config.query, imageUrl: config.imageUrl, description: config.description }];
+  });
 }
 
 export async function listActiveMonitoredBrands(dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<MonitoredBrand[]> {
