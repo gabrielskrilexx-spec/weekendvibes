@@ -44,5 +44,9 @@ describe("VenueSpotlight", () => {
     const curvao = renderToStaticMarkup(<VenueSpotlight selectedVenue="curvao-surf-house" onSelect={vi.fn()} events={[]} />);
     expect(curvao).toContain("Av. Miguel Estefno, 2435");
     expect(curvao).toContain("Guarujá");
+    const dynamic = renderToStaticMarkup(<VenueSpotlight selectedVenue="casa-412" onSelect={vi.fn()} events={[]} dynamicVenues={[{ slug: "casa-412", canonicalName: "Casa 412", city: "Santos", aliases: ["casa 412", "casa412", "Casa 412"] }]} />);
+    expect(dynamic).toContain("Casa 412");
+    expect(dynamic).toContain("Rua Braz Cubas, 412");
+    expect(dynamic).toContain("Jamboo Sessions");
   });
 });

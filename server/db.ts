@@ -452,6 +452,31 @@ export async function listActiveLocationAliasValues(dbOverride?: Awaited<ReturnT
   return rows.filter(row => row.isActive === 1).flatMap(row => [row.alias, row.canonicalName]);
 }
 
+export type ActiveVenueCatalogItem = {
+  slug: string;
+  canonicalName: string;
+  city: string;
+  aliases: string[];
+};
+
+export async function listActiveVenueCatalog(dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<ActiveVenueCatalogItem[]> {
+  const rows = (await listLocationAliases(dbOverride)).filter(row => row.isActive === 1);
+  const grouped = new Map<string, ActiveVenueCatalogItem>();
+  for (const row of rows) {
+    const key = `${row.city}:${row.canonicalName}`;
+    const current = grouped.get(key) ?? {
+      slug: normalizeAlias(row.canonicalName).replace(/\s+/g, "-"),
+      canonicalName: row.canonicalName,
+      city: row.city,
+      aliases: [],
+    };
+    if (!current.aliases.includes(row.alias)) current.aliases.push(row.alias);
+    if (!current.aliases.includes(row.canonicalName)) current.aliases.push(row.canonicalName);
+    grouped.set(key, current);
+  }
+  return Array.from(grouped.values()).sort((left, right) => left.city.localeCompare(right.city) || left.canonicalName.localeCompare(right.canonicalName));
+}
+
 export async function listActiveMonitoredBrands(dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<MonitoredBrand[]> {
   const db = dbOverride ?? await getDb();
   if (!db) return [];

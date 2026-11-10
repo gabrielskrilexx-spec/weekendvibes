@@ -33,7 +33,8 @@ export default function Home() {
   const [city, setCity] = useState("Todas");
   const [category, setCategory] = useState("Todas");
   const [genre, setGenre] = useState("");
-  const [venue, setVenue] = useState<"blue-med" | "parque-valongo" | "vallum-garden" | "arena-club" | "laroc-guaruja" | "guaruja-golf-club" | "curvao-surf-house" | "goat-club" | "">("");
+  const [venue, setVenue] = useState<string>("");
+  const { data: activeVenues = [] } = trpc.venues.list.useQuery(undefined, { retry: 1, refetchOnWindowFocus: false });
   const [quickFilter, setQuickFilter] = useState<(typeof quickFilters)[number]["value"]>("todos");
   const todayKey = saoPauloDateKey();
   const quickRange = useMemo(() => {
@@ -49,7 +50,7 @@ export default function Home() {
     city: quickFilter === "santos" ? "Santos" : quickFilter === "guaruja" ? "Guarujá" : city === "Santos" || city === "Guarujá" ? city : undefined,
     category: category === "show" || category === "balada" || category === "evento_musical" ? category : undefined,
     genre: genre === "funk" || genre === "house_eletronica" || genre === "samba_pagode" || genre === "rap_trap" ? genre : undefined,
-    venue: venue === "blue-med" ? "Santos Convention Center" : venue === "parque-valongo" ? "Parque Valongo" : venue === "vallum-garden" ? "Vallum Garden" : venue === "arena-club" ? "Arena Club" : venue === "laroc-guaruja" ? "Laroc" : venue === "guaruja-golf-club" ? "Guarujá Golf Club" : venue === "curvao-surf-house" ? "Curvão Surf House" : venue === "goat-club" ? "Goat Club" : undefined,
+    venue: venue === "blue-med" ? "Santos Convention Center" : venue === "parque-valongo" ? "Parque Valongo" : venue === "vallum-garden" ? "Vallum Garden" : venue === "arena-club" ? "Arena Club" : venue === "laroc-guaruja" ? "Laroc" : venue === "guaruja-golf-club" ? "Guarujá Golf Club" : venue === "curvao-surf-house" ? "Curvão Surf House" : venue === "goat-club" ? "Goat Club" : activeVenues.find(item => item.slug === venue)?.canonicalName,
     size: 40,
   }, { retry: 1, refetchOnWindowFocus: false, refetchOnMount: "always", refetchInterval: 60_000 });
   const events = useMemo(() => eventsQuery.data ?? [], [eventsQuery.data]);
@@ -88,7 +89,7 @@ export default function Home() {
 
       <TodayEvents />
 
-      <VenueSpotlight selectedVenue={venue} onSelect={setVenue} events={events} />
+      <VenueSpotlight selectedVenue={venue} onSelect={setVenue} events={events} dynamicVenues={activeVenues} />
 
       <section id="filtros" aria-labelledby="filtros-heading" className="mx-auto max-w-7xl scroll-mt-24 px-4 pt-8 sm:px-6">
         <div className="mb-5"><p className="text-xs font-black uppercase tracking-[0.2em] text-orange-700 dark:text-orange-300">Encontre seu rolê</p><h2 id="filtros-heading" className="mt-1 text-3xl font-black tracking-tight text-zinc-900 dark:text-white">Escolha a vibe</h2></div>

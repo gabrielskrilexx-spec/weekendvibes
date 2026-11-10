@@ -74,6 +74,7 @@ import {
 import {
   createLocationAlias,
   deleteLocationAlias,
+  listActiveVenueCatalog,
   listLocationAliases,
   updateLocationAlias,
   listPotentialEventCollisions,
@@ -987,7 +988,12 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         await deleteLocationAlias(input.id);
         return { success: true as const, deletedId: String(input.id) };
-      }),
+    }),
+  }),
+  venues: router({
+    list: publicProcedure.query(async () =>
+      normalizeJsonForTransport(await listActiveVenueCatalog())
+    ),
   }),
   circuitBreaker: router({
     statuses: adminOnly.query(async () =>
