@@ -462,7 +462,7 @@ export type ActiveVenueCatalogItem = {
   description: string;
 };
 
-const VENUE_FALLBACK_IMAGE = "https://weekendvib-jscaalye.manus.space/manus-storage/santos-convention-center-fachada_67f02d28.jpg";
+const VENUE_FALLBACK_IMAGE = "/venues/vallum-garden.webp";
 const OFFICIAL_VENUE_CATALOG: Array<{
   slug: string;
   canonicalName: string;
