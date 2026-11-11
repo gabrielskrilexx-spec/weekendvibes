@@ -239,6 +239,11 @@ export function matchesTrackedPublicBrand(value: string, sourceKey?: string, bra
   return Boolean(getTrackedPublicBrand(value, sourceKey, brands));
 }
 
+/** A monitored brand is a valid target even when the event location is itinerant. */
+export function matchesPublicTarget(value: string, sourceKey: string | undefined, aliases: string[], brands: MonitoredBrandRule[] = []) {
+  return containsTargetVenue(value, aliases) || matchesTrackedPublicBrand(value, sourceKey, brands);
+}
+
 export function buildPublicEventIdentity(sourceKey: string, title: string, eventDate: Date | string, sourceUrl: string, brands: MonitoredBrandRule[] = []) {
   const day = new Date(eventDate).toISOString().slice(0, 10);
   const brand = getTrackedPublicBrand(`${title} ${sourceUrl}`, sourceKey, brands);
@@ -1383,7 +1388,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
   const matchesTargetVenue = (value: string) => containsTargetVenue(value, activeAliases);
   const matchesTargetContent = (value: string, sourceUrl?: string) => {
     const sourceKey = sourceUrl ? publicSourceKey(sourceUrl) : options.sourceKey;
-    return matchesTargetVenue(value) || matchesTrackedPublicBrand(value, sourceKey, activeBrands);
+    return matchesPublicTarget(value, sourceKey, activeAliases, activeBrands);
   };
   const candidateUrls = await discoverCandidatePages(options, activeAliases);
   if (candidateUrls.length === 0) return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: true, reason: "Nenhuma fonte de ingestão configurada", sourceReports: [] as IngestionSourceReport[] };

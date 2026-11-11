@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatArticketSourceName } from "./db";
-import { BLACKPASS_FETCH_TIMEOUT_MS, BLUE_MED_FETCH_TIMEOUT_MS, buildPublicEventIdentity, containsTargetVenue, discoverArticketEventLinks, EVENTOS_LITORAL_FETCH_TIMEOUT_MS, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, getMonitoredPublicBrand, getTrackedPublicBrand, matchesTrackedPublicBrand, PARQUE_VALONGO_FETCH_TIMEOUT_MS, parseArticketEventMetadata, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseBlueMedAgendaEvents, parseEventosLitoralOrganizerMetadata, parseMrIngressosEventMetadata, parseParqueValongoEventMetadata, parseSymplaEventMetadata, parseTicket360EventMetadata, parseTicketingEventMetadata, parseWeTicketEventMetadata, publicSourceKey, SYMPLA_FETCH_TIMEOUT_MS, WETICKET_FETCH_TIMEOUT_MS } from "./ingestion";
+import { BLACKPASS_FETCH_TIMEOUT_MS, BLUE_MED_FETCH_TIMEOUT_MS, buildPublicEventIdentity, containsTargetVenue, discoverArticketEventLinks, EVENTOS_LITORAL_FETCH_TIMEOUT_MS, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, getMonitoredPublicBrand, getTrackedPublicBrand, matchesPublicTarget, matchesTrackedPublicBrand, PARQUE_VALONGO_FETCH_TIMEOUT_MS, parseArticketEventMetadata, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseBlueMedAgendaEvents, parseEventosLitoralOrganizerMetadata, parseMrIngressosEventMetadata, parseParqueValongoEventMetadata, parseSymplaEventMetadata, parseTicket360EventMetadata, parseTicketingEventMetadata, parseWeTicketEventMetadata, publicSourceKey, SYMPLA_FETCH_TIMEOUT_MS, WETICKET_FETCH_TIMEOUT_MS } from "./ingestion";
 
 describe("adapters de ticketeiras oficiais", () => {
   it("reconhece marcas monitoradas dinamicamente só nas plataformas configuradas", () => {
@@ -12,8 +12,10 @@ describe("adapters de ticketeiras oficiais", () => {
     }];
 
     expect(getMonitoredPublicBrand("Festival PlantsSantos edição verão", "public:sympla", brands)?.name).toBe("Plants Santos");
-    expect(getTrackedPublicBrand("Festival Plants Santos edição verão", "public:ingresse", brands)).toBe("Plants Santos");
+    expect(getTrackedPublicBrand("Festival PlantsSantos edição verão", "public:ingresse", brands)).toBe("Plants Santos");
     expect(matchesTrackedPublicBrand("Plants Santos", "public:zig", brands)).toBe(false);
+    const nossoAfter = [{ name: "Nosso After", cities: ["Guarujá", "Santos"], platforms: ["Bilheterias itinerantes"], matchTerms: ["Nosso After", "NossoAfter"] }];
+    expect(matchesPublicTarget("Nosso After GTA VI Edition — Praça Dr. Walter Belian, Guarujá", "public:ingresse", [], nossoAfter)).toBe(true);
     const instagramBrand = [{ name: "Nosso After", cities: ["Guarujá", "Santos"], platforms: ["Instagram"], matchTerms: ["nossoafterguaruja"] }];
     expect(getMonitoredPublicBrand("nossoafterguaruja agenda", "instagram:nossoafterguaruja", instagramBrand)?.name).toBe("Nosso After");
   });
