@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
+import { VitePWA } from "vite-plugin-pwa";
 
 // =============================================================================
 // Manus Debug Collector - Vite Plugin
@@ -150,7 +151,47 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
+const plugins = [
+  react(),
+  tailwindcss(),
+  jsxLocPlugin(),
+  vitePluginManusRuntime(),
+  vitePluginManusDebugCollector(),
+  VitePWA({
+    registerType: "autoUpdate",
+    injectRegister: "auto",
+    strategies: "injectManifest",
+    srcDir: path.resolve(import.meta.dirname, "client", "src"),
+    filename: "sw.ts",
+    includeAssets: [
+      "venues/*.webp",
+      "icons/icon-180.png",
+      "icons/icon-192.png",
+      "icons/icon-512.png",
+      "icons/icon-512-maskable.png",
+    ],
+    manifest: {
+      name: "WeekendVibes — Eventos na Baixada",
+      short_name: "WeekendVibes",
+      scope: "/",
+      start_url: "/",
+      display: "standalone",
+      lang: "pt-BR",
+      background_color: "#09090b",
+      theme_color: "#09090b",
+      icons: [
+        { src: "/icons/icon-180.png", sizes: "180x180", type: "image/png", purpose: "any" },
+        { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+        { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+        { src: "/icons/icon-512-maskable.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      ],
+    },
+    injectManifest: {
+      globPatterns: ["**/*.{js,css,woff,woff2,ttf}"],
+      globIgnores: ["**/icons/**"],
+    },
+  }),
+];
 
 export default defineConfig({
   plugins,
