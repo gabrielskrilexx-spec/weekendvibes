@@ -140,7 +140,7 @@ describe("Instagram weekend pipeline", () => {
       activeTargets.map(target => ({ handle: target.username })) as unknown as Awaited<ReturnType<typeof dbModule.listEnabledInstagramSources>>,
     );
     const apifyModule = await import("./apify-async");
-    const dispatchSpy = vi.spyOn(apifyModule, "startAsyncApifyStoriesRun").mockResolvedValue({ runId: 777, actorRunId: "actor-test", status: "QUEUED" });
+    const dispatchSpy = vi.spyOn(apifyModule, "startAsyncApifyStoriesRun").mockResolvedValue({ accepted: true, runId: 777, actorRunId: "actor-test", status: "QUEUED" });
     try {
       delete process.env.META_INSTAGRAM_TOKEN;
       delete process.env.META_INSTAGRAM_ACCOUNT_ID;

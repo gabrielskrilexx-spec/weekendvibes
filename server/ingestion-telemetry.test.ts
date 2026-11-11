@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSourceTelemetryForTest, buildSourceTelemetryHistoryForTest, classifyIngestionRunCategoryForTest, findConsecutiveP95PerformanceAlertsForTest } from "./ingestion-reports";
+import { buildSourceTelemetryForTest, buildSourceTelemetryHistoryForTest, classifyIngestionRunCategoryForTest, findConsecutiveP95PerformanceAlertsForTest, getEffectiveIngestionP95ThresholdForTest } from "./ingestion-reports";
 
 describe("telemetria por fonte", () => {
   it("agrega sucesso, latência e categorias de bloqueio", () => {
@@ -45,9 +45,9 @@ describe("telemetria por fonte", () => {
 
   it("usa o limiar de Cron para fontes públicas identificadas por prefixo", () => {
     const alerts = findConsecutiveP95PerformanceAlertsForTest([
-      { sourceKey: "public:ingresse", status: "succeeded", startedAt: "2026-08-26T13:00:00.000Z", durationMs: 41_000 },
-      { sourceKey: "public:ingresse", status: "succeeded", startedAt: "2026-08-26T12:00:00.000Z", durationMs: 42_000 },
-    ]);
+      { sourceKey: "public:ingresse", routine: "public-agenda", status: "succeeded", startedAt: "2026-08-26T13:00:00.000Z", durationMs: 41_000 },
+      { sourceKey: "public:ingresse", routine: "public-agenda", status: "succeeded", startedAt: "2026-08-26T12:00:00.000Z", durationMs: 42_000 },
+    ], run => getEffectiveIngestionP95ThresholdForTest(run, { kind: "public", p95LatencyThresholdMs: 3_000 }));
     expect(alerts[0]).toMatchObject({ sourceKey: "public:ingresse", thresholdMs: 40_000 });
   });
 

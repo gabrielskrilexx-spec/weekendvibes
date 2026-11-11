@@ -77,7 +77,7 @@ describe("Apify async Stories", () => {
 
     const result = await startAsyncApifyStoriesRun({ targets: [{ username: "venue-test" }] });
 
-    expect(result).toEqual({ runId: 42, actorRunId: "actor-run-1", status: "QUEUED" });
+    expect(result).toEqual({ accepted: true, runId: 42, actorRunId: "actor-run-1", status: "QUEUED" });
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(getConfiguredApifyStoriesActorId()).toBe("zaver.api~instagram-stories-highlights-scraper");
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/v2/acts/zaver.api~instagram-stories-highlights-scraper/runs?");
@@ -90,7 +90,7 @@ describe("Apify async Stories", () => {
     expect(requestUrl.searchParams.has("token")).toBe(false);
     expect(webhookInput).toBe(Buffer.from(JSON.stringify(webhooks), "utf8").toString("base64"));
     expect(requestInit?.headers).toMatchObject({ Authorization: "Bearer test-token" });
-    expect(JSON.parse(String(requestInit?.body))).toEqual({ targets: ["venue-test"], scrapeType: "both", maxHighlights: 2, onlyNew: true });
+    expect(JSON.parse(String(requestInit?.body))).toEqual({ targets: ["venue-test"], scrapeType: "stories", maxHighlights: 1, onlyNew: true });
     expect(webhooks).toEqual([expect.objectContaining({
       eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.TIMED_OUT", "ACTOR.RUN.ABORTED"],
       requestUrl: "https://weekendvib-jscaalye.manus.space/api/webhooks/apify/instagram",
