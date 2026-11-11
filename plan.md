@@ -26,7 +26,7 @@ Servir metadados route-specific no HTML inicial de páginas públicas, especialm
 
 ### Fase 3 — push PWA e analytics
 
-Adicionar listeners de `push` e `notificationclick` ao Service Worker existente e persistir inscrições por endpoint com upsert/desativação. A subscrição do navegador deve ser explícita, precedida de consentimento e só habilitada quando a chave pública VAPID e o serviço de entrega estiverem configurados. Não registrar nem incluir segredo VAPID no bundle/arquivo versionado. Adicionar toggle discreto, feedback de suporte/indisponibilidade e eventos de analytics sem PII, incluindo instalação do PWA e interações essenciais.
+Adicionar listeners de `push` e `notificationclick` ao Service Worker existente. A inscrição fica no `PushManager` do navegador e só é solicitada após consentimento; o toggle é desabilitado quando o suporte/chave pública VAPID não está configurado. A chave privada e o serviço emissor não serão inventados nem publicados: sem esse backend, a interface explica que a permissão local não equivale à entrega ativa de alertas. Adicionar eventos agregados de analytics sem PII, incluindo instalação do PWA, page views e transições offline, expostos em logs filtrados do servidor.
 
 ### Fase 4 — testes e observabilidade E2E
 

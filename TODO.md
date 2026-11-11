@@ -13,12 +13,13 @@
 - [x] Configurar um gerador/servidor de imagens de pré-visualização para que links compartilhados no WhatsApp e Instagram Stories exibam o card visual do evento com o logo e cores do WeekendVibes.
 - [x] Validar HTML de rotas públicas, páginas de evento, inexistentes, status HTTP, origem absoluta e PNG 1200×630; `pnpm check`, `pnpm build` e 9/9 testes direcionados passaram.
 
-## Fase 3 — engajamento no PWA & Push Notifications — pendente
+## Fase 3 — engajamento no PWA & Push Notifications — concluída (base inicial)
 
-- [ ] Configurar a estrutura inicial da Web Push API no Service Worker existente para suporte a notificações nativas no Android e iOS.
-- [ ] Adicionar um toggle discreto na interface para o usuário permitir “Receber alertas dos eventos do fim de semana”.
-- [ ] Adicionar eventos de analytics simples para monitorar instalações do PWA e uso da interface.
-- [ ] Persistir consentimentos/inscrições de forma segura, manter a inscrição opt-in, não expor segredos VAPID e explicar/representar estados sem configuração; executar `pnpm check` e `pnpm build` e commitar a fase.
+- [x] Configurar listeners de `push` e `notificationclick` no Service Worker para notificações nativas, com URLs de clique limitadas à mesma origem.
+- [x] Adicionar toggle discreto “Receber alertas dos eventos do fim de semana”, com consentimento explícito, estados de suporte/configuração e inscrição via `PushManager`.
+- [x] Adicionar analytics agregados para page views, instalações PWA, eventos do toggle e transições offline, sem PII; API protegida por allowlist/rate limit e emitida nos logs.
+- [x] Executar `pnpm check`, `pnpm build` e 2 testes unitários direcionados (aprovados).
+- [ ] Pendência operacional, não bloqueadora para o Preview: configurar `VITE_VAPID_PUBLIC_KEY` e o serviço emissor privado antes de ativar/entregar alertas reais; não há envio de notificações implementado nesta base inicial.
 
 ## Fase 4 — testes automatizados e monitoramento (E2E) — pendente
 

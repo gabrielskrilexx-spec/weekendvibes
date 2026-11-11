@@ -1,8 +1,8 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
@@ -12,6 +12,7 @@ import Legal from "@/pages/Legal";
 import CookieConsent from "./components/CookieConsent";
 import LegalConsentGate from "./components/LegalConsentGate";
 import PwaInstallPrompt from "./components/PwaInstallPrompt";
+import { trackWebAnalytics } from "@/lib/analytics";
 
 const EventDetail = lazy(() => import("@/pages/EventDetail"));
 const Admin = lazy(() => import("@/pages/Admin"));
@@ -27,6 +28,8 @@ function RouteLoading() {
 }
 
 function Router() {
+  const [location] = useLocation();
+  useEffect(() => { trackWebAnalytics("page_view", location.split(/[?#]/, 1)[0] || "/"); }, [location]);
   return (
     <Suspense fallback={<RouteLoading />}>
       <Switch>
