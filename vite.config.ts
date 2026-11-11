@@ -163,7 +163,13 @@ const plugins = [
     strategies: "injectManifest",
     srcDir: path.resolve(import.meta.dirname, "client", "src"),
     filename: "sw.ts",
-    includeAssets: ["venues/*.webp"],
+    includeAssets: [
+      "venues/*.webp",
+      "icons/icon-180.png",
+      "icons/icon-192.png",
+      "icons/icon-512.png",
+      "icons/icon-512-maskable.png",
+    ],
     manifest: {
       name: "WeekendVibes — Eventos na Baixada",
       short_name: "WeekendVibes",
@@ -174,8 +180,9 @@ const plugins = [
       background_color: "#09090b",
       theme_color: "#09090b",
       icons: [
-        { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-        { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+        { src: "/icons/icon-180.png", sizes: "180x180", type: "image/png", purpose: "any" },
+        { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+        { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
         { src: "/icons/icon-512-maskable.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
       ],
     },
