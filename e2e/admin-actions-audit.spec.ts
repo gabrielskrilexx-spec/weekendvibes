@@ -11,6 +11,7 @@ const adminUser = {
   email: "admin@example.com",
   loginMethod: "test",
   role: "admin",
+  isAdmin: true,
   createdAt: "2026-08-25T12:00:00.000Z",
   updatedAt: "2026-08-25T12:00:00.000Z",
   lastSignedIn: "2026-08-25T12:00:00.000Z",

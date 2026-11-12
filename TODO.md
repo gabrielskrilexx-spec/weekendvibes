@@ -21,12 +21,15 @@
 - [x] Executar `pnpm check`, `pnpm build` e 2 testes unitários direcionados (aprovados).
 - [ ] Pendência operacional, não bloqueadora para o Preview: configurar `VITE_VAPID_PUBLIC_KEY` e o serviço emissor privado antes de ativar/entregar alertas reais; não há envio de notificações implementado nesta base inicial.
 
-## Fase 4 — testes automatizados e monitoramento (E2E) — pendente
+## Fase 4 — testes automatizados e monitoramento (E2E) — concluída para os critérios solicitados
 
-- [ ] Criar suítes E2E (usando Vitest ou Playwright) para validar que as rotas `/api/*` NUNCA são servidas via cache do Service Worker (`NetworkOnly`).
-- [ ] Criar suítes E2E para validar que o estado “Sem conexão” é exibido corretamente quando offline.
-- [ ] Criar suítes E2E para validar que a vitrine “Palcos da Baixada” renderiza os WebP dos 15 venues oficiais sem imagens quebradas.
-- [ ] Executar a suíte de testes e o build completo (`pnpm check` && `pnpm build`); commitar a fase.
+- [x] Criar suíte Playwright verificando que `/api/*` não grava respostas em CacheStorage e não é servida quando a rede está offline (`NetworkOnly`).
+- [x] Criar E2E para validar o aviso “Sem conexão” quando o navegador fica offline e seu desaparecimento ao reconectar.
+- [x] Criar E2E que verifica os WebP dos 15 venues: renderização, dimensões naturais, HTTP 200 e MIME `image/webp`.
+- [x] Executar `pnpm check`, `pnpm build` e `npx vitest run`: 131 arquivos passaram, 749 testes passaram e 2 foram pulados.
+- [x] Executar os 3 novos cenários Playwright da fase: todos passaram.
+- [ ] Observação da suíte E2E ampla existente: 6/7 passaram; `admin-actions-audit.spec.ts` ainda encontra exceção de runtime (`Cannot read properties of undefined (reading 'length')`) num subpainel admin sob fixture de API simulada. O cenário é independente dos três novos E2Es e deve ser investigado em trabalho separado.
+- [x] Fazer commit local da fase; preparar push apenas para `feature/v2-roadmap`.
 
 ## Entrega final
 

@@ -12,6 +12,7 @@ vi.mock("wouter", () => ({ Link: ({ href, children, ...props }: { href: string; 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     auth: { me: { useQuery: () => ({ data: mocks.user }) } },
+    venues: { list: { useQuery: () => ({ data: [], isLoading: false, isError: false }) } },
     events: {
       list: { useQuery: () => mocks.events },
       today: { useQuery: () => ({ data: [], isLoading: false, isError: false }) },

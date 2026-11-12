@@ -1,3 +1,4 @@
+import React from "react";
 import { Bell, BellOff, LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { trackWebAnalytics } from "@/lib/analytics";
