@@ -44,6 +44,7 @@ describe("EventCard interaction", () => {
     expect(markup).toContain("line-clamp-2");
     expect(markup).toContain("min-h-[3.25rem]");
     expect(markup).toContain("A partir de R$ 50,00");
+    expect(markup).toContain('class="absolute bottom-4 left-4 rounded-full bg-[#EA580C] px-3 py-1 text-xs font-black text-white"');
     expect(markup).not.toContain("Alta confiança");
     expect(markup).not.toContain("Confiança moderada");
     expect(markup).not.toContain("Fonte verificável");
