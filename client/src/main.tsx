@@ -3,10 +3,24 @@ import { COOKIE_NAME, UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
+import { registerSW } from "virtual:pwa-register";
 import superjson from "superjson";
 import App from "./App";
 import { startLogin } from "./const";
 import "./index.css";
+
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  const wasAlreadyControlled = Boolean(navigator.serviceWorker.controller);
+  let isReloadingForUpdate = false;
+
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!wasAlreadyControlled || isReloadingForUpdate) return;
+    isReloadingForUpdate = true;
+    window.location.reload();
+  });
+
+  registerSW({ immediate: true });
+}
 
 const queryClient = new QueryClient();
 
