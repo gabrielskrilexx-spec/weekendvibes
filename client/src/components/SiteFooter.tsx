@@ -1,4 +1,5 @@
 import React from "react";
+import PushAlertsToggle from "@/components/PushAlertsToggle";
 
 export default function SiteFooter() {
   return (
@@ -9,6 +10,7 @@ export default function SiteFooter() {
             <span className="text-[#EA580C]">W</span>eekend<span className="text-[#EA580C]">V</span>ibes.
           </a>
           <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-500">Contato: <a href="mailto:weekendvibes.of@gmail.com" className="transition hover:text-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">weekendvibes.of@gmail.com</a></p>
+          <PushAlertsToggle />
         </div>
         <nav aria-label="Links legais" className="flex flex-wrap gap-x-5 gap-y-2">
           <a href="/legal#privacidade" className="transition hover:text-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300">Política de Privacidade</a>

@@ -70,7 +70,8 @@ describe("Instagram weekend pipeline", () => {
       expect(getApifyActorMaxRuntimeSecs()).toBe(60);
       process.env.APIFY_ACTOR_MAX_RUNTIME_SECS = "5";
       expect(getApifyActorMaxRuntimeSecs()).toBe(20);
-      expect(buildInstagramStoriesScraperPayload([{ username: "meulugar.bar" }])).toEqual({ targets: ["meulugar.bar"], scrapeType: "both", maxHighlights: 2, onlyNew: true });
+      delete process.env.APIFY_SCRAPE_TYPE;
+      expect(buildInstagramStoriesScraperPayload([{ username: "meulugar.bar" }])).toEqual({ targets: ["meulugar.bar"], scrapeType: "stories", maxHighlights: 1, onlyNew: true });
     } finally {
       if (previous === undefined) delete process.env.APIFY_ACTOR_MAX_RUNTIME_SECS;
       else process.env.APIFY_ACTOR_MAX_RUNTIME_SECS = previous;
@@ -96,14 +97,16 @@ describe("Instagram weekend pipeline", () => {
     ]));
   });
 
-  it("aplica a trava financeira local: Stories em 24h e no máximo 2 Highlights por perfil", () => {
+  it("aplica a trava econômica local: Stories em 24h, um álbum e no máximo 5 mídias por perfil", () => {
     const now = new Date("2026-09-18T12:00:00.000Z");
     const posts = [
       ...Array.from({ length: 4 }, (_, index) => ({ id: `highlight-${index}`, ownerUsername: "meulugar.bar", mediaType: "highlight" as const, timestamp: `2026-09-18T0${index + 1}:00:00.000Z` })),
       { id: "recent-story", ownerUsername: "meulugar.bar", mediaType: "story" as const, timestamp: "2026-09-18T11:00:00.000Z" },
       { id: "old-story", ownerUsername: "meulugar.bar", mediaType: "story" as const, timestamp: "2026-09-16T11:00:00.000Z" },
     ];
-    expect(limitInstagramStoriesForCost(posts, now).map(post => post.id)).toEqual(["recent-story", "highlight-3", "highlight-2"]);
+    expect(limitInstagramStoriesForCost(posts, now).map(post => post.id)).toEqual(["recent-story", "highlight-3"]);
+    const recentStories = Array.from({ length: 6 }, (_, index) => ({ id: `story-${index}`, ownerUsername: "meulugar.bar", mediaType: "story" as const, timestamp: `2026-09-18T${String(11 - index).padStart(2, "0")}:00:00.000Z` }));
+    expect(limitInstagramStoriesForCost(recentStories, now).map(post => post.id)).toEqual(["story-0", "story-1", "story-2", "story-3", "story-4"]);
   });
 
   it("pré-filtra o Actor usando somente sinais recentes da Graph API", () => {
@@ -137,7 +140,7 @@ describe("Instagram weekend pipeline", () => {
       activeTargets.map(target => ({ handle: target.username })) as unknown as Awaited<ReturnType<typeof dbModule.listEnabledInstagramSources>>,
     );
     const apifyModule = await import("./apify-async");
-    const dispatchSpy = vi.spyOn(apifyModule, "startAsyncApifyStoriesRun").mockResolvedValue({ runId: 777, actorRunId: "actor-test", status: "QUEUED" });
+    const dispatchSpy = vi.spyOn(apifyModule, "startAsyncApifyStoriesRun").mockResolvedValue({ accepted: true, runId: 777, actorRunId: "actor-test", status: "QUEUED" });
     try {
       delete process.env.META_INSTAGRAM_TOKEN;
       delete process.env.META_INSTAGRAM_ACCOUNT_ID;
@@ -307,8 +310,8 @@ describe("Instagram weekend pipeline", () => {
   it("builds the dedicated Stories Actor payload with the documented fields", () => {
     expect(buildInstagramStoriesScraperPayload([{ username: "meulugar.bar" }])).toEqual({
       targets: ["meulugar.bar"],
-      scrapeType: "both",
-      maxHighlights: 2,
+      scrapeType: "stories",
+      maxHighlights: 1,
       onlyNew: true,
     });
   });

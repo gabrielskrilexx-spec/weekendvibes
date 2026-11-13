@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { CalendarSearch, MapPin, Sparkles, WifiOff, Moon, Sun, Contrast } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
@@ -27,6 +27,44 @@ function addDays(dateKey: string, daysToAdd: number) {
 }
 
 export default function Home() {
+  useEffect(() => {
+    const isAgenda = window.location.pathname === "/agenda";
+    const title = isAgenda ? "Agenda de eventos — WeekendVibes" : "Palcos da Baixada — WeekendVibes";
+    const description = isAgenda
+      ? "Encontre festas, shows e experiências em Santos e Guarujá neste fim de semana."
+      : "Explore os espaços e casas de shows de Santos e Guarujá. Descubra seu próximo rolê na Baixada Santista com o WeekendVibes.";
+    document.title = title;
+    const setMeta = (selector: string, attribute: "name" | "property", key: string, content: string) => {
+      let meta = document.head.querySelector(selector) as HTMLMetaElement | null;
+      if (!meta) { meta = document.createElement("meta"); meta.setAttribute(attribute, key); document.head.appendChild(meta); }
+      meta.setAttribute("content", content);
+    };
+    setMeta('meta[name="description"]', "name", "description", description);
+    setMeta('meta[property="og:title"]', "property", "og:title", title);
+    setMeta('meta[property="og:description"]', "property", "og:description", description);
+    setMeta('meta[property="og:type"]', "property", "og:type", "website");
+    setMeta('meta[name="twitter:title"]', "name", "twitter:title", title);
+    setMeta('meta[name="twitter:description"]', "name", "twitter:description", description);
+    setMeta('meta[name="twitter:card"]', "name", "twitter:card", "summary_large_image");
+
+    const path = isAgenda ? "/agenda" : window.location.pathname === "/palcos-da-baixada" ? "/palcos-da-baixada" : "/";
+    const canonical = document.head.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    const priorPublicUrl = canonical?.href || document.head.querySelector('meta[property="og:url"]')?.getAttribute("content") || "";
+    let publicOrigin: string | undefined;
+    try { publicOrigin = priorPublicUrl ? new URL(priorPublicUrl).origin : undefined; } catch { publicOrigin = undefined; }
+    if (canonical && publicOrigin) canonical.href = `${publicOrigin}${path}`;
+    if (publicOrigin) setMeta('meta[property="og:url"]', "property", "og:url", `${publicOrigin}${path}`);
+
+    const imageMeta = document.head.querySelector('meta[property="og:image"]');
+    const imageContent = imageMeta?.getAttribute("content") ?? "";
+    let imageOrigin: string | undefined;
+    try { imageOrigin = imageContent ? new URL(imageContent).origin : undefined; } catch { imageOrigin = undefined; }
+    if (imageOrigin) {
+      const imageUrl = `${imageOrigin}/og/palcos-da-baixada.png`;
+      setMeta('meta[property="og:image"]', "property", "og:image", imageUrl);
+      setMeta('meta[name="twitter:image"]', "name", "twitter:image", imageUrl);
+    }
+  }, []);
   const { theme, toggleTheme, highContrast, toggleContrast } = useTheme();
   const { data: user } = trpc.auth.me.useQuery(undefined, { retry: false, refetchOnWindowFocus: false });
   const [day, setDay] = useState("");

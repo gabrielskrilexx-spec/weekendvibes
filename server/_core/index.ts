@@ -17,6 +17,7 @@ import { executiveObservabilityReportHandler } from "../scheduled-executive-repo
 import { weeklyExecutiveReportHandler } from "../scheduled-weekly-report";
 import { scheduledHealthHandler } from "../scheduled-health";
 import { pruneEventsHandler } from "../prune-events";
+import { webAnalyticsHandler } from "../web-analytics";
 import { serveStatic } from "./static";
 import { applySecurityHeaders, createRateLimit, createStrictCors } from "./security";
 import { registerMapsJavascriptRoute } from "../maps-javascript";
@@ -90,6 +91,7 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
       });
     }
   });
+  app.post("/api/analytics", createRateLimit({ windowMs: 60 * 1000, max: 60, name: "web-analytics" }), webAnalyticsHandler);
   app.get("/api/scheduled/health", noStoreScheduledResponse, requireVercelCron, scheduledHealthHandler);
   app.post("/api/scheduled/health", noStoreScheduledResponse, requireInternalCron, scheduledHealthHandler);
   app.post("/api/scheduled/ingest-events", noStoreScheduledResponse, requireInternalCron, ingestEventsHandler);

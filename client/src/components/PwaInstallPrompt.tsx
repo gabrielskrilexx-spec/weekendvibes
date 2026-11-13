@@ -1,5 +1,6 @@
 import { Download, Share, WifiOff, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { trackWebAnalytics } from "@/lib/analytics";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -24,6 +25,16 @@ export default function PwaInstallPrompt() {
   const [standalone, setStandalone] = useState(isStandalone);
   const [ios, setIos] = useState(false);
 
+  const markInstalled = () => {
+    try {
+      if (localStorage.getItem("weekendvibes:pwa-install-tracked") === "1") return;
+      localStorage.setItem("weekendvibes:pwa-install-tracked", "1");
+      trackWebAnalytics("pwa_install");
+    } catch {
+      trackWebAnalytics("pwa_install");
+    }
+  };
+
   useEffect(() => {
     const onBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
@@ -32,13 +43,15 @@ export default function PwaInstallPrompt() {
     const onAppInstalled = () => {
       setInstallEvent(null);
       setStandalone(true);
+      markInstalled();
     };
-    const onOnline = () => setIsOffline(false);
-    const onOffline = () => setIsOffline(true);
+    const onOnline = () => { setIsOffline(false); trackWebAnalytics("offline_exit"); };
+    const onOffline = () => { setIsOffline(true); trackWebAnalytics("offline_enter"); };
     const mediaQuery = window.matchMedia("(display-mode: standalone)");
     const onDisplayModeChange = () => setStandalone(isStandalone());
 
     setIos(isIos());
+    if (isStandalone()) markInstalled();
     window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
     window.addEventListener("appinstalled", onAppInstalled);
     window.addEventListener("online", onOnline);
@@ -56,7 +69,8 @@ export default function PwaInstallPrompt() {
   const install = async () => {
     if (!installEvent) return;
     await installEvent.prompt();
-    await installEvent.userChoice;
+    const choice = await installEvent.userChoice;
+    if (choice.outcome === "accepted") markInstalled();
     setInstallEvent(null);
   };
 

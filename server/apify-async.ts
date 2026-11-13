@@ -191,7 +191,8 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
   if (!budget.allowed) {
     const alert = getApifyBudgetBlockAlert(budget);
     await recordOperationalAlert({ integration: "pipeline", ...alert, title: "Extração Apify bloqueada" });
-    throw new Error(alert.message);
+    console.warn("[Apify] Dispatch ignorado por guarda de orçamento", { reason: budget.blockedReason ?? "daily_limit", dateKey: budget.dateKey, requestCount: budget.requestCount, dailyLimit: budget.dailyLimit });
+    return { accepted: false as const, status: "SKIPPED" as const, reason: "budget_guard" as const, message: alert.message };
   }
 
   const runId = await startIngestionRun({ routine: "instagram-stories-async", sourceKey: "instagram:apify:pending" });
@@ -278,7 +279,7 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
     sessionCookieConfigured: false,
     actorInputContract: "zaver-instagram-stories-highlights-v1",
   });
-  return { runId, actorRunId, status: "QUEUED" as const };
+  return { accepted: true as const, runId, actorRunId, status: "QUEUED" as const };
 }
 
 async function processDataset(run: Awaited<ReturnType<typeof findIngestionRunByApifyActor>>, datasetId: string, actorRunId: string, token: string) {
@@ -481,6 +482,9 @@ export async function reprocessApifyStoriesDatasetHandler(req: Request, res: Res
 export async function asyncIngestInstagramHandler(req: Request, res: Response) {
   try {
     const scheduled = await startAsyncApifyStoriesRun({ trigger: "automatic" });
+    if (!scheduled.accepted) {
+      return res.status(200).json({ ok: true, accepted: false, status: "SKIPPED", reason: scheduled.reason, message: scheduled.message });
+    }
     return res.status(200).json({ ok: true, accepted: true, runId: scheduled.runId, actorRunId: scheduled.actorRunId, status: scheduled.status });
   } catch (error) {
     console.error("[Instagram async] Actor dispatch failed", redactError(error));

@@ -35,17 +35,11 @@ async function mockApplicationApis(page: Page) {
   });
 }
 
-test("abre o InfoWindow no segundo toque e fecha pelo controle acessível", async ({ page }) => {
+test("mantém a Home mobile sem mapa embutido e sem erros de interface", async ({ page }) => {
   await mockApplicationApis(page);
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Mapa dos rolês" })).toBeVisible();
-  const marker = page.getByRole("button", { name: "Santos Moby House" });
-  await expect(marker).toBeVisible();
-  await marker.tap();
-  await expect(page.getByRole("button", { name: "Fechar detalhes do evento" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Santos Sunset" })).toBeVisible();
-
-  await page.getByRole("button", { name: "Fechar detalhes do evento" }).tap();
-  await expect(page.getByRole("button", { name: "Fechar detalhes do evento" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Rolês para você" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Mapa dos rolês" })).toHaveCount(0);
+  await expect(page.getByTestId("map-canvas")).toHaveCount(0);
   await expect(page.evaluate(() => (window as unknown as { __mapE2eErrors: string[] }).__mapE2eErrors)).resolves.toEqual([]);
 });

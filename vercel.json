@@ -38,6 +38,26 @@
       "destination": "/api"
     },
     {
+      "source": "/eventos/:slug",
+      "destination": "/api"
+    },
+    {
+      "source": "/og/:path*",
+      "destination": "/api"
+    },
+    {
+      "source": "/",
+      "destination": "/api"
+    },
+    {
+      "source": "/agenda",
+      "destination": "/api"
+    },
+    {
+      "source": "/palcos-da-baixada",
+      "destination": "/api"
+    },
+    {
       "source": "/(.*)",
       "destination": "/"
     }

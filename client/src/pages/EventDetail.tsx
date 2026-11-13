@@ -40,24 +40,38 @@ export default function EventDetail() {
 
   useEffect(() => {
     if (!event) return;
-    document.title = `${event.title} — WeekendVibes`;
+    const socialTitle = `${event.title} — WeekendVibes`;
+    document.title = socialTitle;
     setWhatsappMessage(defaultWhatsappMessage);
-    const description = `${event.title} em ${event.locationName}, ${event.city}. ${date.toLocaleDateString("pt-BR")}.`;
-    const setMeta = (property: string, content: string) => {
-      let meta = document.head.querySelector(`meta[property="${property}"]`) as HTMLMetaElement | null;
-      if (!meta) { meta = document.createElement("meta"); meta.setAttribute("property", property); document.head.appendChild(meta); }
+    const socialDate = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long", year: "numeric", timeZone: "America/Sao_Paulo" }).format(date);
+    const description = [event.description?.trim(), [event.locationName, event.city].filter(Boolean).join(", "), socialDate].filter(Boolean).join(" · ").slice(0, 180);
+    const setMeta = (attribute: "property" | "name", key: string, content: string) => {
+      let meta = document.head.querySelector(`meta[${attribute}="${key}"]`) as HTMLMetaElement | null;
+      if (!meta) { meta = document.createElement("meta"); meta.setAttribute(attribute, key); document.head.appendChild(meta); }
       meta.setAttribute("content", content);
     };
-    setMeta("og:title", event.title);
-    setMeta("og:description", description);
-    setMeta("og:url", window.location.href);
-    setMeta("og:type", "event");
-    setMeta("twitter:card", "summary_large_image");
-    setMeta("twitter:title", event.title);
-    setMeta("twitter:description", description);
-    if (event.imageUrl) {
-      setMeta("og:image", event.imageUrl);
-      setMeta("twitter:image", event.imageUrl);
+    setMeta("name", "description", description);
+    setMeta("property", "og:title", socialTitle);
+    setMeta("property", "og:description", description);
+    setMeta("property", "og:type", "event");
+    setMeta("property", "og:site_name", "WeekendVibes");
+    setMeta("name", "twitter:card", "summary_large_image");
+    setMeta("name", "twitter:title", socialTitle);
+    setMeta("name", "twitter:description", description);
+    const canonical = document.head.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    const priorPublicUrl = canonical?.href || document.head.querySelector('meta[property="og:url"]')?.getAttribute("content") || "";
+    let publicOrigin: string | undefined;
+    try { publicOrigin = priorPublicUrl ? new URL(priorPublicUrl).origin : undefined; } catch { publicOrigin = undefined; }
+    if (publicOrigin) {
+      const canonicalUrl = `${publicOrigin}/eventos/${encodeURIComponent(event.slug)}`;
+      if (canonical) canonical.href = canonicalUrl;
+      setMeta("property", "og:url", canonicalUrl);
+      const imageUrl = `${publicOrigin}/og/event/${encodeURIComponent(event.slug)}.png`;
+      setMeta("property", "og:image", imageUrl);
+      setMeta("property", "og:image:type", "image/png");
+      setMeta("property", "og:image:width", "1200");
+      setMeta("property", "og:image:height", "630");
+      setMeta("name", "twitter:image", imageUrl);
     }
     return () => { document.title = "WeekendVibes"; };
   }, [event, date, defaultWhatsappMessage]);
