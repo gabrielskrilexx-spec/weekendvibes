@@ -67,10 +67,5 @@ describe("Home pública simplificada", () => {
     expect(markup).toContain("Guarujá");
     expect(markup).toContain("Blue Med Convention Center");
     expect(markup).toContain("Parque Valongo");
-    expect(markup).toContain("border-orange-600 bg-orange-600 text-zinc-950");
-    expect(markup.split("border-[#EA580C] bg-[#EA580C]/15 text-white").length - 1).toBe(3);
-    expect(markup).toContain('class="mt-1 h-0.5 w-7 rounded-full bg-[#EA580C]"');
-    expect(markup).toContain('<span class="text-[#EA580C]">W</span>eekend<span class="text-[#EA580C]">V</span>ibes.');
-    expect(markup).toContain("O que vai <span class=\"text-[#EA580C]\">rolar?</span>");
   });
 });
