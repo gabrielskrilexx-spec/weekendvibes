@@ -68,6 +68,8 @@ export default function PushAlertsToggle() {
     }
   };
 
+  if (!vapidPublicKey) return null;
+
   return (
     <section className="mt-5 rounded-2xl border border-white/10 bg-white/[0.035] p-4" aria-label="Alertas de eventos">
       <div className="flex items-center gap-3">
