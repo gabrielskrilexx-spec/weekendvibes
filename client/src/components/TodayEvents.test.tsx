@@ -20,6 +20,8 @@ describe("TodayEvents", () => {
     expect(emptyMarkup).toContain("Ainda não há eventos confirmados para hoje");
     expect(emptyMarkup).toContain("Ver os rolês do fim de semana");
     expect(emptyMarkup).toContain('href="/#filtros"');
+    expect(emptyMarkup).toContain('bg-[#EA580C] px-5 py-3 text-sm font-black text-white transition hover:bg-[#C2410C]');
+    expect(emptyMarkup).toContain('border border-[#EA580C]/30 bg-[#EA580C]/10 text-[#EA580C]');
 
     state.query = { data: undefined, isLoading: false, isError: true };
     expect(renderToStaticMarkup(<TodayEvents />)).toContain("Não foi possível carregar os eventos de hoje");

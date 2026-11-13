@@ -247,6 +247,33 @@ function valueForProcedure(procedure: string) {
   if (procedure === "collisionReview.list") return collisions;
   if (procedure === "ingestionSources.list") return [source];
   if (procedure === "adminRoutine.sources") return { sources: ["instagram"] };
+  if (procedure === "adminRoutine.manualReview.list")
+    return { items: [], total: 0, hasNextPage: false };
+  if (procedure === "adminRoutine.manualReview.metrics")
+    return { published: 2, awaitingReview: 0 };
+  if (procedure === "adminRoutine.exportJobsMetrics")
+    return { windowHours: 24, total: 0, queued: 0, processing: 0, completed: 0, failed: 0, cancelled: 0, expired: 0, expiredLeases: 0, recoveryExhausted: 0, orphaned: 0, fileDeletePending: 0, fileDeletePendingPrevious: 0, fileDeletePendingGrowth: 0 };
+  if (procedure === "adminRoutine.exportJobsMetricsTrend")
+    return { windowDays: 30, points: [] };
+  if (procedure === "adminRoutine.exportJobsAlertEfficiency")
+    return { windowDays: 30, total: 0, resolved: 0, resolutionRate: 0, averageAgeMs: 0, openCount: 0, pausedCount: 0 };
+  if (procedure === "adminRoutine.exportJobsAlertEfficiencyTrend")
+    return { windowDays: 30, points: [] };
+  if (procedure === "adminRoutine.exportJobsAlertSettings")
+    return { environment: "preview", severity: "WARNING", growthThreshold: 3, minimumQueueSize: 5, consecutiveWindows: 1 };
+  if (procedure === "adminRoutine.exportJobsAlertSettingsHistory")
+    return { items: [], offset: 0, limit: 10, hasNextPage: false };
+  if (procedure === "heartbeat.healthSettingsHistory")
+    return { items: [], offset: 0, limit: 5, hasNextPage: false };
+  if (procedure === "ingestionSources.executiveReport") {
+    const flatTrend = { current: 0, previous: 0, percentage: 0, direction: "flat" };
+    return {
+      series: [],
+      trends: { waf: flatTrend, meta110: flatTrend, network: flatTrend, successRate: { ...flatTrend, current: 100, previous: 100 } },
+      healthTransitions: [],
+      system_health_status: "healthy",
+    };
+  }
   if (procedure === "locationAliases.list") return [];
   return [];
 }
@@ -363,6 +390,18 @@ test("audita fluxos administrativos principais sem ações mortas", async ({
       ),
     });
   });
+  await page.route("**/api/v2/admin/approve-events", async route => {
+    requests.push("POST /api/v2/admin/approve-events");
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, count: 2, ids: ["100", "101"] }) });
+  });
+  await page.route("**/api/v2/admin/remove-events", async route => {
+    requests.push("POST /api/v2/admin/remove-events");
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, count: 2, ids: ["100", "101"] }) });
+  });
+  await page.route("**/api/v2/admin/resolve-collision", async route => {
+    requests.push("POST /api/v2/admin/resolve-collision");
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, count: 1, ids: ["101"] }) });
+  });
   await page.addInitScript(() =>
     localStorage.setItem("weekendvibes-cookie-consent", "rejected")
   );
@@ -398,10 +437,10 @@ test("audita fluxos administrativos principais sem ações mortas", async ({
   await expect(page.getByText(/aprovados com sucesso/)).toBeVisible();
   await selectAllEvents.check();
   await page.getByRole("button", { name: "Excluir selecionados" }).click();
-  await expect(page.getByText(/removido\(s\) com sucesso/)).toBeVisible();
+  await expect(page.getByText(/removidos com sucesso/)).toBeVisible();
 
   const routineButton = page.getByRole("button", {
-    name: "Executar rotina de quarta-feira agora",
+    name: "Executar ingestão manual agora",
   });
   await routineButton.click();
   await expect(page.getByRole("status").filter({ hasText: "Ingestão concluída: 1 fonte(s) processada(s)." })).toBeVisible();
@@ -437,10 +476,11 @@ test("audita fluxos administrativos principais sem ações mortas", async ({
     expect.arrayContaining([
       "adminRoutine.sources",
       "adminRoutine.runSource",
-      "events.remove",
-      "events.publishMany",
-      "events.removeMany",
-      "collisionReview.resolveMany",
+      "adminRoutine.status",
+      "collisionReview.list",
+      "POST /api/v2/admin/approve-events",
+      "POST /api/v2/admin/remove-events",
+      "POST /api/v2/admin/resolve-collision",
     ])
   );
 });

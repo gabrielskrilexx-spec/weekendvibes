@@ -12,6 +12,10 @@ O WeekendVibes é uma plataforma de eventos musicais para a Baixada Santista, co
 - Apify para coleta de conteúdo público do Instagram.
 - OpenAI Vision para OCR de artes de posts, Stories e Destaques.
 
+## PWA unificada Web/Mobile
+
+O WeekendVibes opera como uma aplicação web responsiva e PWA unificada, compartilhada entre navegadores e instalações móveis feitas a partir do mesmo site. Toda mudança visual, de rota ou de regra de negócio publicada na branch `main` deve preservar a compatibilidade responsiva e funcionar também no aplicativo móvel instalado como PWA. O Service Worker é atualizado automaticamente após cada publicação; quando uma nova versão assume o controle, a página recarrega uma única vez para carregar os arquivos atuais. APIs (`/api/*`) e navegações HTML são sempre `NetworkOnly`; apenas imagens públicas de venues usam cache em runtime.
+
 ## Pré-requisitos
 
 Instale Node.js 20 ou superior, pnpm e acesso a um banco MySQL/TiDB compatível com Drizzle. Para executar a ingestão real do Instagram, configure também um token válido do Apify e os segredos de sessão previstos pelo ambiente. Em preview, os mocks de sandbox podem ser usados quando habilitados pela configuração do projeto.

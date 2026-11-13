@@ -159,7 +159,7 @@ const plugins = [
   vitePluginManusDebugCollector(),
   VitePWA({
     registerType: "autoUpdate",
-    injectRegister: "auto",
+    injectRegister: false,
     strategies: "injectManifest",
     srcDir: path.resolve(import.meta.dirname, "client", "src"),
     filename: "sw.ts",

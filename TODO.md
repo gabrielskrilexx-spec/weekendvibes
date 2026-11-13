@@ -28,10 +28,10 @@
 - [x] Criar E2E que verifica os WebP dos 15 venues: renderização, dimensões naturais, HTTP 200 e MIME `image/webp`.
 - [x] Executar `pnpm check`, `pnpm build` e `npx vitest run`: 131 arquivos passaram, 749 testes passaram e 2 foram pulados.
 - [x] Executar os 3 novos cenários Playwright da fase: todos passaram.
-- [ ] Observação da suíte E2E ampla existente: 6/7 passaram; `admin-actions-audit.spec.ts` ainda encontra exceção de runtime (`Cannot read properties of undefined (reading 'length')`) num subpainel admin sob fixture de API simulada. O cenário é independente dos três novos E2Es e deve ser investigado em trabalho separado.
-- [x] Fazer commit local da fase; preparar push apenas para `feature/v2-roadmap`.
+- [x] Corrigir o fixture administrativo do `admin-actions-audit.spec.ts`, cobrindo filas e métricas dos subpainéis e os endpoints REST atuais de ações em massa; validar que os 7 cenários Playwright passam.
+- [x] Sincronizar `feature/v2-roadmap` com `main` e preparar a integração por merge seguro, preservando os recursos já publicados.
 
 ## Entrega final
 
-- [ ] Fazer push somente da branch `feature/v2-roadmap` (nunca push direto em `main`).
-- [ ] Confirmar o SHA remoto e fornecer o link do Preview Vercel para os testes no celular.
+- [ ] Integrar `feature/v2-roadmap` em `main` por merge seguro e publicar `main` conforme autorização atual.
+- [ ] Confirmar o SHA remoto publicado e o estado `READY` do deployment Vercel.

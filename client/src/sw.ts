@@ -12,11 +12,13 @@ type WorkerNotificationEvent = WorkerWaitableEvent & { notification: { data: unk
 type WorkerWindowClient = { url: string; navigate: (url: string) => Promise<unknown>; focus: () => Promise<unknown> };
 const serviceWorkerScope = self as unknown as {
   addEventListener: {
+    (type: "install", listener: (event: WorkerWaitableEvent) => void): void;
     (type: "activate", listener: (event: WorkerWaitableEvent) => void): void;
     (type: "push", listener: (event: WorkerPushEvent) => void): void;
     (type: "notificationclick", listener: (event: WorkerNotificationEvent) => void): void;
   };
   location: { origin: string };
+  skipWaiting: () => Promise<void>;
   registration: { showNotification: (title: string, options: NotificationOptions) => Promise<void> };
   clients: {
     claim: () => Promise<void>;
@@ -28,18 +30,26 @@ const serviceWorkerScope = self as unknown as {
 // Remove versões antigas antes de ativar o precache atual.
 cleanupOutdatedCaches();
 precacheAndRoute(self.__WB_MANIFEST);
+serviceWorkerScope.addEventListener("install", (event) => {
+  event.waitUntil(serviceWorkerScope.skipWaiting());
+});
 
 // Dados e mutações nunca podem ser servidos por cache local.
-registerRoute(
-  ({ url }) => url.pathname === "/api" || url.pathname.startsWith("/api/"),
-  new NetworkOnly(),
-);
+const networkOnlyMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] as const;
+for (const method of networkOnlyMethods) {
+  registerRoute(
+    ({ url }) => url.pathname === "/api" || url.pathname.startsWith("/api/"),
+    new NetworkOnly(),
+    method,
+  );
 
-// O HTML de navegação sempre vem da rede; o fallback offline fica na UI React.
-registerRoute(
-  ({ request }) => request.mode === "navigate",
-  new NetworkOnly(),
-);
+  // O HTML de navegação sempre vem da rede; o fallback offline fica na UI React.
+  registerRoute(
+    ({ request }) => request.mode === "navigate",
+    new NetworkOnly(),
+    method,
+  );
+}
 
 // Única exceção runtime: imagens de venues, que são assets públicos estáticos.
 registerRoute(
