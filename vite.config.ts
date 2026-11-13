@@ -151,11 +151,6 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
-const workboxNetworkOnlyMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] as const;
-const apiNetworkOnlyMatcher = ({ url }: { url: URL }) => url.pathname === "/api" || url.pathname.startsWith("/api/");
-const navigationNetworkOnlyMatcher = ({ request }: { request: Request }) => request.mode === "navigate";
-const venueImageCacheMatcher = ({ url, request }: { url: URL; request: Request }) => request.method === "GET" && /^\/venues\/[^/]+\.webp$/i.test(url.pathname);
-
 const plugins = [
   react(),
   tailwindcss(),
@@ -165,6 +160,9 @@ const plugins = [
   VitePWA({
     registerType: "autoUpdate",
     injectRegister: false,
+    strategies: "injectManifest",
+    srcDir: path.resolve(import.meta.dirname, "client", "src"),
+    filename: "sw.ts",
     includeAssets: [
       "venues/*.webp",
       "icons/icon-180.png",
@@ -188,37 +186,9 @@ const plugins = [
         { src: "/icons/icon-512-maskable.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
       ],
     },
-    workbox: {
-      skipWaiting: true,
-      clientsClaim: true,
-      cleanupOutdatedCaches: true,
-      navigateFallback: null,
+    injectManifest: {
       globPatterns: ["**/*.{js,css,woff,woff2,ttf}"],
       globIgnores: ["**/icons/**"],
-      runtimeCaching: [
-        ...workboxNetworkOnlyMethods.map(method => ({
-          urlPattern: apiNetworkOnlyMatcher,
-          handler: "NetworkOnly" as const,
-          method,
-        })),
-        ...workboxNetworkOnlyMethods.map(method => ({
-          urlPattern: navigationNetworkOnlyMatcher,
-          handler: "NetworkOnly" as const,
-          method,
-        })),
-        {
-          urlPattern: venueImageCacheMatcher,
-          handler: "CacheFirst",
-          options: {
-            cacheName: "weekendvibes-venues-v1",
-            expiration: {
-              maxEntries: 100,
-              maxAgeSeconds: 60 * 60 * 24 * 30,
-              purgeOnQuotaError: true,
-            },
-          },
-        },
-      ],
     },
   }),
 ];

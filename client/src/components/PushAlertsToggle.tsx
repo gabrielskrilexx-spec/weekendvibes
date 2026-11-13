@@ -23,6 +23,7 @@ export default function PushAlertsToggle() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
+    if (!vapidPublicKey) return;
     if (!supported) {
       setMessage("Notificações push não estão disponíveis neste navegador.");
       return;
@@ -33,7 +34,7 @@ export default function PushAlertsToggle() {
       .then(subscription => { if (!cancelled) setEnabled(Boolean(subscription)); })
       .catch(() => { if (!cancelled) setMessage("Não foi possível verificar a permissão neste dispositivo."); });
     return () => { cancelled = true; };
-  }, [supported]);
+  }, [supported, vapidPublicKey]);
 
   const toggle = async () => {
     if (!configured || busy) return;
