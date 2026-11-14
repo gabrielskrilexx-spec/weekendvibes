@@ -2,13 +2,7 @@ import React from "react";
 import { Bell, BellOff, LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { trackWebAnalytics } from "@/lib/analytics";
-
-function decodeVapidKey(base64Url: string) {
-  const normalized = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
-  const decoded = window.atob(padded);
-  return Uint8Array.from(decoded, character => character.charCodeAt(0));
-}
+import { deletePushSubscription, persistPushSubscription, subscribeAndPersistPush } from "@/lib/push-subscription";
 
 function supportsPush() {
   return typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
@@ -30,8 +24,18 @@ export default function PushAlertsToggle() {
     }
     let cancelled = false;
     void navigator.serviceWorker.ready
-      .then(registration => registration.pushManager.getSubscription())
-      .then(subscription => { if (!cancelled) setEnabled(Boolean(subscription)); })
+      .then(async registration => {
+        const subscription = await registration.pushManager.getSubscription();
+        if (cancelled) return;
+        setEnabled(Boolean(subscription));
+        if (subscription) {
+          try {
+            await persistPushSubscription(subscription);
+          } catch {
+            if (!cancelled) setMessage("A inscrição existe neste dispositivo, mas não pôde ser sincronizada com o serviço.");
+          }
+        }
+      })
       .catch(() => { if (!cancelled) setMessage("Não foi possível verificar a permissão neste dispositivo."); });
     return () => { cancelled = true; };
   }, [supported, vapidPublicKey]);
@@ -44,6 +48,7 @@ export default function PushAlertsToggle() {
       const registration = await navigator.serviceWorker.ready;
       const existing = await registration.pushManager.getSubscription();
       if (existing) {
+        await deletePushSubscription(existing.endpoint);
         await existing.unsubscribe();
         setEnabled(false);
         setMessage("Alertas desativados neste dispositivo.");
@@ -55,12 +60,9 @@ export default function PushAlertsToggle() {
         setMessage(permission === "denied" ? "Permissão bloqueada nas configurações do navegador." : "Permissão de notificação não concedida.");
         return;
       }
-      await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: decodeVapidKey(vapidPublicKey) as unknown as BufferSource,
-      });
+      await subscribeAndPersistPush(registration, vapidPublicKey);
       setEnabled(true);
-      setMessage("Permissão ativada neste dispositivo. O envio de alertas depende da configuração do serviço push.");
+      setMessage("Alertas push ativados e inscrição sincronizada com o serviço.");
       trackWebAnalytics("push_enabled");
     } catch {
       setMessage("Não foi possível ativar notificações. Tente novamente quando estiver online.");

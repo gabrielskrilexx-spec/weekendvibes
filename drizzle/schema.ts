@@ -540,3 +540,16 @@ export const apifyProcessedItems = pgTable("apifyProcessedItems", {
 
 export type ApifyProcessedItem = typeof apifyProcessedItems.$inferSelect;
 export type InsertApifyProcessedItem = typeof apifyProcessedItems.$inferInsert;
+
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => ({
+  endpointUnique: uniqueIndex("push_subscriptions_endpoint_unique").on(table.endpoint),
+}));
+
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type InsertPushSubscription = typeof pushSubscriptions.$inferInsert;

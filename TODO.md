@@ -19,7 +19,17 @@
 - [x] Adicionar toggle discreto “Receber alertas dos eventos do fim de semana”, com consentimento explícito, estados de suporte/configuração e inscrição via `PushManager`.
 - [x] Adicionar analytics agregados para page views, instalações PWA, eventos do toggle e transições offline, sem PII; API protegida por allowlist/rate limit e emitida nos logs.
 - [x] Executar `pnpm check`, `pnpm build` e 2 testes unitários direcionados (aprovados).
-- [x] Manter o opt-in de Push oculto quando `VITE_VAPID_PUBLIC_KEY` não estiver configurada; a ativação real permanece condicionada ao emissor privado.
+- [x] Manter o opt-in oculto quando `VITE_VAPID_PUBLIC_KEY` não estiver configurada; ativar somente com um par VAPID correspondente.
+
+### Incremento autorizado — Web Push completo
+
+- [x] Criar migração Drizzle/PostgreSQL para `push_subscriptions`: `id` serial/primary key, `endpoint` texto único, `p256dh` chave pública do cliente, `auth` segredo de autenticação do cliente e `createdAt` timestamp; aplicar a migração aditiva no Neon Production e conferir colunas/índice único.
+- [x] Adicionar `web-push`; carregar `VITE_VAPID_PUBLIC_KEY` no frontend e `VAPID_PRIVATE_KEY`/`VAPID_SUBJECT` exclusivamente no servidor; implementar saveSubscription/removeSubscription idempotentes e envio Admin a todas as inscrições, removendo endpoints expirados.
+- [x] Conectar opt-in à subscription do Service Worker após consentimento explícito, converter a chave pública VAPID em `Uint8Array`, persistir/remover no backend e ocultar sem chave pública.
+- [x] Adicionar testes Vitest para persistência/remoção, envio VAPID com `web-push` mockado, proteção administrativa, entradas inválidas e configuração ausente; nenhum push real é enviado nos testes.
+- [x] Validar `pnpm check`, `pnpm build`, Vitest completo (135 arquivos, 768 passaram, 2 skipped) e os 7 cenários Playwright (7/7).
+- [ ] Integrar a branch de trabalho em `main` por merge seguro e `git push origin main`.
+- [ ] Provisionar um par VAPID correspondente no ambiente Production da Vercel (`VITE_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`) e validar a ativação; até lá o opt-in permanece oculto em produção.
 
 ## Fase 4 — testes automatizados e monitoramento (E2E) — concluída para os critérios solicitados
 
