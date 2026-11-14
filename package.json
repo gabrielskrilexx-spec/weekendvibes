@@ -18,6 +18,8 @@
     "ingest:curvao-zig": "tsx scripts/run-curvao-zig-ingestion.mts",
     "audit:public-ticketing": "tsx scripts/audit-public-ticketing-sources.mts",
     "ingest:all-public-ticketing": "tsx scripts/run-all-public-ticketing-ingestion.mts",
+    "ingest:all-public-ticketing:dry-run": "tsx scripts/run-all-public-ticketing-ingestion.mts --dry-run",
+    "seed:official-venues": "tsx scripts/seed-official-venues.mts",
     "maintenance:archive-past-events": "tsx scripts/archive-past-events.mts",
     "admin:magic-link": "tsx scripts/generate-admin-magic-link.mts",
     "seed:events": "DATABASE_URL=postgresql://admin:senha_super_secreta_weekendvibes@127.0.0.1:5432/weekendvibes tsx scripts/seed-events.mts",

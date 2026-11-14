@@ -2,19 +2,30 @@ import { and, eq } from "drizzle-orm";
 import { ingestionSources } from "../drizzle/schema";
 import { getDb } from "../server/db";
 import { runPublicAgendaStep } from "../server/agenda-routine";
-import { sanitizePublicSourceUrl } from "../server/ingestion";
+import { getConfiguredSourceUrls, runIngestionPipeline, sanitizePublicSourceUrl } from "../server/ingestion";
 import { getTicketingPlatform, ticketingPlatformLabel } from "../server/ticketing-catalog-audit";
+
+const dryRun = process.argv.includes("--dry-run");
 
 async function main() {
   const db = await getDb();
-  if (!db) throw new Error("database_unavailable");
+  if (!db && !dryRun) throw new Error("database_unavailable");
 
-  const sources = await db.select({
-    sourceKey: ingestionSources.sourceKey,
-    url: ingestionSources.url,
-  }).from(ingestionSources).where(and(eq(ingestionSources.kind, "public"), eq(ingestionSources.isEnabled, 1)));
+  let sources: Array<{ sourceKey: string; url: string }> = [];
+  if (db) {
+    try {
+      sources = await db.select({
+        sourceKey: ingestionSources.sourceKey,
+        url: ingestionSources.url,
+      }).from(ingestionSources).where(and(eq(ingestionSources.kind, "public"), eq(ingestionSources.isEnabled, 1)));
+    } catch (error) {
+      if (!dryRun) throw error;
+      console.warn("[Ticketing dry-run] source catalog unavailable; using configured URLs", error instanceof Error ? error.message.slice(0, 180) : "unknown_error");
+    }
+  }
 
-  const uniqueUrls = Array.from(new Set(sources.map(source => sanitizePublicSourceUrl(source.url)).filter(Boolean)));
+  const configuredUrls = dryRun && sources.length === 0 ? getConfiguredSourceUrls() : sources.map(source => source.url);
+  const uniqueUrls = Array.from(new Set(configuredUrls.map(sanitizePublicSourceUrl).filter(Boolean)));
   if (uniqueUrls.length === 0) throw new Error("no_active_public_sources");
 
   const platformCounts = new Map<string, number>();
@@ -23,13 +34,9 @@ async function main() {
     platformCounts.set(platform, (platformCounts.get(platform) ?? 0) + 1);
   }
 
-  const run = await runPublicAgendaStep({
-    track: true,
-    sourceKey: "public",
-    sourceUrls: uniqueUrls,
-    archive: false,
-    trigger: "manual",
-  });
+  const run = dryRun
+    ? { archived: 0, result: await runIngestionPipeline({ dryRun: true, sourceKey: "public", sourceUrls: uniqueUrls }) }
+    : await runPublicAgendaStep({ track: true, sourceKey: "public", sourceUrls: uniqueUrls, archive: false, trigger: "manual" });
   const result = run.result;
   const sourceReports = Array.isArray(result.sourceReports) ? result.sourceReports.map(source => ({
     sourceKey: source.sourceKey,
@@ -42,6 +49,7 @@ async function main() {
 
   console.log(JSON.stringify({
     ok: true,
+    dryRun,
     routine: "public-agenda",
     scope: "all-active-public-ticketing-sources",
     sourceCount: sources.length,
@@ -66,6 +74,7 @@ async function main() {
 main().catch(error => {
   const name = error && typeof error === "object" && "name" in error ? String((error as { name?: unknown }).name ?? "Error") : "Error";
   const code = error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
-  console.error(JSON.stringify({ ok: false, error: name, ...(code ? { code } : {}) }));
+  const message = error instanceof Error ? error.message.replace(/https?:\/\/[^\s]+/gi, "fonte pública").replace(/Bearer\s+[^\s]+/gi, "Bearer [redacted]").slice(0, 240) : String(error).slice(0, 240);
+  console.error(JSON.stringify({ ok: false, error: name, message, ...(code ? { code } : {}) }));
   process.exitCode = 1;
 });
