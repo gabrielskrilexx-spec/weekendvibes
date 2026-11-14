@@ -9,7 +9,7 @@ function trpcPayload(data: unknown) {
 const venueAssets = [
   "goat.webp", "curvao.webp", "guaruja-golf-club.webp", "almare.webp", "flamingos.webp",
   "vallum-garden.webp", "bluemed.webp", "parquevalongo.webp", "casa412.webp", "laroc.webp",
-  "obeco.webp", "dolores.webp", "projac.webp", "meulugar.webp", "mobydick.webp",
+  "obeco.webp", "dolores.webp", "projac.webp", "meulugar.webp", "mobydick.webp", "arena-club.webp", "yellow-house.webp",
 ];
 
 async function prepareHome(page: Page) {
@@ -55,13 +55,13 @@ test("mostra o estado 'Sem conexão' quando o navegador fica offline", async ({ 
   await expect(page.getByText(/Sem conexão\. Os eventos serão atualizados quando a internet voltar\./)).toHaveCount(0);
 });
 
-test("renderiza os 15 venues oficiais com WebP válidos e sem imagens quebradas", async ({ page }) => {
+test("renderiza os 17 venues oficiais com WebP válidos e sem imagens quebradas", async ({ page }) => {
   await prepareHome(page);
   await page.goto("/");
   const venueSection = page.locator("section[aria-labelledby='venues-heading']");
   await expect(venueSection.getByRole("heading", { name: "Palcos da Baixada" })).toBeVisible();
   const images = venueSection.locator("#venues-carousel img");
-  await expect(images).toHaveCount(15);
+  await expect(images).toHaveCount(17);
   const imageResults = [];
   for (let index = 0; index < await images.count(); index += 1) {
     const image = images.nth(index);

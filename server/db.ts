@@ -488,6 +488,8 @@ const OFFICIAL_VENUE_CATALOG: Array<{
   { slug: "projac-bar", canonicalName: "Projac Bar", city: "Guarujá", match: ["projac bar", "projac"], query: "Projac Bar", imageUrl: "/venues/projac.webp", description: "Bar e palco para noites de música e experiências na Baixada." },
   { slug: "meu-lugar", canonicalName: "Meu Lugar", city: "Santos", match: ["meu lugar"], query: "Meu Lugar", imageUrl: "/venues/meulugar.webp", description: "Espaço acolhedor para encontros, música e programação noturna." },
   { slug: "moby-dick", canonicalName: "Moby Dick", city: "Santos", match: ["moby dick"], query: "Moby Dick", imageUrl: "/venues/mobydick.webp", description: "Casa tradicional de shows e noites especiais em Santos." },
+  { slug: "arena-club", canonicalName: "Arena Club", city: "Santos", match: ["arena club", "arena bar club"], query: "Arena Club Santos", imageUrl: "/venues/arena-club.webp", description: "Casa de shows, rock, reggae e música alternativa na Vila Mathias." },
+  { slug: "yellow-house", canonicalName: "Yellow House", city: "Santos", match: ["yellow house"], query: "Yellow House Santos", imageUrl: "/venues/yellow-house.webp", description: "Casa de shows e música urbana na Rua do Comércio, no Centro de Santos." },
 ] as const;
 
 export async function listActiveVenueCatalog(dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<ActiveVenueCatalogItem[]> {

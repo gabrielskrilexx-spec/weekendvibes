@@ -41,6 +41,8 @@ export const FEATURED_VENUES: Venue[] = [
   { key: "projac-bar", name: "Projac Bar", aliases: "Guarujá - SP", city: "Guarujá", imageUrl: "/venues/projac.webp", description: "Bar e palco para noites de música e experiências na Baixada.", query: "Projac Bar" },
   { key: "meu-lugar", name: "Meu Lugar", aliases: "Santos - SP", city: "Santos", imageUrl: "/venues/meulugar.webp", description: "Espaço acolhedor para encontros, música e programação noturna.", query: "Meu Lugar" },
   { key: "moby-dick", name: "Moby Dick", aliases: "Santos - SP", city: "Santos", imageUrl: "/venues/mobydick.webp", description: "Casa tradicional de shows e noites especiais em Santos.", query: "Moby Dick" },
+  { key: "arena-club", name: "Arena Club", aliases: "Vila Mathias · Av. Senador Pinheiro Machado, 33 · Santos - SP", city: "Santos", imageUrl: "/venues/arena-club.webp", description: "Casa de shows, rock, reggae e música alternativa na Vila Mathias.", query: "Arena Club Santos" },
+  { key: "yellow-house", name: "Yellow House", aliases: "Centro · Rua do Comércio, 111 · Santos - SP", city: "Santos", imageUrl: "/venues/yellow-house.webp", description: "Casa de shows e música urbana na Rua do Comércio, no Centro de Santos.", query: "Yellow House Santos" },
 ];
 
 type VenueSpotlightProps = {
