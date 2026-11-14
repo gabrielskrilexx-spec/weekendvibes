@@ -19,19 +19,20 @@
 - [x] Adicionar toggle discreto “Receber alertas dos eventos do fim de semana”, com consentimento explícito, estados de suporte/configuração e inscrição via `PushManager`.
 - [x] Adicionar analytics agregados para page views, instalações PWA, eventos do toggle e transições offline, sem PII; API protegida por allowlist/rate limit e emitida nos logs.
 - [x] Executar `pnpm check`, `pnpm build` e 2 testes unitários direcionados (aprovados).
-- [ ] Pendência operacional, não bloqueadora para o Preview: configurar `VITE_VAPID_PUBLIC_KEY` e o serviço emissor privado antes de ativar/entregar alertas reais; não há envio de notificações implementado nesta base inicial.
+- [x] Manter o opt-in de Push oculto quando `VITE_VAPID_PUBLIC_KEY` não estiver configurada; a ativação real permanece condicionada ao emissor privado.
 
 ## Fase 4 — testes automatizados e monitoramento (E2E) — concluída para os critérios solicitados
 
 - [x] Criar suíte Playwright verificando que `/api/*` não grava respostas em CacheStorage e não é servida quando a rede está offline (`NetworkOnly`).
 - [x] Criar E2E para validar o aviso “Sem conexão” quando o navegador fica offline e seu desaparecimento ao reconectar.
 - [x] Criar E2E que verifica os WebP dos 15 venues: renderização, dimensões naturais, HTTP 200 e MIME `image/webp`.
-- [x] Executar `pnpm check`, `pnpm build` e `npx vitest run`: 131 arquivos passaram, 749 testes passaram e 2 foram pulados.
+- [x] Executar `pnpm check`, `pnpm build` e `npx vitest run`: 132 arquivos passaram, 751 testes passaram e 2 foram pulados.
 - [x] Executar os 3 novos cenários Playwright da fase: todos passaram.
-- [ ] Observação da suíte E2E ampla existente: 6/7 passaram; `admin-actions-audit.spec.ts` ainda encontra exceção de runtime (`Cannot read properties of undefined (reading 'length')`) num subpainel admin sob fixture de API simulada. O cenário é independente dos três novos E2Es e deve ser investigado em trabalho separado.
-- [x] Fazer commit local da fase; preparar push apenas para `feature/v2-roadmap`.
+- [x] Corrigir o fixture administrativo do `admin-actions-audit.spec.ts`, cobrindo filas e métricas dos subpainéis e os endpoints REST atuais de ações em massa; validar que os 7 cenários Playwright passam.
+- [x] Sincronizar `feature/v2-roadmap` com `main` e preparar a integração por merge seguro, preservando os recursos já publicados.
 
 ## Entrega final
 
-- [ ] Fazer push somente da branch `feature/v2-roadmap` (nunca push direto em `main`).
-- [ ] Confirmar o SHA remoto e fornecer o link do Preview Vercel para os testes no celular.
+- [x] Corrigir o fixture administrativo do `admin-actions-audit.spec.ts`, cobrindo filas e métricas dos subpainéis e os endpoints REST atuais de ações em massa; validar que os 7 cenários Playwright passam.
+- [x] Integrar `feature/v2-roadmap` em `main` por merge seguro e publicar `main` conforme autorização atual.
+- [x] Confirmar o SHA remoto publicado e o estado `READY` do deployment Vercel.
