@@ -14,7 +14,7 @@ export class AgendaStepFailure extends Error {
   }
 }
 import { processPendingGeocoding } from "./geocoding";
-import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
+import { finishIngestionRun, reconcileStaleInstagramRuns, startIngestionRun } from "./ingestion-reports";
 import { notifyIngestionSummary } from "./ingestion-failure-alerts";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import { reconcileIngestionResult } from "./reconciliation";
@@ -246,6 +246,13 @@ export async function runPublicAgendaStep(options: AgendaStepOptions = {}) {
 export async function runInstagramAgendaStep(options: AgendaStepOptions = {}) {
   const execute = async () => {
     const archived = options.archive === false ? 0 : await archiveAgendaEvents();
+    const reconciled = await reconcileStaleInstagramRuns().catch(error => {
+      console.warn("[Agenda routine] Instagram stale-run reconciliation failed; continuing pipeline", safeAutomationError(error));
+      return { reconciledCount: 0, runIds: [] as number[] };
+    });
+    if (reconciled.reconciledCount > 0) {
+      console.info("[Agenda routine] Instagram stale runs reconciled", JSON.stringify(reconciled));
+    }
     const result = await withAgendaTimeout(signal => runInstagramPipeline({ signal, forceApifyAll: options.forceApifyAll, trigger: options.trigger }), getInstagramAgendaTimeoutMs(options.trigger), options.signal);
     let geocoding = { processed: 0, succeeded: 0, failed: 0, pending: 0 };
     try {
@@ -253,7 +260,7 @@ export async function runInstagramAgendaStep(options: AgendaStepOptions = {}) {
     } catch (error) {
       console.warn("[Agenda routine] Geocoding batch skipped:", error);
     }
-    return { archived, result, geocoding };
+    return { archived, reconciled, result, geocoding };
   };
   return options.track === false ? execute() : trackedStep("instagram-agenda", options.sourceKey ?? "instagram", execute, options);
 }

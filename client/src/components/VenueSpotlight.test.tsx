@@ -27,5 +27,13 @@ describe("VenueSpotlight", () => {
     expect(markup).toContain("/venues/vallum-garden.webp");
     expect(markup).toContain("Ponta da Praia · Santos - SP");
     expect(markup).toContain("Jamboo Session Santos");
+    expect(markup).toContain("Rua do Comércio, nº 111 – Centro, Santos/SP (CEP 11010-122)");
+  });
+
+  it("formata data e horário no fuso America/Sao_Paulo", () => {
+    const utcBoundaryEvent = { id: 2, title: "Evento em horário local", eventDate: "2026-12-13T02:00:00.000Z", locationName: "Casa 412" } as never;
+    const markup = renderToStaticMarkup(<VenueSpotlight selectedVenue="casa-412" onSelect={vi.fn()} events={[utcBoundaryEvent]} />);
+    expect(markup).toContain("12 de dez.");
+    expect(markup).toContain("23:00");
   });
 });

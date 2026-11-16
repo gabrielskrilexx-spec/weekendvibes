@@ -188,7 +188,16 @@ const plugins = [
     },
     injectManifest: {
       globPatterns: ["**/*.{js,css,woff,woff2,ttf}"],
-      globIgnores: ["**/icons/**"],
+      globIgnores: [
+        "**/icons/**",
+        "**/assets/Admin*.js",
+        "**/assets/ManualReviewPanel-*.js",
+        "**/assets/HeartbeatTimelinePanel-*.js",
+        "**/assets/CollisionReviewPanel-*.js",
+        "**/assets/LocationAliasesPanel-*.js",
+        "**/assets/LineChart-*.js",
+        "**/assets/visibilityPolling-*.js",
+      ],
     },
   }),
 ];

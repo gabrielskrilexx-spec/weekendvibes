@@ -15,6 +15,13 @@
       "when": 1793971541113,
       "tag": "0001_add_monitored_brands",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794582510803,
+      "tag": "0002_push_subscriptions",
+      "breakpoints": true
     }
   ]
 }

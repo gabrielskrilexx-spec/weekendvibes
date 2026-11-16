@@ -7,7 +7,7 @@ O WeekendVibes é uma plataforma de eventos musicais para a Baixada Santista, co
 - React 19 + Vite no frontend.
 - Node.js + Express no servidor.
 - tRPC para contratos tipados entre cliente e servidor.
-- Drizzle ORM com MySQL/TiDB.
+- Drizzle ORM com PostgreSQL/Neon.
 - Vitest para testes automatizados.
 - Apify para coleta de conteúdo público do Instagram.
 - OpenAI Vision para OCR de artes de posts, Stories e Destaques.
@@ -18,7 +18,7 @@ O WeekendVibes opera como uma aplicação web responsiva e PWA unificada, compar
 
 ## Pré-requisitos
 
-Instale Node.js 20 ou superior, pnpm e acesso a um banco MySQL/TiDB compatível com Drizzle. Para executar a ingestão real do Instagram, configure também um token válido do Apify e os segredos de sessão previstos pelo ambiente. Em preview, os mocks de sandbox podem ser usados quando habilitados pela configuração do projeto.
+Instale Node.js 20 ou superior, pnpm e acesso a um banco PostgreSQL/Neon compatível com Drizzle. Para executar a ingestão real do Instagram, configure também um token válido do Apify e os segredos de sessão previstos pelo ambiente. Em preview, os mocks de sandbox podem ser usados quando habilitados pela configuração do projeto.
 
 ## Configuração local
 
@@ -28,9 +28,13 @@ Instale Node.js 20 ou superior, pnpm e acesso a um banco MySQL/TiDB compatível 
 pnpm install
 ```
 
-2. Configure as variáveis de ambiente no gerenciador de segredos do projeto. Não versione arquivos `.env` com credenciais. Os principais valores usados pelo servidor incluem `DATABASE_URL`, `JWT_SECRET`, `ADMIN_EMAILS` (lista separada por vírgulas), `APIFY_API_TOKEN`, `APIFY_INSTAGRAM_SESSION_COOKIE`, `OPENAI_API_KEY`, `INTERNAL_CRON_SECRET` e os valores de storage/OAuth fornecidos pelo ambiente Manus. O painel administrativo autoriza somente usuários com `role=admin` ou e-mail presente em `ADMIN_EMAILS`.
+2. Configure as variáveis de ambiente no gerenciador de segredos do projeto. Não versione arquivos `.env` com credenciais. Os principais valores usados pelo servidor incluem `DATABASE_URL`, `JWT_SECRET`, `ADMIN_EMAILS` (lista separada por vírgulas), `APIFY_API_TOKEN`, `APIFY_INSTAGRAM_SESSION_COOKIE`, `OPENAI_API_KEY`, `INTERNAL_CRON_SECRET` e os valores de storage/OAuth fornecidos pelo ambiente Manus. Para Web Push, configure um par VAPID correspondente: `VITE_VAPID_PUBLIC_KEY` (pública, disponível durante o build do frontend), `VAPID_PRIVATE_KEY` (somente servidor) e `VAPID_SUBJECT` (por exemplo, `mailto:admin@weekendvibes.com`). Nunca use a chave privada em `VITE_*`, no navegador ou no Git. O opt-in permanece oculto enquanto a chave pública estiver ausente; o envio administrativo exige as três variáveis. O painel administrativo autoriza somente usuários com `role=admin` ou e-mail presente em `ADMIN_EMAILS`.
 
 3. Gere migrações Drizzle quando o schema for alterado e aplique-as conforme o fluxo do projeto. Não execute comandos destrutivos contra o banco de produção sem revisão.
+
+## Web Push
+
+Com permissão explícita do visitante, o frontend registra a subscription no Service Worker e usa `POST /api/push/subscriptions` para salvá-la; a desativação usa `DELETE /api/push/subscriptions`. Ambos aceitam somente endpoints HTTPS dos serviços de push dos navegadores, não devolvem chaves/endpoints e têm rate limit. O envio é manual e autenticado como administrador: `POST /api/v2/admin/push/send` recebe JSON `{ "title": "Novos eventos", "body": "Confira a agenda", "url": "/agenda", "tag": "weekendvibes-events" }`. O `url` precisa ser relativo à origem; falhas 404/410 removem a subscription expirada. A rota responde apenas contagens de enviadas, expiradas e falhas, sem registrar chaves ou endpoints.
 
 ## Executar localmente
 

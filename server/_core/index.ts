@@ -18,6 +18,7 @@ import { weeklyExecutiveReportHandler } from "../scheduled-weekly-report";
 import { scheduledHealthHandler } from "../scheduled-health";
 import { pruneEventsHandler } from "../prune-events";
 import { webAnalyticsHandler } from "../web-analytics";
+import { registerPushRestRoutes } from "../push-rest";
 import { serveStatic } from "./static";
 import { applySecurityHeaders, createRateLimit, createStrictCors } from "./security";
 import { registerMapsJavascriptRoute } from "../maps-javascript";
@@ -58,6 +59,9 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
   registerStorageProxy(app);
   app.use("/api/maps", createRateLimit({ windowMs: 60 * 1000, max: 30, name: "maps-script" }));
   registerMapsJavascriptRoute(app);
+  app.use("/api/push/subscriptions", createRateLimit({ windowMs: 60 * 1000, max: 30, name: "push-subscriptions" }));
+  app.use("/api/v2/admin/push/send", createRateLimit({ windowMs: 60 * 1000, max: 10, name: "admin-push-send" }));
+  registerPushRestRoutes(app);
   registerAdminRestRoutes(app);
   app.get("/api/health", async (_req, res) => {
     res.setHeader("Content-Type", "application/json; charset=utf-8");

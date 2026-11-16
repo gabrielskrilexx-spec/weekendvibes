@@ -988,7 +988,12 @@ type PublicPage = {
   cacheFallback?: { used: true; status: number | null; message: string };
   fetchFailure?: FetchFailure;
   circuitOpen?: boolean;
+  emptyHealthy?: boolean;
 };
+
+export function isHealthyEmptyPublicPage(page: Pick<PublicPage, "text" | "adapter" | "emptyHealthy">) {
+  return page.emptyHealthy === true && page.text.trim() === "" && (page.adapter === "weticket" || page.adapter === "zig");
+}
 
 export function publicSourceKey(url: string) {
   try {
@@ -1130,8 +1135,8 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean; signal?
     const structured = parseWeTicketEventMetadata(html, url);
     const meta = readMetaTags(html);
     const text = structured?.text ?? meta("og:description") ?? "";
-    if (!text) throw createFetchError("WeTicket retornou conteúdo vazio");
-    return { url, html, text: text.slice(0, 16_000), imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter: "weticket", adapterError: structured ? undefined : "Adaptador WeTicket não encontrou dados estruturados completos." };
+    if (!text) return { url, html, text: "", imageUrl: structured?.imageUrl ?? meta("og:image") ?? "", structured, adapter: "weticket", emptyHealthy: true };
+    return { url, html, text: text.slice(0, 16_000), imageUrl: structured?.imageUrl ?? meta("og:image") ?? "", structured, adapter: "weticket", adapterError: structured ? undefined : "Adaptador WeTicket não encontrou dados estruturados completos." };
   }
   if (isSymplaEventUrl(url)) {
     const response = await fetchExternal(url, { headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36", accept: "text/html,application/xhtml+xml", "accept-language": "pt-BR,pt;q=0.9,en;q=0.8", "cache-control": "no-cache", "sec-ch-ua": '"Chromium";v="140", "Google Chrome";v="140", "Not=A?Brand";v="24"', "sec-ch-ua-mobile": "?0", "sec-ch-ua-platform": '"Windows"', "sec-fetch-dest": "document", "sec-fetch-mode": "navigate", "sec-fetch-site": "same-origin", "upgrade-insecure-requests": "1" } }, SYMPLA_FETCH_TIMEOUT_MS, false, options.signal);
@@ -1150,8 +1155,8 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean; signal?
     const structured = parseZigEventMetadata(html, url);
     const meta = readMetaTags(html);
     const text = structured?.text ?? meta("og:description") ?? "";
-    if (!text) throw createFetchError("Zig Tickets retornou conteúdo vazio");
-    return { url, html, text: text.slice(0, 16_000), imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter: "zig", adapterError: structured ? undefined : "Adaptador Zig não encontrou metadados públicos completos." };
+    if (!text) return { url, html, text: "", imageUrl: structured?.imageUrl ?? meta("og:image") ?? "", structured, adapter: "zig", emptyHealthy: true };
+    return { url, html, text: text.slice(0, 16_000), imageUrl: structured?.imageUrl ?? meta("og:image") ?? "", structured, adapter: "zig", adapterError: structured ? undefined : "Adaptador Zig não encontrou metadados públicos completos." };
   }
   if (new URL(url).hostname.endsWith("ticket360.com.br")) {
     const response = await fetchExternal(url, { headers: SANTOS_PUBLIC_REQUEST_HEADERS }, SYMPLA_FETCH_TIMEOUT_MS, false, options.signal);
@@ -1349,7 +1354,7 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
     } else if (page.value.cacheFallback?.used) {
       report.errors.push({ sourceUrl: url, status: page.value.cacheFallback.status, message: `Fallback utilizado: ${page.value.cacheFallback.message}` });
     }
-    if (page.value.adapterError) {
+    if (page.value.adapterError && !isHealthyEmptyPublicPage(page.value)) {
       report.errors.push({ sourceUrl: url, status: null, message: page.value.adapterError });
     }
   });

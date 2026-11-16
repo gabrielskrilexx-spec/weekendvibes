@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { extractOcrText, isGracefullyDegradedMetaFailure } from "./instagram-pipeline";
 import {
@@ -1222,6 +1222,44 @@ export async function findIngestionRunById(runId: number) {
   if (!db) return undefined;
   const [run] = await db.select().from(ingestionRuns).where(eq(ingestionRuns.id, runId)).limit(1);
   return run;
+}
+
+export const INSTAGRAM_STALE_RUN_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+
+export function isInstagramRunStale(startedAt: Date | string, now = new Date(), maxAgeMs = INSTAGRAM_STALE_RUN_MAX_AGE_MS) {
+  const started = new Date(startedAt).getTime();
+  return Number.isFinite(started) && now.getTime() - started >= maxAgeMs;
+}
+
+export async function reconcileStaleInstagramRuns(options: { now?: Date; maxAgeMs?: number } = {}) {
+  const db = await getDb();
+  if (!db) return { reconciledCount: 0, runIds: [] as number[] };
+  const now = options.now ?? new Date();
+  const maxAgeMs = Number.isFinite(options.maxAgeMs) ? Math.max(1, Number(options.maxAgeMs)) : INSTAGRAM_STALE_RUN_MAX_AGE_MS;
+  const cutoff = new Date(now.getTime() - maxAgeMs);
+  const staleRuns = await db.select({ id: ingestionRuns.id, startedAt: ingestionRuns.startedAt, details: ingestionRuns.details })
+    .from(ingestionRuns)
+    .where(and(eq(ingestionRuns.routine, "instagram-stories-async"), eq(ingestionRuns.status, "running"), lt(ingestionRuns.startedAt, cutoff)));
+  const runIds: number[] = [];
+  for (const run of staleRuns) {
+    let previousDetails: Record<string, unknown> = {};
+    try { previousDetails = run.details ? JSON.parse(run.details) as Record<string, unknown> : {}; } catch { /* preserva a finalização mesmo com detalhes corrompidos */ }
+    await finishIngestionRun(run.id, {
+      status: "failed",
+      failedCount: 1,
+      httpStatus: 504,
+      details: {
+        ...previousDetails,
+        provider: "apify",
+        error: "STALE_ASYNC_RUN_RECONCILED",
+        kind: "reconciliation_timeout",
+        message: `Execução assíncrona sem callback há mais de ${Math.round(maxAgeMs / 3_600_000)} horas; finalizada automaticamente.`,
+        reconciledAt: now.toISOString(),
+      },
+    });
+    runIds.push(run.id);
+  }
+  return { reconciledCount: runIds.length, runIds };
 }
 
 export async function finishIngestionRun(

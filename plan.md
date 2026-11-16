@@ -2,7 +2,7 @@
 
 ## Direção de implementação
 
-Evoluir o projeto existente em quatro fases sequenciais na branch isolada `feature/v2-roadmap`, sem publicar commits diretamente em `main`. A cada fase: validar com `pnpm check` e `pnpm build`, corrigir regressões, registrar um commit local e continuar na mesma branch. Ao final, rodar a suíte automatizada completa, fazer push apenas de `feature/v2-roadmap` e compartilhar o Preview Vercel para teste em celular. Não mesclar nem fazer push em `main`.
+Evoluir o projeto existente em uma branch isolada de trabalho, preservando o `main` enquanto a implementação é validada. Para esta solicitação, o usuário autorizou explicitamente integrar a branch por merge seguro e publicar em `main`; não fazer force-push nem reescrever histórico. O banco permanece PostgreSQL/Neon acessado via Drizzle.
 
 ## Estrutura do projeto e responsabilidades
 
@@ -24,9 +24,11 @@ Reusar o monitoramento dinâmico `monitoredBrands` já consumido pelo pipeline, 
 
 Servir metadados route-specific no HTML inicial de páginas públicas, especialmente `/` (vitrine Palcos da Baixada) e `/eventos/:slug`. Não depender da hidratação React para crawlers. Renderizar imagens preview PNG server-side de 1200×630 com identidade WeekendVibes, sem buscar imagens arbitrárias fornecidas por eventos. Servir somente registros publicados/não arquivados. URLs absolutas de canonical/OG usam apenas `PUBLIC_SITE_URL` ou domínios públicos explícitos do ambiente Vercel, nunca o cabeçalho Host do request. Rotas de imagem/páginas dinâmicas devem ser encaminhadas pela Vercel à função Express antes do fallback SPA.
 
-### Fase 3 — push PWA e analytics
+### Fase 3 — Web Push PWA completo
 
-Adicionar listeners de `push` e `notificationclick` ao Service Worker existente. A inscrição fica no `PushManager` do navegador e só é solicitada após consentimento; o toggle é desabilitado quando o suporte/chave pública VAPID não está configurado. A chave privada e o serviço emissor não serão inventados nem publicados: sem esse backend, a interface explica que a permissão local não equivale à entrega ativa de alertas. Adicionar eventos agregados de analytics sem PII, incluindo instalação do PWA, page views e transições offline, expostos em logs filtrados do servidor.
+Preservar os listeners `push`/`notificationclick` e o ciclo de atualização do Service Worker. Criar no PostgreSQL/Neon, via Drizzle, `push_subscriptions` com `id` serial primary key, `endpoint` text único, `p256dh`, `auth` e `createdAt`. Adicionar `web-push`; ler `VITE_VAPID_PUBLIC_KEY` no cliente e `VAPID_PRIVATE_KEY`/`VAPID_SUBJECT` somente no servidor. Implementar save/remove de subscriptions para visitantes e um send administrativo protegido para avisos de teste ou de eventos novos; remover endpoints expirados e não registrar endpoints, chaves ou payloads sensíveis. O opt-in pede permissão somente após ação explícita, cria subscription com a chave VAPID convertida em bytes e persiste/removes no backend. Ausência de VAPID esconde o toggle e bloqueia envio sem vazar configuração. Preservar os analytics agregados já implementados para instalações PWA, interações com o toggle e transições offline, sem PII.
+
+Aplicar a migração aditiva de forma versionada; usar provider do web-push mockado nos testes, sem tráfego real, banco compartilhado ou segredos na suíte. Documentar como configurar o par de chaves correspondente no ambiente de produção.
 
 ### Fase 4 — testes e observabilidade E2E
 

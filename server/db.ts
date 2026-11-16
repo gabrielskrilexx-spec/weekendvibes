@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots, ingestionLeases, adminMagicLinks, monitoredBrands, MonitoredBrand } from "../drizzle/schema";
+import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots, ingestionLeases, adminMagicLinks, monitoredBrands, MonitoredBrand, pushSubscriptions } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 import { buildDailyTelemetrySeries, calculateSystemHealthStatus, normalizeObservabilityPeriod, summarizeTelemetryTrend } from "./observability";
@@ -40,6 +40,28 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+export async function upsertPushSubscription(input: { endpoint: string; p256dh: string; auth: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("database_unavailable");
+  await db.insert(pushSubscriptions).values(input).onConflictDoUpdate({
+    target: pushSubscriptions.endpoint,
+    set: { p256dh: input.p256dh, auth: input.auth },
+  });
+}
+
+export async function deletePushSubscription(endpoint: string) {
+  const db = await getDb();
+  if (!db) throw new Error("database_unavailable");
+  const deleted = await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint)).returning({ id: pushSubscriptions.id });
+  return deleted.length;
+}
+
+export async function listPushSubscriptions() {
+  const db = await getDb();
+  if (!db) throw new Error("database_unavailable");
+  return db.select({ endpoint: pushSubscriptions.endpoint, p256dh: pushSubscriptions.p256dh, auth: pushSubscriptions.auth }).from(pushSubscriptions);
 }
 
 export async function checkDatabaseHealth(getDbProvider: typeof getDb = getDb) {
@@ -483,7 +505,7 @@ const OFFICIAL_VENUE_CATALOG: Array<{
   { slug: "parque-valongo", canonicalName: "Parque Valongo", city: "Santos", match: ["parque valongo"], query: "Parque Valongo", imageUrl: "/venues/parquevalongo.webp", description: "Polo aberto para música, cultura e experiências à beira do cais." },
   { slug: "casa-412", canonicalName: "Casa 412", city: "Santos", match: ["casa 412", "casa412"], query: "Casa 412", imageUrl: "/venues/casa412.webp", description: "Espaço amplo e climatizado no centro histórico/Vila Nova, palco de festas e Jamboo Sessions." },
   { slug: "laroc-club", canonicalName: "Laroc Club", city: "Guarujá", match: ["laroc club", "laroc club guaruja", "laroc"], query: "Laroc Club Guarujá", imageUrl: "/venues/laroc.webp", description: "Sunset e beach club de música eletrônica à beira-mar." },
-  { slug: "o-beco", canonicalName: "O Beco", city: "Santos", match: ["o beco", "o beco"], query: "O Beco", imageUrl: "/venues/obeco.webp", description: "Bar e espaço de festas com programação urbana em Santos." },
+  { slug: "o-beco", canonicalName: "O Beco", city: "Santos", match: ["o beco", "o bēco"], query: "O Beco", imageUrl: "/venues/obeco.webp", description: "Bar e espaço de festas com programação urbana em Santos." },
   { slug: "dolores-restaurante-e-bar", canonicalName: "Dolores Restaurante e Bar", city: "Guarujá", match: ["dolores restaurante e bar", "dolores bar e restaurante", "dolores"], query: "Dolores Restaurante e Bar", imageUrl: "/venues/dolores.webp", description: "Restaurante e bar com atmosfera descontraída para bons encontros." },
   { slug: "projac-bar", canonicalName: "Projac Bar", city: "Guarujá", match: ["projac bar", "projac"], query: "Projac Bar", imageUrl: "/venues/projac.webp", description: "Bar e palco para noites de música e experiências na Baixada." },
   { slug: "meu-lugar", canonicalName: "Meu Lugar", city: "Santos", match: ["meu lugar"], query: "Meu Lugar", imageUrl: "/venues/meulugar.webp", description: "Espaço acolhedor para encontros, música e programação noturna." },
@@ -1493,8 +1515,11 @@ export async function saveEvent(data: InsertEvent) {
     }
     return { created: false, id: duplicate.id, duplicate: true, updated: keepIncoming };
   }
-  const inserted = await upsert(db.insert(events).values(normalized), events.slug, { ...normalized, updatedAt: new Date() });
-  const eventId = Number((Array.isArray(inserted) ? inserted[0] : undefined)?.id ?? 0);
+  const inserted = await db.insert(events).values(normalized).onConflictDoUpdate({
+    target: events.slug,
+    set: { ...normalized, updatedAt: new Date() },
+  }).returning({ id: events.id });
+  const eventId = Number(inserted[0]?.id ?? 0);
   if (eventId > 0) {
     await recordEventTicketSnapshot(eventId, normalized, db);
     await queueGeocoding(eventId, normalized, db);
