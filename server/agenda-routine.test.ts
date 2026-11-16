@@ -8,13 +8,14 @@ const mocks = vi.hoisted(() => ({
   runInstagramPipeline: vi.fn().mockResolvedValue({ imported: 1 }),
   startIngestionRun: vi.fn().mockResolvedValue(123),
   finishIngestionRun: vi.fn().mockResolvedValue(undefined),
+  reconcileStaleInstagramRuns: vi.fn().mockResolvedValue({ reconciledCount: 0, runIds: [] }),
   processPendingGeocoding: vi.fn().mockResolvedValue({ processed: 0, succeeded: 0, failed: 0, pending: 0 }),
 }));
 
 vi.mock("./db", () => ({ archivePastEvents: mocks.archivePastEvents, archiveExpiredSoldOutEvents: mocks.archiveExpiredSoldOutEvents, deactivateExpiredSources: mocks.deactivateExpiredSources }));
 vi.mock("./ingestion", () => ({ runIngestionPipeline: mocks.runIngestionPipeline }));
 vi.mock("./instagram-pipeline", () => ({ runInstagramPipeline: mocks.runInstagramPipeline, isGracefullyDegradedMetaFailure: vi.fn().mockReturnValue(false), getMetaFailureStatus: vi.fn().mockReturnValue(null) }));
-vi.mock("./ingestion-reports", () => ({ startIngestionRun: mocks.startIngestionRun, finishIngestionRun: mocks.finishIngestionRun }));
+vi.mock("./ingestion-reports", () => ({ startIngestionRun: mocks.startIngestionRun, finishIngestionRun: mocks.finishIngestionRun, reconcileStaleInstagramRuns: mocks.reconcileStaleInstagramRuns }));
 vi.mock("./geocoding", () => ({ processPendingGeocoding: mocks.processPendingGeocoding }));
 
 import { AGENDA_ROUTINE_COMPOSITION, buildAutomationSourceSummariesForTest, normalizeTrackedStepResultForTest, runFullAgendaRoutine, runInstagramAgendaStep, runPublicAgendaStep, runScheduledWithRetriesForTest, isRetryableAgendaErrorForTest, getInstagramAgendaTimeoutMs, getPublicAgendaTimeoutMs } from "./agenda-routine";
