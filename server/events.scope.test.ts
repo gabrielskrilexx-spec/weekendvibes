@@ -37,9 +37,11 @@ describe("event scope", () => {
     const focused = process.env.INGESTION_FOCUS_URLS;
     delete process.env.INGESTION_FOCUS_URLS;
     process.env.INGESTION_SOURCE_URL = "https://source.example/events";
+    saveEvent.mockResolvedValueOnce({ created: true, id: 42, updated: false });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, headers: { get: () => "text/html" }, text: async () => "Vallum Garden Santos", json: async () => ({}) }));
     try {
-      await runIngestionPipeline();
+      const result = await runIngestionPipeline();
+      expect(result).toMatchObject({ added: 1, updated: 0, persisted: 1, imported: 1 });
       expect(saveEvent).toHaveBeenCalledTimes(1);
       expect(saveEvent).toHaveBeenCalledWith(expect.objectContaining({ city: "Santos", category: "show", genre: "funk" }));
     } finally {

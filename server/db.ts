@@ -1515,8 +1515,11 @@ export async function saveEvent(data: InsertEvent) {
     }
     return { created: false, id: duplicate.id, duplicate: true, updated: keepIncoming };
   }
-  const inserted = await upsert(db.insert(events).values(normalized), events.slug, { ...normalized, updatedAt: new Date() });
-  const eventId = Number((Array.isArray(inserted) ? inserted[0] : undefined)?.id ?? 0);
+  const inserted = await db.insert(events).values(normalized).onConflictDoUpdate({
+    target: events.slug,
+    set: { ...normalized, updatedAt: new Date() },
+  }).returning({ id: events.id });
+  const eventId = Number(inserted[0]?.id ?? 0);
   if (eventId > 0) {
     await recordEventTicketSnapshot(eventId, normalized, db);
     await queueGeocoding(eventId, normalized, db);
