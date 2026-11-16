@@ -546,6 +546,30 @@ export function normalizeStructuredEventDate(value: string) {
   return new Date(raw);
 }
 
+/** Completa apenas metadados secundários ausentes; não inventa data, venue ou cidade. */
+export function normalizeInstagramStructuredEvent(event: StructuredEvent): StructuredEvent {
+  const rawDate = String(event.eventDate ?? "").trim();
+  return {
+    ...event,
+    title: String(event.title ?? "").trim(),
+    summary: String(event.summary ?? "").trim() || String(event.title ?? "").trim(),
+    eventDate: /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? `${rawDate}T22:00:00-03:00` : rawDate,
+    locationName: String(event.locationName ?? "").trim(),
+    address: String(event.address ?? "").trim(),
+    imageUrl: String(event.imageUrl ?? "").trim(),
+    sourceUrl: String(event.sourceUrl ?? "").trim(),
+  };
+}
+
+export function isInstagramDraftCandidate(event: Partial<StructuredEvent>, reasons: StructuredRejectionReason[]) {
+  const hardFailures = new Set<StructuredRejectionReason>(["invalid_date", "past_event", "invalid_source_url", "invalid_category", "invalid_genre"]);
+  if (reasons.some(reason => hardFailures.has(reason))) return false;
+  return typeof event.title === "string" && event.title.trim().length > 0
+    && typeof event.eventDate === "string" && !Number.isNaN(new Date(event.eventDate).getTime())
+    && typeof event.locationName === "string" && event.locationName.trim().length > 0
+    && ALLOWED_CITIES.has(String(event.city));
+}
+
 export function createStructuredEventRejection(event: Partial<StructuredEvent>, index: number, reasons: StructuredRejectionReason[]): StructuredEventRejection {
   return {
     index,
@@ -562,7 +586,7 @@ export function createStructuredEventRejection(event: Partial<StructuredEvent>, 
 
 export function validateStructuredInstagramEvent(event: Partial<StructuredEvent>, activeAliases: string[] = [], now = new Date(), allowConfiguredBrandVenue = false): StructuredRejectionReason[] {
   const reasons: StructuredRejectionReason[] = [];
-  const requiredFields = [event.title, event.summary, event.eventDate, event.locationName, event.address, event.city, event.category, event.genre, event.sourceUrl];
+  const requiredFields = [event.title, event.eventDate, event.locationName, event.city, event.category, event.genre, event.sourceUrl];
   if (requiredFields.some(value => typeof value !== "string" || value.trim().length === 0)) reasons.push("missing_required_field");
   const parsedDate = new Date(String(event.eventDate ?? ""));
   if (Number.isNaN(parsedDate.getTime())) reasons.push("invalid_date");
@@ -1263,7 +1287,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     if (rawText.trim()) approvedPosts.push({ post, rawText: `${rawText}${regionalMarker}` });
   }
 
-  const structuredEvents = await extractStructuredEvents(referenceDate, approvedPosts);
+  const structuredEvents = (await extractStructuredEvents(referenceDate, approvedPosts)).map(normalizeInstagramStructuredEvent);
   const mediaOriginBySourceUrl = new Map(approvedPosts.map(({ post }) => [postUrl(post), post.mediaType ?? "post"]));
   const profileCityBySourceUrl = new Map(approvedPosts.map(({ post }) => [postUrl(post), getInstagramTargetCity(String(post.ownerUsername ?? post.username ?? ""))]));
   const profileBrandBySourceUrl = new Map(approvedPosts.map(({ post, rawText }) => {
@@ -1283,11 +1307,15 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     const normalizedCity = resolveInstagramEventCity(event, profileCityBySourceUrl.get(event.sourceUrl));
     const normalizedEvent = { ...event, city: normalizedCity as StructuredEvent["city"] };
     const eventBrand = profileBrandBySourceUrl.get(event.sourceUrl);
-    const brandCityMatches = Boolean(eventBrand?.cities.some(city => city.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === normalizedCity.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")));
+    const locationBrand = getMonitoredPublicBrand(`${event.locationName} ${event.address}`, undefined, activeBrands);
+    const matchingBrand = eventBrand ?? locationBrand;
+    const brandCityMatches = Boolean(matchingBrand?.cities.some(city => city.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === normalizedCity.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")));
     const reasons = validateStructuredInstagramEvent(normalizedEvent, activeAliases, new Date(), brandCityMatches);
     if (reasons.length > 0) {
-      rejectedEvents.push(createStructuredEventRejection(normalizedEvent, index, reasons));
-      continue;
+      if (!isInstagramDraftCandidate(normalizedEvent, reasons)) {
+        rejectedEvents.push(createStructuredEventRejection(normalizedEvent, index, reasons));
+        continue;
+      }
     }
     const eventDate = normalizeStructuredEventDate(event.eventDate);
     const coordinates = await resolveRegionalCoordinates({ locationName: event.locationName, address: event.address, city: normalizedEvent.city });
@@ -1295,13 +1323,14 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     const mediaOrigin = mediaOriginBySourceUrl.get(sourceUrl) ?? "post";
     const sourceType = mediaOrigin === "story" ? "instagram_story" : mediaOrigin === "highlight" ? "instagram_highlight" : INSTAGRAM_AGENDA_SOURCE_TYPE;
     const sourceHash = crypto.createHash("md5").update(`${sourceUrl}|${eventDate.toISOString().slice(0, 10)}|${event.title}`).digest("hex");
+    const shouldPublish = reasons.length === 0;
     const saved = dryRun ? { created: true, id: undefined, updated: false } : await saveEvent({
       title: event.title, slug: `${event.title.toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}-${eventDate.getTime()}`,
       description: event.summary, eventDate, locationName: event.locationName, address: event.address, city: normalizedEvent.city,
       category: event.category, genre: event.genre, priceCents: event.priceCents || 0, priceNote: event.priceCents ? undefined : "Preço não informado na agenda do Instagram",
       ticketStatus: event.priceCents ? "available" : "unknown", sourceUrl, imageUrl: event.imageUrl || undefined, latitude: coordinates?.latitude, longitude: coordinates?.longitude,
       neighborhood: coordinates?.neighborhood ?? undefined, formattedAddress: coordinates?.formattedAddress ?? undefined, locationPrecision: coordinates ? (coordinates.confidence === "low" ? "approximate" : "exact") : undefined,
-      sourceHash, sourceType, isPublished: 1, isArchived: 0,
+      sourceHash, sourceType, isPublished: shouldPublish ? 1 : 0, isArchived: 0,
     });
     if (!saved || typeof saved !== "object" || saved.created) added += 1;
     else if (saved.updated) updated += 1;

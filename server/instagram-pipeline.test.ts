@@ -166,6 +166,40 @@ describe("Instagram weekend pipeline", () => {
     expect(normalizeStructuredEventDate("2026-08-20").toISOString()).toBe("2026-08-20T15:00:00.000Z");
   });
 
+  it("completa horário padrão e campos secundários sem inventar venue ou cidade", async () => {
+    const { normalizeInstagramStructuredEvent, isInstagramDraftCandidate } = await import("./instagram-pipeline");
+    const event = normalizeInstagramStructuredEvent({
+      title: "Festa de sábado",
+      summary: "",
+      eventDate: "2030-08-24",
+      locationName: "Arena Club",
+      address: "",
+      city: "Santos",
+      category: "balada",
+      genre: "funk",
+      priceCents: 0,
+      imageUrl: "",
+      sourceUrl: "https://www.instagram.com/p/arena/",
+    });
+    expect(event).toMatchObject({ eventDate: "2030-08-24T22:00:00-03:00", summary: "Festa de sábado", address: "" });
+    expect(isInstagramDraftCandidate(event, ["outside_target_venue"])).toBe(true);
+    expect(isInstagramDraftCandidate(event, ["invalid_genre"])).toBe(false);
+  });
+
+  it("mantém a barreira regional mesmo com venue reconhecida", () => {
+    expect(validateStructuredInstagramEvent({
+      title: "Festa fora da região",
+      summary: "Show",
+      eventDate: "2030-08-24T22:00:00-03:00",
+      locationName: "Arena Club",
+      address: "São Paulo",
+      city: "São Paulo" as "Santos",
+      category: "balada",
+      genre: "funk",
+      sourceUrl: "https://www.instagram.com/p/fora/",
+    }, ["arena club"], new Date("2030-08-20T12:00:00-03:00"))).toContain("outside_target_venue");
+  });
+
   it("accepts broad agenda signals without exact phrase or hashtag requirements", () => {
     expect(hasApprovedAgendaText("Agenda da semana\n#Sexta-Feira")).toBe(true);
     expect(hasApprovedAgendaText("Agenda semanal\n#Sexta-Feira")).toBe(true);

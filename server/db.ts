@@ -1469,12 +1469,12 @@ export async function saveEvent(data: InsertEvent) {
     : normalized.sourceHash
       ? or(eq(events.sourceHash, normalized.sourceHash), and(sql`${events.sourceUrl} = ${normalized.sourceUrl}`, eq(events.eventDate, normalized.eventDate)))
       : and(sql`${events.sourceUrl} = ${normalized.sourceUrl}`, eq(events.eventDate, normalized.eventDate));
-  const existing = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, priceNote: events.priceNote, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl }).from(events).where(identityCondition).limit(1);
+  const existing = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, priceNote: events.priceNote, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl, isPublished: events.isPublished }).from(events).where(identityCondition).limit(1);
   const dayStartUtc = saoPauloDayStartUtc(normalized.eventDate);
   const nextDayStartUtc = saoPauloNextDayStartUtc(normalized.eventDate);
   const fuzzyCandidates = existing[0]
     ? []
-    : await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, priceNote: events.priceNote, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl })
+    : await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, priceNote: events.priceNote, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl, isPublished: events.isPublished })
       .from(events)
       .where(and(eq(events.city, normalized.city), gte(events.eventDate, dayStartUtc), lt(events.eventDate, nextDayStartUtc)))
       .orderBy(asc(events.eventDate))
@@ -1484,7 +1484,7 @@ export async function saveEvent(data: InsertEvent) {
     const identityMatch = Boolean(existing[0]);
     const keepIncoming = identityMatch || eventQuality(normalized) > eventQuality(duplicate);
     if (keepIncoming) {
-      const merged = { ...normalized, latitude: normalized.latitude || duplicate.latitude, longitude: normalized.longitude || duplicate.longitude, imageUrl: normalized.imageUrl || duplicate.imageUrl, description: normalized.description || duplicate.description, updatedAt: new Date() };
+      const merged = { ...normalized, latitude: normalized.latitude || duplicate.latitude, longitude: normalized.longitude || duplicate.longitude, imageUrl: normalized.imageUrl || duplicate.imageUrl, description: normalized.description || duplicate.description, isPublished: normalized.isPublished === 0 ? (duplicate.isPublished ?? 0) : normalized.isPublished, updatedAt: new Date() };
       await recordEventChangeAlerts(duplicate.id, duplicate, normalized, db);
       await db.update(events).set(merged).where(eq(events.id, duplicate.id));
       const changes = classifyEventChanges(duplicate, normalized);
