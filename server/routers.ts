@@ -23,6 +23,7 @@ import {
   saveEvent,
   updateEvent,
   updateEventsPublication,
+  listDraftEvents,
   listFavoriteEventIds,
   toggleFavoriteEvent,
   setEventReminder,
@@ -362,6 +363,30 @@ const eventUpdateOutput = z
     ok: z.literal(true),
     updated: z.boolean(),
     id: z.number().int().positive(),
+  })
+  .strict();
+const draftEventOutput = z
+  .object({
+    id: z.number().int().positive(),
+    title: z.string(),
+    eventDate: z.string().datetime(),
+    locationName: z.string(),
+    address: z.string().nullable(),
+    city: z.enum(["Santos", "Guarujá"]),
+    category: z.enum(["show", "balada", "evento_musical"]),
+    genre: z.string().nullable(),
+    sourceUrl: z.string().nullable(),
+    sourceType: z.string().nullable(),
+    imageUrl: z.string().nullable(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .strict();
+const draftEventsOutput = z
+  .object({
+    items: z.array(draftEventOutput).max(100),
+    total: z.number().int().nonnegative(),
+    limit: z.number().int().positive().max(100),
   })
   .strict();
 const favoriteOutput = z.object({ isFavorite: z.boolean() }).strict();
@@ -1430,6 +1455,10 @@ export const appRouter = router({
       .query(async ({ input }) =>
         normalizeJsonForTransport(await getEventBySlug(input.slug))
       ),
+    drafts: adminOnly
+      .input(z.object({ sourceType: z.enum(["all", "instagram"]).optional(), limit: z.number().int().positive().max(100).default(50) }).strict().optional())
+      .output(draftEventsOutput)
+      .query(({ input }) => listDraftEvents(input ?? {})),
     favoriteIds: protectedProcedure.query(({ ctx }) =>
       listFavoriteEventIds(ctx.user.id)
     ),

@@ -1547,6 +1547,59 @@ export async function updateEvent(id: number, input: Partial<InsertEvent>) {
   return { updated: true, id } as const;
 }
 
+export type DraftEventRecord = {
+  id: number;
+  title: string;
+  eventDate: string;
+  locationName: string;
+  address: string | null;
+  city: "Santos" | "Guarujá";
+  category: "show" | "balada" | "evento_musical";
+  genre: string | null;
+  sourceUrl: string | null;
+  sourceType: string | null;
+  imageUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function listDraftEvents(input: { sourceType?: "all" | "instagram"; limit?: number } = {}) {
+  const db = await getDb();
+  const limit = Math.min(100, Math.max(1, Math.trunc(input.limit ?? 50)));
+  if (!db) return { items: [] as DraftEventRecord[], total: 0, limit } as const;
+  const conditions = [eq(events.isPublished, 0), eq(events.isArchived, 0)];
+  if (input.sourceType === "instagram") conditions.push(like(events.sourceType, "instagram%"));
+  const where = and(...conditions);
+  const [rows, countRows] = await Promise.all([
+    db.select({
+      id: events.id,
+      title: events.title,
+      eventDate: events.eventDate,
+      locationName: events.locationName,
+      address: events.address,
+      city: events.city,
+      category: events.category,
+      genre: events.genre,
+      sourceUrl: events.sourceUrl,
+      sourceType: events.sourceType,
+      imageUrl: events.imageUrl,
+      createdAt: events.createdAt,
+      updatedAt: events.updatedAt,
+    }).from(events).where(where).orderBy(desc(events.updatedAt)).limit(limit),
+    db.select({ count: sql<number>`count(*)` }).from(events).where(where),
+  ]);
+  const items = rows.map(row => ({
+    ...row,
+    id: Number(row.id),
+    eventDate: row.eventDate.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    city: row.city as DraftEventRecord["city"],
+    category: row.category as DraftEventRecord["category"],
+  } satisfies DraftEventRecord));
+  return { items, total: Number(countRows[0]?.count ?? 0) || 0, limit } as const;
+}
+
 export async function updateEventsPublication(ids: number[]) {
   const normalizedIds = Array.from(new Set(ids.filter(id => Number.isInteger(id) && id > 0)));
   if (normalizedIds.length === 0) return { updated: 0, ids: [] as number[] } as const;
