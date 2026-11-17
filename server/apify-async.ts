@@ -542,10 +542,14 @@ export async function reprocessApifyStoriesDatasetHandler(req: Request, res: Res
   if (!token) return res.status(503).json({ ok: false, error: "APIFY_TOKEN_MISSING" });
   const existing = await findIngestionRunByApifyActor(actorRunId);
   if (existing?.status === "running") {
-    void reconcileApifyStoriesRun(existing).catch(error => {
+    try {
+      const result = await reconcileApifyStoriesRun(existing);
+      const completed = result.status === "succeeded" || result.status === "failed";
+      return res.status(completed ? 200 : 202).json({ ok: true, accepted: true, duplicate: true, runId: existing.id, status: completed ? result.status.toUpperCase() : "RECONCILING", result });
+    } catch (error) {
       console.error("[Apify reprocess] existing run reconciliation failed", { runId: existing.id, actorRunId, error: redactError(error) });
-    });
-    return res.status(202).json({ ok: true, accepted: true, duplicate: true, runId: existing.id, status: "RECONCILING" });
+      return res.status(502).json({ ok: false, error: "APIFY_RECONCILIATION_FAILED", runId: existing.id });
+    }
   }
   const runId = await startIngestionRun({ routine: "instagram-stories-reprocess", sourceKey: `instagram:apify:${actorRunId}` });
   if (!runId) return res.status(500).json({ ok: false, error: "INGESTION_RUN_CREATE_FAILED" });

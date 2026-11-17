@@ -277,10 +277,9 @@ describe("Apify async Stories", () => {
       { headers: { "x-cron-secret": "cron-secret" }, body: { actorRunId: "actor-run-existing", datasetId: "dataset-existing" } } as never,
       res,
     );
-    await new Promise(resolve => setTimeout(resolve, 0));
 
-    expect((res as any).status).toHaveBeenCalledWith(202);
-    expect((res as any).json).toHaveBeenCalledWith({ ok: true, accepted: true, duplicate: true, runId: 123, status: "RECONCILING" });
+    expect((res as any).status).toHaveBeenCalledWith(200);
+    expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, accepted: true, duplicate: true, runId: 123, status: "SUCCEEDED", result: expect.objectContaining({ status: "succeeded" }) }));
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/v2/actor-runs/actor-run-existing"), expect.anything());
     expect(mocks.finishIngestionRun).toHaveBeenCalledWith(123, expect.objectContaining({ status: "succeeded", httpStatus: 200 }));
     fetchMock.mockRestore();
