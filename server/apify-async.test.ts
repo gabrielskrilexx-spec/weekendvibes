@@ -31,7 +31,7 @@ vi.mock("./db", () => ({
   recordOperationalAlert: mocks.recordOperationalAlert,
 }));
 
-import { apifyInstagramWebhookHandler, asyncIngestInstagramHandler, getConfiguredApifyStoriesActorId, normalizeApifyActorId, readApifyErrorDetail, sanitizeApifyDiagnostic, sanitizeApifyWebhookBaseUrl, startAsyncApifyStoriesRun } from "./apify-async";
+import { apifyInstagramWebhookHandler, asyncIngestInstagramHandler, fetchApifyRunStatus, getConfiguredApifyStoriesActorId, normalizeApifyActorId, readApifyErrorDetail, reconcileApifyStoriesRun, sanitizeApifyDiagnostic, sanitizeApifyWebhookBaseUrl, startAsyncApifyStoriesRun } from "./apify-async";
 
 describe("Apify async Stories", () => {
   beforeEach(() => {
@@ -240,6 +240,37 @@ describe("Apify async Stories", () => {
 
     expect((res as any).status).toHaveBeenCalledWith(200);
     expect((res as any).json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, accepted: true, status: "QUEUED" }));
+    fetchMock.mockRestore();
+  });
+
+  it("consulta o status real e recupera o dataset quando um run stale já terminou com SUCCEEDED", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: { id: "actor-run-stale", status: "SUCCEEDED", defaultDatasetId: "dataset-recovered" } }), { status: 200, headers: { "content-type": "application/json" } })
+    );
+    const processDataset = vi.fn().mockResolvedValue(undefined);
+    const result = await reconcileApifyStoriesRun(
+      { id: 91, status: "running", sourceKey: "instagram:apify:actor-run-stale", details: JSON.stringify({ actorRunId: "actor-run-stale", datasetId: "dataset-old" }) },
+      { processDatasetImpl: processDataset as never, token: "test-token" },
+    );
+
+    expect(result).toEqual({ runId: 91, status: "succeeded", actorRunId: "actor-run-stale", datasetId: "dataset-recovered" });
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe("https://api.apify.com/v2/actor-runs/actor-run-stale");
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer test-token" }) }));
+    expect(processDataset).toHaveBeenCalledWith(expect.objectContaining({ id: 91 }), "dataset-recovered", "actor-run-stale", "test-token");
+    expect(mocks.finishIngestionRun).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
+  it("registra o status FAILED/ABORTED real e não tenta ler o dataset", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: { id: "actor-run-aborted", status: "ABORTED", defaultDatasetId: "dataset-aborted" } }), { status: 200, headers: { "content-type": "application/json" } })
+    );
+    const result = await reconcileApifyStoriesRun(
+      { id: 92, status: "running", sourceKey: "instagram:apify:actor-run-aborted", details: JSON.stringify({ actorRunId: "actor-run-aborted" }) },
+      { token: "test-token" },
+    );
+    expect(result).toMatchObject({ runId: 92, status: "failed", providerStatus: "ABORTED" });
+    expect(mocks.finishIngestionRun).toHaveBeenCalledWith(92, expect.objectContaining({ httpStatus: 502, details: expect.objectContaining({ status: "ABORTED", error: "ACTOR_ABORTED" }) }));
     fetchMock.mockRestore();
   });
 });

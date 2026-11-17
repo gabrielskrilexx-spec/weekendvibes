@@ -1241,25 +1241,19 @@ export async function reconcileStaleInstagramRuns(options: { now?: Date; maxAgeM
     .from(ingestionRuns)
     .where(and(eq(ingestionRuns.routine, "instagram-stories-async"), eq(ingestionRuns.status, "running"), lt(ingestionRuns.startedAt, cutoff)));
   const runIds: number[] = [];
+  const pendingRunIds: number[] = [];
+  const { reconcileApifyStoriesRun } = await import("./apify-async");
   for (const run of staleRuns) {
-    let previousDetails: Record<string, unknown> = {};
-    try { previousDetails = run.details ? JSON.parse(run.details) as Record<string, unknown> : {}; } catch { /* preserva a finalização mesmo com detalhes corrompidos */ }
-    await finishIngestionRun(run.id, {
-      status: "failed",
-      failedCount: 1,
-      httpStatus: 504,
-      details: {
-        ...previousDetails,
-        provider: "apify",
-        error: "STALE_ASYNC_RUN_RECONCILED",
-        kind: "reconciliation_timeout",
-        message: `Execução assíncrona sem callback há mais de ${Math.round(maxAgeMs / 3_600_000)} horas; finalizada automaticamente.`,
-        reconciledAt: now.toISOString(),
-      },
-    });
-    runIds.push(run.id);
+    try {
+      const result = await reconcileApifyStoriesRun({ ...run, status: "running" });
+      if (result.status === "succeeded" || result.status === "failed") runIds.push(run.id);
+      else pendingRunIds.push(run.id);
+    } catch (error) {
+      pendingRunIds.push(run.id);
+      console.warn("[Instagram reconciliation] Apify status could not be verified; run remains pending", { runId: run.id, error: safeReportError(error) });
+    }
   }
-  return { reconciledCount: runIds.length, runIds };
+  return { reconciledCount: runIds.length, runIds, pendingCount: pendingRunIds.length, pendingRunIds };
 }
 
 export async function finishIngestionRun(

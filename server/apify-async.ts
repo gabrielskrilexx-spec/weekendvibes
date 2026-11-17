@@ -34,6 +34,7 @@ export function normalizeApifyActorId(value: string) {
 const ACTOR_ID = normalizeApifyActorId(process.env.APIFY_STORIES_ACTOR_ID || DEFAULT_APIFY_STORIES_ACTOR_ID);
 const DATASET_TIMEOUT_MS = 30_000;
 const DATASET_PAGE_SIZE = 100;
+const RUN_STATUS_TIMEOUT_MS = 15_000;
 
 type ApifyDispatchFailure = Error & {
   apifyStatus?: number;
@@ -179,6 +180,80 @@ function readResource(body: unknown) {
     defaultDatasetId: typeof resource.defaultDatasetId === "string" ? resource.defaultDatasetId : "",
     status: typeof resource.status === "string" ? resource.status : "",
   };
+}
+
+export type ApifyReconciliationRun = {
+  id: number;
+  status: string;
+  sourceKey?: string | null;
+  details: string | null;
+};
+
+export type ApifyRunStatusSnapshot = {
+  actorRunId: string;
+  status: string;
+  datasetId: string;
+};
+
+export async function fetchApifyRunStatus(actorRunId: string, token = process.env.APIFY_API_TOKEN?.trim() ?? ""): Promise<ApifyRunStatusSnapshot> {
+  if (!token) throw new Error("APIFY_TOKEN_MISSING");
+  const response = await fetchWithTimeout(
+    `https://api.apify.com/v2/actor-runs/${encodeURIComponent(actorRunId)}`,
+    { headers: { Accept: "application/json", Authorization: `Bearer ${token}`, "User-Agent": "WeekendVibes/1.0" } },
+    RUN_STATUS_TIMEOUT_MS,
+  );
+  const payload = await readJson(response);
+  if (!response.ok) {
+    const detail = readApifyErrorDetail(payload);
+    throw new Error(`APIFY_RUN_STATUS_FAILED_${response.status}${detail ? `: ${detail}` : ""}`);
+  }
+  const data = payload.data && typeof payload.data === "object" ? payload.data as Record<string, unknown> : payload;
+  const status = typeof data.status === "string" ? data.status.toUpperCase() : "";
+  const datasetId = typeof data.defaultDatasetId === "string" ? data.defaultDatasetId : "";
+  if (!status) throw new Error("APIFY_RUN_STATUS_MISSING");
+  return { actorRunId, status, datasetId };
+}
+
+function readRunDetails(rawDetails: string | null) {
+  try { return rawDetails ? JSON.parse(rawDetails) as Record<string, unknown> : {}; } catch { return {}; }
+}
+
+export async function reconcileApifyStoriesRun(
+  run: ApifyReconciliationRun,
+  options: { processDatasetImpl?: typeof processDataset; token?: string } = {},
+) {
+  const details = readRunDetails(run.details);
+  const actorRunId = typeof details.actorRunId === "string" ? details.actorRunId : (run.sourceKey ?? "").replace(/^instagram:apify:/, "");
+  if (!actorRunId) return { runId: run.id, status: "unverified" as const, reason: "ACTOR_RUN_ID_MISSING" };
+  const token = options.token ?? process.env.APIFY_API_TOKEN?.trim() ?? "";
+  if (!token) return { runId: run.id, status: "unverified" as const, reason: "APIFY_TOKEN_MISSING" };
+  const snapshot = await fetchApifyRunStatus(actorRunId, token);
+  if (snapshot.status === "SUCCEEDED") {
+    const datasetId = snapshot.datasetId || (typeof details.datasetId === "string" ? details.datasetId : "");
+    if (!datasetId) throw new Error("DATASET_REFERENCE_MISSING");
+    const processDatasetImpl = options.processDatasetImpl ?? processDataset;
+    await processDatasetImpl(run as Awaited<ReturnType<typeof findIngestionRunByApifyActor>>, datasetId, actorRunId, token);
+    return { runId: run.id, status: "succeeded" as const, actorRunId, datasetId };
+  }
+  if (["FAILED", "ABORTED", "TIMED_OUT"].includes(snapshot.status)) {
+    const actorTimedOut = snapshot.status === "TIMED_OUT";
+    await finishIngestionRun(run.id, {
+      status: "failed",
+      failedCount: 1,
+      httpStatus: actorTimedOut ? 504 : 502,
+      details: {
+        ...details,
+        provider: "apify",
+        actorRunId,
+        status: snapshot.status,
+        error: actorTimedOut ? "ACTOR_TIMEOUT" : snapshot.status === "ABORTED" ? "ACTOR_ABORTED" : "ACTOR_FAILED",
+        kind: actorTimedOut ? "actor_timeout" : snapshot.status === "ABORTED" ? "actor_aborted" : "actor_failed",
+        reconciledAt: new Date().toISOString(),
+      },
+    });
+    return { runId: run.id, status: "failed" as const, actorRunId, providerStatus: snapshot.status };
+  }
+  return { runId: run.id, status: "pending" as const, actorRunId, providerStatus: snapshot.status };
 }
 
 export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | "automatic"; targets?: ReadonlyArray<{ username: string }> } = {}) {
