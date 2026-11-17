@@ -36,6 +36,8 @@ const DATASET_TIMEOUT_MS = 30_000;
 const DATASET_PAGE_SIZE = 100;
 const RUN_STATUS_TIMEOUT_MS = 15_000;
 const RECONCILIATION_BATCH_SIZE = 2;
+const RECONCILIATION_MAX_BATCHES = 6;
+const RECONCILIATION_GLOBAL_TIMEOUT_MS = 45_000;
 
 type ApifyDispatchFailure = Error & {
   apifyStatus?: number;
@@ -234,7 +236,7 @@ export async function reconcileApifyStoriesRun(
     if (!datasetId) throw new Error("DATASET_REFERENCE_MISSING");
     const processDatasetImpl = options.processDatasetImpl ?? processDataset;
     const processed = await processDatasetImpl(run as Awaited<ReturnType<typeof findIngestionRunByApifyActor>>, datasetId, actorRunId, token);
-    return { runId: run.id, status: processed?.status === "partial" ? "partial" as const : "succeeded" as const, actorRunId, datasetId, ...(processed ?? {}) };
+    return { runId: run.id, actorRunId, datasetId, ...(processed ?? {}), status: processed?.status === "partial" ? "partial" as const : "succeeded" as const };
   }
   if (["FAILED", "ABORTED", "TIMED_OUT"].includes(snapshot.status)) {
     const actorTimedOut = snapshot.status === "TIMED_OUT";
@@ -255,6 +257,35 @@ export async function reconcileApifyStoriesRun(
     return { runId: run.id, status: "failed" as const, actorRunId, providerStatus: snapshot.status };
   }
   return { runId: run.id, status: "pending" as const, actorRunId, providerStatus: snapshot.status };
+}
+
+type ReconciliationBatchResult = { status: "succeeded" | "partial" | "failed"; nextOffset?: number | null; [key: string]: unknown };
+
+export async function reconcileApifyStoriesInBatches(
+  initialRun: ApifyReconciliationRun,
+  reconcileBatch: (run: ApifyReconciliationRun) => Promise<ReconciliationBatchResult>,
+  options: { maxBatches?: number; globalTimeoutMs?: number } = {},
+) {
+  const maxBatches = Math.max(1, Math.min(10, Math.floor(options.maxBatches ?? RECONCILIATION_MAX_BATCHES)));
+  const globalTimeoutMs = Math.max(1_000, Math.min(55_000, Math.floor(options.globalTimeoutMs ?? RECONCILIATION_GLOBAL_TIMEOUT_MS)));
+  const startedAt = Date.now();
+  let currentRun = initialRun;
+  let previousOffset: number | null = null;
+  let result: ReconciliationBatchResult = { status: "partial" };
+  let batches = 0;
+
+  while (batches < maxBatches && Date.now() - startedAt < globalTimeoutMs) {
+    result = await reconcileBatch(currentRun);
+    batches += 1;
+    if (result.status !== "partial") return { ...result, batches, elapsedMs: Date.now() - startedAt, continuation: "completed" as const };
+    const nextOffset = typeof result.nextOffset === "number" && Number.isFinite(result.nextOffset) ? result.nextOffset : null;
+    if (nextOffset === null) return { ...result, batches, elapsedMs: Date.now() - startedAt, continuation: "cursor_missing" as const };
+    if (previousOffset !== null && nextOffset <= previousOffset) return { ...result, batches, elapsedMs: Date.now() - startedAt, continuation: "cursor_stalled" as const };
+    previousOffset = nextOffset;
+    currentRun = { ...currentRun, status: "partial", details: JSON.stringify({ ...readRunDetails(currentRun.details), nextOffset }) };
+  }
+
+  return { ...result, status: "partial" as const, batches, elapsedMs: Date.now() - startedAt, continuation: Date.now() - startedAt >= globalTimeoutMs ? "global_timeout" as const : "batch_limit" as const };
 }
 
 export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | "automatic"; targets?: ReadonlyArray<{ username: string }> } = {}) {
@@ -404,7 +435,7 @@ async function processDataset(run: Awaited<ReturnType<typeof findIngestionRunByA
     const payload = await readJson(response);
     if (!response.ok || !Array.isArray(payload)) {
       await finishIngestionRun(run.id, { status: "failed", failedCount: 1, httpStatus: response.status || 502, details: { provider: "apify", actorRunId, error: "DATASET_READ_FAILED", status: response.status || 502, offset } });
-      return;
+      return { status: "failed" as const, nextOffset: null, imported: previousImported, failedCount: previousFailed + 1 };
     }
     if (payload.length === 0) break;
     const candidates = normalizeInstagramMediaPayload(payload).filter((post: InstagramPost) => post.mediaType === "story" || post.mediaType === "highlight");
@@ -559,10 +590,12 @@ export async function reprocessApifyStoriesDatasetHandler(req: Request, res: Res
   const existing = await findIngestionRunByApifyActor(actorRunId);
   if (existing?.status === "running" || existing?.status === "partial") {
     try {
-      const existingDetails = readRunDetails(existing.details);
-      const offset = typeof existingDetails.nextOffset === "number" && Number.isFinite(existingDetails.nextOffset) ? existingDetails.nextOffset : 0;
-      const result = await reconcileApifyStoriesRun(existing, {
-        processDatasetImpl: (run, currentDatasetId, currentActorRunId, currentToken) => processDataset(run, currentDatasetId, currentActorRunId, currentToken, { maxItems: RECONCILIATION_BATCH_SIZE, offset }),
+      const result = await reconcileApifyStoriesInBatches(existing, currentRun => {
+        const currentDetails = readRunDetails(currentRun.details);
+        const offset = typeof currentDetails.nextOffset === "number" && Number.isFinite(currentDetails.nextOffset) ? currentDetails.nextOffset : 0;
+        return reconcileApifyStoriesRun(currentRun, {
+          processDatasetImpl: (run, currentDatasetId, currentActorRunId, currentToken) => processDataset(run, currentDatasetId, currentActorRunId, currentToken, { maxItems: RECONCILIATION_BATCH_SIZE, offset }),
+        }) as Promise<ReconciliationBatchResult>;
       });
       const completed = result.status === "succeeded" || result.status === "failed";
       return res.status(completed ? 200 : 202).json({ ok: true, accepted: true, duplicate: true, runId: existing.id, status: completed ? result.status.toUpperCase() : "RECONCILING", result });

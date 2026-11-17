@@ -31,7 +31,7 @@ vi.mock("./db", () => ({
   recordOperationalAlert: mocks.recordOperationalAlert,
 }));
 
-import { apifyInstagramWebhookHandler, asyncIngestInstagramHandler, fetchApifyRunStatus, getConfiguredApifyStoriesActorId, normalizeApifyActorId, readApifyErrorDetail, reconcileApifyStoriesRun, reprocessApifyStoriesDatasetHandler, sanitizeApifyDiagnostic, sanitizeApifyWebhookBaseUrl, startAsyncApifyStoriesRun } from "./apify-async";
+import { apifyInstagramWebhookHandler, asyncIngestInstagramHandler, fetchApifyRunStatus, getConfiguredApifyStoriesActorId, normalizeApifyActorId, readApifyErrorDetail, reconcileApifyStoriesInBatches, reconcileApifyStoriesRun, reprocessApifyStoriesDatasetHandler, sanitizeApifyDiagnostic, sanitizeApifyWebhookBaseUrl, startAsyncApifyStoriesRun } from "./apify-async";
 
 describe("Apify async Stories", () => {
   beforeEach(() => {
@@ -295,6 +295,35 @@ describe("Apify async Stories", () => {
     );
     expect(result).toMatchObject({ runId: 124, status: "partial", actorRunId: "actor-run-partial", datasetId: "dataset-partial", nextOffset: 8 });
     fetchMock.mockRestore();
+  });
+
+  it("encadeia batches partial até o cursor final com limite de iterações", async () => {
+    const reconcileBatch = vi.fn()
+      .mockResolvedValueOnce({ status: "partial", nextOffset: 2 })
+      .mockResolvedValueOnce({ status: "partial", nextOffset: 4 })
+      .mockResolvedValueOnce({ status: "succeeded", nextOffset: null });
+    const result = await reconcileApifyStoriesInBatches(
+      { id: 125, status: "running", details: JSON.stringify({ actorRunId: "actor-run-chain" }) },
+      reconcileBatch,
+      { maxBatches: 5, globalTimeoutMs: 10_000 },
+    );
+
+    expect(result).toMatchObject({ status: "succeeded", batches: 3, continuation: "completed" });
+    expect(reconcileBatch).toHaveBeenCalledTimes(3);
+    expect(reconcileBatch.mock.calls[1]?.[0]).toMatchObject({ status: "partial", details: expect.stringContaining('"nextOffset":2') });
+    expect(reconcileBatch.mock.calls[2]?.[0]).toMatchObject({ status: "partial", details: expect.stringContaining('"nextOffset":4') });
+  });
+
+  it("interrompe quando o cursor não avança para evitar loop infinito", async () => {
+    const reconcileBatch = vi.fn().mockResolvedValue({ status: "partial", nextOffset: 2 });
+    const result = await reconcileApifyStoriesInBatches(
+      { id: 126, status: "partial", details: JSON.stringify({ nextOffset: 2 }) },
+      reconcileBatch,
+      { maxBatches: 5, globalTimeoutMs: 10_000 },
+    );
+
+    expect(result).toMatchObject({ status: "partial", batches: 2, continuation: "cursor_stalled" });
+    expect(reconcileBatch).toHaveBeenCalledTimes(2);
   });
 
   it("registra o status FAILED/ABORTED real e não tenta ler o dataset", async () => {
