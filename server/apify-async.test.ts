@@ -31,7 +31,7 @@ vi.mock("./db", () => ({
   recordOperationalAlert: mocks.recordOperationalAlert,
 }));
 
-import { apifyInstagramWebhookHandler, asyncIngestInstagramHandler, fetchApifyRunStatus, getConfiguredApifyStoriesActorId, normalizeApifyActorId, readApifyErrorDetail, reconcileApifyStoriesRun, sanitizeApifyDiagnostic, sanitizeApifyWebhookBaseUrl, startAsyncApifyStoriesRun } from "./apify-async";
+import { apifyInstagramWebhookHandler, asyncIngestInstagramHandler, fetchApifyRunStatus, getConfiguredApifyStoriesActorId, normalizeApifyActorId, readApifyErrorDetail, reconcileApifyStoriesRun, reprocessApifyStoriesDatasetHandler, sanitizeApifyDiagnostic, sanitizeApifyWebhookBaseUrl, startAsyncApifyStoriesRun } from "./apify-async";
 
 describe("Apify async Stories", () => {
   beforeEach(() => {
@@ -258,6 +258,31 @@ describe("Apify async Stories", () => {
     expect(fetchMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer test-token" }) }));
     expect(processDataset).toHaveBeenCalledWith(expect.objectContaining({ id: 91 }), "dataset-recovered", "actor-run-stale", "test-token");
     expect(mocks.finishIngestionRun).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
+  it("reconcilia um run existente em vez de deixar o endpoint preso em duplicate", async () => {
+    mocks.findIngestionRunByApifyActor.mockResolvedValueOnce({
+      id: 123,
+      status: "running",
+      sourceKey: "instagram:apify:actor-run-existing",
+      details: JSON.stringify({ actorRunId: "actor-run-existing", datasetId: "dataset-existing" }),
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { status: "SUCCEEDED", defaultDatasetId: "dataset-existing" } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response("[]", { status: 200 }));
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() } as never;
+
+    await reprocessApifyStoriesDatasetHandler(
+      { headers: { "x-cron-secret": "cron-secret" }, body: { actorRunId: "actor-run-existing", datasetId: "dataset-existing" } } as never,
+      res,
+    );
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect((res as any).status).toHaveBeenCalledWith(202);
+    expect((res as any).json).toHaveBeenCalledWith({ ok: true, accepted: true, duplicate: true, runId: 123, status: "RECONCILING" });
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/v2/actor-runs/actor-run-existing"), expect.anything());
+    expect(mocks.finishIngestionRun).toHaveBeenCalledWith(123, expect.objectContaining({ status: "succeeded", httpStatus: 200 }));
     fetchMock.mockRestore();
   });
 
