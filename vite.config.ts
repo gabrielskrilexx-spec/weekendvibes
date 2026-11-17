@@ -169,6 +169,11 @@ const plugins = [
       "icons/icon-192.png",
       "icons/icon-512.png",
       "icons/icon-512-maskable.png",
+      "icons/admin-icon-180.png",
+      "icons/admin-icon-192.png",
+      "icons/admin-icon-512.png",
+      "icons/admin-icon-512-maskable.png",
+      "admin-manifest.webmanifest",
     ],
     manifest: {
       name: "WeekendVibes — Eventos na Baixada",

@@ -7,13 +7,23 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="theme-color" content="#09090b" />
+    <meta name="theme-color" content="#09090b" data-pwa-theme-color />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png" />
+    <link rel="manifest" href="/manifest.webmanifest" data-pwa-manifest />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png" data-pwa-apple-icon />
     <title>WeekendVibes</title>    
+    <script>
+      (() => {
+        const isAdmin = window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/");
+        if (!isAdmin) return;
+        document.querySelector("[data-pwa-manifest]")?.setAttribute("href", "/admin-manifest.webmanifest");
+        document.querySelector("[data-pwa-apple-icon]")?.setAttribute("href", "/icons/admin-icon-180.png");
+        document.querySelector("[data-pwa-theme-color]")?.setAttribute("content", "#f59e0b");
+        document.title = "WeekendVibes Admin";
+      })();
+    </script>
     <!-- THIS IS THE START OF A COMMENT BLOCK, BLOCK TO BE DELETED: Google Fonts here, example:
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

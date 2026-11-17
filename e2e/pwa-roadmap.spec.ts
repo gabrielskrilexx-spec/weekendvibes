@@ -84,3 +84,18 @@ test("renderiza os 17 venues oficiais com WebP válidos e sem imagens quebradas"
   expect(statuses.filter(item => item.status !== 200)).toEqual([]);
   expect(statuses.filter(item => !item.contentType.includes("image/webp"))).toEqual([]);
 });
+
+test("separa o manifesto e o ícone do atalho administrativo", async ({ page }) => {
+  await page.goto("/admin");
+  await expect.poll(() => page.locator('link[data-pwa-manifest]').getAttribute("href")).toBe("/admin-manifest.webmanifest");
+  await expect(page).toHaveTitle("WeekendVibes Admin");
+  await expect.poll(() => page.locator('link[data-pwa-apple-icon]').getAttribute("href")).toBe("/icons/admin-icon-180.png");
+  const manifestResponse = await page.request.get("/admin-manifest.webmanifest");
+  expect(manifestResponse.status()).toBe(200);
+  const manifest = await manifestResponse.json();
+  expect(manifest.name).toBe("WeekendVibes Admin");
+  expect(manifest.start_url).toBe("/admin");
+  expect(manifest.icons).toEqual(expect.arrayContaining([
+    expect.objectContaining({ src: "/icons/admin-icon-512-maskable.png", purpose: "maskable" }),
+  ]));
+});
