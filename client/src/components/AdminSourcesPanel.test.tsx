@@ -19,6 +19,7 @@ vi.mock("@/lib/trpc", () => ({
     },
     ingestionSources: {
       list: { useQuery: (input?: { openOnly?: boolean; failureCategory?: string }) => ({ data: [source, closedSource].filter(item => (!input?.openOnly || item.circuitState === "open") && (!input?.failureCategory || (input.failureCategory === "meta110" && item.lastHttpStatus === 400))), isLoading: false, isError: false, isFetching: false, refetch }) },
+      syncStatus: { useQuery: () => ({ data: [{ username: "mobydicksantos", actorRunId: "run_moby_123", status: "running", providerStatus: "RUNNING", startedAt: "2026-08-15T13:00:00.000Z", finishedAt: null }], isLoading: false, isError: false }) },
       summary: { useQuery: () => ({ data: { active: 2, open: 1, waf: 0, meta110: 1, network: 0 }, isLoading: false }) },
       consolidatedReport: { useQuery: () => ({ data: undefined, isFetching: false, refetch: () => Promise.resolve({ data: { generatedAt: "2026-10-16T12:00:00.000Z", totalSources: 2, activeSources: 1, pausedSources: 1, sources: [] } }) }) },
       consolidatedCsvExport: { useQuery: () => ({ data: undefined, isFetching: false, refetch: () => Promise.resolve({ data: { filename: "catalogo_consolidado_2026-10-16.csv", contentType: "text/csv;charset=utf-8", csv: "\uFEFFsourceKey,nome\r\n\"public:agenda\",\"Agenda \"\"Litoral\"\"\"\r\n" } }) }) },
@@ -36,7 +37,7 @@ vi.mock("@/lib/trpc", () => ({
     adminRoutine: {
       status: { invalidate },
     },
-      useUtils: () => ({ ingestionSources: { list: { invalidate }, summary: { invalidate }, consolidatedReport: { invalidate }, snapshots: { invalidate }, executiveReport: { invalidate }, operationalTimeline: { invalidate } }, ingestionReports: { mockSettings: { invalidate }, logs: { invalidate } }, adminRoutine: { status: { invalidate } } }),
+      useUtils: () => ({ ingestionSources: { list: { invalidate }, summary: { invalidate }, consolidatedReport: { invalidate }, snapshots: { invalidate }, executiveReport: { invalidate }, operationalTimeline: { invalidate }, syncStatus: { invalidate } }, ingestionReports: { mockSettings: { invalidate }, logs: { invalidate } }, adminRoutine: { status: { invalidate } } }),
   },
 }));
 
@@ -57,6 +58,8 @@ describe("AdminSourcesPanel", () => {
     expect(rendered).toContain("Meta Graph API HTTP 400: Invalid user id");
     expect(rendered).toContain("Fontes ativas");
     expect(rendered).toContain("Meta Code 110");
+    expect(rendered).toContain("run_moby_123");
+    expect(rendered).toContain("Em execução");
   });
 
   it("exibe e alterna o toggle de mocks do sandbox", async () => {
@@ -84,6 +87,16 @@ describe("AdminSourcesPanel", () => {
     expect(button).toBeDefined();
     await act(async () => { await button?.props.onClick(); });
     expect(fetchMock).toHaveBeenCalledWith("/api/v2/admin/sync-stories", expect.objectContaining({ method: "POST", credentials: "include", body: JSON.stringify({ username: "mobydicksantos" }) }));
+  });
+
+  it("exibe alerta visual quando a Meta retorna OAuthException 110", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, json: async () => ({ success: false, message: "Meta Graph API HTTP 400: Invalid user id (OAuthException, code 110)" }) });
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const button = tree!.root.findByProps({ "aria-label": "Sincronizar Stories de Moby House" });
+    await act(async () => { await button?.props.onClick(); });
+    expect(tree!.root.findByProps({ "data-testid": "meta-oauth-110-alert" })).toBeDefined();
+    expect(JSON.stringify(tree!.toJSON())).toContain("OAuthException 110");
   });
 
   it("cadastra uma nova fonte pelo formulário", async () => {

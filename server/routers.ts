@@ -30,6 +30,7 @@ import {
   listUserReminders,
   listIngestionSources,
   listFilteredIngestionSources,
+  listLatestInstagramSyncStatuses,
   getIngestionSourceSummary,
   getConsolidatedIngestionSourceReport,
   listCatalogSnapshots,
@@ -1254,6 +1255,9 @@ export const appRouter = router({
     list: adminOnly
       .input(z.object({ openOnly: z.boolean().optional(), failureCategory: z.enum(["waf", "meta110", "network"]).optional(), since: z.string().datetime().optional() }).strict().optional())
       .query(async ({ input }) => normalizeJsonForTransport(await listFilteredIngestionSources({ openOnly: input?.openOnly, failureCategory: input?.failureCategory, since: input?.since ? new Date(input.since) : undefined }))),
+    syncStatus: adminOnly
+      .output(z.array(z.object({ username: z.string(), actorRunId: z.string().nullable(), status: z.enum(["running", "succeeded", "failed", "partial"]), providerStatus: z.string().nullable(), startedAt: z.string(), finishedAt: z.string().nullable() }).strict()))
+      .query(async () => normalizeJsonForTransport((await listLatestInstagramSyncStatuses()).map(item => ({ ...item, startedAt: item.startedAt.toISOString(), finishedAt: item.finishedAt?.toISOString() ?? null })))),
     summary: adminOnly
       .query(async () => normalizeJsonForTransport(await getIngestionSourceSummary())),
     consolidatedReport: adminOnly

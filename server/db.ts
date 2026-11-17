@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { Event, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots, ingestionLeases, adminMagicLinks, monitoredBrands, MonitoredBrand, pushSubscriptions } from "../drizzle/schema";
+import { Event, IngestionRun, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots, ingestionLeases, adminMagicLinks, monitoredBrands, MonitoredBrand, pushSubscriptions } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 import { buildDailyTelemetrySeries, calculateSystemHealthStatus, normalizeObservabilityPeriod, summarizeTelemetryTrend } from "./observability";
@@ -846,6 +846,39 @@ async function buildDailyTelemetrySeriesFromPostgres(db: NonNullable<Awaited<Ret
 export async function listEnabledInstagramSources(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const rows = await listIngestionSources(dbOverride);
   return rows.filter(source => source.kind === "instagram" && source.isEnabled === 1);
+}
+
+export type InstagramSyncStatus = {
+  username: string;
+  actorRunId: string | null;
+  status: IngestionRun["status"];
+  providerStatus: string | null;
+  startedAt: Date;
+  finishedAt: Date | null;
+};
+
+export async function listLatestInstagramSyncStatuses(dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<InstagramSyncStatus[]> {
+  const db = dbOverride ?? await getDb();
+  if (!db) return [];
+  const runs = await db.select({ status: ingestionRuns.status, details: ingestionRuns.details, startedAt: ingestionRuns.startedAt, finishedAt: ingestionRuns.finishedAt })
+    .from(ingestionRuns)
+    .where(eq(ingestionRuns.routine, "instagram-stories-async"))
+    .orderBy(desc(ingestionRuns.startedAt))
+    .limit(100);
+  const latestByUsername = new Map<string, InstagramSyncStatus>();
+  for (const run of runs) {
+    let details: Record<string, unknown> = {};
+    try { details = run.details ? JSON.parse(run.details) as Record<string, unknown> : {}; } catch { continue; }
+    const actorRunId = typeof details.actorRunId === "string" ? details.actorRunId : null;
+    const providerStatus = typeof details.status === "string" ? details.status : null;
+    const usernames = Array.isArray(details.targetUsernames) ? details.targetUsernames.filter((value): value is string => typeof value === "string") : [];
+    for (const rawUsername of usernames) {
+      const username = rawUsername.trim().replace(/^@+/, "").toLowerCase();
+      if (!username || latestByUsername.has(username)) continue;
+      latestByUsername.set(username, { username, actorRunId, status: run.status, providerStatus, startedAt: run.startedAt, finishedAt: run.finishedAt });
+    }
+  }
+  return Array.from(latestByUsername.values());
 }
 
 export async function createIngestionSource(input: { name: string; kind: "instagram" | "public"; handle?: string | null; url: string }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
