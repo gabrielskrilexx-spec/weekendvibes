@@ -35,7 +35,7 @@ const ACTOR_ID = normalizeApifyActorId(process.env.APIFY_STORIES_ACTOR_ID || DEF
 const DATASET_TIMEOUT_MS = 30_000;
 const DATASET_PAGE_SIZE = 100;
 const RUN_STATUS_TIMEOUT_MS = 15_000;
-const RECONCILIATION_BATCH_SIZE = 8;
+const RECONCILIATION_BATCH_SIZE = 2;
 
 type ApifyDispatchFailure = Error & {
   apifyStatus?: number;
@@ -362,6 +362,10 @@ type ProcessDatasetOptions = { maxItems?: number; offset?: number };
 
 async function processDataset(run: Awaited<ReturnType<typeof findIngestionRunByApifyActor>>, datasetId: string, actorRunId: string, token: string, options: ProcessDatasetOptions = {}) {
   if (!run) return;
+  const previousDetails = readRunDetails(run.details);
+  const previousInstagram = previousDetails.instagram && typeof previousDetails.instagram === "object" ? previousDetails.instagram as Record<string, unknown> : {};
+  const previousImported = Number(previousDetails.importedCount ?? previousInstagram.imported ?? (run as { importedCount?: number }).importedCount ?? 0) || 0;
+  const previousFailed = Number(previousDetails.failedCount ?? previousInstagram.failedCount ?? (run as { failedCount?: number }).failedCount ?? 0) || 0;
   type DatasetResult = Awaited<ReturnType<typeof runInstagramPipeline>>;
   const aggregate: Record<string, any> = {
     dryRun: false,
@@ -458,15 +462,17 @@ async function processDataset(run: Awaited<ReturnType<typeof findIngestionRunByA
   aggregate.durationMs = Date.now() - startedAt;
   const result = aggregate;
   const status = result.degraded || nextOffset !== null ? "partial" : "succeeded";
+  const cumulativeImported = previousImported + result.imported;
+  const cumulativeFailed = previousFailed + result.transportFailures.length;
   await finishIngestionRun(run.id, {
     status,
-    importedCount: result.imported,
-    failedCount: result.transportFailures.length,
+    importedCount: cumulativeImported,
+    failedCount: cumulativeFailed,
     httpStatus: 200,
     counts: { read: result.receivedPosts, filtered: result.filtered, persisted: result.persisted, approved: result.approvedPosts, structured: result.structuredEvents },
-    details: { provider: "apify", actorRunId, datasetId, status: nextOffset !== null ? "PARTIAL" : "COMPLETED", trigger: detailsTrigger(run.details), ...(nextOffset !== null ? { nextOffset } : {}), instagram: result },
+    details: { provider: "apify", actorRunId, datasetId, status: nextOffset !== null ? "PARTIAL" : "COMPLETED", trigger: detailsTrigger(run.details), importedCount: cumulativeImported, failedCount: cumulativeFailed, ...(nextOffset !== null ? { nextOffset } : {}), instagram: { ...result, importedCount: cumulativeImported, failedCount: cumulativeFailed } },
   });
-  return { status, nextOffset, imported: result.imported, failedCount: result.transportFailures.length } as const;
+  return { status, nextOffset, imported: cumulativeImported, failedCount: cumulativeFailed } as const;
 }
 
 function detailsTrigger(rawDetails: string | null) {
