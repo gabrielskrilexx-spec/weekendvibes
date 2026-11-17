@@ -35,6 +35,7 @@ const ACTOR_ID = normalizeApifyActorId(process.env.APIFY_STORIES_ACTOR_ID || DEF
 const DATASET_TIMEOUT_MS = 30_000;
 const DATASET_PAGE_SIZE = 100;
 const RUN_STATUS_TIMEOUT_MS = 15_000;
+const RECONCILIATION_BATCH_SIZE = 8;
 
 type ApifyDispatchFailure = Error & {
   apifyStatus?: number;
@@ -232,8 +233,8 @@ export async function reconcileApifyStoriesRun(
     const datasetId = snapshot.datasetId || (typeof details.datasetId === "string" ? details.datasetId : "");
     if (!datasetId) throw new Error("DATASET_REFERENCE_MISSING");
     const processDatasetImpl = options.processDatasetImpl ?? processDataset;
-    await processDatasetImpl(run as Awaited<ReturnType<typeof findIngestionRunByApifyActor>>, datasetId, actorRunId, token);
-    return { runId: run.id, status: "succeeded" as const, actorRunId, datasetId };
+    const processed = await processDatasetImpl(run as Awaited<ReturnType<typeof findIngestionRunByApifyActor>>, datasetId, actorRunId, token);
+    return { runId: run.id, status: processed?.status === "partial" ? "partial" as const : "succeeded" as const, actorRunId, datasetId, ...(processed ?? {}) };
   }
   if (["FAILED", "ABORTED", "TIMED_OUT"].includes(snapshot.status)) {
     const actorTimedOut = snapshot.status === "TIMED_OUT";
@@ -357,7 +358,9 @@ export async function startAsyncApifyStoriesRun(options: { trigger?: "manual" | 
   return { accepted: true as const, runId, actorRunId, status: "QUEUED" as const };
 }
 
-async function processDataset(run: Awaited<ReturnType<typeof findIngestionRunByApifyActor>>, datasetId: string, actorRunId: string, token: string) {
+type ProcessDatasetOptions = { maxItems?: number; offset?: number };
+
+async function processDataset(run: Awaited<ReturnType<typeof findIngestionRunByApifyActor>>, datasetId: string, actorRunId: string, token: string, options: ProcessDatasetOptions = {}) {
   if (!run) return;
   type DatasetResult = Awaited<ReturnType<typeof runInstagramPipeline>>;
   const aggregate: Record<string, any> = {
@@ -387,8 +390,13 @@ async function processDataset(run: Awaited<ReturnType<typeof findIngestionRunByA
     dateFilterValidation: { timezone: "America/Sao_Paulo", today: new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date()), structuredEvents: 0, pastEventsRejected: 0, acceptedTodayOrFuture: 0 },
   };
   const startedAt = Date.now();
-  for (let offset = 0; ; offset += DATASET_PAGE_SIZE) {
-    const response = await fetchWithTimeout(`https://api.apify.com/v2/datasets/${encodeURIComponent(datasetId)}/items?clean=true&limit=${DATASET_PAGE_SIZE}&offset=${offset}`, { headers: { Accept: "application/json", Authorization: `Bearer ${token}`, "User-Agent": "WeekendVibes/1.0" } }, DATASET_TIMEOUT_MS);
+  const maxItems = Number.isFinite(options.maxItems) ? Math.max(1, Math.min(DATASET_PAGE_SIZE, Math.floor(options.maxItems!))) : Number.POSITIVE_INFINITY;
+  const initialOffset = Number.isFinite(options.offset) ? Math.max(0, Math.floor(options.offset!)) : 0;
+  let nextOffset: number | null = null;
+  for (let offset = initialOffset; ; offset += DATASET_PAGE_SIZE) {
+    const pageLimit = Number.isFinite(maxItems) ? Math.min(DATASET_PAGE_SIZE, maxItems - (offset - initialOffset)) : DATASET_PAGE_SIZE;
+    if (pageLimit <= 0) { nextOffset = offset; break; }
+    const response = await fetchWithTimeout(`https://api.apify.com/v2/datasets/${encodeURIComponent(datasetId)}/items?clean=true&limit=${pageLimit}&offset=${offset}`, { headers: { Accept: "application/json", Authorization: `Bearer ${token}`, "User-Agent": "WeekendVibes/1.0" } }, DATASET_TIMEOUT_MS);
     const payload = await readJson(response);
     if (!response.ok || !Array.isArray(payload)) {
       await finishIngestionRun(run.id, { status: "failed", failedCount: 1, httpStatus: response.status || 502, details: { provider: "apify", actorRunId, error: "DATASET_READ_FAILED", status: response.status || 502, offset } });
@@ -444,19 +452,21 @@ async function processDataset(run: Awaited<ReturnType<typeof findIngestionRunByA
       aggregate.dateFilterValidation.acceptedTodayOrFuture += result.dateFilterValidation.acceptedTodayOrFuture;
       await Promise.all(fingerprints.map(fingerprint => completeApifyProcessedItem(fingerprint)));
     }
-    if (payload.length < DATASET_PAGE_SIZE) break;
+    if (payload.length < pageLimit) break;
+    if (Number.isFinite(maxItems) && payload.length >= pageLimit) { nextOffset = offset + payload.length; break; }
   }
   aggregate.durationMs = Date.now() - startedAt;
   const result = aggregate;
-  const status = result.degraded ? "partial" : "succeeded";
+  const status = result.degraded || nextOffset !== null ? "partial" : "succeeded";
   await finishIngestionRun(run.id, {
     status,
     importedCount: result.imported,
     failedCount: result.transportFailures.length,
     httpStatus: 200,
     counts: { read: result.receivedPosts, filtered: result.filtered, persisted: result.persisted, approved: result.approvedPosts, structured: result.structuredEvents },
-    details: { provider: "apify", actorRunId, datasetId, status: "COMPLETED", trigger: detailsTrigger(run.details), instagram: result },
+    details: { provider: "apify", actorRunId, datasetId, status: nextOffset !== null ? "PARTIAL" : "COMPLETED", trigger: detailsTrigger(run.details), ...(nextOffset !== null ? { nextOffset } : {}), instagram: result },
   });
+  return { status, nextOffset, imported: result.imported, failedCount: result.transportFailures.length } as const;
 }
 
 function detailsTrigger(rawDetails: string | null) {
@@ -541,9 +551,13 @@ export async function reprocessApifyStoriesDatasetHandler(req: Request, res: Res
   const token = process.env.APIFY_API_TOKEN?.trim();
   if (!token) return res.status(503).json({ ok: false, error: "APIFY_TOKEN_MISSING" });
   const existing = await findIngestionRunByApifyActor(actorRunId);
-  if (existing?.status === "running") {
+  if (existing?.status === "running" || existing?.status === "partial") {
     try {
-      const result = await reconcileApifyStoriesRun(existing);
+      const existingDetails = readRunDetails(existing.details);
+      const offset = typeof existingDetails.nextOffset === "number" && Number.isFinite(existingDetails.nextOffset) ? existingDetails.nextOffset : 0;
+      const result = await reconcileApifyStoriesRun(existing, {
+        processDatasetImpl: (run, currentDatasetId, currentActorRunId, currentToken) => processDataset(run, currentDatasetId, currentActorRunId, currentToken, { maxItems: RECONCILIATION_BATCH_SIZE, offset }),
+      });
       const completed = result.status === "succeeded" || result.status === "failed";
       return res.status(completed ? 200 : 202).json({ ok: true, accepted: true, duplicate: true, runId: existing.id, status: completed ? result.status.toUpperCase() : "RECONCILING", result });
     } catch (error) {

@@ -285,6 +285,18 @@ describe("Apify async Stories", () => {
     fetchMock.mockRestore();
   });
 
+  it("propaga partial e o cursor do próximo lote após uma reconciliação limitada", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: { id: "actor-run-partial", status: "SUCCEEDED", defaultDatasetId: "dataset-partial" } }), { status: 200 }),
+    );
+    const result = await reconcileApifyStoriesRun(
+      { id: 124, status: "running", sourceKey: "instagram:apify:actor-run-partial", details: JSON.stringify({ actorRunId: "actor-run-partial" }) },
+      { processDatasetImpl: vi.fn().mockResolvedValue({ status: "partial", nextOffset: 8 }), token: "test-token" },
+    );
+    expect(result).toMatchObject({ runId: 124, status: "partial", actorRunId: "actor-run-partial", datasetId: "dataset-partial", nextOffset: 8 });
+    fetchMock.mockRestore();
+  });
+
   it("registra o status FAILED/ABORTED real e não tenta ler o dataset", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify({ data: { id: "actor-run-aborted", status: "ABORTED", defaultDatasetId: "dataset-aborted" } }), { status: 200, headers: { "content-type": "application/json" } })
