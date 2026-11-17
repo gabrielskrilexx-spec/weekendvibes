@@ -3,12 +3,13 @@ import { act, create } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 import AdminSourcesPanel from "./AdminSourcesPanel";
 
-const { refetch, invalidate, mutate, reactivateMutate, createMutate, mockSettingsMutate, runNowMutate, fetchMock, exportRefetch, reportQueryInputs, downloadAnchors, createObjectUrl } = vi.hoisted(() => ({ refetch: vi.fn(), invalidate: vi.fn(), mutate: vi.fn(), reactivateMutate: vi.fn(), createMutate: vi.fn(), mockSettingsMutate: vi.fn(), runNowMutate: vi.fn(), fetchMock: vi.fn(), exportRefetch: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }), reportQueryInputs: [] as unknown[], downloadAnchors: [] as Array<{ download?: string; click: () => void }>, createObjectUrl: vi.fn(() => "blob:test") }));
+const { refetch, invalidate, mutate, reactivateMutate, createMutate, mockSettingsMutate, runNowMutate, fetchMock, exportRefetch, reportQueryInputs, downloadAnchors, createObjectUrl, clipboardWrite } = vi.hoisted(() => ({ refetch: vi.fn(), invalidate: vi.fn(), mutate: vi.fn(), reactivateMutate: vi.fn(), createMutate: vi.fn(), mockSettingsMutate: vi.fn(), runNowMutate: vi.fn(), fetchMock: vi.fn(), exportRefetch: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }), reportQueryInputs: [] as unknown[], downloadAnchors: [] as Array<{ download?: string; click: () => void }>, createObjectUrl: vi.fn(() => "blob:test"), clipboardWrite: vi.fn().mockResolvedValue(undefined) }));
 const source = { id: 1, sourceKey: "instagram:mobydicksantos", name: "Moby House", kind: "instagram", handle: "mobydicksantos", url: "https://www.instagram.com/mobydicksantos/", isEnabled: 1, priority: 10, frequencyMinutes: 10080, p95LatencyThresholdMs: 3000, lastAttemptAt: new Date("2026-08-15T13:00:00Z"), lastSuccessAt: new Date("2026-08-15T12:00:00Z"), lastStatus: "failed", lastMessage: "Meta Graph API HTTP 400: Invalid user id", lastFailureReason: "ID inválido", lastExecutionFeedback: null, lastHttpStatus: 400, circuitNextAttemptAt: new Date("2026-08-16T07:00:00Z"), circuitState: "open", circuitFailureCount: 3 };
 const closedSource = { ...source, id: 2, sourceKey: "public:closed", name: "Fonte Saudável", kind: "public", handle: null, url: "https://example.com/agenda", lastStatus: "succeeded", lastMessage: "Sucesso: 10 eventos lidos, 2 persistidos.", lastExecutionFeedback: "Sucesso: 10 eventos lidos, 2 persistidos.", lastFailureReason: null, lastHttpStatus: 200, circuitNextAttemptAt: null, circuitState: "closed", circuitFailureCount: 0 };
 vi.stubGlobal("fetch", fetchMock);
 vi.stubGlobal("Blob", class TestBlob { constructor(public parts: unknown[], public options: unknown) {} });
 vi.stubGlobal("URL", { createObjectURL: createObjectUrl, revokeObjectURL: vi.fn() });
+vi.stubGlobal("navigator", { clipboard: { writeText: clipboardWrite } });
 vi.stubGlobal("document", { createElement: vi.fn(() => { const anchor = { download: "", href: "", click: vi.fn() }; downloadAnchors.push(anchor); return anchor; }) });
 
 vi.mock("@/lib/trpc", () => ({
@@ -112,6 +113,10 @@ describe("AdminSourcesPanel", () => {
     const rendered = JSON.stringify(tree!.toJSON());
     expect(rendered).toContain("Business Discovery");
     expect(rendered).toContain("nunca cole tokens");
+    expect(tree!.root.findByProps({ "data-testid": "meta-business-discovery-link" }).props.href).toBe("https://developers.facebook.com/tools/explorer/");
+    await act(async () => { await tree!.root.findByProps({ "data-testid": "copy-meta-support-summary" }).props.onClick(); });
+    expect(clipboardWrite).toHaveBeenCalledWith(expect.stringContaining("OAuthException 110"));
+    expect(clipboardWrite.mock.calls.at(-1)?.[0]).not.toMatch(/meta-secret|apify-secret|DATABASE_URL\s*=|VAPID\s*=/i);
   });
 
   it("cadastra uma nova fonte pelo formulário", async () => {
