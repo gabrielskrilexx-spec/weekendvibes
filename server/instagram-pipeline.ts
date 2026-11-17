@@ -19,6 +19,7 @@ export function getMetaGraphFetchTimeoutMs() {
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
 const LOOKBACK_DAYS = 5;
+const DEFAULT_OPENAI_REQUEST_TIMEOUT_MS = 12_000;
 const APIFY_PREFILTER_TERMS = ["agenda", "ingresso", "sexta", "sabado", "domingo", "atracao", "dj"] as const;
 export function getInstagramSaoPauloDate(now = new Date()) {
   return saoPauloCalendarDate(now);
@@ -691,17 +692,34 @@ function postUrl(post: InstagramPost) {
 
 const OPENAI_RETRY_DELAYS_MS = [250, 750];
 
+function getOpenAiRequestTimeoutMs() {
+  const configured = Number.parseInt(process.env.OPENAI_REQUEST_TIMEOUT_MS ?? "", 10);
+  if (!Number.isFinite(configured)) return DEFAULT_OPENAI_REQUEST_TIMEOUT_MS;
+  return Math.min(20_000, Math.max(5_000, configured));
+}
+
 export async function waitForOpenAiRetry(delayMs: number) {
   await new Promise(resolve => setTimeout(resolve, delayMs));
 }
 
 async function openAiChat(body: Record<string, unknown>) {
   for (let attempt = 0; ; attempt += 1) {
-    const response = await fetch(OPENAI_CHAT_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${requiredEnv("OPENAI_API_KEY")}`, "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), getOpenAiRequestTimeoutMs());
+    let response: Response;
+    try {
+      response = await fetch(OPENAI_CHAT_URL, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${requiredEnv("OPENAI_API_KEY")}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (controller.signal.aborted) throw new Error(`OpenAI request timed out after ${getOpenAiRequestTimeoutMs()}ms`);
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
     if (response.ok) return response.json() as Promise<{ choices?: Array<{ message?: { content?: string } }> }>;
     const responseText = await response.text();
     if (response.status === 429 && attempt < OPENAI_RETRY_DELAYS_MS.length) {
