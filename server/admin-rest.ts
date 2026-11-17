@@ -9,7 +9,7 @@ const idsInput = z.object({
   ids: z.array(z.number().int().positive()).min(1).max(100),
 }).strict();
 const aliasInput = z.object({ id: z.number().int().positive() }).strict();
-const storiesInput = z.object({ sourceKey: z.string().trim().min(1).max(160).optional() }).strict();
+const storiesInput = z.object({ username: z.string().trim().min(1).max(64).regex(/^@?[a-z0-9._]+$/i) }).strict();
 
 function messageFromError(error: unknown, fallback: string) {
   const raw = error instanceof Error ? error.message : "";
@@ -56,10 +56,10 @@ export function registerAdminRestRoutes(app: Express) {
     try {
       const input = storiesInput.parse(req.body ?? {});
       try {
-        await runIngestionSourceChunk({ sourceKey: input.sourceKey ?? "instagram", dryRun: false, storiesOnly: true });
+        await runIngestionSourceChunk({ sourceKey: "instagram", username: input.username.replace(/^@+/, "").toLowerCase(), dryRun: false, storiesOnly: true });
       } catch (error) {
         logRestError(req, error);
-        return res.json({ success: true, status: "SANDBOX_RESTRICTED" });
+        return res.status(502).json({ success: false, message: messageFromError(error, "Não foi possível sincronizar os Stories agora.") });
       }
       return res.json({ success: true });
     } catch (error) {

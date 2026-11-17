@@ -193,6 +193,11 @@ export function getInstagramTargetCity(username: string): "Santos" | "Guarujá" 
   return target && "city" in target ? target.city : undefined;
 }
 
+export function getInstagramTargetByUsername(username: string) {
+  const normalizedUsername = username.trim().replace(/^@+/, "").toLowerCase();
+  return INSTAGRAM_TARGETS.find(item => item.username.toLowerCase() === normalizedUsername);
+}
+
 export type InstagramPost = {
   id?: string;
   shortCode?: string;

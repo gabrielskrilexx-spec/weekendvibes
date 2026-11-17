@@ -3,7 +3,7 @@ import { ingestionRuns } from "../drizzle/schema";
 import { acquireIngestionLease, getDb, recordOperationalAlert, releaseIngestionLease } from "./db";
 import { listHeartbeatJobs } from "./_core/heartbeat";
 import { notifyOwner } from "./_core/notification";
-import { InstagramIntegrationFailure, runInstagramPipeline } from "./instagram-pipeline";
+import { getInstagramTargetByUsername, InstagramIntegrationFailure, runInstagramPipeline } from "./instagram-pipeline";
 import { runFullAgendaRoutine, runPublicAgendaStep, runInstagramAgendaStep, type AgendaProgressUpdate } from "./agenda-routine";
 import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
 import { startAsyncApifyStoriesRun } from "./apify-async";
@@ -201,14 +201,18 @@ export async function withChunkTimeout<T>(work: Promise<T> | ((signal: AbortSign
   }
 }
 
-export async function runIngestionSourceChunk(input: { sourceKey: string; dryRun?: boolean; storiesOnly?: boolean }) {
+export async function runIngestionSourceChunk(input: { sourceKey: string; dryRun?: boolean; storiesOnly?: boolean; username?: string }) {
   const sourceKey = input.sourceKey.trim();
   if (sourceKey === "instagram") {
     if (input.dryRun) {
       const timeoutMs = input.storiesOnly === true ? 75_000 : CHUNK_TIMEOUT_MS;
       return { sourceKey, dryRun: true, result: await withChunkTimeout(signal => runInstagramPipeline({ dryRun: true, storiesOnly: input.storiesOnly === true, signal }), timeoutMs) };
     }
-    if (input.storiesOnly) return { sourceKey, dryRun: false, result: await startAsyncApifyStoriesRun({ trigger: "manual" }) };
+    if (input.storiesOnly) {
+      const target = input.username ? getInstagramTargetByUsername(input.username) : undefined;
+      if (input.username && !target) throw new Error("Username Instagram não monitorado.");
+      return { sourceKey, dryRun: false, result: await startAsyncApifyStoriesRun({ trigger: "manual", targets: target ? [target] : undefined }) };
+    }
     return { sourceKey, dryRun: false, result: await withChunkTimeout(signal => runInstagramAgendaStep({ archive: false, trigger: "manual", signal })) };
   }
   if (!/^public:[a-z0-9_-]+$/.test(sourceKey)) throw new Error("Fonte de ingestão inválida.");

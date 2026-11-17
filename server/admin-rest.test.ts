@@ -54,7 +54,7 @@ describe("admin REST actions", () => {
   });
 
   it.each([
-    ["/api/v2/admin/sync-stories", {}, { success: true }],
+    ["/api/v2/admin/sync-stories", { username: "mimadafesta" }, { success: true }],
     ["/api/v2/admin/remove-alias", { id: 7 }, { success: true, deletedId: "7" }],
     ["/api/v2/admin/remove-events", { ids: [11, 12] }, { success: true, count: 2, ids: ["11", "12"] }],
     ["/api/v2/admin/approve-events", { ids: [11, 12] }, { success: true, count: 2, ids: ["11", "12"] }],
@@ -67,16 +67,21 @@ describe("admin REST actions", () => {
 
   it("rejects REST actions when the authenticated user is not admin", async () => {
     authenticateRequest.mockResolvedValue({ role: "user" });
-    const result = await post("/api/v2/admin/sync-stories", {});
+    const result = await post("/api/v2/admin/sync-stories", { username: "mimadafesta" });
     expect(result.status).toBe(403);
     expect(result.json).toEqual({ success: false, message: "Permissão administrativa necessária." });
     expect(runIngestionSourceChunk).not.toHaveBeenCalled();
   });
 
-  it("returns a sandbox acknowledgement when Stories processing fails", async () => {
+  it("sends the normalized mimadafesta username to the focused Stories run", async () => {
+    await post("/api/v2/admin/sync-stories", { username: "@MimadaFesta" });
+    expect(runIngestionSourceChunk).toHaveBeenCalledWith({ sourceKey: "instagram", username: "mimadafesta", dryRun: false, storiesOnly: true });
+  });
+
+  it("returns an upstream failure instead of a false success when Stories processing fails", async () => {
     runIngestionSourceChunk.mockRejectedValueOnce(new Error("ECONNREFUSED"));
-    const result = await post("/api/v2/admin/sync-stories", {});
-    expect(result.status).toBe(200);
-    expect(result.json).toEqual({ success: true, status: "SANDBOX_RESTRICTED" });
+    const result = await post("/api/v2/admin/sync-stories", { username: "mimadafesta" });
+    expect(result.status).toBe(502);
+    expect(result.json).toEqual({ success: false, message: "Não foi possível sincronizar os Stories agora." });
   });
 });
