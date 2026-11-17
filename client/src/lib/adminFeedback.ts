@@ -11,9 +11,14 @@ export function friendlyAdminErrorMessage(
   const normalized = raw.toLowerCase();
   const status = error && typeof error === "object" && "status" in error ? Number((error as { status?: unknown }).status) : 0;
   const code = error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "").toLowerCase() : "";
+  const data = error && typeof error === "object" && "data" in error ? (error as { data?: unknown }).data : null;
+  const nestedCode = data && typeof data === "object" && "code" in data ? String((data as { code?: unknown }).code ?? "").toLowerCase() : "";
 
   if (status === 401 || /unauthorized|não autentic|sessão|login|session/.test(`${normalized} ${code}`)) {
     return "Sua sessão administrativa expirou. Entre novamente para continuar.";
+  }
+  if (nestedCode === "precondition_failed" || code === "precondition_failed" || /reativação bloqueada/.test(normalized)) {
+    return "A reativação desta fonte exige uma validação Meta bem-sucedida. Os demais parâmetros continuam editáveis enquanto ela estiver pausada.";
   }
   if (
     status === 403 || /forbidden|não autorizado|administrador|permission|permiss/.test(`${normalized} ${code}`)

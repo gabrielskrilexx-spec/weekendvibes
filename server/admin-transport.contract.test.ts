@@ -72,7 +72,7 @@ vi.mock("./db", () => ({
   createLocationAlias: vi.fn(),
   updateLocationAlias: vi.fn(),
   deleteLocationAlias: vi.fn(),
-  updateIngestionSource: vi.fn(),
+  updateIngestionSource: vi.fn().mockResolvedValue([{ id: 1, p95LatencyThresholdMs: 3000 }]),
   resolveOperationalAlert: vi.fn(),
   resolveOperationalAlertsBefore: maintenanceMocks.resolveOperationalAlertsBefore,
   resetActiveIngestionSourceCircuitBreakers: maintenanceMocks.resetActiveIngestionSourceCircuitBreakers,
@@ -170,6 +170,10 @@ describe("admin transport contracts", () => {
     expect(result).toEqual({ ok: true, sourceKey: "instagram:mimadafesta", reprocess: "succeeded" });
     expect(maintenanceMocks.reactivateIngestionSourceCircuitBreaker).toHaveBeenCalledWith("instagram:mimadafesta", "admin", "Reprocessamento imediato solicitado");
     expect(maintenanceMocks.runIngestionSourceChunk).toHaveBeenCalledWith({ sourceKey: "instagram:mimadafesta", dryRun: false });
+  });
+  it("salva parâmetros de uma fonte pausada sem acionar o bloqueio Meta", async () => {
+    const result = await appRouter.createCaller(adminContext).ingestionSources.update({ id: 1, isEnabled: false, priority: 80, frequencyMinutes: 1440, p95LatencyThresholdMs: 3000 });
+    expect(result).toEqual({ ok: true, id: 1, isEnabled: false, priority: 80, frequencyMinutes: 1440, p95LatencyThresholdMs: 3000 });
   });
 
   it("expõe o histórico de alterações do ID Meta como JSON seguro", async () => {

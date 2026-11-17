@@ -1359,26 +1359,32 @@ export const appRouter = router({
           .strict()
       )
       .mutation(async ({ input, ctx }) => {
-        if (input.isEnabled) {
-          const source = (await listIngestionSources()).find(item => item.id === input.id);
-          const handle = source?.handle?.replace(/^@+/, "").toLowerCase();
-          if (source?.kind === "instagram" && (handle === "doloresbarerestaurante" || handle === "mimadafesta")) {
-            const validation = await validateMetaBusinessDiscoveryProfile(handle);
-            if (!validation.ok) {
-              throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Reativação bloqueada: ${validation.message}` });
+        try {
+          if (input.isEnabled) {
+            const source = (await listIngestionSources()).find(item => item.id === input.id);
+            const handle = source?.handle?.replace(/^@+/, "").toLowerCase();
+            if (source?.kind === "instagram" && (handle === "doloresbarerestaurante" || handle === "mimadafesta")) {
+              const validation = await validateMetaBusinessDiscoveryProfile(handle);
+              if (!validation.ok) {
+                throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Reativação bloqueada: ${validation.message}` });
+              }
             }
           }
+          const updatedSources = await updateIngestionSource(input.id, { ...input, changedByOpenId: ctx.user.openId });
+          const updatedSource = updatedSources.find(source => source.id === input.id);
+          if (!updatedSource) throw new TRPCError({ code: "NOT_FOUND", message: "Fonte de ingestão não encontrada." });
+          return {
+            ok: true as const,
+            id: input.id,
+            isEnabled: input.isEnabled,
+            priority: input.priority,
+            frequencyMinutes: input.frequencyMinutes,
+            p95LatencyThresholdMs: updatedSource.p95LatencyThresholdMs ?? input.p95LatencyThresholdMs ?? 3_000,
+          };
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          return throwSanitizedAdminMutationError(error, "Não foi possível salvar a fonte. Tente novamente.");
         }
-        const updatedSources = await updateIngestionSource(input.id, { ...input, changedByOpenId: ctx.user.openId });
-        const updatedSource = updatedSources.find(source => source.id === input.id);
-        return {
-          ok: true as const,
-          id: input.id,
-          isEnabled: input.isEnabled,
-          priority: input.priority,
-          frequencyMinutes: input.frequencyMinutes,
-          p95LatencyThresholdMs: updatedSource?.p95LatencyThresholdMs ?? input.p95LatencyThresholdMs ?? 3_000,
-        };
       }),
     reactivate: adminOnly
       .input(z.object({ sourceKey: z.string().trim().min(1).max(120), reprocessNow: z.boolean().default(false) }).strict())

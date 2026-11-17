@@ -24,6 +24,10 @@ describe("friendlyAdminErrorMessage", () => {
     expect(friendlyAdminErrorMessage({ status: 403, code: "FORBIDDEN", message: "forbidden" }, "fallback")).toContain("não tem permissão");
   });
 
+  it("does not present a protected Meta reactivation as a communication block", () => {
+    expect(friendlyAdminErrorMessage({ status: 403, code: "PRECONDITION_FAILED", message: "Reativação bloqueada: OAuthException code 110" }, "fallback")).toContain("validação Meta bem-sucedida");
+  });
+
   it("does not expose raw upstream details for session or unknown failures", () => {
     expect(
       friendlyAdminErrorMessage(
