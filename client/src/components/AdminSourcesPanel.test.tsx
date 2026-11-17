@@ -99,6 +99,21 @@ describe("AdminSourcesPanel", () => {
     expect(JSON.stringify(tree!.toJSON())).toContain("OAuthException 110");
   });
 
+  it("abre instruções detalhadas para resolver OAuthException 110", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, json: async () => ({ success: false, message: "Meta Graph API HTTP 400: Invalid user id (OAuthException, code 110)" }) });
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminSourcesPanel />); });
+    const syncButton = tree!.root.findByProps({ "aria-label": "Sincronizar Stories de Moby House" });
+    await act(async () => { await syncButton?.props.onClick(); });
+    const helpButton = tree!.root.findByProps({ "aria-label": "Como resolver OAuthException 110" });
+    await act(async () => { helpButton.props.onClick(); });
+    const dialog = tree!.root.findByProps({ "aria-labelledby": "meta-110-help-title" });
+    expect(dialog.props["aria-modal"]).toBe("true");
+    const rendered = JSON.stringify(tree!.toJSON());
+    expect(rendered).toContain("Business Discovery");
+    expect(rendered).toContain("nunca cole tokens");
+  });
+
   it("cadastra uma nova fonte pelo formulário", async () => {
     let tree: ReturnType<typeof create>;
     await act(async () => { tree = create(<AdminSourcesPanel />); });
