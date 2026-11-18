@@ -17,7 +17,8 @@ const VENUE_COVER_RULES = [
   { terms: ["goat"], imageUrl: "/venues/goat.webp" },
   { terms: ["vallum"], imageUrl: "/venues/vallum-garden.webp" },
   { terms: ["santos convention", "blue med"], imageUrl: "/venues/bluemed.webp" },
-  { terms: ["o beco", "nosso after"], imageUrl: "/venues/obeco.webp" },
+  { terms: ["lucky scope", "nosso after", "walter belian"], imageUrl: "/images/venues/lucky-scope.jpg" },
+  { terms: ["o beco"], imageUrl: "/venues/obeco.webp" },
   { terms: ["guarujá golf", "guaruja golf"], imageUrl: "/venues/guaruja-golf-club.webp" },
 ] as const;
 

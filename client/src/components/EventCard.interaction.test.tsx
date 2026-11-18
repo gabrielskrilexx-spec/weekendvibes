@@ -36,6 +36,7 @@ describe("EventCard interaction", () => {
     expect(resolveEventCoverImage({ imageUrl: null, title: "PAGONEJO", locationName: "Dolores bar & restaurante", sourceType: "instagram_story", category: "evento_musical", sourceUrl: null })).toBe("/venues/dolores.webp");
     expect(resolveEventCoverImage({ imageUrl: null, title: "WIU", locationName: "Flamingo MusicBar", sourceType: "instagram_story", category: "show", sourceUrl: null })).toBe("/venues/flamingos.webp");
     expect(resolveEventCoverImage({ imageUrl: null, title: "ROTATIONS SESSIONS", locationName: "Curvão Surf House", sourceType: "public:zig", category: "balada", sourceUrl: null })).toBe("/images/venues/curvao.jpg");
+    expect(resolveEventCoverImage({ imageUrl: null, title: "Nosso After GTA VI Edition", locationName: "Praça Dr. Walter Belian", sourceType: "public:ingresse", category: "balada", sourceUrl: null })).toBe("/images/venues/lucky-scope.jpg");
     expect(resolveEventCoverImage({ imageUrl: null, title: "Sabadou", locationName: "Praiô", sourceType: "instagram_story", category: "evento_musical", sourceUrl: null })).toBe("/venues/vallum-garden.webp");
   });
 
