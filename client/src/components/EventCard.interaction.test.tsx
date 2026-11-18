@@ -73,4 +73,19 @@ describe("EventCard interaction", () => {
     expect(markup).not.toContain("Confiança moderada");
     expect(markup).not.toContain("Fonte verificável");
   });
+
+  it("renderiza Ver no Instagram para flyer sem bilheteria externa", () => {
+    const markup = renderToStaticMarkup(<EventCard event={{ ...event, sourceType: "instagram_feed", sourceUrl: "https://www.instagram.com/p/ABC123/", priceCents: 0, priceNote: null, ticketStatus: "unknown" } as Event} />);
+    expect(markup).toContain("Ver no Instagram");
+    expect(markup).toContain("Consultar no Instagram");
+    expect(markup).toContain('href="https://www.instagram.com/p/ABC123/"');
+    expect(markup).not.toContain("Garantir ingresso");
+  });
+
+  it("ocupa o rodapé inteiro quando não há URL de ação válida", () => {
+    const markup = renderToStaticMarkup(<EventCard event={{ ...event, sourceUrl: null, priceCents: 0, priceNote: null, ticketStatus: "unknown" } as Event} />);
+    expect(markup).not.toContain("Garantir ingresso");
+    expect(markup).not.toContain("Ver no Instagram");
+    expect(markup).toContain("grid grid-cols-1 gap-2");
+  });
 });
