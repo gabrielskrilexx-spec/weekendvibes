@@ -88,4 +88,18 @@ describe("EventCard interaction", () => {
     expect(markup).not.toContain("Ver no Instagram");
     expect(markup).toContain("grid grid-cols-1 gap-2");
   });
+
+  it("exibe etiqueta de bilheteria externa no card", () => {
+    const markup = renderToStaticMarkup(<EventCard event={event} />);
+    expect(markup).toContain("Bilheteria externa");
+    expect(markup).toContain('data-testid="event-source-badge-ticket"');
+    expect(markup).not.toContain("Publicado no Instagram");
+  });
+
+  it("exibe etiqueta de publicação do Instagram no card", () => {
+    const markup = renderToStaticMarkup(<EventCard event={{ ...event, sourceType: "instagram_story", sourceUrl: "https://www.instagram.com/meulugar.bar/" } as Event} />);
+    expect(markup).toContain("Publicado no Instagram");
+    expect(markup).toContain('data-testid="event-source-badge-instagram"');
+    expect(markup).not.toContain("Bilheteria externa");
+  });
 });
