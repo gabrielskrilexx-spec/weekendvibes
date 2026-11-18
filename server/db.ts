@@ -11,6 +11,7 @@ import { serializePayloadJson } from "./json-contracts";
 import type { CircuitState, FailureCategory } from "../shared/domain";
 import { sanitizeEventText } from "../shared/event-text";
 import { resolveVenueCoverFallback } from "../shared/event-media";
+import { persistRemoteImage } from "./media-persistence";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -1516,10 +1517,12 @@ async function recordEventChangeAlerts(eventId: number, previous: Pick<Event, "e
 
 export async function saveEvent(data: InsertEvent) {
   const normalizedLocation = normalizeEventLocation(data);
+  const incomingImageUrl = normalizedLocation.imageUrl?.trim() || "";
+  const durableImageUrl = await persistRemoteImage(incomingImageUrl, "event-covers");
   const normalized = {
     ...normalizedLocation,
     description: sanitizeEventText(normalizedLocation.description),
-    imageUrl: normalizedLocation.imageUrl || resolveVenueCoverFallback(normalizedLocation),
+    imageUrl: durableImageUrl || incomingImageUrl || resolveVenueCoverFallback(normalizedLocation),
   };
   if (!ALLOWED_CITIES.includes(normalized.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos em Santos e Guarujá");
   assertEventDateIsCurrentOrFuture(normalized.eventDate, new Date(), normalized.title);
@@ -1565,6 +1568,26 @@ export async function saveEvent(data: InsertEvent) {
     await queueGeocoding(eventId, normalized, db);
   }
   return { created: eventId > 0, id: eventId > 0 ? eventId : undefined, updated: false };
+}
+
+export async function backfillRemoteEventCovers(input: { limit?: number; dryRun?: boolean } = {}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const limit = Math.min(500, Math.max(1, Math.trunc(input.limit ?? 500)));
+  const rows = await db.select({ id: events.id, imageUrl: events.imageUrl }).from(events).where(and(eq(events.isArchived, 0), isNotNull(events.imageUrl))).orderBy(asc(events.id)).limit(limit);
+  const candidates = rows.filter(row => /^https?:\/\//i.test(String(row.imageUrl ?? "")));
+  let persisted = 0;
+  let failed = 0;
+  for (const row of candidates) {
+    const durableUrl = await persistRemoteImage(row.imageUrl, "event-covers");
+    if (!durableUrl || durableUrl === row.imageUrl || !durableUrl.startsWith("/manus-storage/")) {
+      failed += 1;
+      continue;
+    }
+    if (!input.dryRun) await db.update(events).set({ imageUrl: durableUrl, updatedAt: new Date() }).where(eq(events.id, row.id));
+    persisted += 1;
+  }
+  return { scanned: rows.length, candidates: candidates.length, persisted, failed, dryRun: input.dryRun === true };
 }
 
 export async function updateEvent(id: number, input: Partial<InsertEvent>) {
