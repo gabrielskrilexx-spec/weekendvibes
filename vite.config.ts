@@ -175,22 +175,7 @@ const plugins = [
       "icons/admin-icon-512-maskable.png",
       "admin-manifest.webmanifest",
     ],
-    manifest: {
-      name: "WeekendVibes — Eventos na Baixada",
-      short_name: "WeekendVibes",
-      scope: "/",
-      start_url: "/",
-      display: "standalone",
-      lang: "pt-BR",
-      background_color: "#09090b",
-      theme_color: "#09090b",
-      icons: [
-        { src: "/icons/icon-180.png", sizes: "180x180", type: "image/png", purpose: "any" },
-        { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-        { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-        { src: "/icons/icon-512-maskable.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
-      ],
-    },
+    manifest: false,
     workbox: {
       navigateFallbackDenylist: [/^\/api\//],
     },
@@ -225,6 +210,12 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: path.resolve(import.meta.dirname, "client", "index.html"),
+        admin: path.resolve(import.meta.dirname, "client", "admin.html"),
+      },
+    },
   },
   server: {
     host: true,

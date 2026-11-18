@@ -1,4 +1,5 @@
 {
+  "id": "/admin",
   "name": "WeekendVibes Admin",
   "short_name": "Vibes Admin",
   "description": "Painel administrativo do WeekendVibes",

@@ -99,6 +99,14 @@ test("renderiza os 17 venues oficiais com WebP válidos e sem imagens quebradas"
 });
 
 test("separa o manifesto e o ícone do atalho administrativo", async ({ page }) => {
+  const adminHtml = await page.request.get("/admin");
+  expect(adminHtml.status()).toBe(200);
+  const adminHtmlBody = await adminHtml.text();
+  expect(adminHtmlBody).toContain('<link rel="manifest" href="/admin-manifest.webmanifest"');
+  expect(adminHtmlBody).toContain("WeekendVibes Admin");
+  const adminHealthHtml = await page.request.get("/admin/health");
+  expect(adminHealthHtml.status()).toBe(200);
+  expect(await adminHealthHtml.text()).toContain('/admin-manifest.webmanifest');
   await page.goto("/admin");
   await expect.poll(() => page.locator('link[data-pwa-manifest]').getAttribute("href")).toBe("/admin-manifest.webmanifest");
   await expect(page).toHaveTitle("WeekendVibes Admin");
@@ -107,6 +115,7 @@ test("separa o manifesto e o ícone do atalho administrativo", async ({ page }) 
   expect(manifestResponse.status()).toBe(200);
   const manifest = await manifestResponse.json();
   expect(manifest.name).toBe("WeekendVibes Admin");
+  expect(manifest.id).toBe("/admin");
   expect(manifest.start_url).toBe("/admin");
   expect(manifest.icons).toEqual(expect.arrayContaining([
     expect.objectContaining({ src: "/icons/admin-icon-512-maskable.png", purpose: "maskable" }),
