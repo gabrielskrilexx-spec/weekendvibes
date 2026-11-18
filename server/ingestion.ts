@@ -7,6 +7,7 @@ import { fetchExternal, isSandboxRestrictedError, readExternalBody, sanitizeExte
 import { parsePayloadJsonColumn } from "./json-contracts";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import type { MonitoredBrand } from "../drizzle/schema";
+import { sanitizeEventText } from "../shared/event-text";
 
 const DEFAULT_SOURCE_URLS = [
   "https://articket.com.br/e/6784/plants-happy-hour",
@@ -456,7 +457,7 @@ export function parseZigEventMetadata(html: string, url: string) {
   const genre = /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : /house|eletronic|eletrônica|dj|balada|festa|m[uú]sica|music|sunset/.test(searchable) ? "house_eletronica" : "";
   const category = /show|festival|concerto|banda/.test(searchable) ? "show" : /balada|festa|dj|boate|reveillon|sunset|open\s+bar/.test(searchable) ? "balada" : genre ? "evento_musical" : "";
   if (!title || !eventDate || !city) return undefined;
-  return { title, summary: sourceText.slice(0, 4_000), eventDate, locationName, address: street, city, category, genre, priceCents, sourceUrl: url, imageUrl, latitude: "", longitude: "", text: sourceText.slice(0, 16_000) };
+  return { title: sanitizeEventText(title), summary: sanitizeEventText(sourceText.slice(0, 4_000)), eventDate, locationName, address: street, city, category, genre, priceCents, sourceUrl: url, imageUrl, latitude: "", longitude: "", text: sanitizeEventText(sourceText.slice(0, 16_000)) };
 }
 
 function extractTicket360Field(html: string, field: string) {
@@ -485,7 +486,7 @@ export function parseTicket360EventMetadata(html: string, url: string) {
   const genre = /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : "house_eletronica";
   const category = /show|festival|concerto|banda/.test(searchable) ? "show" : "balada";
   if (!title || !eventDate || !venue || !city) return undefined;
-  return { title, summary: visibleText.slice(0, 4_000), eventDate, locationName: venue, address, city, category, genre, priceCents: 0, sourceUrl: url, imageUrl, latitude: "", longitude: "", text: visibleText.slice(0, 16_000) };
+  return { title: sanitizeEventText(title), summary: sanitizeEventText(visibleText.slice(0, 4_000)), eventDate, locationName: venue, address, city, category, genre, priceCents: 0, sourceUrl: url, imageUrl, latitude: "", longitude: "", text: sanitizeEventText(visibleText.slice(0, 16_000) ) };
 }
 
 export const PARQUE_VALONGO_FETCH_TIMEOUT_MS = 20_000;

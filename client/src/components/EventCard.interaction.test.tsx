@@ -7,6 +7,7 @@ vi.mock("wouter", () => ({ Link: ({ href, children, ...props }: { href: string; 
 vi.mock("./FavoriteReminderControls", () => ({ default: () => <div data-testid="favorite-controls" /> }));
 
 import EventCard, { getEventPriceLabel, resolveEventCoverImage } from "./EventCard";
+import { sanitizeEventText } from "../../../shared/event-text";
 
 const event = {
   id: 1,
@@ -32,17 +33,23 @@ describe("EventCard interaction", () => {
   });
 
   it("usa a imagem oficial da venue quando um evento Instagram não tem capa persistida", () => {
-    expect(resolveEventCoverImage({ imageUrl: null, locationName: "Dolores bar & restaurante", sourceType: "instagram_story" })).toBe("/venues/dolores.webp");
-    expect(resolveEventCoverImage({ imageUrl: null, locationName: "Flamingo MusicBar", sourceType: "instagram_story" })).toBe("/venues/flamingos.webp");
-    expect(resolveEventCoverImage({ imageUrl: null, locationName: "Praiô", sourceType: "instagram_story" })).toBe("/venues/curvao.webp");
+    expect(resolveEventCoverImage({ imageUrl: null, title: "PAGONEJO", locationName: "Dolores bar & restaurante", sourceType: "instagram_story", category: "evento_musical", sourceUrl: null })).toBe("/venues/dolores.webp");
+    expect(resolveEventCoverImage({ imageUrl: null, title: "WIU", locationName: "Flamingo MusicBar", sourceType: "instagram_story", category: "show", sourceUrl: null })).toBe("/venues/flamingos.webp");
+    expect(resolveEventCoverImage({ imageUrl: null, title: "Sabadou", locationName: "Praiô", sourceType: "instagram_story", category: "evento_musical", sourceUrl: null })).toBe("/venues/curvao.webp");
   });
 
-  it("não aplica fallback de venue a eventos de fontes públicas", () => {
-    expect(resolveEventCoverImage({ imageUrl: null, locationName: "Dolores bar & restaurante", sourceType: "public:ingresse" })).toBe("");
+  it("aplica fallback de venue também a eventos de fontes públicas", () => {
+    expect(resolveEventCoverImage({ imageUrl: null, title: "Evento", locationName: "Dolores bar & restaurante", sourceType: "public:ingresse", category: "balada", sourceUrl: null })).toBe("/venues/dolores.webp");
   });
 
   it("prioriza uma capa persistida sobre o fallback da venue", () => {
-    expect(resolveEventCoverImage({ imageUrl: "/manus-storage/instagram-covers/event.webp", locationName: "Dolores", sourceType: "instagram_feed" })).toBe("/manus-storage/instagram-covers/event.webp");
+    expect(resolveEventCoverImage({ imageUrl: "/manus-storage/instagram-covers/event.webp", title: "Evento", locationName: "Dolores", sourceType: "instagram_feed", category: "balada", sourceUrl: null })).toBe("/manus-storage/instagram-covers/event.webp");
+  });
+
+  it("limpa Markdown bruto das descrições e usa fallback por categoria", () => {
+    expect(sanitizeEventText("# ROTATIONS SESSIONS - **Quando:** sábado, 5 de dezembro `2026`"))
+      .toBe("ROTATIONS SESSIONS - Quando: sábado, 5 de dezembro 2026");
+    expect(resolveEventCoverImage({ imageUrl: null, title: "Evento", locationName: "Espaço sem cadastro", sourceType: "public:discovery", category: "balada", sourceUrl: null })).toBe("/venues/curvao.webp");
   });
 
   it("aplica feedback visual de hover e foco sem remover a acessibilidade", () => {

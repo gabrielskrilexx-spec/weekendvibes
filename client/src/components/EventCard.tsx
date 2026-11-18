@@ -4,28 +4,15 @@ import { Link } from "wouter";
 import type { Event } from "../../../drizzle/schema";
 import FavoriteReminderControls from "./FavoriteReminderControls";
 import { responsiveImageProps, EVENT_CARD_IMAGE_SIZES } from "@/lib/responsiveImages";
+import { sanitizeEventText } from "../../../shared/event-text";
+import { resolveVenueCoverFallback } from "../../../shared/event-media";
 
 const genreLabels: Record<string, string> = { funk: "Funk", house_eletronica: "House/Eletrônica", samba_pagode: "Samba/Pagode", rap_trap: "Rap/Trap" };
 const categoryColors: Record<string, string> = { show: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-400/15 dark:text-orange-200 dark:border-orange-300/20", balada: "bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200 dark:bg-fuchsia-400/15 dark:text-fuchsia-200 dark:border-fuchsia-300/20", evento_musical: "bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-300/15 dark:text-yellow-100 dark:border-yellow-200/20" };
-const INSTAGRAM_VENUE_COVER_FALLBACKS = [
-  { terms: ["dolores"], imageUrl: "/venues/dolores.webp" },
-  { terms: ["flamingo", "flamingos"], imageUrl: "/venues/flamingos.webp" },
-  { terms: ["praiô", "praio", "praia verde"], imageUrl: "/venues/curvao.webp" },
-  { terms: ["arena club"], imageUrl: "/venues/arena-club.webp" },
-  { terms: ["yellow house"], imageUrl: "/venues/yellow-house.webp" },
-  { terms: ["goat"], imageUrl: "/venues/goat.webp" },
-] as const;
-
-function normalizeVenueText(value: string) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-}
-
-export function resolveEventCoverImage(event: Pick<Event, "imageUrl" | "locationName" | "sourceType">) {
+export function resolveEventCoverImage(event: Pick<Event, "imageUrl" | "locationName" | "sourceType" | "title" | "category" | "sourceUrl">) {
   const persistedImage = event.imageUrl?.trim();
   if (persistedImage) return persistedImage;
-  if (!event.sourceType?.toLowerCase().startsWith("instagram")) return "";
-  const location = normalizeVenueText(event.locationName);
-  return INSTAGRAM_VENUE_COVER_FALLBACKS.find(({ terms }) => terms.some(term => location.includes(normalizeVenueText(term))))?.imageUrl ?? "";
+  return resolveVenueCoverFallback(event);
 }
 
 export function getEventPriceLabel(event: Pick<Event, "priceCents" | "priceNote" | "ticketStatus">) {
@@ -41,6 +28,8 @@ export default function EventCard({ event }: { event: Event }) {
   const date = new Date(event.eventDate);
   const [imageFailed, setImageFailed] = useState(false);
   const image = resolveEventCoverImage(event);
+  const actionUrl = (event as Event & { ticketUrl?: string | null }).ticketUrl?.trim() || event.sourceUrl?.trim() || "";
+  const description = sanitizeEventText(event.description) || "Descubra os detalhes deste rolê na página do evento.";
   const imageProps = image ? responsiveImageProps(image, EVENT_CARD_IMAGE_SIZES) : null;
   const isSoldOut = event.ticketStatus === "sold_out" || (event.ticketStatus === undefined && (event.priceNote?.toLowerCase().includes("vendas encerradas") ?? false));
   const priceLabel = getEventPriceLabel(event);
@@ -55,10 +44,10 @@ export default function EventCard({ event }: { event: Event }) {
       </div>
       <div className="flex flex-1 flex-col space-y-4 p-5">
         <div className="flex items-start justify-between gap-3"><h3 className="line-clamp-2 min-h-[3.25rem] text-xl font-black leading-tight tracking-tight text-zinc-900 dark:text-white transition-colors duration-200 group-hover:text-orange-700 dark:group-hover:text-orange-100 motion-reduce:transition-none">{event.title}</h3><ArrowUpRight className="mt-1 shrink-0 text-orange-300 transition-transform duration-200 ease-out group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transform-none" size={20} /></div>
-        <p className="line-clamp-2 min-h-[2.75rem] text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">{event.description || "Descubra os detalhes deste rolê na página do evento."}</p>
+        <p className="line-clamp-2 min-h-[2.75rem] text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">{description}</p>
         <div className="space-y-2 text-sm text-zinc-700 dark:text-zinc-300"><p className="flex items-center gap-2"><CalendarDays size={15} className="text-orange-300" />{date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p><p className="flex items-center gap-2"><MapPin size={15} className="text-fuchsia-300" /><span className="line-clamp-1">{event.locationName}</span></p><p className={`flex items-center gap-2 ${isSoldOut ? "text-rose-200" : ""}`}><Ticket size={15} className={isSoldOut ? "text-rose-300" : "text-yellow-300"} />{priceLabel}</p></div>
         <FavoriteReminderControls eventId={event.id} />
-        <div className="mt-auto flex flex-col gap-3"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${categoryColors[event.category]}`}>{event.category === "evento_musical" ? "música" : event.category}</span>{event.genre && <span className="rounded-full border border-zinc-200 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-zinc-700 dark:border-white/10 dark:text-zinc-300">{genreLabels[event.genre] ?? event.genre}</span>}</div><div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><Link href={`/eventos/${event.slug}`} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full border border-zinc-200 px-4 py-2 text-xs font-black text-zinc-800 transition hover:border-orange-300/60 hover:bg-orange-50 dark:border-white/10 dark:text-zinc-200 dark:hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-200 motion-reduce:transition-none">Ver detalhes</Link>{event.sourceUrl ? <a href={event.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-orange-300 px-4 py-2 text-xs font-black text-zinc-950 transition-[transform,background-color,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:bg-orange-200 hover:shadow-[0_8px_20px_-10px_rgba(251,146,60,.9)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-200 motion-reduce:transform-none"><Ticket size={14} /> Garantir ingresso</a> : null}</div></div>
+        <div className="mt-auto flex flex-col gap-3"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${categoryColors[event.category]}`}>{event.category === "evento_musical" ? "música" : event.category}</span>{event.genre && <span className="rounded-full border border-zinc-200 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-zinc-700 dark:border-white/10 dark:text-zinc-300">{genreLabels[event.genre] ?? event.genre}</span>}</div><div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><Link href={`/eventos/${event.slug}`} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full border border-zinc-200 px-4 py-2 text-xs font-black text-zinc-800 transition hover:border-orange-300/60 hover:bg-orange-50 dark:border-white/10 dark:text-zinc-200 dark:hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-200 motion-reduce:transition-none">Ver detalhes</Link>{actionUrl ? <a href={actionUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-orange-300 px-4 py-2 text-xs font-black text-zinc-950 transition-[transform,background-color,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:bg-orange-200 hover:shadow-[0_8px_20px_-10px_rgba(251,146,60,.9)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-200 motion-reduce:transform-none"><Ticket size={14} /> Garantir ingresso</a> : null}</div></div>
       </div>
     </article>
   );

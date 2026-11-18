@@ -9,6 +9,8 @@ import { buildDailyTelemetrySeries, calculateSystemHealthStatus, normalizeObserv
 import { upsert } from "./pg-upsert";
 import { serializePayloadJson } from "./json-contracts";
 import type { CircuitState, FailureCategory } from "../shared/domain";
+import { sanitizeEventText } from "../shared/event-text";
+import { resolveVenueCoverFallback } from "../shared/event-media";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -1513,7 +1515,12 @@ async function recordEventChangeAlerts(eventId: number, previous: Pick<Event, "e
 }
 
 export async function saveEvent(data: InsertEvent) {
-  const normalized = normalizeEventLocation(data);
+  const normalizedLocation = normalizeEventLocation(data);
+  const normalized = {
+    ...normalizedLocation,
+    description: sanitizeEventText(normalizedLocation.description),
+    imageUrl: normalizedLocation.imageUrl || resolveVenueCoverFallback(normalizedLocation),
+  };
   if (!ALLOWED_CITIES.includes(normalized.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos em Santos e Guarujá");
   assertEventDateIsCurrentOrFuture(normalized.eventDate, new Date(), normalized.title);
   const db = await getDb();
