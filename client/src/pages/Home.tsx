@@ -100,7 +100,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-white pb-28 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       <header className="sticky top-0 z-20 border-b border-zinc-200/80 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-zinc-950/95">
-        <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
+        <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
           <div className="flex items-center justify-between">
           <Link href="/" className="rounded-md bg-zinc-950 px-1.5 py-0.5 text-2xl font-black tracking-[-0.06em] text-white" aria-label="WeekendVibes"><span className="text-[#EA580C]">W</span>eekend<span className="text-[#EA580C]">V</span>ibes.</Link>
           <div className="flex items-center gap-2">

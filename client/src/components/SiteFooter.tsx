@@ -3,7 +3,7 @@ import PushAlertsToggle from "@/components/PushAlertsToggle";
 
 export default function SiteFooter() {
   return (
-    <footer className="border-t border-white/10 px-4 pb-28 pt-8 text-sm text-zinc-500 sm:px-6 sm:pb-10">
+    <footer className="border-t border-white/10 px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-8 text-sm text-zinc-500 sm:px-6 sm:pb-[max(2.5rem,env(safe-area-inset-bottom))]">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <a href="/" aria-label="WeekendVibes" className="group inline-flex rounded-md bg-zinc-950 px-1.5 py-0.5 text-xl font-black tracking-[-0.06em] text-white transition-[opacity,filter] duration-200 hover:opacity-90 hover:drop-shadow-[0_0_12px_rgba(234,88,12,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-600">

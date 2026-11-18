@@ -170,3 +170,61 @@ test("exibe Instalar App Admin e aciona beforeinstallprompt", async ({ page }) =
   await expect.poll(() => page.evaluate(() => (window as typeof window & { __adminPromptCount?: number }).__adminPromptCount)).toBe(1);
   await expect(page.getByTestId("admin-install-app")).toHaveCount(0);
 });
+
+test("publica metadados Apple e ícone oficial na vitrine", async ({ page }) => {
+  const response = await page.request.get("/");
+  expect(response.status()).toBe(200);
+  const html = await response.text();
+  expect(html).toContain('<meta name="apple-mobile-web-app-capable" content="yes"');
+  expect(html).toContain('<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"');
+  expect(html).toContain('<meta name="apple-mobile-web-app-title" content="WeekendVibes"');
+  expect(html).toContain('name="viewport"');
+  expect(html).toContain("viewport-fit=cover");
+  expect(html).toContain('<link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png"');
+  const icon = await page.request.get("/icons/apple-touch-icon.png");
+  expect(icon.status()).toBe(200);
+  expect(icon.headers()["content-type"]).toContain("image/png");
+});
+
+test.describe("guia de instalação iOS Safari público", () => {
+  test.use({ userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1" });
+
+  test("orienta o Safari a usar Compartilhar e Adicionar à Tela de Início", async ({ page }) => {
+    await prepareHome(page);
+    await page.goto("/");
+    const guide = page.getByTestId("ios-install-guide");
+    await expect(guide).toHaveAttribute("data-ios-mode", "safari");
+    await expect(guide).toContainText("No Safari");
+    await expect(guide).toContainText("Adicionar à Tela de Início");
+    await guide.getByRole("button", { name: "Fechar convite de instalação" }).click();
+    await expect(guide).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByTestId("ios-install-guide")).toHaveCount(0);
+  });
+
+  test("não mostra o guia quando a vitrine já está em standalone", async ({ page }) => {
+    await prepareHome(page);
+    await page.addInitScript(() => {
+      const originalMatchMedia = window.matchMedia.bind(window);
+      window.matchMedia = query => query === "(display-mode: standalone)"
+        ? ({ matches: true, media: query, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false } as MediaQueryList)
+        : originalMatchMedia(query);
+    });
+    await page.goto("/");
+    await expect(page.getByTestId("ios-install-guide")).toHaveCount(0);
+  });
+});
+
+test.describe("guia de instalação iOS em navegador interno público", () => {
+  test.use({ userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Instagram 320.0.0.0.0" });
+
+  test("orienta a abrir no Safari antes de instalar", async ({ page }) => {
+    await prepareHome(page);
+    await page.addInitScript(() => localStorage.removeItem("weekendvibes:ios-install-guide-dismissed"));
+    await page.goto("/");
+    const guide = page.getByTestId("ios-install-guide");
+    await expect(guide).toHaveAttribute("data-ios-mode", "in-app");
+    await expect(guide).toContainText("Abrir no Safari");
+    await expect(guide).toContainText("Adicionar à Tela de Início");
+  });
+});
