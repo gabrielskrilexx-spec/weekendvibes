@@ -7,6 +7,26 @@ import { responsiveImageProps, EVENT_CARD_IMAGE_SIZES } from "@/lib/responsiveIm
 
 const genreLabels: Record<string, string> = { funk: "Funk", house_eletronica: "House/Eletrônica", samba_pagode: "Samba/Pagode", rap_trap: "Rap/Trap" };
 const categoryColors: Record<string, string> = { show: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-400/15 dark:text-orange-200 dark:border-orange-300/20", balada: "bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200 dark:bg-fuchsia-400/15 dark:text-fuchsia-200 dark:border-fuchsia-300/20", evento_musical: "bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-300/15 dark:text-yellow-100 dark:border-yellow-200/20" };
+const INSTAGRAM_VENUE_COVER_FALLBACKS = [
+  { terms: ["dolores"], imageUrl: "/venues/dolores.webp" },
+  { terms: ["flamingo", "flamingos"], imageUrl: "/venues/flamingos.webp" },
+  { terms: ["praiô", "praio", "praia verde"], imageUrl: "/venues/curvao.webp" },
+  { terms: ["arena club"], imageUrl: "/venues/arena-club.webp" },
+  { terms: ["yellow house"], imageUrl: "/venues/yellow-house.webp" },
+  { terms: ["goat"], imageUrl: "/venues/goat.webp" },
+] as const;
+
+function normalizeVenueText(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+export function resolveEventCoverImage(event: Pick<Event, "imageUrl" | "locationName" | "sourceType">) {
+  const persistedImage = event.imageUrl?.trim();
+  if (persistedImage) return persistedImage;
+  if (!event.sourceType?.toLowerCase().startsWith("instagram")) return "";
+  const location = normalizeVenueText(event.locationName);
+  return INSTAGRAM_VENUE_COVER_FALLBACKS.find(({ terms }) => terms.some(term => location.includes(normalizeVenueText(term))))?.imageUrl ?? "";
+}
 
 export function getEventPriceLabel(event: Pick<Event, "priceCents" | "priceNote" | "ticketStatus">) {
   const note = event.priceNote?.trim() ?? "";
@@ -20,7 +40,7 @@ export function getEventPriceLabel(event: Pick<Event, "priceCents" | "priceNote"
 export default function EventCard({ event }: { event: Event }) {
   const date = new Date(event.eventDate);
   const [imageFailed, setImageFailed] = useState(false);
-  const image = event.imageUrl?.trim() || "";
+  const image = resolveEventCoverImage(event);
   const imageProps = image ? responsiveImageProps(image, EVENT_CARD_IMAGE_SIZES) : null;
   const isSoldOut = event.ticketStatus === "sold_out" || (event.ticketStatus === undefined && (event.priceNote?.toLowerCase().includes("vendas encerradas") ?? false));
   const priceLabel = getEventPriceLabel(event);

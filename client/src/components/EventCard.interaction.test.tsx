@@ -6,7 +6,7 @@ import type { Event } from "../../../drizzle/schema";
 vi.mock("wouter", () => ({ Link: ({ href, children, ...props }: { href: string; children: React.ReactNode }) => <a href={href} {...props}>{children}</a> }));
 vi.mock("./FavoriteReminderControls", () => ({ default: () => <div data-testid="favorite-controls" /> }));
 
-import EventCard, { getEventPriceLabel } from "./EventCard";
+import EventCard, { getEventPriceLabel, resolveEventCoverImage } from "./EventCard";
 
 const event = {
   id: 1,
@@ -29,6 +29,20 @@ describe("EventCard interaction", () => {
   it("classifica preço zero como gratuito e preço não catalogado como consulta", () => {
     expect(getEventPriceLabel({ priceCents: 0, priceNote: "R$ 0,00", ticketStatus: "available" })).toBe("Gratuito");
     expect(getEventPriceLabel({ priceCents: 0, priceNote: null, ticketStatus: "unknown" })).toBe("Consultar valores");
+  });
+
+  it("usa a imagem oficial da venue quando um evento Instagram não tem capa persistida", () => {
+    expect(resolveEventCoverImage({ imageUrl: null, locationName: "Dolores bar & restaurante", sourceType: "instagram_story" })).toBe("/venues/dolores.webp");
+    expect(resolveEventCoverImage({ imageUrl: null, locationName: "Flamingo MusicBar", sourceType: "instagram_story" })).toBe("/venues/flamingos.webp");
+    expect(resolveEventCoverImage({ imageUrl: null, locationName: "Praiô", sourceType: "instagram_story" })).toBe("/venues/curvao.webp");
+  });
+
+  it("não aplica fallback de venue a eventos de fontes públicas", () => {
+    expect(resolveEventCoverImage({ imageUrl: null, locationName: "Dolores bar & restaurante", sourceType: "public:ingresse" })).toBe("");
+  });
+
+  it("prioriza uma capa persistida sobre o fallback da venue", () => {
+    expect(resolveEventCoverImage({ imageUrl: "/manus-storage/instagram-covers/event.webp", locationName: "Dolores", sourceType: "instagram_feed" })).toBe("/manus-storage/instagram-covers/event.webp");
   });
 
   it("aplica feedback visual de hover e foco sem remover a acessibilidade", () => {
