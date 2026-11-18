@@ -145,3 +145,28 @@ test("mantém a tela de login na rota admin antes da autenticação", async ({ p
   await expect(loginLink).toHaveAttribute("href", "/api/oauth/login?redirect_to=%2Fadmin%2Fhealth");
   await expect(page.locator('link[data-pwa-manifest]')).toHaveAttribute("href", "/admin-manifest.webmanifest");
 });
+
+test("exibe Instalar App Admin e aciona beforeinstallprompt", async ({ page }) => {
+  await page.route("**/api/trpc/auth.me**", async route => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(trpcPayload(null)) });
+  });
+  await page.goto("/admin");
+  await page.evaluate(() => {
+    (window as typeof window & { __adminPromptCount?: number }).__adminPromptCount = 0;
+    const event = new Event("beforeinstallprompt", { cancelable: true }) as Event & {
+      prompt: () => Promise<void>;
+      userChoice: Promise<{ outcome: "accepted"; platform: string }>;
+    };
+    event.prompt = async () => {
+      const current = window as typeof window & { __adminPromptCount?: number };
+      current.__adminPromptCount = (current.__adminPromptCount ?? 0) + 1;
+    };
+    event.userChoice = Promise.resolve({ outcome: "accepted", platform: "web" });
+    window.dispatchEvent(event);
+  });
+  const installButton = page.getByRole("button", { name: "Instalar App Admin" });
+  await expect(installButton).toBeVisible();
+  await installButton.click();
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { __adminPromptCount?: number }).__adminPromptCount)).toBe(1);
+  await expect(page.getByTestId("admin-install-app")).toHaveCount(0);
+});

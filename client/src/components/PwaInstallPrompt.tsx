@@ -1,11 +1,7 @@
 import { Download, Share, WifiOff, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { trackWebAnalytics } from "@/lib/analytics";
-
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
-};
+import { clearBeforeInstallPrompt, subscribeToBeforeInstallPrompt, type BeforeInstallPromptEvent } from "@/lib/pwa-install";
 
 function isStandalone() {
   if (typeof window === "undefined") return false;
@@ -36,12 +32,8 @@ export default function PwaInstallPrompt() {
   };
 
   useEffect(() => {
-    const onBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault();
-      setInstallEvent(event as BeforeInstallPromptEvent);
-    };
     const onAppInstalled = () => {
-      setInstallEvent(null);
+      clearBeforeInstallPrompt();
       setStandalone(true);
       markInstalled();
     };
@@ -52,13 +44,13 @@ export default function PwaInstallPrompt() {
 
     setIos(isIos());
     if (isStandalone()) markInstalled();
-    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+    const unsubscribeInstallPrompt = subscribeToBeforeInstallPrompt(setInstallEvent);
     window.addEventListener("appinstalled", onAppInstalled);
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
     mediaQuery.addEventListener?.("change", onDisplayModeChange);
     return () => {
-      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+      unsubscribeInstallPrompt();
       window.removeEventListener("appinstalled", onAppInstalled);
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
@@ -71,10 +63,11 @@ export default function PwaInstallPrompt() {
     await installEvent.prompt();
     const choice = await installEvent.userChoice;
     if (choice.outcome === "accepted") markInstalled();
-    setInstallEvent(null);
+    clearBeforeInstallPrompt();
   };
 
-  const showInstall = !standalone && !isDismissed && (Boolean(installEvent) || ios);
+  const isAdminPath = typeof window !== "undefined" && (window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/"));
+  const showInstall = !isAdminPath && !standalone && !isDismissed && (Boolean(installEvent) || ios);
 
   return (
     <>

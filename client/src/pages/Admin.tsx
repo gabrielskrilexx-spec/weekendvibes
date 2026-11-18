@@ -1,9 +1,10 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, Loader2, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, Download, Loader2, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { postAdminJson } from "@/lib/admin-rest";
 import { friendlyAdminErrorMessage } from "@/lib/adminFeedback";
+import { clearBeforeInstallPrompt, subscribeToBeforeInstallPrompt, type BeforeInstallPromptEvent } from "@/lib/pwa-install";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast as sonnerToast } from "sonner";
 const AdminRoutinePanel = lazy(() => import("@/components/AdminRoutinePanel"));
@@ -46,6 +47,9 @@ export function mediaOriginClass(origin: string) {
 
 function AdminLoginScreen() {
   const isPreviewBuild = !import.meta.env.PROD;
+  const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installPending, setInstallPending] = useState(false);
+  const [standalone, setStandalone] = useState(() => typeof window !== "undefined" && window.matchMedia("(display-mode: standalone)").matches);
   const { returnTo, oauthError } = typeof window !== "undefined"
     ? (() => {
         const currentUrl = new URL(window.location.href);
@@ -65,6 +69,32 @@ function AdminLoginScreen() {
         : null;
   const startDevLogin = () => {
     window.location.assign(`/api/auth/dev-login?redirect_to=${encodeURIComponent(returnTo)}`);
+  };
+
+  useEffect(() => {
+    const unsubscribe = subscribeToBeforeInstallPrompt(setInstallEvent);
+    const onAppInstalled = () => {
+      clearBeforeInstallPrompt();
+      setStandalone(true);
+    };
+    window.addEventListener("appinstalled", onAppInstalled);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("appinstalled", onAppInstalled);
+    };
+  }, []);
+
+  const installAdminApp = async () => {
+    if (!installEvent || installPending) return;
+    setInstallPending(true);
+    try {
+      await installEvent.prompt();
+      const choice = await installEvent.userChoice;
+      if (choice.outcome === "accepted") setStandalone(true);
+    } finally {
+      clearBeforeInstallPrompt();
+      setInstallPending(false);
+    }
   };
 
   return (
@@ -104,6 +134,19 @@ function AdminLoginScreen() {
               Ver agenda pública
             </Link>
           </div>
+          {!standalone && installEvent ? (
+            <button
+              type="button"
+              onClick={() => void installAdminApp()}
+              disabled={installPending}
+              aria-busy={installPending}
+              data-testid="admin-install-app"
+              className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-300/40 bg-amber-300/10 px-5 py-3 text-sm font-black text-amber-100 transition hover:bg-amber-300/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200 disabled:cursor-wait disabled:opacity-60"
+            >
+              <Download size={16} aria-hidden="true" />
+              {installPending ? "Abrindo instalação..." : "Instalar App Admin"}
+            </button>
+          ) : null}
         </div>
       </section>
     </main>
