@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { ArrowLeft, Loader2, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { trpc } from "@/lib/trpc";
-import { startLogin } from "@/const";
 import { postAdminJson } from "@/lib/admin-rest";
 import { friendlyAdminErrorMessage } from "@/lib/adminFeedback";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -50,6 +49,7 @@ function AdminLoginScreen() {
   const returnTo = typeof window !== "undefined"
     ? `${window.location.pathname}${window.location.search}${window.location.hash}`
     : "/admin";
+  const oauthLoginUrl = `/api/oauth/login?redirect_to=${encodeURIComponent(returnTo)}`;
   const startDevLogin = () => {
     window.location.assign(`/api/auth/dev-login?redirect_to=${encodeURIComponent(returnTo)}`);
   };
@@ -65,13 +65,13 @@ function AdminLoginScreen() {
             Entre para revisar eventos, acompanhar ingestões e administrar as fontes monitoradas. Esta tela permanece em <code className="text-orange-200">/admin</code> após a instalação do app.
           </p>
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-            <button
-              type="button"
-              onClick={() => startLogin(returnTo)}
+            <a
+              href={oauthLoginUrl}
+              data-testid="admin-oauth-login"
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-fuchsia-600 px-5 py-3 text-sm font-black text-white transition hover:from-orange-600 hover:to-fuchsia-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-200"
             >
               Entrar como administrador
-            </button>
+            </a>
             {isPreviewBuild ? (
               <button
                 type="button"

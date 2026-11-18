@@ -108,6 +108,8 @@ test("mantém a tela de login na rota admin antes da autenticação", async ({ p
   await expect(page).toHaveURL(/\/admin\/health$/);
   await expect(page.getByTestId("admin-login-screen")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Acesse o painel administrativo" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Entrar como administrador" })).toBeVisible();
+  const loginLink = page.getByRole("link", { name: "Entrar como administrador" });
+  await expect(loginLink).toBeVisible();
+  await expect(loginLink).toHaveAttribute("href", "/api/oauth/login?redirect_to=%2Fadmin%2Fhealth");
   await expect(page.locator('link[data-pwa-manifest]')).toHaveAttribute("href", "/admin-manifest.webmanifest");
 });
