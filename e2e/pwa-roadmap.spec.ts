@@ -99,3 +99,15 @@ test("separa o manifesto e o ícone do atalho administrativo", async ({ page }) 
     expect.objectContaining({ src: "/icons/admin-icon-512-maskable.png", purpose: "maskable" }),
   ]));
 });
+
+test("mantém a tela de login na rota admin antes da autenticação", async ({ page }) => {
+  await page.route("**/api/trpc/auth.me**", async route => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(trpcPayload(null)) });
+  });
+  await page.goto("/admin/health");
+  await expect(page).toHaveURL(/\/admin\/health$/);
+  await expect(page.getByTestId("admin-login-screen")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Acesse o painel administrativo" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Entrar como administrador" })).toBeVisible();
+  await expect(page.locator('link[data-pwa-manifest]')).toHaveAttribute("href", "/admin-manifest.webmanifest");
+});
