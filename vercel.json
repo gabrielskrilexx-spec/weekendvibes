@@ -35,7 +35,7 @@
     },
     {
       "source": "/admin/health",
-      "destination": "/admin.html"
+      "destination": "/admin"
     },
     {
       "source": "/admin/(.*)",
