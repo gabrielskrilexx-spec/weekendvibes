@@ -403,7 +403,7 @@ export function normalizeInstagramMediaItem(item: Record<string, unknown>, fallb
   return {
     id: item.id ? String(item.id) : item.media_id ? String(item.media_id) : undefined,
     shortCode: item.shortCode ? String(item.shortCode) : undefined,
-    url: item.url ? String(item.url) : username ? `https://www.instagram.com/${username.replace(/^@/, "")}/` : undefined,
+    url: item.url ? String(item.url) : item.permalink ? String(item.permalink) : username ? `https://www.instagram.com/${username.replace(/^@/, "")}/` : undefined,
     permalink: item.permalink ? String(item.permalink) : undefined,
     caption: caption || undefined,
     text: item.text ? String(item.text) : redirectedLinks.length > 0 ? redirectedLinks.join("\n") : undefined,

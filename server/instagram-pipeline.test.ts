@@ -370,6 +370,11 @@ describe("Instagram weekend pipeline", () => {
     expect(item).toMatchObject({ username: "meulugar.bar", mediaType: "story", imageUrl: "https://cdn.example.com/story.jpg", postedAt: "2026-09-16T20:00:00.000Z", expiresAt: "2026-09-17T20:00:00.000Z", ocrText: "Agenda 22h", isVideo: true });
   });
 
+  it("mantém o permalink do Feed quando o Actor não fornece URL de perfil", () => {
+    const [item] = normalizeInstagramMediaPayload([{ source_username: "meulugar.bar", item_type: "post", permalink: "https://www.instagram.com/p/feed123/", shortCode: "feed123", image_url: "https://cdn.example.com/feed.jpg", caption: "Agenda" }]);
+    expect(item).toMatchObject({ url: "https://www.instagram.com/p/feed123/", permalink: "https://www.instagram.com/p/feed123/" });
+  });
+
   it("filters Highlights to agenda titles and normalizes Story media", () => {
     expect(isAgendaHighlightTitle("Programação")).toBe(true);
     expect(isAgendaHighlightTitle("Cardápio")).toBe(false);
