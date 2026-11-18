@@ -37,6 +37,7 @@ describe("EventCard interaction", () => {
     expect(resolveEventCoverImage({ imageUrl: null, title: "WIU", locationName: "Flamingo MusicBar", sourceType: "instagram_story", category: "show", sourceUrl: null })).toBe("/venues/flamingos.webp");
     expect(resolveEventCoverImage({ imageUrl: null, title: "ROTATIONS SESSIONS", locationName: "Curvão Surf House", sourceType: "public:zig", category: "balada", sourceUrl: null })).toBe("/images/venues/curvao.jpg");
     expect(resolveEventCoverImage({ imageUrl: null, title: "Nosso After GTA VI Edition", locationName: "Praça Dr. Walter Belian", sourceType: "public:ingresse", category: "balada", sourceUrl: null })).toBe("/images/venues/lucky-scope.jpg");
+    expect(resolveEventCoverImage({ imageUrl: null, title: "PRAIA VERDE SUMMER - INIMIGOS DA HP", locationName: "Praia Verde Beach Club", sourceType: "public:zig", category: "balada", sourceUrl: null })).toBe("/images/venues/praia-verde-beach-club.jpg");
     expect(resolveEventCoverImage({ imageUrl: null, title: "Sabadou", locationName: "Praiô", sourceType: "instagram_story", category: "evento_musical", sourceUrl: null })).toBe("/images/venues/praio.jpg");
   });
 

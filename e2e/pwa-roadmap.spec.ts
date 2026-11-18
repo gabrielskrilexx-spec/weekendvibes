@@ -7,7 +7,7 @@ function trpcPayload(data: unknown) {
 }
 
 const venueAssets = [
-  "goat.webp", "curvao.webp", "guaruja-golf-club.webp", "almare.webp", "lucky-scope.jpg", "praio.jpg", "flamingos.webp",
+  "goat.webp", "curvao.webp", "guaruja-golf-club.webp", "almare.webp", "lucky-scope.jpg", "praio.jpg", "praia-verde-beach-club.jpg", "flamingos.webp",
   "vallum-garden.webp", "bluemed.webp", "parquevalongo.webp", "casa412.webp", "laroc.webp",
   "obeco.webp", "dolores.webp", "projac.webp", "meulugar.webp", "mobydick.webp", "arena-club.webp", "yellow-house.webp",
 ];
@@ -68,13 +68,13 @@ test("exibe erro OAuth de forma amigável e limpa o motivo na nova tentativa", a
   await expect(page.locator("body")).not.toContainText("The code passed is incorrect or expired");
 });
 
-test("renderiza os 19 venues oficiais com imagens válidas e sem imagens quebradas", async ({ page }) => {
+test("renderiza os 20 venues oficiais com imagens válidas e sem imagens quebradas", async ({ page }) => {
   await prepareHome(page);
   await page.goto("/");
   const venueSection = page.locator("section[aria-labelledby='venues-heading']");
   await expect(venueSection.getByRole("heading", { name: "Palcos da Baixada" })).toBeVisible();
   const images = venueSection.locator("#venues-carousel img");
-  await expect(images).toHaveCount(19);
+  await expect(images).toHaveCount(20);
   const imageResults = [];
   for (let index = 0; index < await images.count(); index += 1) {
     const image = images.nth(index);
@@ -85,7 +85,7 @@ test("renderiza os 19 venues oficiais com imagens válidas e sem imagens quebrad
       return { src: new URL(img.currentSrc || img.src).pathname, complete: img.complete, width: img.naturalWidth };
     }));
   }
-  const venuePaths = venueAssets.map(name => name === "curvao.webp" ? "/images/venues/curvao.jpg" : name === "lucky-scope.jpg" ? "/images/venues/lucky-scope.jpg" : name === "praio.jpg" ? "/images/venues/praio.jpg" : `/venues/${name}`);
+  const venuePaths = venueAssets.map(name => name === "curvao.webp" ? "/images/venues/curvao.jpg" : name === "lucky-scope.jpg" ? "/images/venues/lucky-scope.jpg" : name === "praio.jpg" ? "/images/venues/praio.jpg" : name === "praia-verde-beach-club.jpg" ? "/images/venues/praia-verde-beach-club.jpg" : `/venues/${name}`);
   expect(imageResults.map(image => image.src)).toEqual(venuePaths);
   for (const image of imageResults) {
     expect(image.complete, `${image.src} deve terminar o carregamento`).toBe(true);

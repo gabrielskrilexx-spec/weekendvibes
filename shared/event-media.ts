@@ -9,6 +9,7 @@ type EventMediaInput = {
 const VENUE_COVER_RULES = [
   { terms: ["laroc", "laroc club"], imageUrl: "/venues/laroc.webp" },
   { terms: ["praio", "praiô", "praio lounge bar"], imageUrl: "/images/venues/praio.jpg" },
+  { terms: ["praia verde beach club", "praia verde"], imageUrl: "/images/venues/praia-verde-beach-club.jpg" },
   { terms: ["curvao", "curvão", "surf house"], imageUrl: "/images/venues/curvao.jpg" },
   { terms: ["dolores"], imageUrl: "/venues/dolores.webp" },
   { terms: ["flamingo", "flamingos"], imageUrl: "/venues/flamingos.webp" },
