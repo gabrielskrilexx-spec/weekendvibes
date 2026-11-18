@@ -34,7 +34,7 @@
       "destination": "/admin.html"
     },
     {
-      "source": "/admin/:path*",
+      "source": "/admin/(.*)",
       "destination": "/admin.html"
     },
     {
