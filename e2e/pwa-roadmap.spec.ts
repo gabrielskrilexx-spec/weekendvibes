@@ -103,6 +103,11 @@ test("separa o manifesto e o ícone do atalho administrativo", async ({ page }) 
   expect(adminHtml.status()).toBe(200);
   const adminHtmlBody = await adminHtml.text();
   expect(adminHtmlBody).toContain('<link rel="manifest" href="/admin-manifest.webmanifest"');
+  expect(adminHtmlBody).toContain('<link rel="icon" type="image/png" sizes="192x192" href="/icons/admin-icon-192.png"');
+  expect(adminHtmlBody).toContain('<link rel="shortcut icon" type="image/png" href="/icons/admin-icon-192.png"');
+  expect(adminHtmlBody).toContain('<link rel="apple-touch-icon" sizes="180x180" href="/icons/admin-icon-180.png"');
+  expect(adminHtmlBody).not.toContain("/favicon.svg");
+  expect(adminHtmlBody).not.toContain("/icons/icon-");
   expect(adminHtmlBody).toContain("WeekendVibes Admin");
   const adminHealthHtml = await page.request.get("/admin/health");
   expect(adminHealthHtml.status()).toBe(200);
@@ -120,6 +125,11 @@ test("separa o manifesto e o ícone do atalho administrativo", async ({ page }) 
   expect(manifest.icons).toEqual(expect.arrayContaining([
     expect.objectContaining({ src: "/icons/admin-icon-512-maskable.png", purpose: "maskable" }),
   ]));
+  for (const icon of ["/icons/admin-icon-180.png", "/icons/admin-icon-192.png", "/icons/admin-icon-512.png", "/icons/admin-icon-512-maskable.png"]) {
+    const response = await page.request.get(icon);
+    expect(response.status()).toBe(200);
+    expect(response.headers()["content-type"]).toContain("image/png");
+  }
 });
 
 test("mantém a tela de login na rota admin antes da autenticação", async ({ page }) => {
