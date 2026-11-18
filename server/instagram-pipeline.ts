@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { INSTAGRAM_AGENDA_SOURCE_TYPE, claimApifyDailyRequest, getApifyBudgetBlockAlert, listActiveLocationAliasValues, listActiveMonitoredBrands, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent, upsertDiscoveredInstagramLinkSource } from "./db";
+import { INSTAGRAM_AGENDA_SOURCE_TYPE, claimApifyDailyRequest, getApifyBudgetBlockAlert, listActiveLocationAliasValues, listActiveMonitoredBrands, listActiveVenueCatalog, listEnabledInstagramSources, markIngestionSourceResult, recordOperationalAlert, saveEvent, upsertDiscoveredInstagramLinkSource } from "./db";
 import { fetchExternal, isSandboxRestrictedError, readExternalBody } from "./external-fetch";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import { containsTargetVenue, getMonitoredPublicBrand, normalizeVenueCity } from "./ingestion";
@@ -7,6 +7,7 @@ import { parseMetaBusinessDiscovery } from "./contracts/external";
 import { resolveRegionalCoordinates } from "./geocoding";
 import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
 import { persistManualReviewEvents, type ManualReviewEventInput } from "./manual-review";
+import { storagePut } from "./storage";
 
 const META_GRAPH_BASE_URL = "https://graph.facebook.com/v26.0";
 export const DEFAULT_META_GRAPH_FETCH_TIMEOUT_MS = 8_000;
@@ -222,6 +223,11 @@ export type InstagramPost = {
   mediaType?: InstagramMediaOrigin;
   highlightTitle?: string;
   ocrText?: string;
+  /** URLs capturadas pelos stickers/CTAs do Story ou por metadados equivalentes do Actor. */
+  linkUrls?: unknown[];
+  stickers?: unknown[];
+  externalUrl?: string;
+  callToAction?: unknown;
 };
 
 export type InstagramOcrAuditItem = {
@@ -285,7 +291,7 @@ export function buildInstagramStoriesScraperPayload(targets: ReadonlyArray<{ use
   } as const;
 }
 
-const DISCOVERABLE_INSTAGRAM_LINK_HOSTS = /(^|\.)((ingresse|sympla|zig|weticket|ticket360|blacktag|articket)\.com(?:\.br)?|ticket360\.com\.br)$/i;
+const DISCOVERABLE_INSTAGRAM_LINK_HOSTS = /(^|\.)((ingresse|sympla|zig|weticket|ticket360|blacktag|blackpass|articket)\.com(?:\.br)?|ticket360\.com\.br)$/i;
 
 export function extractDiscoverableInstagramLinks(text: string) {
   const links = new Set<string>();
@@ -385,6 +391,7 @@ export function normalizeInstagramMediaItem(item: Record<string, unknown>, fallb
   const username = String(item.source_username ?? item.ownerUsername ?? item.username ?? owner?.username ?? fallbackUsername);
   const highlightTitle = String(item.highlightTitle ?? item.highlight_title ?? highlight?.title ?? item.title ?? "");
   const redirectedLinks = extractInstagramRedirectedLinks(item.link_urls ?? item.linkUrls);
+  const linkUrls = item.link_urls ?? item.linkUrls ?? item.links ?? item.stickers ?? item.linkSticker ?? item.externalUrl ?? item.external_url;
   const fallbackText = [highlightTitle, ...redirectedLinks].filter(Boolean).join("\n");
   const caption = String(item.caption ?? item.text ?? fallbackText ?? "");
   if (!imageUrl && !caption) return null;
@@ -415,6 +422,10 @@ export function normalizeInstagramMediaItem(item: Record<string, unknown>, fallb
     mediaType: normalizedType,
     highlightTitle: highlightTitle || undefined,
     ocrText: item.ocrText ? String(item.ocrText) : item.accessibility_caption ? String(item.accessibility_caption) : undefined,
+    linkUrls: Array.isArray(linkUrls) ? linkUrls : linkUrls == null ? undefined : [linkUrls],
+    stickers: Array.isArray(item.stickers) ? item.stickers : undefined,
+    externalUrl: typeof item.externalUrl === "string" ? item.externalUrl : typeof item.external_url === "string" ? item.external_url : undefined,
+    callToAction: item.callToAction ?? item.call_to_action,
   };
 }
 
@@ -680,7 +691,8 @@ export function hasApprovedAgendaText(text: string, _username?: string) {
 
 function isValidInstagramSourceUrl(value: string) {
   return /^https:\/\/www\.instagram\.com\/(?:p|reel|tv|stories|s)\/[A-Za-z0-9._-]+\/?$/i.test(value)
-    || /^https:\/\/www\.instagram\.com\/[A-Za-z0-9._]+\/?$/i.test(value);
+    || /^https:\/\/www\.instagram\.com\/[A-Za-z0-9._]+\/?$/i.test(value)
+    || extractDiscoverableInstagramLinks(value).length > 0;
 }
 
 function postUrl(post: InstagramPost) {
@@ -688,6 +700,98 @@ function postUrl(post: InstagramPost) {
   if (candidate?.startsWith("https://www.instagram.com/")) return candidate;
   if (post.shortCode) return `https://www.instagram.com/p/${post.shortCode}/`;
   return "";
+}
+
+function collectExternalUrls(value: unknown, output: string[] = [], depth = 0): string[] {
+  if (depth > 4 || value == null) return output;
+  if (typeof value === "string") {
+    const matches = value.match(/https?:\/\/[^\s<>'")]+/gi) ?? [];
+    output.push(...matches.map(item => item.replace(/[.,!?;:]+$/, "")));
+    return output;
+  }
+  if (Array.isArray(value)) {
+    value.forEach(item => collectExternalUrls(item, output, depth + 1));
+    return output;
+  }
+  if (typeof value === "object") {
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      if (/url|link|href|target|destination|action/i.test(key)) collectExternalUrls(child, output, depth + 1);
+    }
+  }
+  return output;
+}
+
+function isExternalInstagramLink(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !/(^|\.)instagram\.com$/i.test(url.hostname) && !/(^|\.)facebook\.com$/i.test(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Stories não devem apontar para um permalink efêmero: stickers/CTAs vencem
+ * primeiro, depois o perfil. Feed usa link de bilheteria da legenda/OCR e,
+ * quando ausente, o permalink direto da publicação.
+ */
+export function extractInstagramEventLink(post: InstagramPost, text = "") {
+  const stickerUrls = collectExternalUrls([post.linkUrls, post.stickers, post.externalUrl, post.callToAction])
+    .map(value => decodeInstagramRedirectUrl(value) ?? value)
+    .filter(isExternalInstagramLink);
+  const textTicketUrls = extractDiscoverableInstagramLinks(text);
+  const origin = post.mediaType ?? "post";
+  if (origin === "story" || origin === "highlight") {
+    return stickerUrls[0] ?? textTicketUrls[0] ?? (post.ownerUsername || post.username ? `https://www.instagram.com/${String(post.ownerUsername ?? post.username).replace(/^@/, "")}/` : postUrl(post));
+  }
+  return textTicketUrls[0] ?? stickerUrls[0] ?? postUrl(post);
+}
+
+function normalizeVenueMatch(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+async function resolveVenueFallbackImage(locationName: string) {
+  const normalizedLocation = normalizeVenueMatch(locationName);
+  if (!normalizedLocation) return "";
+  try {
+    const venues = await listActiveVenueCatalog();
+    const match = venues.find(venue => [venue.canonicalName, ...venue.aliases].some(alias => normalizedLocation.includes(normalizeVenueMatch(alias)) || normalizeVenueMatch(alias).includes(normalizedLocation)));
+    return match?.imageUrl ?? "";
+  } catch (error) {
+    console.warn("[Instagram] Could not resolve venue fallback image", { message: normalizeDiagnosticText(error instanceof Error ? error.message : error, 160) });
+    return "";
+  }
+}
+
+const persistedInstagramCoverCache = new Map<string, Promise<string>>();
+
+/** Baixa a CDN temporária e salva uma cópia persistente no storage do projeto. */
+export async function persistInstagramCoverImage(imageUrl: string, venueName = "") {
+  const original = String(imageUrl ?? "").trim();
+  if (original.startsWith("/manus-storage/") || original.startsWith("data:image/")) return original;
+  const fallback = await resolveVenueFallbackImage(venueName);
+  if (!original.startsWith("https://")) return fallback;
+  const cached = persistedInstagramCoverCache.get(original);
+  if (cached) return cached;
+  const task = (async () => {
+    try {
+      const response = await fetchExternal(original, { headers: { Accept: "image/*", "User-Agent": "WeekendVibes/1.0" } }, 8_000, false);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const contentType = response.headers.get("content-type")?.split(";")[0] || "image/jpeg";
+      if (!contentType.startsWith("image/")) throw new Error(`content-type ${contentType}`);
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (!bytes.length) throw new Error("empty image body");
+      const extension = contentType.split("/")[1]?.replace(/[^a-z0-9]/gi, "") || "jpg";
+      const key = `instagram-covers/${crypto.createHash("sha256").update(original).digest("hex")}.${extension}`;
+      return (await storagePut(key, bytes, contentType)).url;
+    } catch (error) {
+      console.warn("[Instagram] Cover image unavailable; using venue fallback", { venueName, message: normalizeDiagnosticText(error instanceof Error ? error.message : error, 160) });
+      return fallback;
+    }
+  })();
+  persistedInstagramCoverCache.set(original, task);
+  return task;
 }
 
 const OPENAI_RETRY_DELAYS_MS = [250, 750];
@@ -1219,7 +1323,7 @@ function structuredEventsSystemPrompt(referenceDate: string) {
 function serializeApprovedPost({ post, rawText }: { post: InstagramPost; rawText: string }) {
   const username = post.ownerUsername ?? post.username ?? "";
   const accountCity = getInstagramTargetCity(username);
-  return `SOURCE_URL: ${postUrl(post)}\nACCOUNT: ${username}${accountCity ? `\nACCOUNT_CITY: ${accountCity}` : ""}\nMEDIA_ORIGIN: ${post.mediaType ?? "post"}${post.highlightTitle ? `\nHIGHLIGHT_TITLE: ${post.highlightTitle}` : ""}\nRAW_POST_TEXT: ${rawText.slice(0, 2500)}`;
+  return `SOURCE_URL: ${extractInstagramEventLink(post, rawText)}\nINSTAGRAM_PERMALINK: ${postUrl(post)}\nACCOUNT: ${username}${accountCity ? `\nACCOUNT_CITY: ${accountCity}` : ""}\nMEDIA_ORIGIN: ${post.mediaType ?? "post"}${post.highlightTitle ? `\nHIGHLIGHT_TITLE: ${post.highlightTitle}` : ""}\nRAW_POST_TEXT: ${rawText.slice(0, 2500)}`;
 }
 
 async function extractStructuredEvents(referenceDate: string, approvedPosts: Array<{ post: InstagramPost; rawText: string }>) {
@@ -1311,8 +1415,9 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
   }
 
   const structuredEvents = (await extractStructuredEvents(referenceDate, approvedPosts)).map(normalizeInstagramStructuredEvent);
-  const mediaOriginBySourceUrl = new Map(approvedPosts.map(({ post }) => [postUrl(post), post.mediaType ?? "post"]));
-  const profileCityBySourceUrl = new Map(approvedPosts.map(({ post }) => [postUrl(post), getInstagramTargetCity(String(post.ownerUsername ?? post.username ?? ""))]));
+  const mediaOriginBySourceUrl = new Map(approvedPosts.flatMap(({ post, rawText }) => [[postUrl(post), post.mediaType ?? "post"], [extractInstagramEventLink(post, rawText), post.mediaType ?? "post"]] as Array<[string, InstagramMediaOrigin]>));
+  const profileCityBySourceUrl = new Map(approvedPosts.flatMap(({ post, rawText }) => [[postUrl(post), getInstagramTargetCity(String(post.ownerUsername ?? post.username ?? ""))], [extractInstagramEventLink(post, rawText), getInstagramTargetCity(String(post.ownerUsername ?? post.username ?? ""))]] as Array<[string, string | undefined]>));
+  const postBySourceUrl = new Map(approvedPosts.flatMap(({ post, rawText }) => [[postUrl(post), post], [extractInstagramEventLink(post, rawText), post]] as Array<[string, InstagramPost]>));
   const profileBrandBySourceUrl = new Map(approvedPosts.map(({ post, rawText }) => {
     const username = String(post.ownerUsername ?? post.username ?? "").replace(/^@/, "").trim();
     return [postUrl(post), getMonitoredPublicBrand(`${username} ${rawText}`, `instagram:${username}`, activeBrands)] as const;
@@ -1344,6 +1449,8 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     const coordinates = await resolveRegionalCoordinates({ locationName: event.locationName, address: event.address, city: normalizedEvent.city });
     const sourceUrl = event.sourceUrl;
     const mediaOrigin = mediaOriginBySourceUrl.get(sourceUrl) ?? "post";
+    const sourcePost = postBySourceUrl.get(sourceUrl);
+    const persistentImageUrl = await persistInstagramCoverImage(event.imageUrl || (sourcePost ? resolveInstagramVisualUrl(sourcePost) : ""), event.locationName);
     const sourceType = mediaOrigin === "story" ? "instagram_story" : mediaOrigin === "highlight" ? "instagram_highlight" : INSTAGRAM_AGENDA_SOURCE_TYPE;
     const sourceHash = crypto.createHash("md5").update(`${sourceUrl}|${eventDate.toISOString().slice(0, 10)}|${event.title}`).digest("hex");
     const shouldPublish = reasons.length === 0;
@@ -1351,7 +1458,7 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
       title: event.title, slug: `${event.title.toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}-${eventDate.getTime()}`,
       description: event.summary, eventDate, locationName: event.locationName, address: event.address, city: normalizedEvent.city,
       category: event.category, genre: event.genre, priceCents: event.priceCents || 0, priceNote: event.priceCents ? undefined : "Preço não informado na agenda do Instagram",
-      ticketStatus: event.priceCents ? "available" : "unknown", sourceUrl, imageUrl: event.imageUrl || undefined, latitude: coordinates?.latitude, longitude: coordinates?.longitude,
+      ticketStatus: event.priceCents ? "available" : "unknown", sourceUrl, imageUrl: persistentImageUrl || undefined, latitude: coordinates?.latitude, longitude: coordinates?.longitude,
       neighborhood: coordinates?.neighborhood ?? undefined, formattedAddress: coordinates?.formattedAddress ?? undefined, locationPrecision: coordinates ? (coordinates.confidence === "low" ? "approximate" : "exact") : undefined,
       sourceHash, sourceType, isPublished: shouldPublish ? 1 : 0, isArchived: 0,
     });

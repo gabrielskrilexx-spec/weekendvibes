@@ -5,7 +5,7 @@ import * as dbModule from "./db";
 import { getDb } from "./db";
 import { extractDiscoverableInstagramLinks } from "./instagram-pipeline";
 import { selectInstagramApifyTargets } from "./instagram-pipeline";
-import { isMetaInvalidUserError, createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, isMetaCredentialFailure, isMetaPermissionFailure, extractMetaGraphErrorMessage, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRecentApifySignal, hasRegionalHashtag, INSTAGRAM_TARGETS, getInstagramTargetCity, resolveInstagramEventCity, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest, limitInstagramStoriesForCost, INSTAGRAM_OCR_CONCURRENCY, validateMetaBusinessDiscoveryProfile, decodeInstagramRedirectUrl, extractInstagramRedirectedLinks } from "./instagram-pipeline";
+import { isMetaInvalidUserError, createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, isMetaCredentialFailure, isMetaPermissionFailure, extractMetaGraphErrorMessage, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRecentApifySignal, hasRegionalHashtag, INSTAGRAM_TARGETS, getInstagramTargetCity, resolveInstagramEventCity, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest, limitInstagramStoriesForCost, INSTAGRAM_OCR_CONCURRENCY, validateMetaBusinessDiscoveryProfile, decodeInstagramRedirectUrl, extractInstagramRedirectedLinks, extractInstagramEventLink, persistInstagramCoverImage } from "./instagram-pipeline";
 
 it("reconhece o erro Meta code 110 sem tratá-lo como credencial expirada", () => {
   expect(isMetaInvalidUserError(400, '{"error":{"message":"Invalid user id","code":110}}')).toBe(true);
@@ -79,6 +79,21 @@ describe("Instagram weekend pipeline", () => {
   });
   it("extrai apenas links públicos suportados e os deduplica", () => {
     expect(extractDiscoverableInstagramLinks("Ingressos: https://www.sympla.com.br/evento/festa/123. https://www.sympla.com.br/evento/festa/123#lote https://instagram.com/p/abc https://example.com/fora")).toEqual(["https://www.sympla.com.br/evento/festa/123"]);
+  });
+
+  it("prioriza sticker/CTA nos Stories e recua para o perfil quando não há link externo", () => {
+    expect(extractInstagramEventLink({ mediaType: "story", ownerUsername: "meulugar.bar", stickers: [{ url: "https://www.sympla.com.br/evento/rolê/1" }] })).toBe("https://www.sympla.com.br/evento/rolê/1");
+    expect(extractInstagramEventLink({ mediaType: "story", ownerUsername: "meulugar.bar", permalink: "https://www.instagram.com/stories/meulugar.bar/123/" })).toBe("https://www.instagram.com/meulugar.bar/");
+  });
+
+  it("usa link de bilheteria no Feed e permalink direto como fallback", () => {
+    expect(extractInstagramEventLink({ mediaType: "post", shortCode: "abc123" }, "Ingressos: https://blackpass.com.br/evento/role")).toBe("https://blackpass.com.br/evento/role");
+    expect(extractInstagramEventLink({ mediaType: "post", shortCode: "abc123" }, "Agenda deste sábado em Santos")).toBe("https://www.instagram.com/p/abc123/");
+  });
+
+  it("usa imagem persistida quando disponível e fallback cadastrado quando a mídia falta", async () => {
+    vi.spyOn(dbModule, "listActiveVenueCatalog").mockResolvedValue([{ canonicalName: "Arena Club", aliases: ["arena club"], imageUrl: "/venues/arena-club.webp" }] as never);
+    await expect(persistInstagramCoverImage("", "Arena Club")).resolves.toBe("/venues/arena-club.webp");
   });
 
   it("decodifica links l.instagram.com e normaliza os 2 highlights do Actor", () => {
