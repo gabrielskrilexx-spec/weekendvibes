@@ -34,6 +34,13 @@ function getQueryParam(req: Request, key: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function redirectOAuthError(res: Response, returnTo: string | undefined, reason: string) {
+  const safePath = getSafeReturnPath(returnTo, "/admin");
+  const target = new URL(safePath, "https://weekendvibes.invalid");
+  target.searchParams.set("oauth_error", reason.slice(0, 80));
+  res.redirect(302, `${target.pathname}${target.search}${target.hash}`);
+}
+
 function oauthFailureDetails(error: unknown, stage: "exchange" | "user_info" | "session") {
   const candidate = error as { code?: unknown; message?: unknown; response?: { status?: unknown; data?: unknown } };
   const data = candidate.response?.data as { code?: unknown; error?: unknown; message?: unknown } | undefined;
@@ -113,7 +120,7 @@ async function completeGithubLogin(code: string, oauthState: ReturnType<typeof d
       clientIdConfigured: Boolean(clientId),
       clientSecretConfigured: Boolean(clientSecret),
     });
-    res.status(503).json({ error: "github_oauth_not_configured" });
+    redirectOAuthError(res, oauthState.returnTo, "github_oauth_not_configured");
     return;
   }
   if (!adminLogin && !adminId) {
@@ -123,7 +130,7 @@ async function completeGithubLogin(code: string, oauthState: ReturnType<typeof d
       adminLoginConfigured: false,
       adminIdConfigured: false,
     });
-    res.status(503).json({ error: "github_admin_not_configured" });
+    redirectOAuthError(res, oauthState.returnTo, "github_admin_not_configured");
     return;
   }
 
@@ -139,7 +146,7 @@ async function completeGithubLogin(code: string, oauthState: ReturnType<typeof d
   }, "exchange");
   const accessToken = typeof tokenResponse.access_token === "string" ? tokenResponse.access_token : "";
   if (!accessToken) {
-    res.status(502).json({ error: "github_token_exchange_failed" });
+    redirectOAuthError(res, oauthState.returnTo, "github_token_exchange_failed");
     return;
   }
 
@@ -149,12 +156,12 @@ async function completeGithubLogin(code: string, oauthState: ReturnType<typeof d
   const githubId = typeof githubUser.id === "number" || typeof githubUser.id === "string" ? String(githubUser.id) : "";
   const githubLogin = typeof githubUser.login === "string" ? githubUser.login.trim() : "";
   if (!githubId || !githubLogin) {
-    res.status(502).json({ error: "github_user_invalid" });
+    redirectOAuthError(res, oauthState.returnTo, "github_user_invalid");
     return;
   }
   if ((adminId && githubId !== adminId) && (adminLogin && githubLogin.toLowerCase() !== adminLogin)) {
     console.warn("[OAuth] GitHub user rejected by admin allowlist", { githubId, githubLogin });
-    res.status(403).json({ error: "github_user_not_authorized" });
+    redirectOAuthError(res, oauthState.returnTo, "github_user_not_authorized");
     return;
   }
 
@@ -226,20 +233,26 @@ export function registerOAuthRoutes(app: Express) {
     const state = getQueryParam(req, "state");
 
     if (!code || !state) {
-      res.status(400).json({ error: "code and state are required" });
+      redirectOAuthError(res, "/admin", "oauth_callback_failed");
       return;
     }
 
     // CSRF guard: the nonce in `state` must match the one-time cookie that
     // startLogin set in the browser that began this login. An attacker can
     // forge `state`, but cannot plant this cookie in the victim's browser.
-    const oauthState = decodeOAuthState(state);
+    let oauthState: ReturnType<typeof decodeOAuthState>;
+    try {
+      oauthState = decodeOAuthState(state);
+    } catch {
+      redirectOAuthError(res, "/admin", "oauth_state_invalid");
+      return;
+    }
     const { nonce } = oauthState;
     const requestedReturnTo = getQueryParam(req, "redirect_to");
-    const returnTo = getSafeReturnPath(requestedReturnTo ?? oauthState.returnTo);
+    const returnTo = getSafeReturnPath(requestedReturnTo ?? oauthState.returnTo, "/admin");
     const expectedNonce = parseCookieHeader(req.headers.cookie ?? "")[OAUTH_STATE_COOKIE];
     if (!nonce || nonce !== expectedNonce) {
-      res.status(403).json({ error: "invalid oauth state" });
+      redirectOAuthError(res, returnTo, "oauth_state_invalid");
       return;
     }
     res.clearCookie(OAUTH_STATE_COOKIE, { path: "/", secure: true, sameSite: "none" });
@@ -308,10 +321,7 @@ export function registerOAuthRoutes(app: Express) {
           error: error.errorCode,
           error_description: error.errorDescription,
         });
-        res.status(502).json({
-          error: "github_oauth_failed",
-          error_description: error.errorDescription ?? error.errorCode,
-        });
+        redirectOAuthError(res, returnTo, error.errorCode === "bad_verification_code" ? "bad_verification_code" : "github_oauth_failed");
         return;
       }
       const errorCandidate = error as {
@@ -338,13 +348,10 @@ export function registerOAuthRoutes(app: Express) {
       });
       console.error("[OAuth] Callback failed", { ...redactError(error), stage: "callback" });
       if (internalMessage === "JWT_SECRET is required" || internalMessage === "JWT_SECRET is required in environment variables") {
-        res.status(500).json({
-          error: "JWT_SECRET_MISSING",
-          message: "JWT_SECRET is required in environment variables",
-        });
+        redirectOAuthError(res, returnTo, "oauth_callback_failed");
         return;
       }
-      res.status(500).json({ error: "oauth_callback_failed", details: internalMessage });
+      redirectOAuthError(res, returnTo, "oauth_callback_failed");
     }
   });
 }

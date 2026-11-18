@@ -36,6 +36,7 @@ serviceWorkerScope.addEventListener("install", (event) => {
 
 // Dados e mutações nunca podem ser servidos por cache local.
 const networkOnlyMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] as const;
+const navigateFallbackDenylist = [/^\/api\//];
 for (const method of networkOnlyMethods) {
   registerRoute(
     ({ url }) => url.pathname === "/api" || url.pathname.startsWith("/api/"),
@@ -45,7 +46,7 @@ for (const method of networkOnlyMethods) {
 
   // O HTML de navegação sempre vem da rede; o fallback offline fica na UI React.
   registerRoute(
-    ({ request }) => request.mode === "navigate",
+    ({ request, url }) => request.mode === "navigate" && !navigateFallbackDenylist.some(pattern => pattern.test(url.pathname)),
     new NetworkOnly(),
     method,
   );

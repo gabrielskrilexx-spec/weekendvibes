@@ -112,8 +112,8 @@ describe("OAuth callback", () => {
     const response = createResponse();
     const state = encodeOAuthState({ redirectUri: "https://weekendvib-jscaalye.manus.space/api/oauth/callback", nonce: "expected-nonce" });
     await handler?.({ query: { code: "opaque-code", state }, headers: { cookie: `${OAUTH_STATE_COOKIE}=different-nonce` } }, response);
-    expect(response.statusCode).toBe(403);
-    expect(response.body).toEqual({ error: "invalid oauth state" });
+    expect(response.statusCode).toBe(302);
+    expect(response.redirectLocation).toBe("/admin?oauth_error=oauth_state_invalid");
     expect(mocks.exchangeCodeForToken).not.toHaveBeenCalled();
   });
 
@@ -132,15 +132,15 @@ describe("OAuth callback", () => {
     expect(mocks.upsertUser).toHaveBeenCalledWith(expect.objectContaining({ openId: "admin-open-id" }));
   });
 
-  it("mantém resposta pública genérica quando o provedor falha na troca", async () => {
+  it("redireciona para o painel quando o provedor falha na troca", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     mocks.exchangeCodeForToken.mockRejectedValue({ name: "AxiosError", code: "ERR_BAD_RESPONSE", response: { status: 502, data: { code: "upstream_unavailable", message: "provider unavailable" } } });
     const handler = register();
     const response = createResponse();
     const state = encodeOAuthState({ redirectUri: "https://weekendvib-jscaalye.manus.space/api/oauth/callback", nonce: "expected-nonce" });
     await handler?.({ query: { code: "opaque-code", state }, headers: { cookie: `${OAUTH_STATE_COOKIE}=expected-nonce` } }, response);
-    expect(response.statusCode).toBe(500);
-    expect(response.body).toEqual({ error: "oauth_callback_failed", details: "provider unavailable" });
+    expect(response.statusCode).toBe(302);
+    expect(response.redirectLocation).toBe("/admin?oauth_error=oauth_callback_failed");
     expect(mocks.getUserInfo).not.toHaveBeenCalled();
     expect(response.clearedCookie).toBe(OAUTH_STATE_COOKIE);
     expect(errorSpy).toHaveBeenCalled();
@@ -168,7 +168,7 @@ describe("OAuth callback", () => {
     expect(response.redirectLocation).toBe("/admin");
   });
 
-  it("registra código JSON retornado pelo GitHub sem expor código OAuth", async () => {
+  it("redireciona bad_verification_code sem expor código OAuth", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ error: "bad_verification_code", error_description: "The code passed is incorrect or expired." }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
@@ -176,8 +176,8 @@ describe("OAuth callback", () => {
     const response = createResponse();
     const state = encodeOAuthState({ redirectUri: "https://weekendvibes-dh6w.vercel.app/api/oauth/callback", nonce: "github-error-nonce", provider: "github" });
     await handler?.({ query: { code: "sensitive-oauth-code", state }, headers: { cookie: `${OAUTH_STATE_COOKIE}=github-error-nonce` } }, response);
-    expect(response.statusCode).toBe(502);
-    expect(response.body).toEqual({ error: "github_oauth_failed", error_description: "The code passed is incorrect or expired." });
+    expect(response.statusCode).toBe(302);
+    expect(response.redirectLocation).toBe("/admin?oauth_error=bad_verification_code");
     expect(errorSpy).toHaveBeenCalledWith("[OAuth] GitHub upstream rejected OAuth request", expect.objectContaining({ stage: "exchange", status: 200, error: "bad_verification_code", error_description: "The code passed is incorrect or expired." }));
     expect(errorSpy.mock.calls.flat().join(" ")).not.toContain("sensitive-oauth-code");
   });

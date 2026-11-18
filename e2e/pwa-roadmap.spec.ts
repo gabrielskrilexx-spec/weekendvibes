@@ -36,6 +36,9 @@ test("rotas API são network-only e nunca gravadas no CacheStorage", async ({ pa
   expect(firstResponse.fromCache).toBe(false);
   const cachedResponse = await page.evaluate(async url => Boolean(await caches.match(url)), apiUrl);
   expect(cachedResponse).toBe(false);
+  const oauthCallbackUrl = new URL("/api/oauth/callback?code=single-use&state=opaque", page.url()).href;
+  const oauthCallbackCached = await page.evaluate(async url => Boolean(await caches.match(url)), oauthCallbackUrl);
+  expect(oauthCallbackCached).toBe(false);
 
   await page.context().setOffline(true);
   const offlineResult = await page.evaluate(async url => {
@@ -53,6 +56,16 @@ test("mostra o estado 'Sem conexão' quando o navegador fica offline", async ({ 
   await expect(page.getByText(/Sem conexão\. Os eventos serão atualizados quando a internet voltar\./)).toBeVisible();
   await context.setOffline(false);
   await expect(page.getByText(/Sem conexão\. Os eventos serão atualizados quando a internet voltar\./)).toHaveCount(0);
+});
+
+test("exibe erro OAuth de forma amigável e limpa o motivo na nova tentativa", async ({ page }) => {
+  await page.route("**/api/trpc/auth.me**", async route => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(trpcPayload(null)) });
+  });
+  await page.goto("/admin?oauth_error=bad_verification_code");
+  await expect(page.getByRole("alert")).toContainText("código do GitHub expirou ou já foi usado");
+  await expect(page.getByTestId("admin-oauth-login")).toHaveAttribute("href", "/api/oauth/login?redirect_to=%2Fadmin");
+  await expect(page.locator("body")).not.toContainText("The code passed is incorrect or expired");
 });
 
 test("renderiza os 17 venues oficiais com WebP válidos e sem imagens quebradas", async ({ page }) => {

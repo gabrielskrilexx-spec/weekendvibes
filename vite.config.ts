@@ -191,6 +191,9 @@ const plugins = [
         { src: "/icons/icon-512-maskable.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
       ],
     },
+    workbox: {
+      navigateFallbackDenylist: [/^\/api\//],
+    },
     injectManifest: {
       globPatterns: ["**/*.{js,css,woff,woff2,ttf}"],
       globIgnores: [

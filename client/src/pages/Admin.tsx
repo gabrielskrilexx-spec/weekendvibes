@@ -46,10 +46,23 @@ export function mediaOriginClass(origin: string) {
 
 function AdminLoginScreen() {
   const isPreviewBuild = !import.meta.env.PROD;
-  const returnTo = typeof window !== "undefined"
-    ? `${window.location.pathname}${window.location.search}${window.location.hash}`
-    : "/admin";
+  const { returnTo, oauthError } = typeof window !== "undefined"
+    ? (() => {
+        const currentUrl = new URL(window.location.href);
+        const error = currentUrl.searchParams.get("oauth_error");
+        currentUrl.searchParams.delete("oauth_error");
+        const search = currentUrl.searchParams.toString();
+        return { returnTo: `${currentUrl.pathname}${search ? `?${search}` : ""}${currentUrl.hash}`, oauthError: error };
+      })()
+    : { returnTo: "/admin", oauthError: null };
   const oauthLoginUrl = `/api/oauth/login?redirect_to=${encodeURIComponent(returnTo)}`;
+  const oauthErrorMessage = oauthError === "bad_verification_code"
+    ? "O código do GitHub expirou ou já foi usado. Inicie o login novamente."
+    : oauthError === "oauth_state_invalid"
+      ? "A sessão de login expirou. Inicie o login novamente."
+      : oauthError
+        ? "Não foi possível concluir o login do GitHub. Tente novamente."
+        : null;
   const startDevLogin = () => {
     window.location.assign(`/api/auth/dev-login?redirect_to=${encodeURIComponent(returnTo)}`);
   };
@@ -64,6 +77,11 @@ function AdminLoginScreen() {
           <p className="mx-auto mt-4 max-w-md leading-7 text-zinc-400">
             Entre para revisar eventos, acompanhar ingestões e administrar as fontes monitoradas. Esta tela permanece em <code className="text-orange-200">/admin</code> após a instalação do app.
           </p>
+          {oauthErrorMessage ? (
+            <div role="alert" aria-live="assertive" className="mx-auto mt-5 max-w-md rounded-xl border border-red-300/30 bg-red-300/10 px-4 py-3 text-left text-sm text-red-100">
+              {oauthErrorMessage}
+            </div>
+          ) : null}
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
             <a
               href={oauthLoginUrl}
