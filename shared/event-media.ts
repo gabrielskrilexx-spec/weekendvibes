@@ -8,8 +8,8 @@ type EventMediaInput = {
 
 const VENUE_COVER_RULES = [
   { terms: ["laroc", "laroc club"], imageUrl: "/venues/laroc.webp" },
-  { terms: ["praio", "praiô", "praia verde"], imageUrl: "/venues/curvao.webp" },
-  { terms: ["curvao", "curvão", "surf house"], imageUrl: "/venues/curvao.webp" },
+  { terms: ["praio", "praiô", "praia verde"], imageUrl: "/venues/vallum-garden.webp" },
+  { terms: ["curvao", "curvão", "surf house"], imageUrl: "/images/venues/curvao.jpg" },
   { terms: ["dolores"], imageUrl: "/venues/dolores.webp" },
   { terms: ["flamingo", "flamingos"], imageUrl: "/venues/flamingos.webp" },
   { terms: ["arena club"], imageUrl: "/venues/arena-club.webp" },
@@ -30,6 +30,6 @@ export function resolveVenueCoverFallback(input: EventMediaInput) {
   const matched = VENUE_COVER_RULES.find(rule => rule.terms.some(term => searchable.includes(normalize(term))));
   if (matched) return matched.imageUrl;
   if (input.category === "show") return "/venues/mobydick.webp";
-  if (input.category === "balada") return "/venues/curvao.webp";
+  if (input.category === "balada") return "/venues/vallum-garden.webp";
   return "/venues/vallum-garden.webp";
 }

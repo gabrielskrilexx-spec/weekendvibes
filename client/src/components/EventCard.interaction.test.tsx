@@ -35,7 +35,8 @@ describe("EventCard interaction", () => {
   it("usa a imagem oficial da venue quando um evento Instagram não tem capa persistida", () => {
     expect(resolveEventCoverImage({ imageUrl: null, title: "PAGONEJO", locationName: "Dolores bar & restaurante", sourceType: "instagram_story", category: "evento_musical", sourceUrl: null })).toBe("/venues/dolores.webp");
     expect(resolveEventCoverImage({ imageUrl: null, title: "WIU", locationName: "Flamingo MusicBar", sourceType: "instagram_story", category: "show", sourceUrl: null })).toBe("/venues/flamingos.webp");
-    expect(resolveEventCoverImage({ imageUrl: null, title: "Sabadou", locationName: "Praiô", sourceType: "instagram_story", category: "evento_musical", sourceUrl: null })).toBe("/venues/curvao.webp");
+    expect(resolveEventCoverImage({ imageUrl: null, title: "ROTATIONS SESSIONS", locationName: "Curvão Surf House", sourceType: "public:zig", category: "balada", sourceUrl: null })).toBe("/images/venues/curvao.jpg");
+    expect(resolveEventCoverImage({ imageUrl: null, title: "Sabadou", locationName: "Praiô", sourceType: "instagram_story", category: "evento_musical", sourceUrl: null })).toBe("/venues/vallum-garden.webp");
   });
 
   it("aplica fallback de venue também a eventos de fontes públicas", () => {
@@ -49,7 +50,7 @@ describe("EventCard interaction", () => {
   it("limpa Markdown bruto das descrições e usa fallback por categoria", () => {
     expect(sanitizeEventText("# ROTATIONS SESSIONS - **Quando:** sábado, 5 de dezembro `2026`"))
       .toBe("ROTATIONS SESSIONS - Quando: sábado, 5 de dezembro 2026");
-    expect(resolveEventCoverImage({ imageUrl: null, title: "Evento", locationName: "Espaço sem cadastro", sourceType: "public:discovery", category: "balada", sourceUrl: null })).toBe("/venues/curvao.webp");
+    expect(resolveEventCoverImage({ imageUrl: null, title: "Evento", locationName: "Espaço sem cadastro", sourceType: "public:discovery", category: "balada", sourceUrl: null })).toBe("/venues/vallum-garden.webp");
   });
 
   it("aplica feedback visual de hover e foco sem remover a acessibilidade", () => {

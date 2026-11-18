@@ -27,7 +27,7 @@ type Venue = {
 
 export const FEATURED_VENUES: Venue[] = [
   { key: "goat", name: "GOAT", aliases: "Centro · Rua do Comércio, 63 · Santos - SP", city: "Santos", imageUrl: "/venues/goat.webp", description: "Club de música urbana e noites especiais no Centro de Santos.", query: "Goat Club" },
-  { key: "curvao-surf-house", name: "Curvão Surf House", aliases: "Enseada · Av. Miguel Estefno, 2435 · Guarujá - SP", city: "Guarujá", imageUrl: "/venues/curvao.webp", description: "Surf house à beira-mar com festas, sunsets e noites de música no Guarujá.", query: "Curvão Surf House" },
+  { key: "curvao-surf-house", name: "Curvão Surf House", aliases: "Enseada · Av. Miguel Estefno, 2435 · Guarujá - SP", city: "Guarujá", imageUrl: "/images/venues/curvao.jpg", description: "Surf house à beira-mar com festas, sunsets e noites de música no Guarujá.", query: "Curvão Surf House" },
   { key: "guaruja-golf-club", name: "Guarujá Golf Club", aliases: "Guarujá - SP", city: "Guarujá", imageUrl: "/venues/guaruja-golf-club.webp", description: "Clube cercado de verde para experiências e eventos especiais no Guarujá.", query: "Guarujá Golf Club" },
   { key: "boteco-almare", name: "Boteco Al Mare", aliases: "Rua Atílio Gelsomini, 210 · Guarujá - SP", city: "Guarujá", imageUrl: "/venues/almare.webp", description: "Boteco de música e festas na Rua Atílio Gelsomini, em Guarujá.", query: "Boteco Al Mare" },
   { key: "flamingos", name: "Flamingos", aliases: "Guarujá - SP", city: "Guarujá", imageUrl: "/venues/flamingos.webp", description: "Bar e restaurante com atmosfera vibrante no Guarujá.", query: "Flamingos" },

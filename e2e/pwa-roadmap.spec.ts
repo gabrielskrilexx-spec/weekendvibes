@@ -68,7 +68,7 @@ test("exibe erro OAuth de forma amigável e limpa o motivo na nova tentativa", a
   await expect(page.locator("body")).not.toContainText("The code passed is incorrect or expired");
 });
 
-test("renderiza os 17 venues oficiais com WebP válidos e sem imagens quebradas", async ({ page }) => {
+test("renderiza os 17 venues oficiais com imagens válidas e sem imagens quebradas", async ({ page }) => {
   await prepareHome(page);
   await page.goto("/");
   const venueSection = page.locator("section[aria-labelledby='venues-heading']");
@@ -85,17 +85,21 @@ test("renderiza os 17 venues oficiais com WebP válidos e sem imagens quebradas"
       return { src: new URL(img.currentSrc || img.src).pathname, complete: img.complete, width: img.naturalWidth };
     }));
   }
-  expect(imageResults.map(image => image.src)).toEqual(venueAssets.map(name => `/venues/${name}`));
+  const venuePaths = venueAssets.map(name => name === "curvao.webp" ? "/images/venues/curvao.jpg" : `/venues/${name}`);
+  expect(imageResults.map(image => image.src)).toEqual(venuePaths);
   for (const image of imageResults) {
     expect(image.complete, `${image.src} deve terminar o carregamento`).toBe(true);
     expect(image.width, `${image.src} deve ter dimensões válidas`).toBeGreaterThan(0);
   }
-  const statuses = await Promise.all(venueAssets.map(async filename => {
-    const response = await page.request.get(`/venues/${filename}`);
-    return { filename, status: response.status(), contentType: response.headers()["content-type"] ?? "" };
+  const statuses = await Promise.all(venuePaths.map(async path => {
+    const response = await page.request.get(path);
+    return { path, status: response.status(), contentType: response.headers()["content-type"] ?? "" };
   }));
   expect(statuses.filter(item => item.status !== 200)).toEqual([]);
-  expect(statuses.filter(item => !item.contentType.includes("image/webp"))).toEqual([]);
+  expect(statuses.filter(item => {
+    const expectedType = item.path === "/images/venues/curvao.jpg" ? "image/jpeg" : "image/webp";
+    return !item.contentType.includes(expectedType);
+  })).toEqual([]);
 });
 
 test("separa o manifesto e o ícone do atalho administrativo", async ({ page }) => {
