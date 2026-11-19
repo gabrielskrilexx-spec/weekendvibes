@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv, sortFilteredStoriesForTest, DEFAULT_PUBLIC_P95_THRESHOLD_MS, CRON_PUBLIC_P95_THRESHOLD_MS, INSTAGRAM_AGENDA_P95_THRESHOLD_MS, INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS, MANUAL_AGENDA_P95_THRESHOLD_MS, getEffectiveSourceP95ThresholdForTest, getEffectiveIngestionP95ThresholdForTest, findConsecutiveP95PerformanceAlertsForTest, classifyIngestionRunCategoryForTest, findConsecutiveWafBlocksForTest, buildWafProviderHistoryForTest } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv, sortFilteredStoriesForTest, DEFAULT_PUBLIC_P95_THRESHOLD_MS, CRON_PUBLIC_P95_THRESHOLD_MS, INSTAGRAM_AGENDA_P95_THRESHOLD_MS, INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS, MANUAL_AGENDA_P95_THRESHOLD_MS, getEffectiveSourceP95ThresholdForTest, getEffectiveIngestionP95ThresholdForTest, findConsecutiveP95PerformanceAlertsForTest, classifyIngestionRunCategoryForTest, findConsecutiveWafBlocksForTest, buildWafProviderHistoryForTest, getNextCronExecutionAtForTest } from "./ingestion-reports";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
 import { sanitizeAgendaStepErrorForTest } from "./agenda-routine";
 
@@ -10,6 +10,16 @@ describe("filtered stories ordering", () => {
     expect(sortFilteredStoriesForTest(stories, "date", "desc").map(item => item.id)).toEqual(["b", "a"]);
     expect(sortFilteredStoriesForTest(stories, "source", "asc").map(item => item.id)).toEqual(["b", "a"]);
     expect(sortFilteredStoriesForTest(stories, "status", "asc").map(item => item.id)).toEqual(["b", "a"]);
+  });
+});
+
+describe("heartbeat schedule calculations", () => {
+  it("calcula a próxima execução diária no fuso de São Paulo", () => {
+    expect(getNextCronExecutionAtForTest("30 5 * * *", new Date("2026-11-19T07:00:00.000Z"))).toBe("2026-11-19T08:30:00.000Z");
+  });
+
+  it("rejeita expressões semanais não suportadas pelo fallback", () => {
+    expect(getNextCronExecutionAtForTest("0 5 * * 1", new Date("2026-11-19T07:00:00.000Z"))).toBeNull();
   });
 });
 

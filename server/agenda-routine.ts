@@ -14,7 +14,7 @@ export class AgendaStepFailure extends Error {
   }
 }
 import { processPendingGeocoding } from "./geocoding";
-import { finishIngestionRun, reconcileStaleInstagramRuns, startIngestionRun } from "./ingestion-reports";
+import { finishIngestionRun, reconcileStaleInstagramAgendaRuns, reconcileStaleInstagramRuns, startIngestionRun } from "./ingestion-reports";
 import { notifyIngestionSummary } from "./ingestion-failure-alerts";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import { reconcileIngestionResult } from "./reconciliation";
@@ -246,10 +246,18 @@ export async function runPublicAgendaStep(options: AgendaStepOptions = {}) {
 export async function runInstagramAgendaStep(options: AgendaStepOptions = {}) {
   const execute = async () => {
     const archived = options.archive === false ? 0 : await archiveAgendaEvents();
-    const reconciled = await reconcileStaleInstagramRuns().catch(error => {
+    const asyncReconciled = await reconcileStaleInstagramRuns().catch(error => {
       console.warn("[Agenda routine] Instagram stale-run reconciliation failed; continuing pipeline", safeAutomationError(error));
       return { reconciledCount: 0, runIds: [] as number[] };
     });
+    const scheduledReconciled = await reconcileStaleInstagramAgendaRuns().catch(error => {
+      console.warn("[Agenda routine] Scheduled Instagram stale-run reconciliation failed; continuing pipeline", safeAutomationError(error));
+      return { reconciledCount: 0, runIds: [] as number[] };
+    });
+    const reconciled = {
+      reconciledCount: asyncReconciled.reconciledCount + scheduledReconciled.reconciledCount,
+      runIds: [...asyncReconciled.runIds, ...scheduledReconciled.runIds],
+    };
     if (reconciled.reconciledCount > 0) {
       console.info("[Agenda routine] Instagram stale runs reconciled", JSON.stringify(reconciled));
     }

@@ -1205,8 +1205,17 @@ export async function markIngestionSourceResult(sourceKey: string, result: { sta
 export async function recordIngestionSourceReportSummary(sourceKey: string, message: string, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) return;
+  const now = new Date();
+  const isPartial = /^Coleta parcial:/i.test(message);
   await db.update(ingestionSources)
-    .set({ lastMessage: message.slice(0, 1000), updatedAt: new Date() })
+    .set({
+      lastAttemptAt: now,
+      lastStatus: isPartial ? "failed" : "succeeded",
+      ...(isPartial ? {} : { lastSuccessAt: now }),
+      lastHttpStatus: isPartial ? null : 200,
+      lastMessage: message.slice(0, 1000),
+      updatedAt: now,
+    })
     .where(eq(ingestionSources.sourceKey, sourceKey));
 }
 

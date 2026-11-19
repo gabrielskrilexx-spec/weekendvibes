@@ -1231,6 +1231,44 @@ export function isInstagramRunStale(startedAt: Date | string, now = new Date(), 
   return Number.isFinite(started) && now.getTime() - started >= maxAgeMs;
 }
 
+export const SCHEDULED_INSTAGRAM_STALE_RUN_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Serverless invocations can be terminated before the worker reaches its
+ * catch/finally block. Reconcile the synchronous scheduled ledger on the next
+ * invocation instead of leaving the dashboard permanently in "running".
+ */
+export async function reconcileStaleInstagramAgendaRuns(options: { now?: Date; maxAgeMs?: number } = {}) {
+  const db = await getDb();
+  if (!db) return { reconciledCount: 0, runIds: [] as number[] };
+  const now = options.now ?? new Date();
+  const maxAgeMs = Number.isFinite(options.maxAgeMs)
+    ? Math.max(1, Number(options.maxAgeMs))
+    : SCHEDULED_INSTAGRAM_STALE_RUN_MAX_AGE_MS;
+  const cutoff = new Date(now.getTime() - maxAgeMs);
+  const staleRuns = await db.select({ id: ingestionRuns.id, startedAt: ingestionRuns.startedAt })
+    .from(ingestionRuns)
+    .where(and(eq(ingestionRuns.routine, "instagram-agenda"), eq(ingestionRuns.status, "running"), lt(ingestionRuns.startedAt, cutoff)));
+  const runIds: number[] = [];
+  for (const run of staleRuns) {
+    await db.update(ingestionRuns).set({
+      status: "failed",
+      failedCount: 1,
+      durationMs: Math.max(0, now.getTime() - new Date(run.startedAt).getTime()),
+      httpStatus: 504,
+      details: JSON.stringify({
+        error: "stale_serverless_invocation",
+        message: "A execução agendada não concluiu antes do encerramento do worker; reconciliada automaticamente.",
+        reconciliation: { degraded: true, stale: true },
+        trigger: "scheduled",
+      }).slice(0, 20000),
+      finishedAt: now,
+    }).where(eq(ingestionRuns.id, run.id));
+    runIds.push(run.id);
+  }
+  return { reconciledCount: runIds.length, runIds };
+}
+
 export async function reconcileStaleInstagramRuns(options: { now?: Date; maxAgeMs?: number } = {}) {
   const db = await getDb();
   if (!db) return { reconciledCount: 0, runIds: [] as number[] };
@@ -1478,6 +1516,36 @@ export type RoutineScheduleStatus = {
   metadataSource: "heartbeat" | "heartbeat-derived" | "unavailable";
 };
 
+function cronLocalParts(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  return {
+    hour: Number(parts.find(part => part.type === "hour")?.value ?? -1),
+    minute: Number(parts.find(part => part.type === "minute")?.value ?? -1),
+  };
+}
+
+/** Supports the five-field daily/hourly expressions used by WeekendVibes. */
+export function getNextCronExecutionAtForTest(expression: string | null | undefined, now = new Date(), timeZone = "America/Sao_Paulo") {
+  const fields = String(expression ?? "").trim().split(/\s+/);
+  if (fields.length !== 5 || fields[2] !== "*" || fields[3] !== "*" || fields[4] !== "*") return null;
+  const minute = Number(fields[0]);
+  const hour = Number(fields[1]);
+  if (!Number.isInteger(minute) || minute < 0 || minute > 59 || !Number.isInteger(hour) || hour < 0 || hour > 23) return null;
+  const cursor = new Date(now.getTime() + 60_000);
+  cursor.setSeconds(0, 0);
+  for (let index = 0; index < 8 * 24 * 60; index += 1) {
+    const parts = cronLocalParts(cursor, timeZone);
+    if (parts.hour === hour && parts.minute === minute) return cursor.toISOString();
+    cursor.setTime(cursor.getTime() + 60_000);
+  }
+  return null;
+}
+
 export async function listRoutineScheduleStatus(): Promise<
   RoutineScheduleStatus[]
 > {
@@ -1536,21 +1604,20 @@ export async function listRoutineScheduleStatus(): Promise<
         item.callbackPath === definition.path ||
         item.name.toLowerCase().includes(definition.routine)
     );
-    const run = latestRuns.find(
-      item =>
-        item.sourceKey === definition.sourceKey ||
-        item.routine === definition.routine ||
-        (definition.routine !== "full-agenda" && item.routine === "full-agenda")
-    );
+    const dedicatedRun = latestRuns.find(item => item.sourceKey === definition.sourceKey || item.routine === definition.routine);
+    const legacyRun = definition.routine !== "full-agenda" ? latestRuns.find(item => item.routine === "full-agenda") : undefined;
+    const run = dedicatedRun ?? legacyRun;
     const fallbackScheduled = !job && definition.routine === "full-agenda";
+    const timezone = job?.timezone ?? "America/Sao_Paulo";
+    const enabled = job ? job.isEnable : Boolean(definition.fallbackCron) || fallbackScheduled;
     return {
       routine: definition.routine,
       label: definition.label,
       sourceKey: definition.sourceKey,
-      enabled: job ? job.isEnable : fallbackScheduled,
+      enabled,
       cronExpression: job?.cronExpression ?? definition.fallbackCron,
-      timezone: job?.timezone ?? "UTC",
-      nextExecutionAt: job?.nextExecutionAt ?? null,
+      timezone,
+      nextExecutionAt: enabled ? (job?.nextExecutionAt ?? getNextCronExecutionAtForTest(job?.cronExpression ?? definition.fallbackCron, new Date(), timezone)) : null,
       lastExecutionAt: run
         ? new Date(run.finishedAt ?? run.startedAt).toISOString()
         : (job?.lastExecutedAt ?? null),
