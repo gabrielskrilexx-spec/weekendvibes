@@ -34,7 +34,6 @@ import {
   getIngestionSourceSummary,
   getConsolidatedIngestionSourceReport,
   listCatalogSnapshots,
-  getExecutiveObservabilityReport,
   listIngestionSourceHandleAudit,
   listIngestionSourceActionAudit,
   listIngestionSourceOperationalTimeline,
@@ -90,6 +89,7 @@ import { consolidatedCatalogFilename, consolidatedCatalogToCsv } from "./consoli
 import { getSandboxMockSettings, setSandboxMocksAllowed, shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import { isAdminUser } from "./_core/admin-auth";
 import { runObservabilitySnapshotMaintenance } from "./scheduled-observability-maintenance";
+import { runExecutiveObservabilityCycle } from "./scheduled-executive-report";
 import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts, getExportJobsMetricsTrend, getExportJobAlertDetail, getExportJobsAlertSettings, updateExportJobsAlertSettings, getExportJobsTrendBucket, getExportJobsAlertEfficiency, compareExportJobsEfficiency, listExportJobsAlertSettingsHistory, recordExportAlertEvaluationSnapshot, listExportAlertEvaluationSnapshots, getExportJobsEfficiencyBucket, getExportJobsAlertEfficiencyTrend } from "./filtered-story-export-jobs";
 import { compareHeartbeatExecutionStats, evaluateHeartbeatHealth, evaluateHeartbeatPerformance, getHeartbeatExecutionStats, getHeartbeatHealthSettings, getHeartbeatExecutionSummary, listHeartbeatExecutionEvents, listHeartbeatHealthSettingsHistory, listHeartbeatIncidentsByRegression, recordHeartbeatExecutionEvent, updateHeartbeatHealthSettings, type HeartbeatEventType, type HeartbeatHealthEnvironment } from "./heartbeat-observability";
 
@@ -1283,7 +1283,7 @@ export const appRouter = router({
       }),
     executiveReport: adminOnly
       .input(z.object({ days: z.union([z.literal(7), z.literal(14), z.literal(30)]).default(14) }).strict().optional())
-      .query(async ({ input }) => normalizeJsonForTransport(await getExecutiveObservabilityReport(undefined, input?.days ?? 14))),
+      .query(async ({ input }) => normalizeJsonForTransport(await runExecutiveObservabilityCycle(input?.days ?? 14))),
     auditLog: adminOnly
       .input(z.object({ sourceKey: z.string().trim().min(1).max(120) }).strict())
       .query(async ({ input }) => normalizeJsonForTransport(await listIngestionSourceHandleAudit(input.sourceKey))),

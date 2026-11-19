@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ExternalFetchError, fetchExternal, isBlockedExternalResponse, readExternalBody, sanitizeExternalFetchError } from "./external-fetch";
+import { ExternalFetchError, fetchExternal, isBlockedExternalResponse, readExternalBody, sanitizeExternalFetchError, shouldRetryExternalFetch } from "./external-fetch";
 
 describe("external fetch hardening", () => {
   it("adds browser-like headers and preserves a structured HTTP status", async () => {
@@ -18,6 +18,27 @@ describe("external fetch hardening", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
     await expect(fetchExternal("https://example.test", {}, 100)).rejects.toMatchObject({ code: "NETWORK_ERROR", statusCode: null });
     expect(sanitizeExternalFetchError(new ExternalFetchError("Fonte externa respondeu HTTP 502", "HTTP_ERROR", 502))).toMatchObject({ code: "HTTP_ERROR", status: 502 });
+    vi.unstubAllGlobals();
+  });
+
+  it("retries one transient network failure and then succeeds", async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(fetchExternal("https://example.test/retry", {}, 100)).resolves.toMatchObject({ status: 200 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+  });
+
+  it("never retries an HTTP block or a caller cancellation", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("Forbidden", { status: 403 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(fetchExternal("https://example.test/blocked", {}, 100)).rejects.toMatchObject({ code: "HTTP_ERROR", statusCode: 403 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const controller = new AbortController();
+    controller.abort();
+    expect(shouldRetryExternalFetch(new ExternalFetchError("timeout", "TIMEOUT"), controller.signal)).toBe(false);
     vi.unstubAllGlobals();
   });
 
