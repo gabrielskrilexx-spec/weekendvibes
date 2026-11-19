@@ -289,7 +289,7 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
       const isArticket = url.pathname.startsWith("/e/") && url.hostname.includes("articket");
       const isBlacktag = /^\/(?:evento|eventos|event|events)\/[A-Za-z0-9._~-]+(?:\/|$)/i.test(url.pathname) && url.hostname.includes("blacktag");
       const isZig = /^\/eventos?\//i.test(url.pathname) && (url.hostname === "zig.tickets" || url.hostname.endsWith(".zig.tickets"));
-      const isIngresseEvent = url.hostname.includes("ingresse") && url.pathname !== "/" && !url.pathname.toLowerCase().startsWith("/search");
+      const isIngresseEvent = isIngresseEventUrl(url.href);
       const isBlackPass = url.hostname.endsWith("blackpass.com.br") && /^\/event\/[A-Za-z0-9_-]+/.test(url.pathname);
       const isMrIngressos = url.hostname.endsWith("mringressos.com.br") && /^\/comprar\/[A-Za-z0-9_-]+/.test(url.pathname);
       const isSympla = url.hostname.endsWith("sympla.com.br") && /^\/evento\/[A-Za-z0-9-]+\/[0-9]+/.test(url.pathname);
@@ -895,11 +895,12 @@ export function parseArticketEventMetadata(html: string, url: string) {
   return { ...parsed, summary: parsed.text.slice(0, 4_000), category, genre };
 }
 
-function isIngresseEventUrl(url: string) {
+export function isIngresseEventUrl(url: string) {
   try {
     const parsed = new URL(url);
     const path = parsed.pathname.replace(/\/+$/, "");
-    return parsed.hostname.endsWith("ingresse.com") && path.length > 1 && !["/login", "/register", "/search"].includes(path);
+    const isPublicSite = parsed.hostname === "www.ingresse.com" || parsed.hostname === "ingresse.com";
+    return isPublicSite && path.length > 1 && !["/login", "/register", "/search"].includes(path);
   } catch {
     return false;
   }
@@ -918,6 +919,56 @@ function getIngresseSlug(url: string) {
   const parsed = new URL(url);
   const segments = parsed.pathname.split("/").filter(Boolean);
   return decodeURIComponent(segments.at(-1) ?? "");
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function firstText(...values: unknown[]) {
+  return values.find(value => (typeof value === "string" && value.trim().length > 0) || (typeof value === "number" && Number.isFinite(value)))?.toString().trim() ?? "";
+}
+
+function firstDate(...values: unknown[]) {
+  for (const value of values) {
+    const candidate = firstText(value);
+    if (!candidate) continue;
+    if (/^\d{4}-\d{2}-\d{2}/.test(candidate)) return candidate;
+    const parsed = parsePortugueseEventDate(candidate);
+    if (parsed) return parsed;
+  }
+  return "";
+}
+
+export function parseIngresseEventPayload(payload: Record<string, unknown>, url: string) {
+  const event = asRecord(payload.event);
+  const jsonLd = asRecord(payload.jsonLd ?? payload.jsonLD ?? event.jsonLd);
+  const place = asRecord(payload.place ?? payload.venue ?? event.place ?? event.venue);
+  const placeAddress = asRecord(place.address ?? payload.address ?? event.address);
+  const location = asRecord(place.location ?? payload.location ?? event.location);
+  const sessions = Array.isArray(payload.sessions) ? payload.sessions.map(asRecord) : [];
+  const dates = Array.isArray(payload.dates) ? payload.dates.map(asRecord) : [];
+  const session = sessions.find(item => firstDate(item.dateTime, item.startDate, item.startsAt, item.date)) ?? dates.find(item => firstDate(item.dateTime, item.startDate, item.startsAt, item.date)) ?? {};
+  const title = firstText(payload.title, payload.name, event.title, event.name, jsonLd.name);
+  const description = stripHtml(firstText(payload.description, payload.summary, event.description, jsonLd.description));
+  const visibleText = [title, description, JSON.stringify(payload)].join(" ").replace(/\s+/g, " ");
+  const dateTime = firstDate(session.dateTime, session.startDate, session.startsAt, session.date, payload.startDate, payload.date, event.startDate, event.date, jsonLd.startDate, parsePortugueseEventDate(description), visibleText);
+  const placeName = firstText(place.name, place.title, payload.placeName, payload.venueName, event.locationName, jsonLd.location && asRecord(jsonLd.location).name);
+  const city = firstText(place.city, placeAddress.city, placeAddress.addressLocality, payload.city, event.city, jsonLd.location && asRecord(jsonLd.location).address && asRecord(asRecord(jsonLd.location).address).addressLocality)
+    || (/guaruj[aá]/i.test(`${title} ${description} ${placeName}`) ? "Guarujá" : /santos/i.test(`${title} ${description} ${placeName}`) ? "Santos" : "");
+  const jsonLdLocation = asRecord(jsonLd.location);
+  const jsonLdAddress = asRecord(jsonLdLocation.address);
+  const street = firstText(place.street, place.address, placeAddress.street, placeAddress.streetAddress, payload.address, event.address, jsonLdAddress.streetAddress);
+  const state = firstText(place.state, placeAddress.state, placeAddress.addressRegion, jsonLdAddress.addressRegion);
+  const address = [street, city, state].filter(Boolean).join(", ");
+  const poster = asRecord(payload.poster ?? payload.banner ?? event.poster ?? event.banner);
+  const imageUrl = [poster.xLarge, poster.large, poster.medium, poster.small, payload.ogImage, payload.image, jsonLd.image].find(value => typeof value === "string" && /^https?:\/\//i.test(value)) as string | undefined ?? "";
+  const coordinates = asRecord(place.location ?? placeAddress.location ?? location);
+  const latitude = firstText(coordinates.lat, coordinates.latitude);
+  const longitude = firstText(coordinates.lon, coordinates.lng, coordinates.longitude);
+  const purchaseUrl = firstText(payload.externalLink, payload.ticketUrl, event.url) || url;
+  if (!title || !dateTime || !placeName) return undefined;
+  return { title, summary: description, eventDate: dateTime, locationName: placeName, address, city, category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: purchaseUrl, imageUrl, latitude, longitude };
 }
 
 export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCacheStore = { read: getIngestionPayloadCache, write: saveIngestionPayloadCache }, options: { dryRun?: boolean; signal?: AbortSignal } = {}) {
@@ -940,25 +991,11 @@ export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCac
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
       },
     }, getIngresseFetchTimeoutMs(), 2, options.signal);
-    const place = payload.place && typeof payload.place === "object" ? payload.place as Record<string, unknown> : {};
-    const session = Array.isArray(payload.sessions) && payload.sessions[0] && typeof payload.sessions[0] === "object" ? payload.sessions[0] as Record<string, unknown> : {};
-    const location = place.location && typeof place.location === "object" ? place.location as Record<string, unknown> : {};
-    const title = typeof payload.title === "string" ? payload.title : "";
-    const description = typeof payload.description === "string" ? stripHtml(payload.description) : "";
-    const placeName = typeof place.name === "string" ? place.name : "";
-    const city = typeof place.city === "string" ? place.city : "";
-    const address = [place.street, city, place.state].filter((value): value is string => typeof value === "string" && value.trim().length > 0).join(", ");
-    const dateTime = typeof session.dateTime === "string" ? session.dateTime : "";
-    const poster = payload.poster && typeof payload.poster === "object" ? payload.poster as Record<string, unknown> : {};
-    const imageUrl = [poster.large, poster.medium, poster.small].find((value): value is string => typeof value === "string" && value.startsWith("http")) ?? "";
-    const latitude = typeof location.lat === "number" ? String(location.lat) : "";
-    const longitude = typeof location.lon === "number" ? String(location.lon) : "";
-    const purchaseUrl = typeof payload.externalLink === "string" && /^https:\/\//i.test(payload.externalLink) ? payload.externalLink : url;
-    const text = [title, description, placeName, address, city, dateTime].filter(Boolean).join(" ");
-    if (!title || !dateTime || !placeName) throw createFetchError(`API pública do Ingresse sem dados essenciais para ${url}`);
-    const structured = { title, summary: description, eventDate: dateTime, locationName: placeName, address, city, category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: purchaseUrl, imageUrl, latitude, longitude };
-    if (!options.dryRun) await cacheStore.write({ cacheKey: ingresseCacheKey(url), sourceKey: "public:ingresse", sourceUrl: url, payload: structured, latitude, longitude }).catch(error => console.warn("[Ingestion cache] Could not save Ingresse payload:", sanitizeFetchFailure(error).message));
-    return { url, html: "", text: text.slice(0, 16_000), imageUrl, structured };
+    const structured = parseIngresseEventPayload(payload, url);
+    if (!structured) throw createFetchError(`API pública do Ingresse sem dados essenciais para ${url}`);
+    const text = [structured.title, structured.summary, structured.locationName, structured.address, structured.city, structured.eventDate].filter(Boolean).join(" ");
+    if (!options.dryRun) await cacheStore.write({ cacheKey: ingresseCacheKey(url), sourceKey: "public:ingresse", sourceUrl: url, payload: structured, latitude: structured.latitude, longitude: structured.longitude }).catch(error => console.warn("[Ingestion cache] Could not save Ingresse payload:", sanitizeFetchFailure(error).message));
+    return { url, html: "", text: text.slice(0, 16_000), imageUrl: structured.imageUrl, structured };
   } catch (error) {
     const failure = sanitizeFetchFailure(error);
     // Um 403 indica bloqueio explícito do provedor; não reutilizamos cache potencialmente obsoleto.
