@@ -11,7 +11,7 @@ const venueAssets = [
   "vallum-garden.webp", "bluemed.webp", "parquevalongo.webp", "casa412.webp", "laroc.webp",
   "obeco.webp", "projac.webp", "meu-lugar.jpg", "mobydick.webp", "arena-club.webp", "yellow-house.jpg",
 ];
-const venueAssetPaths = [...venueAssets.slice(0, 11).map(name => `/venues/${name}`), "/images/venues/dolores.jpg", ...venueAssets.slice(11).map(name => `/venues/${name}`)];
+const venueAssetPaths = [...venueAssets.slice(0, 11).map(name => `/venues/${name}`), "/images/venues/dolores.jpg", ...venueAssets.slice(11).map(name => name === "mobydick.webp" ? "/images/venues/moby-dick.jpg" : `/venues/${name}`)];
 
 async function prepareHome(page: Page) {
   await page.addInitScript(() => localStorage.setItem("weekendvibes-cookie-consent", "rejected"));
@@ -87,7 +87,7 @@ test("renderiza os 20 venues oficiais com imagens válidas e sem imagens quebrad
     }));
   }
   const venuePaths = venueAssets.flatMap(name => {
-    const path = name === "curvao.webp" ? "/images/venues/curvao.jpg" : name === "lucky-scope.jpg" ? "/images/venues/lucky-scope.jpg" : name === "praio.jpg" ? "/images/venues/praio.jpg" : name === "praia-verde-beach-club.jpg" ? "/images/venues/praia-verde-beach-club.jpg" : name === "yellow-house.jpg" ? "/images/venues/yellow-house.jpg" : name === "meu-lugar.jpg" ? "/images/venues/meu-lugar.jpg" : `/venues/${name}`;
+    const path = name === "curvao.webp" ? "/images/venues/curvao.jpg" : name === "lucky-scope.jpg" ? "/images/venues/lucky-scope.jpg" : name === "praio.jpg" ? "/images/venues/praio.jpg" : name === "praia-verde-beach-club.jpg" ? "/images/venues/praia-verde-beach-club.jpg" : name === "yellow-house.jpg" ? "/images/venues/yellow-house.jpg" : name === "meu-lugar.jpg" ? "/images/venues/meu-lugar.jpg" : name === "mobydick.webp" ? "/images/venues/moby-dick.jpg" : `/venues/${name}`;
     return name === "obeco.webp" ? [path, "/images/venues/dolores.jpg"] : [path];
   });
   expect(imageResults.map(image => image.src)).toEqual(venuePaths);

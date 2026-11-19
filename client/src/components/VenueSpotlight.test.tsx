@@ -28,6 +28,7 @@ describe("VenueSpotlight", () => {
     expect(markup).toContain("/images/venues/dolores.jpg");
     expect(markup).toContain("/images/venues/yellow-house.jpg");
     expect(markup).toContain("/images/venues/meu-lugar.jpg");
+    expect(markup).toContain("/images/venues/moby-dick.jpg");
     expect(markup).toContain("Ponta da Praia · Santos - SP");
     expect(markup).toContain("Jamboo Session Santos");
     expect(markup).toContain("Rua do Comércio, nº 111 – Centro, Santos/SP (CEP 11010-122)");
