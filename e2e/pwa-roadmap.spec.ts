@@ -9,7 +9,7 @@ function trpcPayload(data: unknown) {
 const venueAssets = [
   "goat.webp", "curvao.webp", "guaruja-golf-club.webp", "almare.webp", "lucky-scope.jpg", "praio.jpg", "praia-verde-beach-club.jpg", "flamingos.webp",
   "vallum-garden.webp", "bluemed.webp", "parquevalongo.webp", "casa412.webp", "laroc.webp",
-  "obeco.webp", "projac.webp", "meulugar.webp", "mobydick.webp", "arena-club.webp", "yellow-house.webp",
+  "obeco.webp", "projac.webp", "meulugar.webp", "mobydick.webp", "arena-club.webp", "yellow-house.jpg",
 ];
 const venueAssetPaths = [...venueAssets.slice(0, 11).map(name => `/venues/${name}`), "/images/venues/dolores.jpg", ...venueAssets.slice(11).map(name => `/venues/${name}`)];
 
@@ -87,7 +87,7 @@ test("renderiza os 20 venues oficiais com imagens válidas e sem imagens quebrad
     }));
   }
   const venuePaths = venueAssets.flatMap(name => {
-    const path = name === "curvao.webp" ? "/images/venues/curvao.jpg" : name === "lucky-scope.jpg" ? "/images/venues/lucky-scope.jpg" : name === "praio.jpg" ? "/images/venues/praio.jpg" : name === "praia-verde-beach-club.jpg" ? "/images/venues/praia-verde-beach-club.jpg" : `/venues/${name}`;
+    const path = name === "curvao.webp" ? "/images/venues/curvao.jpg" : name === "lucky-scope.jpg" ? "/images/venues/lucky-scope.jpg" : name === "praio.jpg" ? "/images/venues/praio.jpg" : name === "praia-verde-beach-club.jpg" ? "/images/venues/praia-verde-beach-club.jpg" : name === "yellow-house.jpg" ? "/images/venues/yellow-house.jpg" : `/venues/${name}`;
     return name === "obeco.webp" ? [path, "/images/venues/dolores.jpg"] : [path];
   });
   expect(imageResults.map(image => image.src)).toEqual(venuePaths);
