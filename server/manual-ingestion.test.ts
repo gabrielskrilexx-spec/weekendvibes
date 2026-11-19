@@ -12,8 +12,7 @@ const mocks = vi.hoisted(() => ({
   releaseIngestionLease: vi.fn().mockResolvedValue(true),
   startIngestionRun: vi.fn().mockResolvedValue(9001),
   finishIngestionRun: vi.fn().mockResolvedValue(undefined),
-  reconcileStaleInstagramRuns: vi.fn().mockResolvedValue({ reconciledCount: 0, runIds: [] }),
-  reconcileStaleInstagramAgendaRuns: vi.fn().mockResolvedValue({ reconciledCount: 0, runIds: [] }),
+  reconcileStaleIngestionRuns: vi.fn().mockResolvedValue({ reconciledCount: 0, runIds: [] }),
 }));
 
 vi.mock("./db", () => ({ archivePastEvents: mocks.archivePastEvents, archiveExpiredSoldOutEvents: mocks.archiveExpiredSoldOutEvents, deactivateExpiredSources: mocks.deactivateExpiredSources, recordOperationalAlert: vi.fn(), getDb: mocks.getDb, acquireIngestionLease: mocks.acquireIngestionLease, releaseIngestionLease: mocks.releaseIngestionLease }));
@@ -22,7 +21,7 @@ vi.mock("./instagram-pipeline", () => ({ InstagramIntegrationFailure: class Inst
 vi.mock("./_core/notification", () => ({ notifyOwner: vi.fn() }));
 vi.mock("./ingestion-failure-alerts", () => ({ notifyIngestionSummary: vi.fn().mockResolvedValue({ sent: false, skipped: true }) }));
 vi.mock("./_core/heartbeat", () => ({ listHeartbeatJobs: mocks.listHeartbeatJobs }));
-vi.mock("./ingestion-reports", () => ({ startIngestionRun: mocks.startIngestionRun, finishIngestionRun: mocks.finishIngestionRun, reconcileStaleInstagramRuns: mocks.reconcileStaleInstagramRuns, reconcileStaleInstagramAgendaRuns: mocks.reconcileStaleInstagramAgendaRuns }));
+vi.mock("./ingestion-reports", () => ({ startIngestionRun: mocks.startIngestionRun, finishIngestionRun: mocks.finishIngestionRun, reconcileStaleIngestionRuns: mocks.reconcileStaleIngestionRuns }));
 
 import { getInstagramManualConfigIssue, getNextWednesdayExecution, getWednesdayRoutineStatus, runWednesdayRoutineNow, queueWednesdayRoutineNow, withChunkTimeout } from "./manual-ingestion";
 

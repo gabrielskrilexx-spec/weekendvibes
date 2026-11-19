@@ -1233,6 +1233,44 @@ export function isInstagramRunStale(startedAt: Date | string, now = new Date(), 
 
 export const SCHEDULED_INSTAGRAM_STALE_RUN_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
+/** Libera locks lógicos deixados por invocações serverless encerradas antes do finally. */
+export async function reconcileStaleIngestionRuns(options: { now?: Date; maxAgeMs?: number } = {}) {
+  const db = await getDb();
+  if (!db) return { reconciledCount: 0, runIds: [] as number[], pendingCount: 0, pendingRunIds: [] as number[] };
+  const now = options.now ?? new Date();
+  const maxAgeMs = Number.isFinite(options.maxAgeMs) ? Math.max(1, Number(options.maxAgeMs)) : SCHEDULED_INSTAGRAM_STALE_RUN_MAX_AGE_MS;
+  const cutoff = new Date(now.getTime() - maxAgeMs);
+  const staleRuns = await db.select({ id: ingestionRuns.id, routine: ingestionRuns.routine, startedAt: ingestionRuns.startedAt, details: ingestionRuns.details })
+    .from(ingestionRuns)
+    .where(and(eq(ingestionRuns.status, "running"), lt(ingestionRuns.startedAt, cutoff)));
+  const runIds: number[] = [];
+  const pendingRunIds: number[] = [];
+  const { reconcileApifyStoriesRun } = await import("./apify-async");
+  for (const run of staleRuns) {
+    if (run.routine === "instagram-stories-async") {
+      try {
+        const result = await reconcileApifyStoriesRun({ ...run, status: "running" });
+        if (result.status === "succeeded" || result.status === "failed") runIds.push(run.id);
+        else pendingRunIds.push(run.id);
+      } catch (error) {
+        pendingRunIds.push(run.id);
+        console.warn("[Ingestion reconciliation] Apify status could not be verified; run remains pending", { runId: run.id, error: safeReportError(error) });
+      }
+      continue;
+    }
+    await db.update(ingestionRuns).set({
+      status: "failed",
+      failedCount: 1,
+      durationMs: Math.max(0, now.getTime() - new Date(run.startedAt).getTime()),
+      httpStatus: 504,
+      details: JSON.stringify({ error: "stale_serverless_invocation", message: "A execução não concluiu antes do encerramento do worker; reconciliada automaticamente.", reconciliation: { degraded: true, stale: true, routine: run.routine }, trigger: "reconciliation" }).slice(0, 20000),
+      finishedAt: now,
+    }).where(eq(ingestionRuns.id, run.id));
+    runIds.push(run.id);
+  }
+  return { reconciledCount: runIds.length, runIds, pendingCount: pendingRunIds.length, pendingRunIds };
+}
+
 /**
  * Serverless invocations can be terminated before the worker reaches its
  * catch/finally block. Reconcile the synchronous scheduled ledger on the next

@@ -5,7 +5,7 @@ import { listHeartbeatJobs } from "./_core/heartbeat";
 import { notifyOwner } from "./_core/notification";
 import { getInstagramTargetByUsername, InstagramIntegrationFailure, runInstagramPipeline } from "./instagram-pipeline";
 import { runFullAgendaRoutine, runPublicAgendaStep, runInstagramAgendaStep, type AgendaProgressUpdate } from "./agenda-routine";
-import { finishIngestionRun, startIngestionRun } from "./ingestion-reports";
+import { finishIngestionRun, reconcileStaleIngestionRuns, startIngestionRun } from "./ingestion-reports";
 import { startAsyncApifyStoriesRun } from "./apify-async";
 import { registerBackgroundTask } from "./background-tasks";
 
@@ -275,6 +275,7 @@ async function getRecentInstagramRuns() {
 }
 
 export async function getWednesdayRoutineStatus(now = new Date()) {
+  await reconcileStaleIngestionRuns().catch(error => console.warn("[Manual ingestion] Stale-run reconciliation failed; continuing status read", error));
   const recentRuns = await getRecentInstagramRuns();
   const isRunning = isWednesdayRoutineRunning() || recentRuns.some(run => run.status === "running");
   const fallback = {

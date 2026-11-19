@@ -277,6 +277,24 @@ describe("AdminRoutinePanel", () => {
     expect(tree!.root.findByProps({ "aria-label": "Executar ingestão manual agora" }).props.disabled).toBe(true);
   });
 
+  it("mantém o disparo manual habilitado quando a última execução está degradada, mas não está ativa", async () => {
+    statusState = {
+      isLoading: false,
+      isError: false,
+      data: {
+        nextExecutionAt: "2026-08-18T13:00:00.000Z",
+        timezone: "America/Sao_Paulo",
+        runMode: "full_auto",
+        isRunning: false,
+        recentRuns: [{ id: 91, routine: "instagram-agenda", trigger: "automatic", status: "partial", startedAt: "2026-08-26T12:00:00.000Z", finishedAt: "2026-08-26T12:00:02.345Z", httpStatus: 200, durationMs: 2345, expurgatedCount: 0, readCount: 1, processedCount: 0, persistedEventIds: [], dateFilterValidation: null }],
+      },
+    };
+    mutationState = { isPending: false };
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminRoutinePanel />); });
+    expect(tree!.root.findByProps({ "aria-label": "Executar ingestão manual agora" }).props.disabled).toBe(false);
+  });
+
   it("exibe o histórico visual com status, trigger e duração", async () => {
     statusState = {
       isLoading: false,
