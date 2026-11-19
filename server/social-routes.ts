@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import type { Express, NextFunction, Request, Response } from "express";
-import { getEventBySlug } from "./db";
-import { escapeHtml, formatSocialEventDate, injectSocialMetadata, renderSocialCardPng, resolvePublicOrigins, type SocialCardInput, type SocialMetadata } from "./social-meta";
+import { getEventById, getEventBySlug } from "./db";
+import { escapeHtml, formatSocialEventDate, formatSocialEventShareDescription, injectSocialMetadata, renderSocialCardPng, resolvePublicOrigins, type SocialCardInput, type SocialMetadata } from "./social-meta";
 
 const VENUES_TITLE = "Palcos da Baixada — WeekendVibes";
 const VENUES_DESCRIPTION = "Explore os espaços e casas de shows de Santos e Guarujá. Descubra seu próximo rolê na Baixada Santista com o WeekendVibes.";
@@ -16,16 +16,50 @@ function homeMetadata(pathname: string): SocialMetadata {
   return { title, description, canonicalUrl, imageUrl, type: "website", bodyFallback: { heading: title, paragraphs: [description], href: "/agenda", linkLabel: "Ver a agenda de eventos" } };
 }
 
+const DEFAULT_PUBLIC_ORIGIN = "https://weekendvibes-dh6w.vercel.app";
+const VENUE_SOCIAL_IMAGES: Array<{ terms: string[]; path: string }> = [
+  { terms: ["curvão", "curvao", "surf house"], path: "/images/venues/curvao.jpg" },
+  { terms: ["lucky scope", "nosso after", "walter belian"], path: "/images/venues/lucky-scope.jpg" },
+  { terms: ["praiô", "praio"], path: "/images/venues/praio.jpg" },
+  { terms: ["praia verde"], path: "/images/venues/praia-verde-beach-club.jpg" },
+  { terms: ["dolores"], path: "/images/venues/dolores.jpg" },
+  { terms: ["yellow house"], path: "/images/venues/yellow-house.jpg" },
+  { terms: ["meu lugar"], path: "/images/venues/meu-lugar.jpg" },
+  { terms: ["moby dick", "moby house", "moby"], path: "/images/venues/moby-dick.jpg" },
+];
+
+function publicOrigin() {
+  return resolvePublicOrigins().canonicalOrigin ?? DEFAULT_PUBLIC_ORIGIN;
+}
+
+function toAbsoluteImageUrl(value: string | null | undefined, origin: string) {
+  const raw = value?.trim();
+  if (!raw) return undefined;
+  if (/^https:\/\//i.test(raw)) return raw;
+  if (raw.startsWith("/")) return `${origin}${raw}`;
+  return undefined;
+}
+
+function resolveEventSocialImage(event: NonNullable<Awaited<ReturnType<typeof getEventBySlug>>>, origin: string) {
+  const persisted = toAbsoluteImageUrl(event.imageUrl, origin);
+  if (persisted) return { url: persisted, type: /^https:\/\/.*\.(?:png|webp)(?:[?#]|$)/i.test(persisted) ? "image/png" : "image/jpeg" };
+  const searchable = `${event.title} ${event.locationName} ${event.address ?? ""}`.toLocaleLowerCase("pt-BR");
+  const match = VENUE_SOCIAL_IMAGES.find(item => item.terms.some(term => searchable.includes(term)));
+  return { url: `${origin}${match?.path ?? "/og/palcos-da-baixada.png"}`, type: match ? "image/jpeg" : "image/png" };
+}
+
 function eventMetadata(event: NonNullable<Awaited<ReturnType<typeof getEventBySlug>>>): { metadata: SocialMetadata; card: SocialCardInput } {
   const origins = resolvePublicOrigins();
-  const pathname = `/eventos/${encodeURIComponent(event.slug)}`;
-  const canonicalUrl = origins.canonicalOrigin ? `${origins.canonicalOrigin}${pathname}` : undefined;
-  const imageUrl = origins.deploymentOrigin ? `${origins.deploymentOrigin}/og/event/${encodeURIComponent(event.slug)}.png` : undefined;
+  const origin = origins.canonicalOrigin ?? DEFAULT_PUBLIC_ORIGIN;
+  const pathname = `/evento/${event.id}`;
+  const canonicalUrl = `${origin}${pathname}`;
+  const socialImage = resolveEventSocialImage(event, origin);
   const date = formatSocialEventDate(event.eventDate);
   const location = [event.locationName, event.city].filter(Boolean).join(", ");
-  const description = [event.description?.trim(), location, date].filter(Boolean).join(" · ").slice(0, 180);
+  const description = formatSocialEventShareDescription(event.eventDate, event.locationName, event.city);
+  const title = `${event.title} • ${event.locationName}`;
   return {
-    metadata: { title: `${event.title} — WeekendVibes`, description, canonicalUrl, imageUrl, type: "event", bodyFallback: { heading: event.title, paragraphs: [event.description?.trim() || "Uma experiência especial na Baixada Santista.", `${location}${date ? ` · ${date}` : ""}`], href: "/agenda", linkLabel: "Explorar mais eventos" } },
+    metadata: { title, description, canonicalUrl, imageUrl: socialImage.url, imageType: socialImage.type, type: "website", bodyFallback: { heading: event.title, paragraphs: [event.description?.trim() || "Uma experiência especial na Baixada Santista.", `${location}${date ? ` · ${date}` : ""}`], href: "/agenda", linkLabel: "Explorar mais eventos" } },
     card: { title: event.title, description: event.description?.trim() || "Festas, shows e experiências na Baixada Santista.", location, date, kind: "event" },
   };
 }
@@ -88,6 +122,20 @@ export function registerSocialRoutes(app: Express, indexHtmlPath: string) {
     })().catch((error: unknown) => {
       console.warn("[Social metadata] Could not load event metadata", error instanceof Error ? error.message : "unknown error");
       return sendHtml(res, template, { title: "WeekendVibes — Eventos na Baixada", description: VENUES_DESCRIPTION, noIndex: true, bodyFallback: { heading: "Agenda temporariamente indisponível", paragraphs: ["Não foi possível carregar os detalhes deste evento agora."], href: "/agenda", linkLabel: "Voltar para a agenda" } }, 503);
+    });
+  });
+
+  app.get("/evento/:id", (req: Request, res: Response, next: NextFunction) => {
+    void (async () => {
+      const id = Number.parseInt(String(req.params.id ?? ""), 10);
+      const event = Number.isSafeInteger(id) && id > 0 ? await getEventById(id) : undefined;
+      if (!event) return sendHtml(res, template, homeMetadata("/"));
+      const { metadata } = eventMetadata(event);
+      res.set("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=60");
+      return sendHtml(res, template, metadata);
+    })().catch((error: unknown) => {
+      console.warn("[Social metadata] Could not load canonical event metadata", error instanceof Error ? error.message : "unknown error");
+      return sendHtml(res, template, homeMetadata("/"));
     });
   });
 }

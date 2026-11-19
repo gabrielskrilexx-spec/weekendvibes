@@ -37,6 +37,7 @@ function Router() {
         <Route path="/agenda" component={Home} />
         <Route path="/palcos-da-baixada" component={Home} />
         <Route path="/eventos/:slug" component={EventDetail} />
+        <Route path="/evento/:id" component={EventDetail} />
         <Route path="/admin" component={Admin} />
         <Route path="/admin/health" component={Admin} />
         <Route path="/404" component={NotFound} />

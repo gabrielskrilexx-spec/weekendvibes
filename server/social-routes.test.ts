@@ -5,8 +5,8 @@ import path from "node:path";
 import express from "express";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./db", () => ({ getEventBySlug: vi.fn() }));
-import { getEventBySlug } from "./db";
+vi.mock("./db", () => ({ getEventById: vi.fn(), getEventBySlug: vi.fn() }));
+import { getEventById, getEventBySlug } from "./db";
 import { registerSocialRoutes } from "./social-routes";
 
 const eventFixture = {
@@ -32,6 +32,7 @@ describe("rotas sociais públicas", () => {
     const indexPath = path.join(tempDir, "index.html");
     fs.writeFileSync(indexPath, "<!doctype html><html><head><title>Old</title></head><body><div id=\"root\"></div></body></html>");
     vi.mocked(getEventBySlug).mockResolvedValue(eventFixture);
+    vi.mocked(getEventById).mockResolvedValue(eventFixture);
     const app = express();
     registerSocialRoutes(app, indexPath);
     server = createServer(app);
@@ -54,10 +55,11 @@ describe("rotas sociais públicas", () => {
     const html = await response.text();
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
-    expect(html).toContain("<title>Festa Teste — WeekendVibes</title>");
-    expect(html).toContain('property="og:title" content="Festa Teste — WeekendVibes"');
-    expect(html).toContain('property="og:url" content="https://weekendvibes.example/eventos/festa-teste"');
-    expect(html).toContain('property="og:image" content="https://preview-weekendvibes.example/og/event/festa-teste.png"');
+    expect(html).toContain("<title>Festa Teste • Casa Teste</title>");
+    expect(html).toContain('property="og:title" content="Festa Teste • Casa Teste"');
+    expect(html).toContain('property="og:type" content="website"');
+    expect(html).toContain('property="og:url" content="https://weekendvibes.example/evento/41"');
+    expect(html).toContain('property="og:image" content="https://weekendvibes.example/og/palcos-da-baixada.png"');
     expect(html).toContain('<noscript><main aria-label="Festa Teste">');
     expect(html).toContain("Uma noite especial em Santos.");
     expect(html).toContain('<div id="root"></div>');
@@ -82,6 +84,24 @@ describe("rotas sociais públicas", () => {
     expect(response.status).toBe(404);
     expect(html).toContain('name="robots" content="noindex, nofollow"');
     expect(html).toContain("Evento não encontrado");
+  });
+
+  it("serve a rota canônica por ID com descrição localizada", async () => {
+    const response = await fetch(`${origin}/evento/41`, { headers: { "user-agent": "WhatsApp/2.0" } });
+    const html = await response.text();
+    expect(response.status).toBe(200);
+    expect(html).toContain('property="og:url" content="https://weekendvibes.example/evento/41"');
+    expect(html).toContain("Quinta-feira, 12/11 às 20h • Casa Teste (Santos) • Confira detalhes e ingressos no WeekendVibes.");
+    expect(getEventById).toHaveBeenCalledWith(41);
+  });
+
+  it("entrega metadata padrão sem erro para ID inexistente", async () => {
+    vi.mocked(getEventById).mockResolvedValueOnce(undefined);
+    const response = await fetch(`${origin}/evento/999999`);
+    const html = await response.text();
+    expect(response.status).toBe(200);
+    expect(html).toContain("WeekendVibes");
+    expect(html).not.toContain('name="robots" content="noindex, nofollow"');
   });
 
   it("serve imagem PNG social com dimensão 1200×630 e cache público", async () => {

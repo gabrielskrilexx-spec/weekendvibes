@@ -1387,6 +1387,13 @@ export async function getEventBySlug(slug: string, dbOverride?: Awaited<ReturnTy
   return rows[0];
 }
 
+export async function getEventById(id: number, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db || !Number.isSafeInteger(id) || id <= 0) return undefined;
+  const rows = await db.select().from(events).where(and(eq(events.id, id), eq(events.isPublished, PUBLIC_EVENT_STATE.isPublished), eq(events.isArchived, PUBLIC_EVENT_STATE.isArchived))).limit(1);
+  return rows[0];
+}
+
 function normalizeEventLocation(data: InsertEvent) {
   const address = data.address ? normalizeLocationText(data.address) : null;
   const vallumGarden = /vallum|valluns/i.test(`${data.locationName} ${address ?? ""}`) && /garden/i.test(`${data.locationName} ${address ?? ""}`);

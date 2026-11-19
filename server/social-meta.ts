@@ -13,6 +13,7 @@ export type SocialMetadata = {
   description: string;
   canonicalUrl?: string;
   imageUrl?: string;
+  imageType?: string;
   type?: "website" | "event";
   noIndex?: boolean;
   bodyFallback?: { heading: string; paragraphs: string[]; href?: string; linkLabel?: string };
@@ -120,7 +121,7 @@ export function injectSocialMetadata(html: string, metadata: SocialMetadata) {
     `<meta property="og:title" content="${escapeHtml(metadata.title)}">`,
     `<meta property="og:description" content="${escapeHtml(metadata.description)}">`,
     ...(metadata.canonicalUrl ? [`<link rel="canonical" href="${escapeHtml(metadata.canonicalUrl)}">`, `<meta property="og:url" content="${escapeHtml(metadata.canonicalUrl)}">`] : []),
-    ...(metadata.imageUrl ? [`<meta property="og:image" content="${escapeHtml(metadata.imageUrl)}">`, `<meta property="og:image:type" content="image/png">`, `<meta property="og:image:width" content="1200">`, `<meta property="og:image:height" content="630">`] : []),
+    ...(metadata.imageUrl ? [`<meta property="og:image" content="${escapeHtml(metadata.imageUrl)}">`, `<meta property="og:image:type" content="${escapeHtml(metadata.imageType ?? "image/png")}">`, `<meta property="og:image:width" content="1200">`, `<meta property="og:image:height" content="630">`] : []),
     `<meta name="twitter:card" content="${metadata.imageUrl ? "summary_large_image" : "summary"}">`,
     `<meta name="twitter:title" content="${escapeHtml(metadata.title)}">`,
     `<meta name="twitter:description" content="${escapeHtml(metadata.description)}">`,
@@ -137,4 +138,14 @@ export function formatSocialEventDate(value: string | Date) {
   const date = value instanceof Date ? value : /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00-03:00`) : new Date(value);
   if (!Number.isFinite(date.getTime())) return "";
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long", year: "numeric", timeZone: "America/Sao_Paulo" }).format(date);
+}
+
+export function formatSocialEventShareDescription(value: string | Date, locationName: string, city: string) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return `Confira detalhes e ingressos no WeekendVibes.`;
+  const parts = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "America/Sao_Paulo" }).formatToParts(date);
+  const fields = Object.fromEntries(parts.filter(part => part.type !== "literal").map(part => [part.type, part.value]));
+  const weekday = fields.weekday ? `${fields.weekday.slice(0, 1).toUpperCase()}${fields.weekday.slice(1)}` : "Data";
+  const time = fields.minute === "00" ? `${fields.hour}h` : `${fields.hour}h${fields.minute}`;
+  return `${weekday}, ${fields.day}/${fields.month} às ${time} • ${locationName} (${city}) • Confira detalhes e ingressos no WeekendVibes.`;
 }

@@ -27,9 +27,21 @@ export function buildSocialShareUrls(url: string, text: string) {
   };
 }
 
+function formatShareDescription(eventDate: string | Date, locationName: string, city: string) {
+  const date = new Date(eventDate);
+  const parts = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "America/Sao_Paulo" }).formatToParts(date);
+  const fields = Object.fromEntries(parts.filter(part => part.type !== "literal").map(part => [part.type, part.value]));
+  const weekday = fields.weekday ? `${fields.weekday.slice(0, 1).toUpperCase()}${fields.weekday.slice(1)}` : "Data";
+  const time = fields.minute === "00" ? `${fields.hour}h` : `${fields.hour}h${fields.minute}`;
+  return `${weekday}, ${fields.day}/${fields.month} às ${time} • ${locationName} (${city}) • Confira detalhes e ingressos no WeekendVibes.`;
+}
+
 export default function EventDetail() {
-  const [, params] = useRoute("/eventos/:slug");
-  const query = trpc.events.bySlug.useQuery({ slug: params?.slug ?? "" });
+  const [, slugParams] = useRoute("/eventos/:slug");
+  const [, idParams] = useRoute("/evento/:id");
+  const bySlugQuery = trpc.events.bySlug.useQuery({ slug: slugParams?.slug ?? "" }, { enabled: Boolean(slugParams?.slug) });
+  const byIdQuery = trpc.events.byId.useQuery({ id: Number(idParams?.id) }, { enabled: Boolean(idParams?.id && /^\d+$/.test(idParams.id)) });
+  const query = idParams ? byIdQuery : bySlugQuery;
   const event = query.data;
   const [shareMessage, setShareMessage] = useState("");
   const [whatsappMessage, setWhatsappMessage] = useState("");
@@ -41,11 +53,10 @@ export default function EventDetail() {
 
   useEffect(() => {
     if (!event) return;
-    const socialTitle = `${event.title} — WeekendVibes`;
+    const socialTitle = `${event.title} • ${event.locationName}`;
     document.title = socialTitle;
     setWhatsappMessage(defaultWhatsappMessage);
-    const socialDate = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long", year: "numeric", timeZone: "America/Sao_Paulo" }).format(date);
-    const description = [event.description?.trim(), [event.locationName, event.city].filter(Boolean).join(", "), socialDate].filter(Boolean).join(" · ").slice(0, 180);
+    const description = formatShareDescription(event.eventDate, event.locationName, event.city);
     const setMeta = (attribute: "property" | "name", key: string, content: string) => {
       let meta = document.head.querySelector(`meta[${attribute}="${key}"]`) as HTMLMetaElement | null;
       if (!meta) { meta = document.createElement("meta"); meta.setAttribute(attribute, key); document.head.appendChild(meta); }
@@ -54,7 +65,7 @@ export default function EventDetail() {
     setMeta("name", "description", description);
     setMeta("property", "og:title", socialTitle);
     setMeta("property", "og:description", description);
-    setMeta("property", "og:type", "event");
+    setMeta("property", "og:type", "website");
     setMeta("property", "og:site_name", "WeekendVibes");
     setMeta("name", "twitter:card", "summary_large_image");
     setMeta("name", "twitter:title", socialTitle);
@@ -64,12 +75,12 @@ export default function EventDetail() {
     let publicOrigin: string | undefined;
     try { publicOrigin = priorPublicUrl ? new URL(priorPublicUrl).origin : undefined; } catch { publicOrigin = undefined; }
     if (publicOrigin) {
-      const canonicalUrl = `${publicOrigin}/eventos/${encodeURIComponent(event.slug)}`;
+      const canonicalUrl = `${publicOrigin}/evento/${event.id}`;
       if (canonical) canonical.href = canonicalUrl;
       setMeta("property", "og:url", canonicalUrl);
-      const imageUrl = `${publicOrigin}/og/event/${encodeURIComponent(event.slug)}.png`;
+      const imageUrl = event.imageUrl?.startsWith("/") ? `${publicOrigin}${event.imageUrl}` : event.imageUrl || `${publicOrigin}/og/event/${encodeURIComponent(event.slug)}.png`;
       setMeta("property", "og:image", imageUrl);
-      setMeta("property", "og:image:type", "image/png");
+      setMeta("property", "og:image:type", /\.(?:png|webp)(?:[?#]|$)/i.test(imageUrl) ? "image/png" : "image/jpeg");
       setMeta("property", "og:image:width", "1200");
       setMeta("property", "og:image:height", "630");
       setMeta("name", "twitter:image", imageUrl);

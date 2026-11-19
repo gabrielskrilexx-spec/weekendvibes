@@ -62,7 +62,7 @@ describe("EventCard interaction", () => {
     expect(markup).toContain("group-hover:brightness-110");
     expect(markup).toContain("focus-within:ring-2");
     expect(markup).toContain("motion-reduce:transition-none");
-    expect(markup).toContain('href="/eventos/rolê-santos"');
+    expect(markup).toContain('href="/evento/1"');
     expect(markup).toContain("Garantir ingresso");
     expect(markup).toContain('href="https://example.com/event"');
     expect(markup).toContain("line-clamp-2");
