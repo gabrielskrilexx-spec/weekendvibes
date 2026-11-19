@@ -329,6 +329,23 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
   return Array.from(links).slice(0, 60);
 }
 
+export type ArticketCandidateHint = { url: string; name?: string | null; text?: string | null };
+
+export function isArticketRegionalCandidate(candidate: ArticketCandidateHint, aliases: string[] = []) {
+  const searchable = normalizeText(`${candidate.name ?? ""} ${candidate.text ?? ""} ${candidate.url}`);
+  return /santos|guaruja|sao vicente|praia grande|cubatao/.test(searchable)
+    || aliases.some(alias => searchable.includes(normalizeText(alias)));
+}
+
+export function filterArticketRegionalCandidates(candidates: ArticketCandidateHint[], aliases: string[]) {
+  const regional: ArticketCandidateHint[] = [];
+  const filtered: ArticketCandidateHint[] = [];
+  for (const candidate of candidates) {
+    (isArticketRegionalCandidate(candidate, aliases) ? regional : filtered).push(candidate);
+  }
+  return { regional, filtered };
+}
+
 export function discoverArticketEventLinks(html: string, baseUrl: string, aliases: string[] = []) {
   const absoluteBase = new URL(baseUrl);
   if (!absoluteBase.hostname.endsWith("articket.com.br")) return [];
@@ -342,9 +359,7 @@ export function discoverArticketEventLinks(html: string, baseUrl: string, aliase
       if (url.origin !== absoluteBase.origin || !/^\/e\/[A-Za-z0-9_-]+/.test(url.pathname)) return;
       const cardText = $(anchor).closest("article, li, [class*='event'], [class*='card'], section").first().text().replace(/\s+/g, " ").trim() || $(anchor).parent().text().replace(/\s+/g, " ").trim();
       const searchable = normalizeText(cardText);
-      const venueMatch = aliases.some(alias => searchable.includes(normalizeText(alias)));
-      const cityMatch = /santos|guaruja/.test(searchable);
-      if (venueMatch || cityMatch) links.add(sanitizePublicSourceUrl(url.toString()));
+      if (isArticketRegionalCandidate({ url: url.toString(), text: searchable }, aliases)) links.add(sanitizePublicSourceUrl(url.toString()));
     } catch {
       // Ignore malformed Articket links.
     }
@@ -1080,7 +1095,7 @@ async function guardedFetchPublicPage(url: string, options: { dryRun?: boolean; 
 }
 
 const PUBLIC_FETCH_TIMEOUT_MS = 12_000;
-export const ARTICKET_FETCH_TIMEOUT_MS = 30_000;
+export const ARTICKET_FETCH_TIMEOUT_MS = 12_000;
 export const SYMPLA_FETCH_TIMEOUT_MS = 20_000;
 function publicFetchTimeoutMs(url: string) {
   const sourceKey = publicSourceKey(url);
@@ -1145,7 +1160,7 @@ function buildPreviewPublicMockResult(sourceKey: string, candidateCount: number,
     previewMock: true,
     filteredByReason: { fetchFailed: 0, outsideTargetVenue: 0, invalidStructuredEvent: 0, pastEvent: 0, duplicate: 0 },
     filteredSourceUrls: [],
-    sourceReports: [{ sourceKey, read: 3, filtered: 0, persistable: dryRun ? 3 : 0, added: 0, updated: 0, ignored: 0, duplicates: 0, errors: [], durationMs, medianDurationMs: durationMs, p95DurationMs: durationMs, rejectionReasons: { fetchFailed: 0, outsideTargetVenue: 0, invalidStructuredEvent: 0, duplicate: 0, pastEvent: 0 } }],
+    sourceReports: [{ sourceKey, read: 3, filtered: 0, persistable: dryRun ? 3 : 0, added: 0, updated: 0, ignored: 0, duplicates: 0, errors: [], durationMs, medianDurationMs: durationMs, p95DurationMs: durationMs, regionalFiltered: 0, regionalProcessed: 0, rejectionReasons: { fetchFailed: 0, outsideTargetVenue: 0, invalidStructuredEvent: 0, duplicate: 0, pastEvent: 0 } }],
   };
 }
 
@@ -1271,8 +1286,16 @@ async function discoverCandidatePages(options: IngestionPipelineOptions = {}, ac
   const bases = options.sourceKey
     ? configuredBases.filter(url => options.sourceKey === "public" || publicSourceKey(url) === options.sourceKey)
     : configuredBases;
-  const crawlBases = bases.filter(url => !isIngresseCatalogRootUrl(url));
-  const discovered = new Set(crawlBases);
+  const sourceHints = await listIngestionSources().catch(() => []);
+  const sourceByUrl = new Map(sourceHints.map(source => [sanitizePublicSourceUrl(source.url), source]));
+  const directArticketCandidates = bases.filter(isArticketEventUrl).map(url => ({
+    url,
+    name: sourceByUrl.get(sanitizePublicSourceUrl(url))?.name,
+    text: sourceByUrl.get(sanitizePublicSourceUrl(url))?.sourceKey,
+  }));
+  const regionalArticketCandidates = filterArticketRegionalCandidates(directArticketCandidates, activeAliases);
+  const crawlBases = bases.filter(url => !isIngresseCatalogRootUrl(url) && !isArticketEventUrl(url));
+  const discovered = new Set([...crawlBases, ...regionalArticketCandidates.regional.map(candidate => candidate.url)]);
   const basePages = await fetchWithConcurrency(crawlBases, url => guardedFetchPublicPage(url, options), PUBLIC_FETCH_CONCURRENCY);
   for (let index = 0; index < basePages.length; index += 1) {
     const result = basePages[index];
@@ -1295,14 +1318,14 @@ async function discoverCandidatePages(options: IngestionPipelineOptions = {}, ac
       for (const event of catalog) if (event.id) discovered.add(blackPassEventUrl(event.id));
     }
   }
-  return Array.from(discovered).filter(url => {
+  return { urls: Array.from(discovered).filter(url => {
     try {
       const host = new URL(url).hostname;
       const belongsToSource = !options.sourceKey || options.sourceKey === "public" || publicSourceKey(url) === options.sourceKey;
       const belongsToRequestedSource = !requestedSourceUrls || requestedSourceUrls.includes(sanitizePublicSourceUrl(url));
       return belongsToSource && belongsToRequestedSource && (!host.endsWith("zig.tickets") || url !== "https://zig.tickets/pt-BR");
     } catch { return false; }
-  }).slice(0, 120);
+  }).slice(0, 120), articketRegionalFiltered: regionalArticketCandidates.filtered.length };
 }
 
 export type IngestionSourceReport = {
@@ -1318,6 +1341,8 @@ export type IngestionSourceReport = {
   durationMs: number;
   medianDurationMs: number;
   p95DurationMs: number;
+  regionalFiltered?: number;
+  regionalProcessed?: number;
   rejectionReasons: { fetchFailed: number; outsideTargetVenue: number; invalidStructuredEvent: number; duplicate: number; pastEvent: number };
 };
 
@@ -1330,6 +1355,7 @@ type PublicSourceReportInput = {
   rejectedEvents?: Array<{ sourceKey: string; reason: "invalidStructuredEvent" | "pastEvent" }>;
   duplicateSourceKeys?: string[];
   sourceOutcomes?: Array<{ sourceKey: string; created: boolean; updated: boolean }>;
+  regionalFiltered?: number;
   matchesTargetVenue?: (value: string) => boolean;
 };
 
@@ -1358,6 +1384,8 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
       durationMs: 0,
       medianDurationMs: 0,
       p95DurationMs: 0,
+      regionalFiltered: sourceKey === "public:articket" ? input.regionalFiltered ?? 0 : 0,
+      regionalProcessed: 0,
       latencySamples: [],
       rejectionReasons: { fetchFailed: 0, outsideTargetVenue: 0, invalidStructuredEvent: 0, duplicate: 0, pastEvent: 0 },
     };
@@ -1417,6 +1445,7 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
   }
   return Array.from(reports.values()).map(report => ({
     ...report,
+    regionalProcessed: report.sourceKey === "public:articket" ? report.read : 0,
     ignored: report.filtered,
     medianDurationMs: percentile(report.latencySamples, 50),
     p95DurationMs: percentile(report.latencySamples, 95),
@@ -1433,8 +1462,9 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
     const sourceKey = sourceUrl ? publicSourceKey(sourceUrl) : options.sourceKey;
     return matchesPublicTarget(value, sourceKey, activeAliases, activeBrands);
   };
-  const candidateUrls = await discoverCandidatePages(options, activeAliases);
-  if (candidateUrls.length === 0) return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: true, reason: "Nenhuma fonte de ingestão configurada", sourceReports: [] as IngestionSourceReport[] };
+  const discovery = await discoverCandidatePages(options, activeAliases);
+  const candidateUrls = discovery.urls;
+  if (candidateUrls.length === 0) return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: true, reason: "Nenhuma fonte de ingestão configurada", sourceReports: [] as IngestionSourceReport[], articketRegionalFiltered: discovery.articketRegionalFiltered };
   const pages = await fetchWithConcurrency(candidateUrls, url => guardedFetchPublicPage(url, options), PUBLIC_FETCH_CONCURRENCY);
   const fulfilledPages = pages
     .filter((result): result is PromiseFulfilledResult<PublicPage> => result.status === "fulfilled")
@@ -1473,7 +1503,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
         dryRun
       );
     }
-    return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: false, discovered: candidateUrls.length, matchedSources: 0, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, reason: "Nenhum evento dos locais-alvo encontrado nas fontes públicas", sourceReports: buildPublicSourceReports({ candidateUrls, pages, matchesTargetVenue }) };
+    return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: false, discovered: candidateUrls.length, matchedSources: 0, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, reason: "Nenhum evento dos locais-alvo encontrado nas fontes públicas", sourceReports: buildPublicSourceReports({ candidateUrls, pages, regionalFiltered: discovery.articketRegionalFiltered, matchesTargetVenue }), articketRegionalFiltered: discovery.articketRegionalFiltered };
   }
 
   const apiStructuredEvents = sourcePages.flatMap(page => {
@@ -1574,10 +1604,10 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
     }
     imported += 1;
   }
-  const sourceReports = buildPublicSourceReports({ candidateUrls, pages, payloadEvents: payload.events, acceptedEvents, rejectedEvents, duplicateSourceKeys, sourceOutcomes, matchesTargetVenue });
+  const sourceReports = buildPublicSourceReports({ candidateUrls, pages, payloadEvents: payload.events, acceptedEvents, rejectedEvents, duplicateSourceKeys, sourceOutcomes, regionalFiltered: discovery.articketRegionalFiltered, matchesTargetVenue });
   const persistedCount = simulation ? 0 : added + updated;
   const contentFiltered = filteredByReason.invalidStructuredEvent + filteredByReason.pastEvent;
   const read = simulation ? 0 : persistedCount + contentFiltered + duplicates;
   const ignored = contentFiltered + duplicates;
-  return { imported, persisted: persistedCount, added: simulation ? 0 : added, updated: simulation ? 0 : updated, ignored, dryRun: simulation, dryRunAcceptedEvents, read, filtered: contentFiltered, duplicates, missingCoordinates, outOfBoundsCoordinates, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, sourceReports };
+  return { imported, persisted: persistedCount, added: simulation ? 0 : added, updated: simulation ? 0 : updated, ignored, dryRun: simulation, dryRunAcceptedEvents, read, filtered: contentFiltered, duplicates, missingCoordinates, outOfBoundsCoordinates, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, sourceReports, articketRegionalFiltered: discovery.articketRegionalFiltered };
 }
