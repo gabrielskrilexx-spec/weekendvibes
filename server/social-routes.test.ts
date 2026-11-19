@@ -66,6 +66,22 @@ describe("rotas sociais públicas", () => {
     expect(getEventBySlug).toHaveBeenCalledWith("festa-teste");
   });
 
+  it("prioriza o flyer próprio do evento no OpenGraph", async () => {
+    vi.mocked(getEventBySlug).mockResolvedValueOnce({ ...eventFixture, imageUrl: "https://cdn.example/festa-teste.jpg" });
+    const response = await fetch(`${origin}/eventos/festa-teste`);
+    const html = await response.text();
+    expect(response.status).toBe(200);
+    expect(html).toContain('property="og:image" content="https://cdn.example/festa-teste.jpg"');
+    expect(html).toContain('property="og:image:type" content="image/jpeg"');
+  });
+
+  it("usa o logotipo oficial da casa quando o evento não tem flyer", async () => {
+    vi.mocked(getEventBySlug).mockResolvedValueOnce({ ...eventFixture, locationName: "Dolores Bar & Restaurante", imageUrl: null });
+    const response = await fetch(`${origin}/eventos/festa-teste`);
+    const html = await response.text();
+    expect(html).toContain('property="og:image" content="https://weekendvibes.example/images/venues/dolores.jpg"');
+  });
+
   it("publica metadados sociais da vitrine Palcos da Baixada no HTML inicial", async () => {
     const response = await fetch(`${origin}/`);
     const html = await response.text();

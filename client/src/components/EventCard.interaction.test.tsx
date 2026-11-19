@@ -63,6 +63,8 @@ describe("EventCard interaction", () => {
     expect(markup).toContain("focus-within:ring-2");
     expect(markup).toContain("motion-reduce:transition-none");
     expect(markup).toContain('href="/evento/1"');
+    expect(markup).toContain('data-testid="event-card-share"');
+    expect(markup).toContain("Compartilhar");
     expect(markup).toContain("Garantir ingresso");
     expect(markup).toContain('href="https://example.com/event"');
     expect(markup).toContain("line-clamp-2");

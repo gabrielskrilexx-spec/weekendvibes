@@ -22,6 +22,18 @@ async function prepareHome(page: Page) {
   });
 }
 
+async function prepareEvent(page: Page) {
+  await page.addInitScript(() => {
+    localStorage.setItem("weekendvibes-cookie-consent", "rejected");
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (text: string) => { (window as typeof window & { __copiedEventLink?: string }).__copiedEventLink = text; } } });
+  });
+  await page.route("**/api/trpc/**", async route => {
+    const procedure = (new URL(route.request().url()).pathname.split("/").pop() ?? "").split(",")[0];
+    const event = { id: 41, slug: "festa-teste", title: "Festa Teste", eventDate: "2026-11-12T23:00:00.000Z", endDate: null, locationName: "Casa Teste", city: "Santos", address: "Santos", category: "show", genre: "funk", description: "Uma noite especial em Santos.", imageUrl: null, sourceUrl: null, ticketStatus: "available", priceCents: 5000, priceNote: null };
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(trpcPayload(procedure === "events.byId" ? event : procedure === "auth.me" ? null : [])) });
+  });
+}
+
 test("rotas API são network-only e nunca gravadas no CacheStorage", async ({ page }) => {
   await prepareHome(page);
   await page.goto("/");
@@ -47,6 +59,18 @@ test("rotas API são network-only e nunca gravadas no CacheStorage", async ({ pa
   }, apiUrl);
   expect(offlineResult).toBe("rejected");
   await page.context().setOffline(false);
+});
+
+test("carrega a rota canônica e copia o link pelo botão Compartilhar", async ({ page }) => {
+  await prepareEvent(page);
+  await page.goto("/evento/41");
+  await expect(page).toHaveURL(/\/evento\/41$/);
+  await expect(page.getByRole("heading", { name: "Festa Teste" })).toBeVisible();
+  const shareButton = page.getByTestId("event-detail-share");
+  await expect(shareButton).toContainText("Compartilhar");
+  await shareButton.click();
+  await expect(page.getByRole("status")).toContainText("Link do evento copiado!");
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { __copiedEventLink?: string }).__copiedEventLink)).toMatch(/\/evento\/41$/);
 });
 
 test("mostra o estado 'Sem conexão' quando o navegador fica offline", async ({ page, context }) => {
