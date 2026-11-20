@@ -25,4 +25,14 @@ test("publica sitemap XML e JSON-LD/canonical no detalhe de evento", async ({ pa
   await expect(page.locator('script[type="application/ld+json"]')).toHaveCount(2);
   await expect(page.locator('script[type="application/ld+json"]').first()).toContainText('"@type":"Event"');
   await expect(page.locator('script[type="application/ld+json"]').nth(1)).toContainText('"@type":"BreadcrumbList"');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByTestId("mobile-event-action-bar")).toBeVisible();
+  const relatedLink = page.getByTestId("related-event-link").first();
+  if (await relatedLink.count()) {
+    const relatedHref = await relatedLink.getAttribute("href");
+    expect(relatedHref).toMatch(/^\/evento\/\d+$/);
+    await relatedLink.click();
+    await expect(page).toHaveURL(new RegExp(`${relatedHref?.replace("/", "\\/")}$`));
+    await expect(page.getByTestId("mobile-event-action-bar")).toBeVisible();
+  }
 });

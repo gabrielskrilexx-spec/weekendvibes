@@ -96,6 +96,15 @@ describe("rotas sociais públicas", () => {
     expect(await robots.text()).toContain("Disallow: /admin");
   });
 
+  it("ignora UTMs ao resolver canonical, JSON-LD e Open Graph do evento por ID", async () => {
+    const response = await fetch(`${origin}/evento/41?utm_source=share&utm_medium=social&utm_campaign=event_share`);
+    const html = await response.text();
+    expect(response.status).toBe(200);
+    expect(html).toContain('rel="canonical" href="https://weekendvibes.example/evento/41"');
+    expect(html).toContain('"url":"https://weekendvibes.example/evento/41"');
+    expect(html).not.toContain("utm_source=share");
+  });
+
   it("serve imagem PNG social com dimensão 1200×630 e cache público", async () => {
     const response = await fetch(`${origin}/og/event/festa-teste.png`);
     const png = Buffer.from(await response.arrayBuffer());

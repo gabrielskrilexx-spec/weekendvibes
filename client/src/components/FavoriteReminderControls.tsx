@@ -4,7 +4,7 @@ import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 
-export default function FavoriteReminderControls({ eventId, favoriteLabel = "Favoritar" }: { eventId: number; favoriteLabel?: string }) {
+export default function FavoriteReminderControls({ eventId, favoriteLabel = "Favoritar", compact = false }: { eventId: number; favoriteLabel?: string; compact?: boolean }) {
   const { isAuthenticated } = useAuth();
   const utils = trpc.useUtils();
   const favorites = trpc.events.favoriteIds.useQuery(undefined, { enabled: isAuthenticated, staleTime: 30_000 });
@@ -26,11 +26,11 @@ export default function FavoriteReminderControls({ eventId, favoriteLabel = "Fav
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2" aria-label="Preferência do evento">
-      <button type="button" onClick={onFavorite} disabled={toggleFavorite.isPending} aria-busy={toggleFavorite.isPending} aria-label={isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 ${isFavorite ? "border-rose-300/60 bg-rose-400/15 text-rose-200" : "border-white/10 text-zinc-400 hover:border-rose-300/50 hover:text-rose-200"}`}>
-        <Heart size={14} fill={isFavorite ? "currentColor" : "none"} /> {isFavorite ? "Acompanhando" : favoriteLabel}
+    <div className={`flex flex-wrap items-center gap-2 ${compact ? "contents" : ""}`} aria-label="Preferência do evento">
+      <button type="button" onClick={onFavorite} disabled={toggleFavorite.isPending} aria-busy={toggleFavorite.isPending} aria-label={isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"} className={`inline-flex items-center gap-1.5 border font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 ${compact ? "h-11 w-11 justify-center rounded-xl px-0 text-rose-200" : "rounded-full px-3 py-2 text-xs"} ${isFavorite ? "border-rose-300/60 bg-rose-400/15 text-rose-200" : "border-white/10 text-zinc-400 hover:border-rose-300/50 hover:text-rose-200"}`}>
+        <Heart size={compact ? 18 : 14} fill={isFavorite ? "currentColor" : "none"} /> {!compact && (isFavorite ? "Acompanhando" : favoriteLabel)}
       </button>
-      {isAuthenticated ? (
+      {isAuthenticated && !compact ? (
         <>
           <select aria-label="Antecedência do lembrete" value={hoursBefore} onChange={event => setHoursBefore(event.target.value)} className="rounded-full border border-white/10 bg-zinc-900 px-3 py-2 text-xs font-bold text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300">
             <option value="3">3h antes</option><option value="24">24h antes</option><option value="72">3 dias antes</option>
@@ -39,7 +39,7 @@ export default function FavoriteReminderControls({ eventId, favoriteLabel = "Fav
             <Bell size={14} /> {reminder ? "Lembrete ativo" : "Lembrar-me"}
           </button>
         </>
-      ) : <button type="button" onClick={requireLogin} aria-label="Entrar para salvar favoritos e lembretes" className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-2 text-xs font-bold text-zinc-500 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"><LogIn size={13} /> Entrar para salvar</button>}
+      ) : !isAuthenticated && !compact ? <button type="button" onClick={requireLogin} aria-label="Entrar para salvar favoritos e lembretes" className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-2 text-xs font-bold text-zinc-500 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"><LogIn size={13} /> Entrar para salvar</button> : null}
     </div>
   );
 }

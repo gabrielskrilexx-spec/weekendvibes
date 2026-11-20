@@ -11,6 +11,7 @@ import { serializePayloadJson } from "./json-contracts";
 import type { CircuitState, FailureCategory } from "../shared/domain";
 import { sanitizeEventText } from "../shared/event-text";
 import { resolveVenueCoverFallback } from "../shared/event-media";
+import { selectRelatedEvents } from "../shared/related-events";
 import { persistRemoteImage } from "./media-persistence";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -1392,6 +1393,13 @@ export async function getEventById(id: number, dbOverride?: Awaited<ReturnType<t
   if (!db || !Number.isInteger(id) || id < 1) return undefined;
   const rows = await db.select().from(events).where(and(eq(events.id, id), eq(events.isPublished, PUBLIC_EVENT_STATE.isPublished), eq(events.isArchived, PUBLIC_EVENT_STATE.isArchived))).limit(1);
   return rows[0];
+}
+
+export async function listRelatedEvents(eventId: number, limit = 4) {
+  const current = await getEventById(eventId);
+  if (!current) return [];
+  const candidates = await listEvents({ size: 50, activeAtUtc: new Date() });
+  return selectRelatedEvents(current, candidates, limit);
 }
 
 export async function listPublicEventsForSitemap(now = new Date()) {

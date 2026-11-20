@@ -215,6 +215,17 @@ export default defineConfig({
         main: path.resolve(import.meta.dirname, "client", "index.html"),
         admin: path.resolve(import.meta.dirname, "client", "admin.html"),
       },
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("recharts")) return "vendor-charts";
+          if (id.includes("leaflet") || id.includes("react-leaflet") || id.includes("@googlemaps")) return "vendor-maps";
+          if (id.includes("lucide-react")) return "vendor-icons";
+          if (id.includes("react") || id.includes("wouter") || id.includes("@tanstack")) return "vendor-react";
+          if (id.includes("@radix-ui")) return "vendor-radix";
+          return undefined;
+        },
+      },
     },
   },
   server: {
