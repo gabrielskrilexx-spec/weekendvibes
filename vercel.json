@@ -29,15 +29,15 @@
     },
     {
       "path": "/api/scheduled/push/weekend",
-      "schedule": "0 21 * * 4"
+      "schedule": "0 14 * * 4"
     },
     {
       "path": "/api/scheduled/push/weekend",
-      "schedule": "0 18 * * 5"
+      "schedule": "0 14 * * 5"
     },
     {
       "path": "/api/scheduled/push/reminders",
-      "schedule": "0 20 * * *"
+      "schedule": "0 14 * * *"
     }
   ],
   "rewrites": [
