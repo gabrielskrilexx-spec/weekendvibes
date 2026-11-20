@@ -461,6 +461,13 @@ test("audita fluxos administrativos principais sem ações mortas", async ({
   await page.reload();
   await expect(page).toHaveURL(/tab=tudo/);
   await expect(page.getByText("Notificações Web Push")).toBeVisible();
+  const panelSearch = page.getByRole("searchbox", { name: "Buscar painéis administrativos" });
+  await panelSearch.fill("Web Push");
+  await expect(page.getByText("Notificações Web Push")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dry-run da ingestão" })).toBeHidden();
+  await panelSearch.fill("termo inexistente");
+  await expect(page.getByRole("status")).toContainText("Nenhum painel corresponde");
+  await panelSearch.fill("");
   await expect(
     page.getByRole("heading", { name: "Dry-run da ingestão" })
   ).toBeVisible();
