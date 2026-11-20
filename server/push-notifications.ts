@@ -11,6 +11,7 @@ export type PushNotificationInput = {
   body: string;
   url: string;
   tag?: string;
+  recipientUserId?: number;
 };
 
 export class PushServiceConfigurationError extends Error {
@@ -36,9 +37,10 @@ export function isAllowedPushEndpoint(endpoint: string) {
   }
 }
 
-export async function savePushSubscription(input: PushSubscriptionInput) {
+export async function savePushSubscription(input: PushSubscriptionInput, userId?: number) {
   if (!isAllowedPushEndpoint(input.endpoint)) throw new Error("invalid_push_endpoint");
   await upsertPushSubscription({
+    ...(userId ? { userId } : {}),
     endpoint: input.endpoint,
     p256dh: input.keys.p256dh,
     auth: input.keys.auth,
@@ -75,7 +77,7 @@ export async function sendPushNotification(input: PushNotificationInput) {
     throw new PushServiceConfigurationError();
   }
 
-  const subscriptions = await listPushSubscriptions();
+  const subscriptions = await listPushSubscriptions(input.recipientUserId);
   const payload = JSON.stringify({
     title: input.title,
     body: input.body,
@@ -116,4 +118,14 @@ export async function sendPushNotification(input: PushNotificationInput) {
   }
 
   return { sent, failed, expired };
+}
+
+export function buildWeekendPushPayload(events: Array<{ id: number; title: string }>) {
+  const highlights = events.slice(0, 3).map(event => event.title).join(" · ");
+  return {
+    title: "WeekendVibes · agenda do fim de semana",
+    body: highlights ? `${highlights}${events.length > 3 ? ` e mais ${events.length - 3}` : ""}.` : "Confira os eventos deste fim de semana na Baixada Santista.",
+    url: events[0] ? `/evento/${events[0].id}` : "/",
+    tag: "weekendvibes-weekend-alert",
+  } satisfies PushNotificationInput;
 }

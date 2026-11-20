@@ -543,6 +543,7 @@ export type InsertApifyProcessedItem = typeof apifyProcessedItems.$inferInsert;
 
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id: serial("id").primaryKey(),
+  userId: integer("userId"),
   endpoint: text("endpoint").notNull(),
   p256dh: text("p256dh").notNull(),
   auth: text("auth").notNull(),
@@ -553,6 +554,21 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
 
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type InsertPushSubscription = typeof pushSubscriptions.$inferInsert;
+
+export const pushDispatches = pgTable("push_dispatches", {
+  id: serial("id").primaryKey(),
+  dispatchType: varchar("dispatchType", { length: 32 }).notNull(),
+  title: varchar("title", { length: 120 }).notNull(),
+  sent: integer("sent").default(0).notNull(),
+  failed: integer("failed").default(0).notNull(),
+  expired: integer("expired").default(0).notNull(),
+  errorMessage: varchar("errorMessage", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => ({
+  createdIdx: index("push_dispatches_created_idx").on(table.createdAt),
+}));
+export type PushDispatch = typeof pushDispatches.$inferSelect;
+export type InsertPushDispatch = typeof pushDispatches.$inferInsert;
 
 export const engagementEvents = pgTable("engagementEvents", {
   id: serial("id").primaryKey(),

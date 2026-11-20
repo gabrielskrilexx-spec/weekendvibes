@@ -26,6 +26,7 @@ import {
   removePushSubscription,
   savePushSubscription,
   sendPushNotification,
+  buildWeekendPushPayload,
 } from "./push-notifications";
 
 const originalEnv = {
@@ -107,5 +108,20 @@ describe("Web Push service", () => {
     const result = await sendPushNotification({ title: "Teste", body: "Corpo", url: "/agenda" });
     expect(mocks.deletePushSubscription).toHaveBeenCalledWith("https://fcm.googleapis.com/fcm/send/expired");
     expect(result).toEqual({ sent: 1, failed: 0, expired: 1 });
+  });
+
+  it("monta payload semanal com destaque e destino interno", () => {
+    expect(buildWeekendPushPayload([{ id: 42, title: "Sexta no Curvão" }, { id: 43, title: "After Santos" }])).toEqual({
+      title: "WeekendVibes · agenda do fim de semana",
+      body: "Sexta no Curvão · After Santos.",
+      url: "/evento/42",
+      tag: "weekendvibes-weekend-alert",
+    });
+  });
+
+  it("filtra o disparo de lembrete pela inscrição do usuário", async () => {
+    mocks.listPushSubscriptions.mockResolvedValue([]);
+    await sendPushNotification({ title: "Lembrete", body: "Em breve", url: "/evento/42", recipientUserId: 7 });
+    expect(mocks.listPushSubscriptions).toHaveBeenCalledWith(7);
   });
 });

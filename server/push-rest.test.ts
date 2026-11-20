@@ -67,7 +67,7 @@ describe("Push REST endpoints", () => {
     expect(mocks.savePushSubscription).toHaveBeenCalledWith({
       endpoint: "https://fcm.googleapis.com/fcm/send/test-endpoint",
       keys: { p256dh: "p256dh-public-key-123456", auth: "auth-secret-123" },
-    });
+    }, 1);
   });
 
   it("rejeita endpoint não confiável e malformed subscription", async () => {

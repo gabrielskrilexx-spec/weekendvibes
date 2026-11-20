@@ -1,8 +1,8 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, or, sql } from "drizzle-orm";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { Event, IngestionRun, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots, ingestionLeases, adminMagicLinks, monitoredBrands, MonitoredBrand, pushSubscriptions, engagementEvents } from "../drizzle/schema";
+import { Event, IngestionRun, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots, ingestionLeases, adminMagicLinks, monitoredBrands, MonitoredBrand, pushSubscriptions, pushDispatches, engagementEvents } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 import { buildDailyTelemetrySeries, calculateSystemHealthStatus, normalizeObservabilityPeriod, summarizeTelemetryTrend } from "./observability";
@@ -47,12 +47,12 @@ export async function getDb() {
   return _db;
 }
 
-export async function upsertPushSubscription(input: { endpoint: string; p256dh: string; auth: string }) {
+export async function upsertPushSubscription(input: { userId?: number; endpoint: string; p256dh: string; auth: string }) {
   const db = await getDb();
   if (!db) throw new Error("database_unavailable");
   await db.insert(pushSubscriptions).values(input).onConflictDoUpdate({
     target: pushSubscriptions.endpoint,
-    set: { p256dh: input.p256dh, auth: input.auth },
+    set: { p256dh: input.p256dh, auth: input.auth, ...(input.userId ? { userId: input.userId } : {}) },
   });
 }
 
@@ -63,10 +63,49 @@ export async function deletePushSubscription(endpoint: string) {
   return deleted.length;
 }
 
-export async function listPushSubscriptions() {
+export async function listPushSubscriptions(userId?: number) {
   const db = await getDb();
   if (!db) throw new Error("database_unavailable");
-  return db.select({ endpoint: pushSubscriptions.endpoint, p256dh: pushSubscriptions.p256dh, auth: pushSubscriptions.auth }).from(pushSubscriptions);
+  return db.select({ endpoint: pushSubscriptions.endpoint, p256dh: pushSubscriptions.p256dh, auth: pushSubscriptions.auth, userId: pushSubscriptions.userId }).from(pushSubscriptions).where(userId ? eq(pushSubscriptions.userId, userId) : undefined);
+}
+
+export async function listUpcomingWeekendEvents(now = new Date()) {
+  const db = await getDb();
+  if (!db) throw new Error("database_unavailable");
+  const end = new Date(now.getTime() + 4 * 24 * 60 * 60 * 1000);
+  return db.select({ id: events.id, title: events.title, description: events.description, eventDate: events.eventDate, city: events.city })
+    .from(events)
+    .where(and(eq(events.isPublished, 1), eq(events.isArchived, 0), gte(events.eventDate, now), lt(events.eventDate, end)))
+    .orderBy(asc(events.eventDate)).limit(20);
+}
+
+export async function listDueEventReminders(now = new Date()) {
+  const db = await getDb();
+  if (!db) throw new Error("database_unavailable");
+  return db.select({ id: eventReminders.id, userId: eventReminders.userId, eventId: eventReminders.eventId, title: events.title, eventDate: events.eventDate })
+    .from(eventReminders).innerJoin(events, eq(events.id, eventReminders.eventId))
+    .where(and(eq(eventReminders.isActive, 1), lte(eventReminders.remindAt, now), gte(eventReminders.remindAt, new Date(now.getTime() - 60 * 60 * 1000)), eq(events.isPublished, 1)))
+    .limit(100);
+}
+
+export async function deactivateEventReminder(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("database_unavailable");
+  await db.update(eventReminders).set({ isActive: 0, updatedAt: new Date() }).where(eq(eventReminders.id, id));
+}
+
+export async function recordPushDispatch(input: { dispatchType: string; title: string; sent: number; failed: number; expired: number; errorMessage?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("database_unavailable");
+  await db.insert(pushDispatches).values(input);
+}
+
+export async function getPushDiagnostics() {
+  const db = await getDb();
+  if (!db) throw new Error("database_unavailable");
+  const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(pushSubscriptions);
+  const [last] = await db.select({ createdAt: pushDispatches.createdAt, sent: pushDispatches.sent, failed: pushDispatches.failed, expired: pushDispatches.expired }).from(pushDispatches).orderBy(desc(pushDispatches.createdAt)).limit(1);
+  return { vapidConfigured: Boolean(process.env.VITE_VAPID_PUBLIC_KEY?.trim() && process.env.VAPID_PRIVATE_KEY?.trim() && process.env.VAPID_SUBJECT?.trim()), activeDevices: Number(count ?? 0), lastDispatch: last ? { createdAt: last.createdAt.toISOString(), sent: last.sent, failed: last.failed, expired: last.expired } : null };
 }
 
 export async function checkDatabaseHealth(getDbProvider: typeof getDb = getDb) {

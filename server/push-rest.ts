@@ -58,12 +58,25 @@ async function requireAdmin(req: Request, res: Response) {
 }
 
 export function registerPushRestRoutes(app: Express) {
+  app.get("/api/push/vapid-public-key", (_req, res) => {
+    noStore(res);
+    const publicKey = process.env.VITE_VAPID_PUBLIC_KEY?.trim() ?? "";
+    if (!publicKey) return res.status(503).json({ success: false, configured: false, message: "Chave pública VAPID ausente." });
+    return res.status(200).json({ success: true, configured: true, publicKey });
+  });
+
   app.post("/api/push/subscriptions", async (req, res) => {
     noStore(res);
     const parsed = subscriptionInput.safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ success: false, message: "Assinatura push inválida." });
     try {
-      await savePushSubscription(parsed.data);
+      let userId: number | undefined;
+      try {
+        const user = await sdk.authenticateRequest(req);
+        if (user?.id) userId = user.id;
+      } catch { /* inscrição anônima continua permitida */ }
+      if (userId) await savePushSubscription(parsed.data, userId);
+      else await savePushSubscription(parsed.data);
       return res.status(200).json({ success: true });
     } catch (error) {
       return pushFailure(res, error);

@@ -26,6 +26,7 @@ import { registerAdminRestRoutes } from "../admin-rest";
 import { requireInternalCron, requireVercelCron } from "./cron-auth";
 import { getDb } from "../db";
 import { sql } from "drizzle-orm";
+import { reminderPushHandler, weekendPushHandler } from "../scheduled-push";
 
 export async function createApp(server?: ReturnType<typeof createServer>) {
   const app = express();
@@ -115,6 +116,8 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
   app.get("/api/scheduled/executive-report", noStoreScheduledResponse, requireInternalCron, executiveObservabilityReportHandler);
   app.get("/api/scheduled/weekly-executive-report", noStoreScheduledResponse, requireVercelCron, weeklyExecutiveReportHandler);
   app.post("/api/scheduled/weekly-executive-report", noStoreScheduledResponse, requireInternalCron, weeklyExecutiveReportHandler);
+  app.get("/api/scheduled/push/weekend", noStoreScheduledResponse, requireVercelCron, weekendPushHandler);
+  app.get("/api/scheduled/push/reminders", noStoreScheduledResponse, requireVercelCron, reminderPushHandler);
   app.get("/api/cron/prune-events", noStoreScheduledResponse, requireVercelCron, pruneEventsHandler);
   // tRPC API
   app.use(

@@ -27,13 +27,15 @@ export default function PushAlertsToggle() {
       .then(async registration => {
         const subscription = await registration.pushManager.getSubscription();
         if (cancelled) return;
-        setEnabled(Boolean(subscription));
         if (subscription) {
           try {
             await persistPushSubscription(subscription);
+            if (!cancelled) setEnabled(true);
           } catch {
             if (!cancelled) setMessage("A inscrição existe neste dispositivo, mas não pôde ser sincronizada com o serviço.");
           }
+        } else {
+          setEnabled(false);
         }
       })
       .catch(() => { if (!cancelled) setMessage("Não foi possível verificar a permissão neste dispositivo."); });

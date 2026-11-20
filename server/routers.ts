@@ -52,7 +52,10 @@ import {
   getVenuePageData,
   recordEngagementEvent,
   listEngagementRanking,
+  getPushDiagnostics,
+  recordPushDispatch,
 } from "./db";
+import { PushServiceConfigurationError, sendPushNotification } from "./push-notifications";
 import { invokeLLM } from "./_core/llm";
 import { isSandboxRestrictedError } from "./external-fetch";
 import { validateMetaBusinessDiscoveryProfile } from "./instagram-pipeline";
@@ -558,6 +561,24 @@ const reprocessSandboxOutput = z
 const reprocessOutput = z.union([reprocessResultOutput, reprocessSandboxOutput]);
 
 export const appRouter = router({
+  push: router({
+    diagnostics: adminOnly
+      .output(z.object({ vapidConfigured: z.boolean(), activeDevices: z.number().int().nonnegative(), lastDispatch: z.object({ createdAt: z.string().datetime(), sent: z.number().int().nonnegative(), failed: z.number().int().nonnegative(), expired: z.number().int().nonnegative() }).strict().nullable() }).strict())
+      .query(async () => getPushDiagnostics()),
+    sendTest: adminOnly
+      .output(z.object({ success: z.literal(true), sent: z.number().int().nonnegative(), failed: z.number().int().nonnegative(), expired: z.number().int().nonnegative() }).strict())
+      .mutation(async () => {
+        const payload = { title: "WeekendVibes · notificação de teste", body: "A entrega de Web Push está configurada para este dispositivo.", url: "/", tag: "weekendvibes-test" } as const;
+        try {
+          const result = await sendPushNotification(payload);
+          await recordPushDispatch({ dispatchType: "test", title: payload.title, ...result });
+          return { success: true as const, ...result };
+        } catch (error) {
+          try { await recordPushDispatch({ dispatchType: "test", title: payload.title, sent: 0, failed: 1, expired: 0, errorMessage: error instanceof PushServiceConfigurationError ? "push_not_configured" : "push_dispatch_failed" }); } catch { /* best effort */ }
+          throw new TRPCError({ code: error instanceof PushServiceConfigurationError ? "PRECONDITION_FAILED" : "SERVICE_UNAVAILABLE", message: error instanceof PushServiceConfigurationError ? "As chaves VAPID não estão configuradas." : "Não foi possível enviar a notificação de teste." });
+        }
+      }),
+  }),
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => normalizeJsonForTransport(opts.ctx.user ? { ...opts.ctx.user, isAdmin: isAdminUser(opts.ctx.user) } : null)),

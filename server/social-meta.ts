@@ -141,3 +141,22 @@ export function formatSocialEventDate(value: string | Date) {
   if (!Number.isFinite(date.getTime())) return "";
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long", year: "numeric", timeZone: "America/Sao_Paulo" }).format(date);
 }
+
+export function formatSocialEventShareDescription(value: string | Date, venue: string, city: string) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return "Confira detalhes e ingressos no WeekendVibes.";
+  const parts = new Intl.DateTimeFormat("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "America/Sao_Paulo",
+  }).formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value ?? "";
+  const weekday = get("weekday");
+  const capitalizedWeekday = weekday ? `${weekday[0].toLocaleUpperCase("pt-BR")}${weekday.slice(1)}` : "";
+  const time = get("minute") === "00" ? `${get("hour")}h` : `${get("hour")}h${get("minute")}`;
+  return `${capitalizedWeekday}, ${get("day")}/${get("month")} às ${time} • ${truncate(venue, 80)} (${truncate(city, 50)}) • Confira detalhes e ingressos no WeekendVibes.`;
+}

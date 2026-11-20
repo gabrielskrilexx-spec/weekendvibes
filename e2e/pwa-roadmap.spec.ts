@@ -70,7 +70,7 @@ test("carrega a rota canônica e copia o link pelo botão Compartilhar", async (
   await expect(shareButton).toContainText("Compartilhar");
   await shareButton.click();
   await expect(page.getByRole("status")).toContainText("Link do evento copiado!");
-  await expect.poll(() => page.evaluate(() => (window as typeof window & { __copiedEventLink?: string }).__copiedEventLink)).toMatch(/\/evento\/41$/);
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { __copiedEventLink?: string }).__copiedEventLink)).toMatch(/\/evento\/41\?utm_source=share&utm_medium=social&utm_campaign=event_share$/);
 });
 
 test("mostra o estado 'Sem conexão' quando o navegador fica offline", async ({ page, context }) => {
