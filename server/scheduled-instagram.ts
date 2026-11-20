@@ -9,6 +9,21 @@ import { HttpError } from "@shared/_core/errors";
 import { redactError } from "./_core/security";
 import { hasValidInternalCronSecret, hasValidVercelCronSecret } from "./_core/cron-auth";
 import { observeScheduledIngestion } from "./scheduled-observability";
+import { runExecutiveObservabilityCycle } from "./scheduled-executive-report";
+
+async function evaluateExecutiveHealthAfterCron() {
+  try {
+    const report = await runExecutiveObservabilityCycle(14);
+    console.info("[Instagram] executive health evaluated", {
+      routine: "instagram-agenda",
+      status: report.system_health_status,
+      transition: report.healthTransitions?.[0] ?? null,
+    });
+  } catch (error) {
+    // Monitoring is best-effort and must not change the ingestion result.
+    console.warn("[Instagram] executive health evaluation skipped", redactError(error));
+  }
+}
 
 const integrationTitles: Record<OperationalIntegration, string> = {
   meta: "Falha na API oficial do Instagram",
@@ -38,6 +53,7 @@ export async function ingestInstagramHandler(req: Request, res: Response) {
     const finishedAt = new Date().toISOString();
     const status = result.degraded || (result.transportFailures?.length ?? 0) > 0 ? "partial" as const : "succeeded" as const;
     const observability = await observeScheduledIngestion({ routine: "instagram-agenda", status, startedAtMs });
+    await evaluateExecutiveHealthAfterCron();
     const apifyTimeouts = (result.transportFailures ?? []).filter(failure => failure.kind === "actor_timeout");
     for (const failure of apifyTimeouts.slice(0, 3)) {
       try {
@@ -58,6 +74,7 @@ export async function ingestInstagramHandler(req: Request, res: Response) {
     return res.json({ ok: true, status, startedAt, finishedAt, durationMs: observability.durationMs, observability: observability.alerts, archived, degraded: Boolean(result.degraded), transportFailures: result.transportFailures ?? [], result, counts: { read: Number(result.receivedPosts ?? 0), filtered: Math.max(0, Number(result.receivedPosts ?? 0) - Number(result.approvedPosts ?? 0)), persisted: Number(result.imported ?? 0) } });
   } catch (error) {
     await observeScheduledIngestion({ routine: "instagram-agenda", status: "failed", startedAtMs });
+    await evaluateExecutiveHealthAfterCron();
     const integration: OperationalIntegration = error instanceof AgendaStepFailure
       ? error.integration
       : error instanceof InstagramIntegrationFailure ? error.integration : "pipeline";

@@ -7,6 +7,21 @@ import { redactError } from "./_core/security";
 import { notifyOwner } from "./_core/notification";
 import { hasValidInternalCronSecret, hasValidVercelCronSecret } from "./_core/cron-auth";
 import { observeScheduledIngestion } from "./scheduled-observability";
+import { runExecutiveObservabilityCycle } from "./scheduled-executive-report";
+
+async function evaluateExecutiveHealthAfterCron() {
+  try {
+    const report = await runExecutiveObservabilityCycle(14);
+    console.info("[Scheduled] executive health evaluated", {
+      routine: "public-agenda",
+      status: report.system_health_status,
+      transition: report.healthTransitions?.[0] ?? null,
+    });
+  } catch (error) {
+    // Monitoring must never turn a completed ingestion into a failed cron.
+    console.warn("[Scheduled] executive health evaluation skipped", redactError(error));
+  }
+}
 
 function getScheduledFailureLogContext(error: unknown) {
   const context = redactError(error);
@@ -62,6 +77,7 @@ export async function ingestEventsHandler(req: Request, res: Response) {
     const finishedAt = new Date().toISOString();
     const summary = buildPublicAutomationSummary(result, startedAt, finishedAt);
     const observability = await observeScheduledIngestion({ routine: "public-agenda", status: summary.status, startedAtMs });
+    await evaluateExecutiveHealthAfterCron();
     if (fetchFailed === 0) {
       try {
         const notification = await failureAlerts.notifyIngestionSummary({ routine: "public-agenda", status: summary.status, startedAt, finishedAt, added: summary.added, updated: summary.updated, ignored: summary.ignored, errors: summary.errors, sources: summary.sources.map(source => ({ sourceKey: source.sourceKey, read: source.read, added: source.added, updated: source.updated, ignored: source.ignored, errors: source.errors.length })) });
@@ -75,6 +91,7 @@ export async function ingestEventsHandler(req: Request, res: Response) {
     return res.json({ ok: true, status: summary.status, summary, archived, result, fetchFailed, startedAt, finishedAt, durationMs: observability.durationMs, observability: observability.alerts });
   } catch (error) {
     await observeScheduledIngestion({ routine: "public-agenda", status: "failed", startedAtMs });
+    await evaluateExecutiveHealthAfterCron();
     console.error("[Scheduled] routine failed", getScheduledFailureLogContext(error));
     return res.status(500).json({ error: "internal_error" });
   }
