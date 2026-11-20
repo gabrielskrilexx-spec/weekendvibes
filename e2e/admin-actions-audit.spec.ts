@@ -447,10 +447,20 @@ test("audita fluxos administrativos principais sem ações mortas", async ({
   await page.addInitScript(() =>
     localStorage.setItem("weekendvibes-cookie-consent", "rejected")
   );
-  await page.goto("/admin");
+  await page.goto("/admin?tab=tudo");
   await expect(
     page.getByRole("heading", { name: "Painel de eventos" })
   ).toBeVisible();
+  await page.goto("/admin");
+  await expect(page.getByTestId("admin-tab-saude")).toHaveAttribute("aria-current", "page");
+  await expect(page.getByText("Notificações Web Push")).toBeVisible();
+  for (const tab of ["ingestao", "curadoria", "telemetria", "tudo"]) {
+    await page.getByTestId(`admin-tab-${tab}`).click();
+    await expect(page).toHaveURL(new RegExp(`[?&]tab=${tab}(?:&|$)`));
+  }
+  await page.reload();
+  await expect(page).toHaveURL(/tab=tudo/);
+  await expect(page.getByText("Notificações Web Push")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Dry-run da ingestão" })
   ).toBeVisible();
