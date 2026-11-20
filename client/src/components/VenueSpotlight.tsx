@@ -40,12 +40,12 @@ export const FEATURED_VENUES: Venue[] = [
   { key: "casa-412", name: "Casa 412", aliases: "Vila Nova · Rua Braz Cubas, 412 · Santos - SP", city: "Santos", imageUrl: "/venues/casa412.webp", description: "Espaço amplo e climatizado no centro histórico/Vila Nova, palco de festas e Jamboo Sessions.", query: "Casa 412" },
   { key: "laroc-club", name: "Laroc Club", aliases: "Praia do Perequê · Guarujá - SP", city: "Guarujá", imageUrl: "/venues/laroc.webp", description: "Sunset e beach club de música eletrônica à beira-mar.", query: "Laroc Club Guarujá" },
   { key: "o-beco", name: "O Beco", aliases: "Santos - SP", city: "Santos", imageUrl: "/venues/obeco.webp", description: "Bar e espaço de festas com programação urbana em Santos.", query: "O Beco" },
-  { key: "dolores-restaurante-e-bar", name: "Dolores Restaurante e Bar", aliases: "Guarujá - SP", city: "Guarujá", imageUrl: "/venues/dolores.webp", description: "Restaurante e bar com atmosfera descontraída para bons encontros.", query: "Dolores Restaurante e Bar" },
+  { key: "dolores", name: "Dolores Bar & Restaurante", aliases: "Guarujá - SP", city: "Guarujá", imageUrl: "/images/venues/dolores.jpg", description: "Restaurante e bar com atmosfera descontraída para bons encontros no Guarujá.", query: "Dolores Bar & Restaurante" },
   { key: "projac-bar", name: "Projac Bar", aliases: "Guarujá - SP", city: "Guarujá", imageUrl: "/venues/projac.webp", description: "Bar e palco para noites de música e experiências na Baixada.", query: "Projac Bar" },
-  { key: "meu-lugar", name: "Meu Lugar", aliases: "Santos - SP", city: "Santos", imageUrl: "/venues/meulugar.webp", description: "Espaço acolhedor para encontros, música e programação noturna.", query: "Meu Lugar" },
-  { key: "moby-dick", name: "Moby Dick", aliases: "Santos - SP", city: "Santos", imageUrl: "/venues/mobydick.webp", description: "Casa tradicional de shows e noites especiais em Santos.", query: "Moby Dick" },
+  { key: "meu-lugar", name: "Meu Lugar", aliases: "Santos - SP", city: "Santos", imageUrl: "/images/venues/meu-lugar.jpg", description: "Espaço acolhedor para encontros, música e programação noturna.", query: "Meu Lugar" },
+  { key: "moby-dick", name: "Moby Dick", aliases: "Boqueirão · Av. Vicente de Carvalho, 30 · Santos - SP", city: "Santos", imageUrl: "/images/venues/moby-dick.jpg", description: "Casa tradicional de shows e noites especiais em Santos.", query: "Moby Dick" },
   { key: "arena-club", name: "Arena Club", aliases: "Vila Mathias · Av. Senador Pinheiro Machado, 33 · Santos - SP", city: "Santos", imageUrl: "/venues/arena-club.webp", description: "Casa de shows, rock, reggae e música alternativa na Vila Mathias.", query: "Arena Club Santos" },
-  { key: "yellow-house", name: "Yellow House", aliases: "Rua do Comércio, nº 111 – Centro, Santos/SP (CEP 11010-122)", city: "Santos", imageUrl: "/venues/yellow-house.webp", description: "Casa de shows e música urbana na Rua do Comércio, no Centro de Santos.", query: "Yellow House Santos" },
+  { key: "yellow-house", name: "Yellow House", aliases: "Rua do Comércio, nº 111 – Centro, Santos/SP (CEP 11010-122)", city: "Santos", imageUrl: "/images/venues/yellow-house.jpg", description: "Casa de shows e música urbana na Rua do Comércio, no Centro de Santos.", query: "Yellow House Santos" },
 ];
 
 export function formatVenueEventDate(value: string | Date) {

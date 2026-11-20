@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatSocialEventDate, injectSocialMetadata, renderSocialCardPng, renderSocialCardSvg, resolvePublicOrigins } from "./social-meta";
+import { formatSocialEventDate, formatSocialEventShareDescription, injectSocialMetadata, renderSocialCardPng, renderSocialCardSvg, resolvePublicOrigins } from "./social-meta";
 
 describe("metadados sociais públicos", () => {
   it("usa origens explícitas e não aceita URLs com caminho/credenciais/inseguras", () => {
@@ -36,6 +36,10 @@ describe("metadados sociais públicos", () => {
 
   it("mantém datas sem timezone no dia civil de São Paulo", () => {
     expect(formatSocialEventDate("2026-11-12")).toBe("12 de novembro de 2026");
+  });
+
+  it("formata descrição objetiva no fuso de São Paulo", () => {
+    expect(formatSocialEventShareDescription("2026-11-12T23:00:00.000Z", "Casa Teste", "Santos")).toBe("Quinta-feira, 12/11 às 20h • Casa Teste (Santos) • Confira detalhes e ingressos no WeekendVibes.");
   });
 
   it("renderiza PNG legível em 1200×630 para crawlers de compartilhamento", () => {

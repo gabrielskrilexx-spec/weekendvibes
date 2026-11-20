@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatArticketSourceName } from "./db";
-import { BLACKPASS_FETCH_TIMEOUT_MS, BLUE_MED_FETCH_TIMEOUT_MS, buildPublicEventIdentity, containsTargetVenue, discoverArticketEventLinks, EVENTOS_LITORAL_FETCH_TIMEOUT_MS, extractMrIngressosListingEvents, extractPublicEventLinks, getIngresseFetchTimeoutMs, getMonitoredPublicBrand, getTrackedPublicBrand, matchesPublicTarget, matchesTrackedPublicBrand, PARQUE_VALONGO_FETCH_TIMEOUT_MS, parseArticketEventMetadata, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseBlueMedAgendaEvents, parseEventosLitoralOrganizerMetadata, parseMrIngressosEventMetadata, parseParqueValongoEventMetadata, parseSymplaEventMetadata, parseTicket360EventMetadata, parseTicketingEventMetadata, parseWeTicketEventMetadata, publicSourceKey, SYMPLA_FETCH_TIMEOUT_MS, WETICKET_FETCH_TIMEOUT_MS } from "./ingestion";
+import { ARTICKET_FETCH_TIMEOUT_MS, BLACKPASS_FETCH_TIMEOUT_MS, BLUE_MED_FETCH_TIMEOUT_MS, buildPublicEventIdentity, containsTargetVenue, discoverArticketEventLinks, EVENTOS_LITORAL_FETCH_TIMEOUT_MS, extractMrIngressosListingEvents, extractPublicEventLinks, filterArticketRegionalCandidates, getIngresseFetchTimeoutMs, getMonitoredPublicBrand, getTrackedPublicBrand, isArticketRegionalCandidate, matchesPublicTarget, matchesTrackedPublicBrand, PARQUE_VALONGO_FETCH_TIMEOUT_MS, parseArticketEventMetadata, parseBlackPassCatalogEvent, parseBlackPassEventMetadata, parseBlueMedAgendaEvents, parseEventosLitoralOrganizerMetadata, parseMrIngressosEventMetadata, parseParqueValongoEventMetadata, parseSymplaEventMetadata, parseTicket360EventMetadata, parseTicketingEventMetadata, parseWeTicketEventMetadata, publicSourceKey, SYMPLA_FETCH_TIMEOUT_MS, WETICKET_FETCH_TIMEOUT_MS } from "./ingestion";
 
 describe("adapters de ticketeiras oficiais", () => {
   it("reconhece marcas monitoradas dinamicamente só nas plataformas configuradas", () => {
@@ -206,6 +206,21 @@ describe("adapters de ticketeiras oficiais", () => {
   it("descobre apenas cards Articket de Santos ou Guarujá com venue permitido", () => {
     const html = `<article><a href="/e/7358/sub-plants-halloween">Sub Plants Verilonguinho Santos</a></article><article><a href="/e/9000/evento-fora">Evento em São Paulo</a></article>`;
     expect(discoverArticketEventLinks(html, "https://articket.com.br/", ["verilonguinho"])).toEqual(["https://articket.com.br/e/7358/sub-plants-halloween"]);
+  });
+
+  it("filtra candidatos ArTicket fora da Baixada antes do enriquecimento", () => {
+    const candidates = [
+      { url: "https://articket.com.br/e/1/festa-santos", name: "Festa de verão" },
+      { url: "https://articket.com.br/e/2/noite-em-sao-paulo", name: "Noite em São Paulo" },
+      { url: "https://articket.com.br/e/3/show-laroc", name: "Laroc Club" },
+    ];
+    expect(isArticketRegionalCandidate(candidates[0], [])).toBe(true);
+    expect(isArticketRegionalCandidate(candidates[2], ["Laroc Club"])).toBe(true);
+    expect(filterArticketRegionalCandidates(candidates, ["Laroc Club"])).toMatchObject({
+      regional: [candidates[0], candidates[2]],
+      filtered: [candidates[1]],
+    });
+    expect(ARTICKET_FETCH_TIMEOUT_MS).toBe(12_000);
   });
 
   it("extrai somente eventos musicais futuros elegíveis da agenda Blue Med", () => {

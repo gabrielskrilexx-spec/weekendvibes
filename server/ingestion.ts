@@ -289,7 +289,7 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
       const isArticket = url.pathname.startsWith("/e/") && url.hostname.includes("articket");
       const isBlacktag = /^\/(?:evento|eventos|event|events)\/[A-Za-z0-9._~-]+(?:\/|$)/i.test(url.pathname) && url.hostname.includes("blacktag");
       const isZig = /^\/eventos?\//i.test(url.pathname) && (url.hostname === "zig.tickets" || url.hostname.endsWith(".zig.tickets"));
-      const isIngresseEvent = url.hostname.includes("ingresse") && url.pathname !== "/" && !url.pathname.toLowerCase().startsWith("/search");
+      const isIngresseEvent = isIngresseEventUrl(url.href);
       const isBlackPass = url.hostname.endsWith("blackpass.com.br") && /^\/event\/[A-Za-z0-9_-]+/.test(url.pathname);
       const isMrIngressos = url.hostname.endsWith("mringressos.com.br") && /^\/comprar\/[A-Za-z0-9_-]+/.test(url.pathname);
       const isSympla = url.hostname.endsWith("sympla.com.br") && /^\/evento\/[A-Za-z0-9-]+\/[0-9]+/.test(url.pathname);
@@ -329,6 +329,23 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
   return Array.from(links).slice(0, 60);
 }
 
+export type ArticketCandidateHint = { url: string; name?: string | null; text?: string | null };
+
+export function isArticketRegionalCandidate(candidate: ArticketCandidateHint, aliases: string[] = []) {
+  const searchable = normalizeText(`${candidate.name ?? ""} ${candidate.text ?? ""} ${candidate.url}`);
+  return /santos|guaruja|sao vicente|praia grande|cubatao/.test(searchable)
+    || aliases.some(alias => searchable.includes(normalizeText(alias)));
+}
+
+export function filterArticketRegionalCandidates(candidates: ArticketCandidateHint[], aliases: string[]) {
+  const regional: ArticketCandidateHint[] = [];
+  const filtered: ArticketCandidateHint[] = [];
+  for (const candidate of candidates) {
+    (isArticketRegionalCandidate(candidate, aliases) ? regional : filtered).push(candidate);
+  }
+  return { regional, filtered };
+}
+
 export function discoverArticketEventLinks(html: string, baseUrl: string, aliases: string[] = []) {
   const absoluteBase = new URL(baseUrl);
   if (!absoluteBase.hostname.endsWith("articket.com.br")) return [];
@@ -342,9 +359,7 @@ export function discoverArticketEventLinks(html: string, baseUrl: string, aliase
       if (url.origin !== absoluteBase.origin || !/^\/e\/[A-Za-z0-9_-]+/.test(url.pathname)) return;
       const cardText = $(anchor).closest("article, li, [class*='event'], [class*='card'], section").first().text().replace(/\s+/g, " ").trim() || $(anchor).parent().text().replace(/\s+/g, " ").trim();
       const searchable = normalizeText(cardText);
-      const venueMatch = aliases.some(alias => searchable.includes(normalizeText(alias)));
-      const cityMatch = /santos|guaruja/.test(searchable);
-      if (venueMatch || cityMatch) links.add(sanitizePublicSourceUrl(url.toString()));
+      if (isArticketRegionalCandidate({ url: url.toString(), text: searchable }, aliases)) links.add(sanitizePublicSourceUrl(url.toString()));
     } catch {
       // Ignore malformed Articket links.
     }
@@ -895,11 +910,12 @@ export function parseArticketEventMetadata(html: string, url: string) {
   return { ...parsed, summary: parsed.text.slice(0, 4_000), category, genre };
 }
 
-function isIngresseEventUrl(url: string) {
+export function isIngresseEventUrl(url: string) {
   try {
     const parsed = new URL(url);
     const path = parsed.pathname.replace(/\/+$/, "");
-    return parsed.hostname.endsWith("ingresse.com") && path.length > 1 && !["/login", "/register", "/search"].includes(path);
+    const isPublicSite = parsed.hostname === "www.ingresse.com" || parsed.hostname === "ingresse.com";
+    return isPublicSite && path.length > 1 && !["/login", "/register", "/search"].includes(path);
   } catch {
     return false;
   }
@@ -918,6 +934,56 @@ function getIngresseSlug(url: string) {
   const parsed = new URL(url);
   const segments = parsed.pathname.split("/").filter(Boolean);
   return decodeURIComponent(segments.at(-1) ?? "");
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function firstText(...values: unknown[]) {
+  return values.find(value => (typeof value === "string" && value.trim().length > 0) || (typeof value === "number" && Number.isFinite(value)))?.toString().trim() ?? "";
+}
+
+function firstDate(...values: unknown[]) {
+  for (const value of values) {
+    const candidate = firstText(value);
+    if (!candidate) continue;
+    if (/^\d{4}-\d{2}-\d{2}/.test(candidate)) return candidate;
+    const parsed = parsePortugueseEventDate(candidate);
+    if (parsed) return parsed;
+  }
+  return "";
+}
+
+export function parseIngresseEventPayload(payload: Record<string, unknown>, url: string) {
+  const event = asRecord(payload.event);
+  const jsonLd = asRecord(payload.jsonLd ?? payload.jsonLD ?? event.jsonLd);
+  const place = asRecord(payload.place ?? payload.venue ?? event.place ?? event.venue);
+  const placeAddress = asRecord(place.address ?? payload.address ?? event.address);
+  const location = asRecord(place.location ?? payload.location ?? event.location);
+  const sessions = Array.isArray(payload.sessions) ? payload.sessions.map(asRecord) : [];
+  const dates = Array.isArray(payload.dates) ? payload.dates.map(asRecord) : [];
+  const session = sessions.find(item => firstDate(item.dateTime, item.startDate, item.startsAt, item.date)) ?? dates.find(item => firstDate(item.dateTime, item.startDate, item.startsAt, item.date)) ?? {};
+  const title = firstText(payload.title, payload.name, event.title, event.name, jsonLd.name);
+  const description = stripHtml(firstText(payload.description, payload.summary, event.description, jsonLd.description));
+  const visibleText = [title, description, JSON.stringify(payload)].join(" ").replace(/\s+/g, " ");
+  const dateTime = firstDate(session.dateTime, session.startDate, session.startsAt, session.date, payload.startDate, payload.date, event.startDate, event.date, jsonLd.startDate, parsePortugueseEventDate(description), visibleText);
+  const placeName = firstText(place.name, place.title, payload.placeName, payload.venueName, event.locationName, jsonLd.location && asRecord(jsonLd.location).name);
+  const city = firstText(place.city, placeAddress.city, placeAddress.addressLocality, payload.city, event.city, jsonLd.location && asRecord(jsonLd.location).address && asRecord(asRecord(jsonLd.location).address).addressLocality)
+    || (/guaruj[aá]/i.test(`${title} ${description} ${placeName}`) ? "Guarujá" : /santos/i.test(`${title} ${description} ${placeName}`) ? "Santos" : "");
+  const jsonLdLocation = asRecord(jsonLd.location);
+  const jsonLdAddress = asRecord(jsonLdLocation.address);
+  const street = firstText(place.street, place.address, placeAddress.street, placeAddress.streetAddress, payload.address, event.address, jsonLdAddress.streetAddress);
+  const state = firstText(place.state, placeAddress.state, placeAddress.addressRegion, jsonLdAddress.addressRegion);
+  const address = [street, city, state].filter(Boolean).join(", ");
+  const poster = asRecord(payload.poster ?? payload.banner ?? event.poster ?? event.banner);
+  const imageUrl = [poster.xLarge, poster.large, poster.medium, poster.small, payload.ogImage, payload.image, jsonLd.image].find(value => typeof value === "string" && /^https?:\/\//i.test(value)) as string | undefined ?? "";
+  const coordinates = asRecord(place.location ?? placeAddress.location ?? location);
+  const latitude = firstText(coordinates.lat, coordinates.latitude);
+  const longitude = firstText(coordinates.lon, coordinates.lng, coordinates.longitude);
+  const purchaseUrl = firstText(payload.externalLink, payload.ticketUrl, event.url) || url;
+  if (!title || !dateTime || !placeName) return undefined;
+  return { title, summary: description, eventDate: dateTime, locationName: placeName, address, city, category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: purchaseUrl, imageUrl, latitude, longitude };
 }
 
 export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCacheStore = { read: getIngestionPayloadCache, write: saveIngestionPayloadCache }, options: { dryRun?: boolean; signal?: AbortSignal } = {}) {
@@ -940,25 +1006,11 @@ export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCac
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
       },
     }, getIngresseFetchTimeoutMs(), 2, options.signal);
-    const place = payload.place && typeof payload.place === "object" ? payload.place as Record<string, unknown> : {};
-    const session = Array.isArray(payload.sessions) && payload.sessions[0] && typeof payload.sessions[0] === "object" ? payload.sessions[0] as Record<string, unknown> : {};
-    const location = place.location && typeof place.location === "object" ? place.location as Record<string, unknown> : {};
-    const title = typeof payload.title === "string" ? payload.title : "";
-    const description = typeof payload.description === "string" ? stripHtml(payload.description) : "";
-    const placeName = typeof place.name === "string" ? place.name : "";
-    const city = typeof place.city === "string" ? place.city : "";
-    const address = [place.street, city, place.state].filter((value): value is string => typeof value === "string" && value.trim().length > 0).join(", ");
-    const dateTime = typeof session.dateTime === "string" ? session.dateTime : "";
-    const poster = payload.poster && typeof payload.poster === "object" ? payload.poster as Record<string, unknown> : {};
-    const imageUrl = [poster.large, poster.medium, poster.small].find((value): value is string => typeof value === "string" && value.startsWith("http")) ?? "";
-    const latitude = typeof location.lat === "number" ? String(location.lat) : "";
-    const longitude = typeof location.lon === "number" ? String(location.lon) : "";
-    const purchaseUrl = typeof payload.externalLink === "string" && /^https:\/\//i.test(payload.externalLink) ? payload.externalLink : url;
-    const text = [title, description, placeName, address, city, dateTime].filter(Boolean).join(" ");
-    if (!title || !dateTime || !placeName) throw createFetchError(`API pública do Ingresse sem dados essenciais para ${url}`);
-    const structured = { title, summary: description, eventDate: dateTime, locationName: placeName, address, city, category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: purchaseUrl, imageUrl, latitude, longitude };
-    if (!options.dryRun) await cacheStore.write({ cacheKey: ingresseCacheKey(url), sourceKey: "public:ingresse", sourceUrl: url, payload: structured, latitude, longitude }).catch(error => console.warn("[Ingestion cache] Could not save Ingresse payload:", sanitizeFetchFailure(error).message));
-    return { url, html: "", text: text.slice(0, 16_000), imageUrl, structured };
+    const structured = parseIngresseEventPayload(payload, url);
+    if (!structured) throw createFetchError(`API pública do Ingresse sem dados essenciais para ${url}`);
+    const text = [structured.title, structured.summary, structured.locationName, structured.address, structured.city, structured.eventDate].filter(Boolean).join(" ");
+    if (!options.dryRun) await cacheStore.write({ cacheKey: ingresseCacheKey(url), sourceKey: "public:ingresse", sourceUrl: url, payload: structured, latitude: structured.latitude, longitude: structured.longitude }).catch(error => console.warn("[Ingestion cache] Could not save Ingresse payload:", sanitizeFetchFailure(error).message));
+    return { url, html: "", text: text.slice(0, 16_000), imageUrl: structured.imageUrl, structured };
   } catch (error) {
     const failure = sanitizeFetchFailure(error);
     // Um 403 indica bloqueio explícito do provedor; não reutilizamos cache potencialmente obsoleto.
@@ -1043,7 +1095,7 @@ async function guardedFetchPublicPage(url: string, options: { dryRun?: boolean; 
 }
 
 const PUBLIC_FETCH_TIMEOUT_MS = 12_000;
-export const ARTICKET_FETCH_TIMEOUT_MS = 30_000;
+export const ARTICKET_FETCH_TIMEOUT_MS = 12_000;
 export const SYMPLA_FETCH_TIMEOUT_MS = 20_000;
 function publicFetchTimeoutMs(url: string) {
   const sourceKey = publicSourceKey(url);
@@ -1108,7 +1160,7 @@ function buildPreviewPublicMockResult(sourceKey: string, candidateCount: number,
     previewMock: true,
     filteredByReason: { fetchFailed: 0, outsideTargetVenue: 0, invalidStructuredEvent: 0, pastEvent: 0, duplicate: 0 },
     filteredSourceUrls: [],
-    sourceReports: [{ sourceKey, read: 3, filtered: 0, persistable: dryRun ? 3 : 0, added: 0, updated: 0, ignored: 0, duplicates: 0, errors: [], durationMs, medianDurationMs: durationMs, p95DurationMs: durationMs, rejectionReasons: { fetchFailed: 0, outsideTargetVenue: 0, invalidStructuredEvent: 0, duplicate: 0, pastEvent: 0 } }],
+    sourceReports: [{ sourceKey, read: 3, filtered: 0, persistable: dryRun ? 3 : 0, added: 0, updated: 0, ignored: 0, duplicates: 0, errors: [], durationMs, medianDurationMs: durationMs, p95DurationMs: durationMs, regionalFiltered: 0, regionalProcessed: 0, rejectionReasons: { fetchFailed: 0, outsideTargetVenue: 0, invalidStructuredEvent: 0, duplicate: 0, pastEvent: 0 } }],
   };
 }
 
@@ -1234,8 +1286,16 @@ async function discoverCandidatePages(options: IngestionPipelineOptions = {}, ac
   const bases = options.sourceKey
     ? configuredBases.filter(url => options.sourceKey === "public" || publicSourceKey(url) === options.sourceKey)
     : configuredBases;
-  const crawlBases = bases.filter(url => !isIngresseCatalogRootUrl(url));
-  const discovered = new Set(crawlBases);
+  const sourceHints = await listIngestionSources().catch(() => []);
+  const sourceByUrl = new Map(sourceHints.map(source => [sanitizePublicSourceUrl(source.url), source]));
+  const directArticketCandidates = bases.filter(isArticketEventUrl).map(url => ({
+    url,
+    name: sourceByUrl.get(sanitizePublicSourceUrl(url))?.name,
+    text: sourceByUrl.get(sanitizePublicSourceUrl(url))?.sourceKey,
+  }));
+  const regionalArticketCandidates = filterArticketRegionalCandidates(directArticketCandidates, activeAliases);
+  const crawlBases = bases.filter(url => !isIngresseCatalogRootUrl(url) && !isArticketEventUrl(url));
+  const discovered = new Set([...crawlBases, ...regionalArticketCandidates.regional.map(candidate => candidate.url)]);
   const basePages = await fetchWithConcurrency(crawlBases, url => guardedFetchPublicPage(url, options), PUBLIC_FETCH_CONCURRENCY);
   for (let index = 0; index < basePages.length; index += 1) {
     const result = basePages[index];
@@ -1258,14 +1318,14 @@ async function discoverCandidatePages(options: IngestionPipelineOptions = {}, ac
       for (const event of catalog) if (event.id) discovered.add(blackPassEventUrl(event.id));
     }
   }
-  return Array.from(discovered).filter(url => {
+  return { urls: Array.from(discovered).filter(url => {
     try {
       const host = new URL(url).hostname;
       const belongsToSource = !options.sourceKey || options.sourceKey === "public" || publicSourceKey(url) === options.sourceKey;
       const belongsToRequestedSource = !requestedSourceUrls || requestedSourceUrls.includes(sanitizePublicSourceUrl(url));
       return belongsToSource && belongsToRequestedSource && (!host.endsWith("zig.tickets") || url !== "https://zig.tickets/pt-BR");
     } catch { return false; }
-  }).slice(0, 120);
+  }).slice(0, 120), articketRegionalFiltered: regionalArticketCandidates.filtered.length };
 }
 
 export type IngestionSourceReport = {
@@ -1281,6 +1341,8 @@ export type IngestionSourceReport = {
   durationMs: number;
   medianDurationMs: number;
   p95DurationMs: number;
+  regionalFiltered?: number;
+  regionalProcessed?: number;
   rejectionReasons: { fetchFailed: number; outsideTargetVenue: number; invalidStructuredEvent: number; duplicate: number; pastEvent: number };
 };
 
@@ -1293,6 +1355,7 @@ type PublicSourceReportInput = {
   rejectedEvents?: Array<{ sourceKey: string; reason: "invalidStructuredEvent" | "pastEvent" }>;
   duplicateSourceKeys?: string[];
   sourceOutcomes?: Array<{ sourceKey: string; created: boolean; updated: boolean }>;
+  regionalFiltered?: number;
   matchesTargetVenue?: (value: string) => boolean;
 };
 
@@ -1321,6 +1384,8 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
       durationMs: 0,
       medianDurationMs: 0,
       p95DurationMs: 0,
+      regionalFiltered: sourceKey === "public:articket" ? input.regionalFiltered ?? 0 : 0,
+      regionalProcessed: 0,
       latencySamples: [],
       rejectionReasons: { fetchFailed: 0, outsideTargetVenue: 0, invalidStructuredEvent: 0, duplicate: 0, pastEvent: 0 },
     };
@@ -1380,6 +1445,7 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
   }
   return Array.from(reports.values()).map(report => ({
     ...report,
+    regionalProcessed: report.sourceKey === "public:articket" ? report.read : 0,
     ignored: report.filtered,
     medianDurationMs: percentile(report.latencySamples, 50),
     p95DurationMs: percentile(report.latencySamples, 95),
@@ -1396,8 +1462,9 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
     const sourceKey = sourceUrl ? publicSourceKey(sourceUrl) : options.sourceKey;
     return matchesPublicTarget(value, sourceKey, activeAliases, activeBrands);
   };
-  const candidateUrls = await discoverCandidatePages(options, activeAliases);
-  if (candidateUrls.length === 0) return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: true, reason: "Nenhuma fonte de ingestão configurada", sourceReports: [] as IngestionSourceReport[] };
+  const discovery = await discoverCandidatePages(options, activeAliases);
+  const candidateUrls = discovery.urls;
+  if (candidateUrls.length === 0) return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: true, reason: "Nenhuma fonte de ingestão configurada", sourceReports: [] as IngestionSourceReport[], articketRegionalFiltered: discovery.articketRegionalFiltered };
   const pages = await fetchWithConcurrency(candidateUrls, url => guardedFetchPublicPage(url, options), PUBLIC_FETCH_CONCURRENCY);
   const fulfilledPages = pages
     .filter((result): result is PromiseFulfilledResult<PublicPage> => result.status === "fulfilled")
@@ -1436,7 +1503,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
         dryRun
       );
     }
-    return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: false, discovered: candidateUrls.length, matchedSources: 0, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, reason: "Nenhum evento dos locais-alvo encontrado nas fontes públicas", sourceReports: buildPublicSourceReports({ candidateUrls, pages, matchesTargetVenue }) };
+    return { imported: 0, persisted: 0, dryRun, dryRunAcceptedEvents: 0, read: 0, filtered: 0, duplicates: 0, missingCoordinates: 0, outOfBoundsCoordinates: 0, skipped: false, discovered: candidateUrls.length, matchedSources: 0, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, reason: "Nenhum evento dos locais-alvo encontrado nas fontes públicas", sourceReports: buildPublicSourceReports({ candidateUrls, pages, regionalFiltered: discovery.articketRegionalFiltered, matchesTargetVenue }), articketRegionalFiltered: discovery.articketRegionalFiltered };
   }
 
   const apiStructuredEvents = sourcePages.flatMap(page => {
@@ -1537,10 +1604,10 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
     }
     imported += 1;
   }
-  const sourceReports = buildPublicSourceReports({ candidateUrls, pages, payloadEvents: payload.events, acceptedEvents, rejectedEvents, duplicateSourceKeys, sourceOutcomes, matchesTargetVenue });
+  const sourceReports = buildPublicSourceReports({ candidateUrls, pages, payloadEvents: payload.events, acceptedEvents, rejectedEvents, duplicateSourceKeys, sourceOutcomes, regionalFiltered: discovery.articketRegionalFiltered, matchesTargetVenue });
   const persistedCount = simulation ? 0 : added + updated;
   const contentFiltered = filteredByReason.invalidStructuredEvent + filteredByReason.pastEvent;
   const read = simulation ? 0 : persistedCount + contentFiltered + duplicates;
   const ignored = contentFiltered + duplicates;
-  return { imported, persisted: persistedCount, added: simulation ? 0 : added, updated: simulation ? 0 : updated, ignored, dryRun: simulation, dryRunAcceptedEvents, read, filtered: contentFiltered, duplicates, missingCoordinates, outOfBoundsCoordinates, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, sourceReports };
+  return { imported, persisted: persistedCount, added: simulation ? 0 : added, updated: simulation ? 0 : updated, ignored, dryRun: simulation, dryRunAcceptedEvents, read, filtered: contentFiltered, duplicates, missingCoordinates, outOfBoundsCoordinates, skipped: false, discovered: candidateUrls.length, matchedSources: sourcePages.length, fallbackUsed: fallbackPages.length, fetchFailures, filteredByReason, filteredSourceUrls, sourceReports, articketRegionalFiltered: discovery.articketRegionalFiltered };
 }

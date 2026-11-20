@@ -9,8 +9,9 @@ function trpcPayload(data: unknown) {
 const venueAssets = [
   "goat.webp", "curvao.webp", "guaruja-golf-club.webp", "almare.webp", "lucky-scope.jpg", "praio.jpg", "praia-verde-beach-club.jpg", "flamingos.webp",
   "vallum-garden.webp", "bluemed.webp", "parquevalongo.webp", "casa412.webp", "laroc.webp",
-  "obeco.webp", "dolores.webp", "projac.webp", "meulugar.webp", "mobydick.webp", "arena-club.webp", "yellow-house.webp",
+  "obeco.webp", "projac.webp", "meu-lugar.jpg", "mobydick.webp", "arena-club.webp", "yellow-house.jpg",
 ];
+const venueAssetPaths = [...venueAssets.slice(0, 11).map(name => `/venues/${name}`), "/images/venues/dolores.jpg", ...venueAssets.slice(11).map(name => name === "mobydick.webp" ? "/images/venues/moby-dick.jpg" : `/venues/${name}`)];
 
 async function prepareHome(page: Page) {
   await page.addInitScript(() => localStorage.setItem("weekendvibes-cookie-consent", "rejected"));
@@ -18,6 +19,18 @@ async function prepareHome(page: Page) {
     const procedures = (new URL(route.request().url()).pathname.split("/").pop() ?? "").split(",").filter(Boolean);
     const results = procedures.map(procedure => trpcPayload(procedure === "venues.list" ? [] : procedure === "auth.me" ? null : []));
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(results.length > 1 ? results : results[0]) });
+  });
+}
+
+async function prepareEvent(page: Page) {
+  await page.addInitScript(() => {
+    localStorage.setItem("weekendvibes-cookie-consent", "rejected");
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (text: string) => { (window as typeof window & { __copiedEventLink?: string }).__copiedEventLink = text; } } });
+  });
+  await page.route("**/api/trpc/**", async route => {
+    const procedure = (new URL(route.request().url()).pathname.split("/").pop() ?? "").split(",")[0];
+    const event = { id: 41, slug: "festa-teste", title: "Festa Teste", eventDate: "2026-11-12T23:00:00.000Z", endDate: null, locationName: "Casa Teste", city: "Santos", address: "Santos", category: "show", genre: "funk", description: "Uma noite especial em Santos.", imageUrl: null, sourceUrl: null, ticketStatus: "available", priceCents: 5000, priceNote: null };
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(trpcPayload(procedure === "events.byId" ? event : procedure === "auth.me" ? null : [])) });
   });
 }
 
@@ -46,6 +59,18 @@ test("rotas API são network-only e nunca gravadas no CacheStorage", async ({ pa
   }, apiUrl);
   expect(offlineResult).toBe("rejected");
   await page.context().setOffline(false);
+});
+
+test("carrega a rota canônica e copia o link pelo botão Compartilhar", async ({ page }) => {
+  await prepareEvent(page);
+  await page.goto("/evento/41");
+  await expect(page).toHaveURL(/\/evento\/41$/);
+  await expect(page.getByRole("heading", { name: "Festa Teste" })).toBeVisible();
+  const shareButton = page.getByTestId("event-detail-share");
+  await expect(shareButton).toContainText("Compartilhar");
+  await shareButton.click();
+  await expect(page.getByRole("status")).toContainText("Link do evento copiado!");
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { __copiedEventLink?: string }).__copiedEventLink)).toMatch(/\/evento\/41$/);
 });
 
 test("mostra o estado 'Sem conexão' quando o navegador fica offline", async ({ page, context }) => {
@@ -85,7 +110,10 @@ test("renderiza os 20 venues oficiais com imagens válidas e sem imagens quebrad
       return { src: new URL(img.currentSrc || img.src).pathname, complete: img.complete, width: img.naturalWidth };
     }));
   }
-  const venuePaths = venueAssets.map(name => name === "curvao.webp" ? "/images/venues/curvao.jpg" : name === "lucky-scope.jpg" ? "/images/venues/lucky-scope.jpg" : name === "praio.jpg" ? "/images/venues/praio.jpg" : name === "praia-verde-beach-club.jpg" ? "/images/venues/praia-verde-beach-club.jpg" : `/venues/${name}`);
+  const venuePaths = venueAssets.flatMap(name => {
+    const path = name === "curvao.webp" ? "/images/venues/curvao.jpg" : name === "lucky-scope.jpg" ? "/images/venues/lucky-scope.jpg" : name === "praio.jpg" ? "/images/venues/praio.jpg" : name === "praia-verde-beach-club.jpg" ? "/images/venues/praia-verde-beach-club.jpg" : name === "yellow-house.jpg" ? "/images/venues/yellow-house.jpg" : name === "meu-lugar.jpg" ? "/images/venues/meu-lugar.jpg" : name === "mobydick.webp" ? "/images/venues/moby-dick.jpg" : `/venues/${name}`;
+    return name === "obeco.webp" ? [path, "/images/venues/dolores.jpg"] : [path];
+  });
   expect(imageResults.map(image => image.src)).toEqual(venuePaths);
   for (const image of imageResults) {
     expect(image.complete, `${image.src} deve terminar o carregamento`).toBe(true);

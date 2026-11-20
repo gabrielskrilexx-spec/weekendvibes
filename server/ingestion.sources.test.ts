@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { discoverArticketEventLinks, filterDisabledPublicSourceUrls, getConfiguredSourceUrls, isIngresseCatalogRootUrl } from "./ingestion";
+import { discoverArticketEventLinks, filterDisabledPublicSourceUrls, getConfiguredSourceUrls, isIngresseCatalogRootUrl, isIngresseEventUrl, parseIngresseEventPayload } from "./ingestion";
 
 describe("ingestion source configuration", () => {
   it("excludes URLs whose persisted public source is disabled", () => {
@@ -57,6 +57,31 @@ describe("public event discovery", () => {
   it("identifica a raiz HTML da Ingresse para usar somente o adaptador JSON nos eventos", () => {
     expect(isIngresseCatalogRootUrl("https://www.ingresse.com/")).toBe(true);
     expect(isIngresseCatalogRootUrl("https://www.ingresse.com/laroc-guaruja-apresenta-meduza/")).toBe(false);
+  });
+
+  it("não trata checkout cart.ingresse.com como página de evento", () => {
+    expect(isIngresseEventUrl("https://cart.ingresse.com/0d06f793-7eed-4f2e-973f-2e77a2e3e6dd/tickets?coupon=ISAVIEIRA")).toBe(false);
+    expect(isIngresseEventUrl("https://www.ingresse.com/laroc-guaruja-apresenta-reveillon-2027-feat-mau-p/")).toBe(true);
+  });
+
+  it("usa dates, venue.address e banner quando sessions/place não estão no nível esperado", () => {
+    const structured = parseIngresseEventPayload({
+      name: "Réveillon no Laroc",
+      dates: [{ startDate: "2026-12-31T23:00:00-03:00" }],
+      venue: { name: "Laroc Club Guarujá", address: { streetAddress: "Rodovia Ariovaldo, s/n", addressLocality: "Guarujá", addressRegion: "SP" } },
+      banner: { xLarge: "https://cdn.example/laroc-xl.jpg" },
+    }, "https://www.ingresse.com/reveillon-no-laroc/");
+    expect(structured).toMatchObject({ title: "Réveillon no Laroc", eventDate: "2026-12-31T23:00:00-03:00", locationName: "Laroc Club Guarujá", city: "Guarujá", imageUrl: "https://cdn.example/laroc-xl.jpg" });
+  });
+
+  it("aceita data por extenso e local/cidade em JSON-LD aninhado", () => {
+    const structured = parseIngresseEventPayload({
+      title: "Baile no Moby Dick",
+      description: "Dia 21 de novembro de 2026 às 23:00. Santos.",
+      jsonLd: { name: "Baile no Moby Dick", startDate: "2026-11-21T23:00:00-03:00", location: { name: "Moby Dick", address: { addressLocality: "Santos", streetAddress: "Av. Vicente de Carvalho, 30" } } },
+      image: "https://cdn.example/moby.jpg",
+    }, "https://www.ingresse.com/baile-no-moby-dick/");
+    expect(structured).toMatchObject({ eventDate: "2026-11-21T23:00:00-03:00", locationName: "Moby Dick", city: "Santos", address: "Av. Vicente de Carvalho, 30, Santos", imageUrl: "https://cdn.example/moby.jpg" });
   });
 
   it("maps the public Ingresse API payload into a structured event page", async () => {

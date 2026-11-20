@@ -17,37 +17,55 @@ function isAbortError(error: unknown) {
 }
 
 const pendingBodyTimeouts = new WeakMap<Response, { cleanup: () => void; didTimeout: () => boolean; timeoutMs: number }>();
+const EXTERNAL_FETCH_MAX_ATTEMPTS = 2;
+const EXTERNAL_FETCH_RETRY_DELAY_MS = 150;
+
+function sleep(delayMs: number) {
+  return new Promise<void>(resolve => setTimeout(resolve, delayMs));
+}
+
+export function shouldRetryExternalFetch(error: unknown, externalSignal?: AbortSignal) {
+  if (externalSignal?.aborted) return false;
+  return error instanceof ExternalFetchError && (error.code === "NETWORK_ERROR" || error.code === "TIMEOUT");
+}
 
 export async function fetchExternal(url: string, init: RequestInit = {}, timeoutMs = 12_000, allowHttpError = false, externalSignal?: AbortSignal): Promise<Response> {
-  const controller = new AbortController();
-  let timedOut = false;
-  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
-  const abortFromCaller = () => controller.abort();
-  if (externalSignal?.aborted) controller.abort();
-  else externalSignal?.addEventListener("abort", abortFromCaller, { once: true });
-  const cleanup = () => {
-    clearTimeout(timer);
-    externalSignal?.removeEventListener("abort", abortFromCaller);
-  };
   const headers = new Headers(init.headers);
   if (!headers.has("user-agent")) headers.set("user-agent", DEFAULT_USER_AGENT);
   if (!headers.has("accept")) headers.set("accept", "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.1");
 
-  try {
-    const response = await fetch(url, { ...init, headers, signal: controller.signal });
-    if (!response.ok && !allowHttpError) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < EXTERNAL_FETCH_MAX_ATTEMPTS; attempt += 1) {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+    const abortFromCaller = () => controller.abort();
+    if (externalSignal?.aborted) controller.abort();
+    else externalSignal?.addEventListener("abort", abortFromCaller, { once: true });
+    const cleanup = () => {
+      clearTimeout(timer);
+      externalSignal?.removeEventListener("abort", abortFromCaller);
+    };
+
+    try {
+      const response = await fetch(url, { ...init, headers, signal: controller.signal });
+      if (!response.ok && !allowHttpError) {
+        cleanup();
+        throw new ExternalFetchError(`Fonte externa respondeu HTTP ${response.status}`, "HTTP_ERROR", response.status);
+      }
+      if (response.body) pendingBodyTimeouts.set(response, { cleanup, didTimeout: () => timedOut, timeoutMs });
+      else cleanup();
+      return response;
+    } catch (error) {
       cleanup();
-      throw new ExternalFetchError(`Fonte externa respondeu HTTP ${response.status}`, "HTTP_ERROR", response.status);
+      if (error instanceof ExternalFetchError) lastError = error;
+      else if (isAbortError(error)) lastError = new ExternalFetchError(`Tempo limite de ${timeoutMs} ms excedido na fonte externa`, "TIMEOUT");
+      else lastError = new ExternalFetchError("Não foi possível conectar à fonte externa", "NETWORK_ERROR");
+      if (!shouldRetryExternalFetch(lastError, externalSignal) || attempt === EXTERNAL_FETCH_MAX_ATTEMPTS - 1) throw lastError;
+      await sleep(EXTERNAL_FETCH_RETRY_DELAY_MS);
     }
-    if (response.body) pendingBodyTimeouts.set(response, { cleanup, didTimeout: () => timedOut, timeoutMs });
-    else cleanup();
-    return response;
-  } catch (error) {
-    cleanup();
-    if (error instanceof ExternalFetchError) throw error;
-    if (isAbortError(error)) throw new ExternalFetchError(`Tempo limite de ${timeoutMs} ms excedido na fonte externa`, "TIMEOUT");
-    throw new ExternalFetchError("Não foi possível conectar à fonte externa", "NETWORK_ERROR");
   }
+  throw lastError instanceof Error ? lastError : new ExternalFetchError("Não foi possível conectar à fonte externa", "NETWORK_ERROR");
 }
 
 export async function readExternalBody(response: Response) {
