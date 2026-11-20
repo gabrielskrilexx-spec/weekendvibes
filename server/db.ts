@@ -79,12 +79,22 @@ export async function listUpcomingWeekendEvents(now = new Date()) {
     .orderBy(asc(events.eventDate)).limit(20);
 }
 
+export const REMINDER_LOOKBACK_HOURS = 36;
+
+export function getDueEventReminderWindow(now = new Date()) {
+  return {
+    from: new Date(now.getTime() - REMINDER_LOOKBACK_HOURS * 60 * 60 * 1000),
+    to: now,
+  };
+}
+
 export async function listDueEventReminders(now = new Date()) {
   const db = await getDb();
   if (!db) throw new Error("database_unavailable");
+  const window = getDueEventReminderWindow(now);
   return db.select({ id: eventReminders.id, userId: eventReminders.userId, eventId: eventReminders.eventId, title: events.title, eventDate: events.eventDate })
     .from(eventReminders).innerJoin(events, eq(events.id, eventReminders.eventId))
-    .where(and(eq(eventReminders.isActive, 1), lte(eventReminders.remindAt, now), gte(eventReminders.remindAt, new Date(now.getTime() - 60 * 60 * 1000)), eq(events.isPublished, 1)))
+    .where(and(eq(eventReminders.isActive, 1), lte(eventReminders.remindAt, window.to), gte(eventReminders.remindAt, window.from), eq(events.isPublished, 1)))
     .limit(100);
 }
 
