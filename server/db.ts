@@ -79,12 +79,13 @@ export async function listUpcomingWeekendEvents(now = new Date()) {
     .orderBy(asc(events.eventDate)).limit(20);
 }
 
-export const REMINDER_LOOKBACK_HOURS = 36;
+export const REMINDER_MIN_LEAD_HOURS = 1;
+export const REMINDER_MAX_LEAD_HOURS = 38;
 
 export function getDueEventReminderWindow(now = new Date()) {
   return {
-    from: new Date(now.getTime() - REMINDER_LOOKBACK_HOURS * 60 * 60 * 1000),
-    to: now,
+    from: new Date(now.getTime() + REMINDER_MIN_LEAD_HOURS * 60 * 60 * 1000),
+    to: new Date(now.getTime() + REMINDER_MAX_LEAD_HOURS * 60 * 60 * 1000),
   };
 }
 
@@ -94,7 +95,7 @@ export async function listDueEventReminders(now = new Date()) {
   const window = getDueEventReminderWindow(now);
   return db.select({ id: eventReminders.id, userId: eventReminders.userId, eventId: eventReminders.eventId, title: events.title, eventDate: events.eventDate })
     .from(eventReminders).innerJoin(events, eq(events.id, eventReminders.eventId))
-    .where(and(eq(eventReminders.isActive, 1), lte(eventReminders.remindAt, window.to), gte(eventReminders.remindAt, window.from), eq(events.isPublished, 1)))
+    .where(and(eq(eventReminders.isActive, 1), gte(events.eventDate, window.from), lte(events.eventDate, window.to), eq(events.isPublished, 1)))
     .limit(100);
 }
 

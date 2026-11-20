@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { getDueEventReminderWindow, REMINDER_LOOKBACK_HOURS } from "./db";
+import { getDueEventReminderWindow, REMINDER_MAX_LEAD_HOURS, REMINDER_MIN_LEAD_HOURS } from "./db";
 
 type VercelCron = { path: string; schedule: string };
 
@@ -21,19 +21,20 @@ describe("Vercel Hobby cron schedule", () => {
     }
 
     const reminderCron = config.crons.find(cron => cron.path === "/api/scheduled/push/reminders");
-    expect(reminderCron?.schedule).toBe("0 20 * * *");
+    expect(reminderCron?.schedule).toBe("0 14 * * *");
     expect(config.crons.filter(cron => cron.path === "/api/scheduled/push/weekend").map(cron => cron.schedule)).toEqual([
-      "0 21 * * 4",
-      "0 18 * * 5",
+      "0 14 * * 4",
+      "0 14 * * 5",
     ]);
   });
 
-  it("calcula uma janela idempotente de 36 horas para lembretes diários", () => {
-    const now = new Date("2026-11-20T20:00:00.000Z");
+  it("calcula uma janela idempotente de 1 a 38 horas para lembretes matinais", () => {
+    const now = new Date("2026-11-20T14:00:00.000Z");
     const window = getDueEventReminderWindow(now);
 
-    expect(REMINDER_LOOKBACK_HOURS).toBe(36);
-    expect(window.to).toEqual(now);
-    expect(window.from.toISOString()).toBe("2026-11-19T08:00:00.000Z");
+    expect(REMINDER_MIN_LEAD_HOURS).toBe(1);
+    expect(REMINDER_MAX_LEAD_HOURS).toBe(38);
+    expect(window.from.toISOString()).toBe("2026-11-20T15:00:00.000Z");
+    expect(window.to.toISOString()).toBe("2026-11-22T04:00:00.000Z");
   });
 });
