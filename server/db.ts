@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { Event, IngestionRun, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots, ingestionLeases, adminMagicLinks, monitoredBrands, MonitoredBrand, pushSubscriptions } from "../drizzle/schema";
+import { Event, IngestionRun, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots, ingestionLeases, adminMagicLinks, monitoredBrands, MonitoredBrand, pushSubscriptions, engagementEvents } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 import { buildDailyTelemetrySeries, calculateSystemHealthStatus, normalizeObservabilityPeriod, summarizeTelemetryTrend } from "./observability";
@@ -13,6 +13,7 @@ import { sanitizeEventText } from "../shared/event-text";
 import { resolveVenueCoverFallback } from "../shared/event-media";
 import { selectRelatedEvents } from "../shared/related-events";
 import { persistRemoteImage } from "./media-persistence";
+import { canonicalVenueSlug, dedupeVenueAliases, normalizeVenueValue, type IndexableVenue } from "../shared/venue-slugs";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -525,11 +526,28 @@ export async function listActiveVenueCatalog(dbOverride?: Awaited<ReturnType<typ
   return OFFICIAL_VENUE_CATALOG.flatMap(config => {
     const matched = rows.filter(row => config.match.includes(normalizeAlias(row.alias)) || config.match.includes(normalizeAlias(row.canonicalName)));
     if (matched.length === 0) return [];
-    const aliases = Array.from(new Set(matched.flatMap(row => [row.alias, row.canonicalName])));
+    const aliases = dedupeVenueAliases(matched.flatMap(row => [row.alias, row.canonicalName]));
     return [{ slug: config.slug, canonicalName: config.canonicalName, city: config.city, aliases, query: config.query, imageUrl: config.imageUrl, description: config.description }];
   });
 }
 
+export type VenuePageData = IndexableVenue & { neighborhood: string | null; events: Event[] };
+function venueCatalogForPages(): IndexableVenue[] {
+  return OFFICIAL_VENUE_CATALOG.map(config => ({ slug: config.slug, canonicalName: config.canonicalName, city: config.city as "Santos" | "Guarujá", aliases: dedupeVenueAliases(config.match), imageUrl: config.imageUrl, description: config.description }));
+}
+function eventMatchesVenue(event: Pick<Event, "title" | "locationName" | "address" | "formattedAddress" | "neighborhood" | "city">, venue: IndexableVenue) {
+  const haystack = normalizeVenueValue([event.title, event.locationName, event.address, event.formattedAddress, event.neighborhood, event.city].filter(Boolean).join(" "));
+  return venue.city === event.city && [venue.canonicalName, ...venue.aliases].some(alias => haystack.includes(normalizeVenueValue(alias)));
+}
+export async function getVenuePageData(slug: string, dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<VenuePageData | undefined> {
+  const canonical = canonicalVenueSlug(slug);
+  const venue = venueCatalogForPages().find(item => item.slug === canonical || item.aliases.some(alias => canonicalVenueSlug(alias) === canonical));
+  if (!venue) return undefined;
+  const db = dbOverride ?? await getDb();
+  const upcoming = db ? await db.select().from(events).where(and(eq(events.isPublished, 1), eq(events.isArchived, 0), gte(events.eventDate, new Date()), eq(events.city, venue.city))).orderBy(asc(events.eventDate)) : [];
+  return { ...venue, neighborhood: null, events: upcoming.filter(event => eventMatchesVenue(event, venue)) };
+}
+export function listIndexableVenueCatalogForTest() { return venueCatalogForPages(); }
 export async function listActiveMonitoredBrands(dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<MonitoredBrand[]> {
   const db = dbOverride ?? await getDb();
   if (!db) return [];
@@ -1234,6 +1252,21 @@ export async function saveIngestionPayloadCache(input: { cacheKey: string; sourc
   await upsert(db.insert(ingestionPayloadCache).values({ cacheKey: input.cacheKey.slice(0, 255), sourceKey: input.sourceKey.slice(0, 120), sourceUrl: input.sourceUrl.slice(0, 1000), payload: serialized, latitude: input.latitude?.slice(0, 32) ?? null, longitude: input.longitude?.slice(0, 32) ?? null, lastGoodAt: new Date() }), ingestionPayloadCache.cacheKey, { sourceKey: input.sourceKey.slice(0, 120), sourceUrl: input.sourceUrl.slice(0, 1000), payload: serialized, latitude: input.latitude?.slice(0, 32) ?? null, longitude: input.longitude?.slice(0, 32) ?? null, lastGoodAt: new Date(), updatedAt: new Date() });
 }
 
+export type EngagementInput = { eventType: "event_share_clicked" | "ticket_cta_clicked"; eventId?: number; venueSlug?: string; channel?: "native" | "clipboard"; source?: "card" | "detail" | "mobile_bar" };
+export async function recordEngagementEvent(input: EngagementInput, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return false;
+  await db.insert(engagementEvents).values({ eventType: input.eventType, eventId: input.eventId ?? null, venueSlug: input.venueSlug?.slice(0, 180) ?? null, channel: input.channel ?? null, source: input.source ?? null });
+  return true;
+}
+export async function listEngagementRanking(days = 7, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) return { events: [], venues: [] };
+  const since = new Date(Date.now() - Math.max(1, Math.min(days, 14)) * 86400000);
+  const rows = await db.select().from(engagementEvents).where(gte(engagementEvents.createdAt, since));
+  const count = (key: "eventId" | "venueSlug") => Array.from(rows.reduce((map, row) => { const value = row[key]; if (value == null) return map; map.set(String(value), (map.get(String(value)) ?? 0) + 1); return map; }, new Map<string, number>()).entries()).sort((a,b) => b[1]-a[1]).slice(0, 10).map(([id, total]) => ({ id, total }));
+  return { events: count("eventId"), venues: count("venueSlug") };
+}
 export function eventIdentityKey(sourceUrl: string, eventDate: Date | string) {
   return `${sourceUrl}|${new Date(eventDate).toISOString().slice(0, 10)}`;
 }

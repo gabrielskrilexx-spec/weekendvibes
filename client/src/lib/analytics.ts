@@ -1,6 +1,6 @@
-export type WebAnalyticsEvent = "page_view" | "pwa_install" | "push_enabled" | "push_disabled" | "offline_enter" | "offline_exit";
+export type WebAnalyticsEvent = "page_view" | "pwa_install" | "push_enabled" | "push_disabled" | "offline_enter" | "offline_exit" | "event_share_clicked" | "ticket_cta_clicked";
 
-const ALLOWED_EVENTS = new Set<WebAnalyticsEvent>(["page_view", "pwa_install", "push_enabled", "push_disabled", "offline_enter", "offline_exit"]);
+const ALLOWED_EVENTS = new Set<WebAnalyticsEvent>(["page_view", "pwa_install", "push_enabled", "push_disabled", "offline_enter", "offline_exit", "event_share_clicked", "ticket_cta_clicked"]);
 
 export function trackWebAnalytics(event: WebAnalyticsEvent, pathname?: string) {
   if (typeof window === "undefined" || !ALLOWED_EVENTS.has(event)) return;
@@ -11,7 +11,11 @@ export function trackWebAnalytics(event: WebAnalyticsEvent, pathname?: string) {
     const body = new Blob([payload], { type: "application/json" });
     if (navigator.sendBeacon?.("/api/analytics", body)) return;
     void fetch("/api/analytics", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => undefined);
-  } catch {
-    // Analytics is best-effort and must never block the user experience.
-  }
+  } catch { /* best effort */ }
+}
+
+export function trackEngagement(input: { eventType: "event_share_clicked" | "ticket_cta_clicked"; eventId?: number; venueSlug?: string; channel?: "native" | "clipboard"; source?: "card" | "detail" | "mobile_bar" }) {
+  if (typeof window === "undefined") return;
+  const payload = JSON.stringify({ event: input.eventType, path: window.location.pathname, ...input });
+  try { void fetch("/api/analytics", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => undefined); } catch { /* best effort */ }
 }

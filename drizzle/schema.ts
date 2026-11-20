@@ -553,3 +553,18 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
 
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type InsertPushSubscription = typeof pushSubscriptions.$inferInsert;
+
+export const engagementEvents = pgTable("engagementEvents", {
+  id: serial("id").primaryKey(),
+  eventType: varchar("eventType", { length: 64 }).notNull(),
+  eventId: integer("eventId"),
+  venueSlug: varchar("venueSlug", { length: 180 }),
+  channel: varchar("channel", { length: 32 }),
+  source: varchar("source", { length: 32 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => ({
+  createdAtIdx: index("engagement_events_created_at_idx").on(table.createdAt),
+  eventIdx: index("engagement_events_event_idx").on(table.eventId, table.eventType),
+  venueIdx: index("engagement_events_venue_idx").on(table.venueSlug, table.eventType),
+}));
+export type EngagementEvent = typeof engagementEvents.$inferSelect;

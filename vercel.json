@@ -58,6 +58,10 @@
       "destination": "/api"
     },
     {
+      "source": "/palcos/:slug",
+      "destination": "/api"
+    },
+    {
       "source": "/evento/:id",
       "destination": "/api"
     },

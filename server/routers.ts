@@ -49,6 +49,9 @@ import {
   listOperationalAlerts,
   getApifyDailyUsageStatus,
   setApifyDailyRequestLimit,
+  getVenuePageData,
+  recordEngagementEvent,
+  listEngagementRanking,
 } from "./db";
 import { invokeLLM } from "./_core/llm";
 import { isSandboxRestrictedError } from "./external-fetch";
@@ -1019,6 +1022,7 @@ export const appRouter = router({
     }),
   }),
   venues: router({
+    page: publicProcedure.input(z.object({ slug: z.string().trim().min(2).max(180).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/) })).query(async ({ input }) => normalizeJsonForTransport(await getVenuePageData(input.slug))),
     list: publicProcedure.query(async () =>
       normalizeJsonForTransport(await listActiveVenueCatalog())
     ),
@@ -1415,6 +1419,10 @@ export const appRouter = router({
           return throwSanitizedAdminMutationError(error, "Não foi possível reativar a fonte.");
         }
       }),
+  }),
+  engagement: router({
+    track: publicProcedure.input(z.object({ eventType: z.enum(["event_share_clicked", "ticket_cta_clicked"]), eventId: z.number().int().positive().optional(), venueSlug: z.string().trim().max(180).optional(), channel: z.enum(["native", "clipboard"]).optional(), source: z.enum(["card", "detail", "mobile_bar"]).optional() }).strict()).mutation(async ({ input }) => { void recordEngagementEvent(input); return { ok: true as const }; }),
+    ranking: adminOnly.input(z.object({ days: z.union([z.literal(7), z.literal(14)]).default(7) }).optional()).query(({ input }) => listEngagementRanking(input?.days ?? 7)),
   }),
   events: router({
     list: publicProcedure

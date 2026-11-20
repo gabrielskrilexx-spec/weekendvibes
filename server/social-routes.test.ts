@@ -5,7 +5,7 @@ import path from "node:path";
 import express from "express";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./db", () => ({ getEventById: vi.fn(), getEventBySlug: vi.fn(), listPublicEventsForSitemap: vi.fn() }));
+vi.mock("./db", () => ({ getEventById: vi.fn(), getEventBySlug: vi.fn(), listPublicEventsForSitemap: vi.fn(), getVenuePageData: vi.fn(), listIndexableVenueCatalogForTest: vi.fn(() => []) }));
 import { getEventById, getEventBySlug, listPublicEventsForSitemap } from "./db";
 import { registerSocialRoutes } from "./social-routes";
 

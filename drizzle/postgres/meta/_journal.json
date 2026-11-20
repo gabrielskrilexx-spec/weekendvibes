@@ -22,6 +22,13 @@
       "when": 1794582510803,
       "tag": "0002_push_subscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795202157890,
+      "tag": "0003_demonic_quicksilver",
+      "breakpoints": true
     }
   ]
 }

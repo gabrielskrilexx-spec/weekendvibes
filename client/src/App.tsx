@@ -16,6 +16,7 @@ import { trackWebAnalytics } from "@/lib/analytics";
 
 const EventDetail = lazy(() => import("@/pages/EventDetail"));
 const Admin = lazy(() => import("@/pages/Admin"));
+const VenuePage = lazy(() => import("@/pages/VenuePage"));
 
 function RouteLoading() {
   return (
@@ -36,6 +37,7 @@ function Router() {
         <Route path="/" component={Home} />
         <Route path="/agenda" component={Home} />
         <Route path="/palcos-da-baixada" component={Home} />
+        <Route path="/palcos/:slug" component={VenuePage} />
         <Route path="/evento/:id" component={EventDetail} />
         <Route path="/eventos/:slug" component={EventDetail} />
         <Route path="/admin" component={Admin} />

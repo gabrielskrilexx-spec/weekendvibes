@@ -1,6 +1,7 @@
 import type { Event } from "../drizzle/schema";
 import { resolveVenueCoverFallback } from "../shared/event-media";
 import { sanitizeEventText } from "../shared/event-text";
+import type { IndexableVenue } from "../shared/venue-slugs";
 
 export const DEFAULT_PUBLIC_ORIGIN = "https://weekendvibes-dh6w.vercel.app";
 
@@ -143,13 +144,18 @@ export function buildBreadcrumbJsonLd(event: Pick<Event, "slug" | "title" | "cit
   };
 }
 
+export function buildVenueCanonicalUrl(venue: Pick<IndexableVenue, "slug">, origin = DEFAULT_PUBLIC_ORIGIN) { return `${origin}/palcos/${encodeURIComponent(venue.slug)}`; }
+export function buildVenueJsonLd(venue: IndexableVenue, events: SeoEvent[], origin = DEFAULT_PUBLIC_ORIGIN) { return { "@context": "https://schema.org", "@type": "EntertainmentBusiness", name: venue.canonicalName, description: venue.description, image: [absolutePublicUrl(venue.imageUrl, origin)], address: { "@type": "PostalAddress", addressLocality: venue.city, addressRegion: "SP", addressCountry: "BR" }, url: buildVenueCanonicalUrl(venue, origin), event: events.slice(0, 20).map(event => buildEventJsonLd(event, origin)) }; }
+export function buildVenueItemListJsonLd(events: SeoEvent[], origin = DEFAULT_PUBLIC_ORIGIN) { return { "@context": "https://schema.org", "@type": "ItemList", itemListElement: events.map((event, index) => ({ "@type": "ListItem", position: index + 1, name: sanitizeEventText(event.title), url: buildEventCanonicalUrl(event, origin) })) }; }
+export function buildVenueBreadcrumbJsonLd(venue: IndexableVenue, origin = DEFAULT_PUBLIC_ORIGIN) { return { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [{ "@type": "ListItem", position: 1, name: "WeekendVibes", item: `${origin}/` }, { "@type": "ListItem", position: 2, name: "Palcos", item: `${origin}/palcos-da-baixada` }, { "@type": "ListItem", position: 3, name: venue.canonicalName, item: buildVenueCanonicalUrl(venue, origin) }] }; }
 export function serializeJsonLd(value: unknown) {
   return JSON.stringify(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
 }
 
-export function buildSitemapXml(events: Array<Pick<Event, "id" | "slug" | "eventDate" | "updatedAt">>, origin = DEFAULT_PUBLIC_ORIGIN, now = new Date()) {
+export function buildSitemapXml(events: Array<Pick<Event, "id" | "slug" | "eventDate" | "updatedAt">>, origin = DEFAULT_PUBLIC_ORIGIN, now = new Date(), venues: Array<Pick<IndexableVenue, "slug">> = []) {
   const urls = [
     `<url><loc>${origin}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>`,
+    ...venues.map(venue => `<url><loc>${origin}/palcos/${encodeURIComponent(venue.slug)}</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>`),
     ...events
       .filter(event => Boolean(event.slug) && new Date(event.eventDate).getTime() >= now.getTime())
       .map(event => `<url><loc>${origin}/evento/${encodeURIComponent(event.id)}</loc><lastmod>${new Date(event.updatedAt).toISOString()}</lastmod><changefreq>daily</changefreq><priority>0.8</priority></url>`),
