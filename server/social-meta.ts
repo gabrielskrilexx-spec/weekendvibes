@@ -13,8 +13,10 @@ export type SocialMetadata = {
   description: string;
   canonicalUrl?: string;
   imageUrl?: string;
+  imageAlt?: string;
   type?: "website" | "event";
   noIndex?: boolean;
+  jsonLd?: unknown[];
   bodyFallback?: { heading: string; paragraphs: string[]; href?: string; linkLabel?: string };
 };
 
@@ -120,12 +122,13 @@ export function injectSocialMetadata(html: string, metadata: SocialMetadata) {
     `<meta property="og:title" content="${escapeHtml(metadata.title)}">`,
     `<meta property="og:description" content="${escapeHtml(metadata.description)}">`,
     ...(metadata.canonicalUrl ? [`<link rel="canonical" href="${escapeHtml(metadata.canonicalUrl)}">`, `<meta property="og:url" content="${escapeHtml(metadata.canonicalUrl)}">`] : []),
-    ...(metadata.imageUrl ? [`<meta property="og:image" content="${escapeHtml(metadata.imageUrl)}">`, `<meta property="og:image:type" content="image/png">`, `<meta property="og:image:width" content="1200">`, `<meta property="og:image:height" content="630">`] : []),
+    ...(metadata.imageUrl ? [`<meta property="og:image" content="${escapeHtml(metadata.imageUrl)}">`, `<meta property="og:image:type" content="image/png">`, `<meta property="og:image:width" content="1200">`, `<meta property="og:image:height" content="630">`, ...(metadata.imageAlt ? [`<meta property="og:image:alt" content="${escapeHtml(metadata.imageAlt)}">`] : [])] : []),
     `<meta name="twitter:card" content="${metadata.imageUrl ? "summary_large_image" : "summary"}">`,
     `<meta name="twitter:title" content="${escapeHtml(metadata.title)}">`,
     `<meta name="twitter:description" content="${escapeHtml(metadata.description)}">`,
     ...(metadata.imageUrl ? [`<meta name="twitter:image" content="${escapeHtml(metadata.imageUrl)}">`] : []),
-    ...(metadata.noIndex ? [`<meta name="robots" content="noindex, nofollow">`] : []),
+    ...(metadata.noIndex ? [`<meta name="robots" content="noindex, follow">`] : []),
+    ...(metadata.jsonLd ?? []).map(value => `<script type="application/ld+json">${JSON.stringify(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026")}</script>`),
   ].join("\n    ");
   const withHead = cleaned.replace(/<\/head\s*>/i, `    ${tags}\n  </head>`);
   if (!metadata.bodyFallback) return withHead;

@@ -12,6 +12,7 @@ import {
 import {
   deleteEvent,
   deleteEvents,
+  getEventById,
   getEventBySlug,
   listEvents,
   listTodayEvents,
@@ -1464,6 +1465,11 @@ export const appRouter = router({
       )
       .query(async ({ input }) =>
         normalizeJsonForTransport(await getEventBySlug(input.slug))
+      ),
+    byId: publicProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ input }) =>
+        normalizeJsonForTransport(await getEventById(input.id))
       ),
     drafts: adminOnly
       .input(z.object({ sourceType: z.enum(["all", "instagram"]).optional(), limit: z.number().int().positive().max(100).default(50) }).strict().optional())

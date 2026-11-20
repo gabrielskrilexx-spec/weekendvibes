@@ -1387,6 +1387,22 @@ export async function getEventBySlug(slug: string, dbOverride?: Awaited<ReturnTy
   return rows[0];
 }
 
+export async function getEventById(id: number, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db || !Number.isInteger(id) || id < 1) return undefined;
+  const rows = await db.select().from(events).where(and(eq(events.id, id), eq(events.isPublished, PUBLIC_EVENT_STATE.isPublished), eq(events.isArchived, PUBLIC_EVENT_STATE.isArchived))).limit(1);
+  return rows[0];
+}
+
+export async function listPublicEventsForSitemap(now = new Date()) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ id: events.id, slug: events.slug, eventDate: events.eventDate, updatedAt: events.updatedAt })
+    .from(events)
+    .where(and(eq(events.isPublished, PUBLIC_EVENT_STATE.isPublished), eq(events.isArchived, PUBLIC_EVENT_STATE.isArchived), gte(events.eventDate, now)))
+    .orderBy(asc(events.eventDate));
+}
+
 function normalizeEventLocation(data: InsertEvent) {
   const address = data.address ? normalizeLocationText(data.address) : null;
   const vallumGarden = /vallum|valluns/i.test(`${data.locationName} ${address ?? ""}`) && /garden/i.test(`${data.locationName} ${address ?? ""}`);

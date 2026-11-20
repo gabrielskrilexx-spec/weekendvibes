@@ -5,8 +5,8 @@ import path from "node:path";
 import express from "express";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./db", () => ({ getEventBySlug: vi.fn() }));
-import { getEventBySlug } from "./db";
+vi.mock("./db", () => ({ getEventById: vi.fn(), getEventBySlug: vi.fn(), listPublicEventsForSitemap: vi.fn() }));
+import { getEventById, getEventBySlug, listPublicEventsForSitemap } from "./db";
 import { registerSocialRoutes } from "./social-routes";
 
 const eventFixture = {
@@ -32,6 +32,8 @@ describe("rotas sociais públicas", () => {
     const indexPath = path.join(tempDir, "index.html");
     fs.writeFileSync(indexPath, "<!doctype html><html><head><title>Old</title></head><body><div id=\"root\"></div></body></html>");
     vi.mocked(getEventBySlug).mockResolvedValue(eventFixture);
+    vi.mocked(getEventById).mockResolvedValue(eventFixture);
+    vi.mocked(listPublicEventsForSitemap).mockResolvedValue([{ id: 41, slug: "festa-teste", eventDate: new Date("2026-12-12T23:00:00.000Z"), updatedAt: new Date("2026-11-20T12:00:00.000Z") }]);
     const app = express();
     registerSocialRoutes(app, indexPath);
     server = createServer(app);
@@ -54,8 +56,8 @@ describe("rotas sociais públicas", () => {
     const html = await response.text();
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
-    expect(html).toContain("<title>Festa Teste — WeekendVibes</title>");
-    expect(html).toContain('property="og:title" content="Festa Teste — WeekendVibes"');
+    expect(html).toContain("<title>Festa Teste • Casa Teste, Santos | WeekendVibes</title>");
+    expect(html).toContain('property="og:title" content="Festa Teste • Casa Teste, Santos | WeekendVibes"');
     expect(html).toContain('property="og:url" content="https://weekendvibes.example/eventos/festa-teste"');
     expect(html).toContain('property="og:image" content="https://preview-weekendvibes.example/og/event/festa-teste.png"');
     expect(html).toContain('<noscript><main aria-label="Festa Teste">');
@@ -80,8 +82,18 @@ describe("rotas sociais públicas", () => {
     const response = await fetch(`${origin}/eventos/inexistente`);
     const html = await response.text();
     expect(response.status).toBe(404);
-    expect(html).toContain('name="robots" content="noindex, nofollow"');
+    expect(html).toContain('name="robots" content="noindex, follow"');
     expect(html).toContain("Evento não encontrado");
+  });
+
+  it("serve sitemap XML com eventos futuros e robots.txt", async () => {
+    const sitemap = await fetch(`${origin}/sitemap.xml`);
+    const robots = await fetch(`${origin}/robots.txt`);
+    expect(sitemap.status).toBe(200);
+    expect(sitemap.headers.get("content-type")).toContain("application/xml");
+    expect(await sitemap.text()).toContain("/evento/41");
+    expect(robots.status).toBe(200);
+    expect(await robots.text()).toContain("Disallow: /admin");
   });
 
   it("serve imagem PNG social com dimensão 1200×630 e cache público", async () => {

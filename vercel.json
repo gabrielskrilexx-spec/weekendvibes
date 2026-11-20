@@ -50,6 +50,18 @@
       "destination": "/api"
     },
     {
+      "source": "/sitemap.xml",
+      "destination": "/api"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/api"
+    },
+    {
+      "source": "/evento/:id",
+      "destination": "/api"
+    },
+    {
       "source": "/eventos/:slug",
       "destination": "/api"
     },
