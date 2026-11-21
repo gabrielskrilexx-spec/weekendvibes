@@ -1,5 +1,8 @@
 import webPush from "web-push";
 import { deletePushSubscription, listPushSubscriptions, upsertPushSubscription } from "./db";
+import { resolveVenueCoverFallback } from "../shared/event-media";
+
+export const DEFAULT_PUBLIC_ORIGIN = "https://weekendvibes-dh6w.vercel.app";
 
 export type PushSubscriptionInput = {
   endpoint: string;
@@ -10,6 +13,7 @@ export type PushNotificationInput = {
   title: string;
   body: string;
   url: string;
+  image?: string;
   tag?: string;
   recipientUserId?: number;
 };
@@ -82,6 +86,7 @@ export async function sendPushNotification(input: PushNotificationInput) {
     title: input.title,
     body: input.body,
     url: input.url,
+    ...(input.image ? { image: input.image } : {}),
     ...(input.tag ? { tag: input.tag } : {}),
   });
   let sent = 0;
@@ -120,12 +125,40 @@ export async function sendPushNotification(input: PushNotificationInput) {
   return { sent, failed, expired };
 }
 
-export function buildWeekendPushPayload(events: Array<{ id: number; title: string }>) {
+type PushEventMedia = {
+  id: number;
+  title: string;
+  imageUrl?: string | null;
+  locationName?: string | null;
+  sourceUrl?: string | null;
+  sourceType?: string | null;
+  category?: string | null;
+};
+
+export function toAbsolutePushImageUrl(
+  event: Partial<PushEventMedia>,
+  origin = DEFAULT_PUBLIC_ORIGIN,
+) {
+  const normalize = (value: string) => {
+    if (!value.trim()) return "";
+    try {
+      const parsed = new URL(value, origin);
+      return parsed.protocol === "https:" ? parsed.href : "";
+    } catch {
+      return "";
+    }
+  };
+  return normalize(event.imageUrl?.trim() ?? "") || normalize(resolveVenueCoverFallback(event));
+}
+
+export function buildWeekendPushPayload(events: PushEventMedia[]) {
   const highlights = events.slice(0, 3).map(event => event.title).join(" · ");
+  const image = events[0] ? toAbsolutePushImageUrl(events[0]) : "";
   return {
     title: "WeekendVibes · agenda do fim de semana",
     body: highlights ? `${highlights}${events.length > 3 ? ` e mais ${events.length - 3}` : ""}.` : "Confira os eventos deste fim de semana na Baixada Santista.",
     url: events[0] ? `/evento/${events[0].id}` : "/",
+    ...(image ? { image } : {}),
     tag: "weekendvibes-weekend-alert",
   } satisfies PushNotificationInput;
 }

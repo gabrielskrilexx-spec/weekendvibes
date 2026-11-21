@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { deactivateEventReminder, listDueEventReminders, listUpcomingWeekendEvents, recordPushDispatch } from "./db";
-import { buildWeekendPushPayload, sendPushNotification } from "./push-notifications";
+import { buildWeekendPushPayload, sendPushNotification, toAbsolutePushImageUrl } from "./push-notifications";
 
 export async function weekendPushHandler(_req: Request, res: Response) {
   try {
@@ -25,6 +25,7 @@ export async function reminderPushHandler(_req: Request, res: Response) {
         title: `Lembrete · ${reminder.title}`,
         body: `Seu evento acontece em breve. Confira os detalhes no WeekendVibes.`,
         url: `/evento/${reminder.eventId}`,
+        image: toAbsolutePushImageUrl(reminder),
         tag: `event-reminder-${reminder.eventId}`,
         recipientUserId: reminder.userId,
       });
