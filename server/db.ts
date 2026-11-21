@@ -73,7 +73,7 @@ export async function listUpcomingWeekendEvents(now = new Date()) {
   const db = await getDb();
   if (!db) throw new Error("database_unavailable");
   const end = new Date(now.getTime() + 4 * 24 * 60 * 60 * 1000);
-  return db.select({ id: events.id, title: events.title, description: events.description, eventDate: events.eventDate, city: events.city })
+  return db.select({ id: events.id, title: events.title, description: events.description, eventDate: events.eventDate, city: events.city, imageUrl: events.imageUrl, locationName: events.locationName, sourceUrl: events.sourceUrl, sourceType: events.sourceType, category: events.category })
     .from(events)
     .where(and(eq(events.isPublished, 1), eq(events.isArchived, 0), gte(events.eventDate, now), lt(events.eventDate, end)))
     .orderBy(asc(events.eventDate)).limit(20);
@@ -93,7 +93,7 @@ export async function listDueEventReminders(now = new Date()) {
   const db = await getDb();
   if (!db) throw new Error("database_unavailable");
   const window = getDueEventReminderWindow(now);
-  return db.select({ id: eventReminders.id, userId: eventReminders.userId, eventId: eventReminders.eventId, title: events.title, eventDate: events.eventDate })
+  return db.select({ id: eventReminders.id, userId: eventReminders.userId, eventId: eventReminders.eventId, title: events.title, eventDate: events.eventDate, imageUrl: events.imageUrl, locationName: events.locationName, sourceUrl: events.sourceUrl, sourceType: events.sourceType, category: events.category })
     .from(eventReminders).innerJoin(events, eq(events.id, eventReminders.eventId))
     .where(and(eq(eventReminders.isActive, 1), gte(events.eventDate, window.from), lte(events.eventDate, window.to), eq(events.isPublished, 1)))
     .limit(100);

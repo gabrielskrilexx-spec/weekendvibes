@@ -80,7 +80,7 @@ serviceWorkerScope.addEventListener("activate", (event) => {
 });
 
 serviceWorkerScope.addEventListener("push", (event: WorkerPushEvent) => {
-  let payload: { title?: unknown; body?: unknown; url?: unknown; tag?: unknown } = {};
+  let payload: { title?: unknown; body?: unknown; url?: unknown; image?: unknown; tag?: unknown } = {};
   try {
     payload = event.data?.json() ?? {};
   } catch {
@@ -97,10 +97,12 @@ serviceWorkerScope.addEventListener("push", (event: WorkerPushEvent) => {
     targetUrl = "/agenda";
   }
   const tag = typeof payload.tag === "string" ? payload.tag.slice(0, 100) : "weekendvibes-events";
+  const image = typeof payload.image === "string" && /^https:\/\//i.test(payload.image) ? payload.image.slice(0, 2048) : undefined;
   event.waitUntil(serviceWorkerScope.registration.showNotification(title, {
     body,
     icon: "/icons/icon-192.png",
     badge: "/icons/icon-192.png",
+    ...(image ? { image } : {}),
     tag,
     data: { url: targetUrl },
   }));
