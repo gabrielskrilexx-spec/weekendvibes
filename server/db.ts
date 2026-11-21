@@ -598,9 +598,21 @@ export async function getVenuePageData(slug: string, dbOverride?: Awaited<Return
   return { ...venue, neighborhood: null, events: upcoming.filter(event => eventMatchesVenue(event, venue)) };
 }
 export function listIndexableVenueCatalogForTest() { return venueCatalogForPages(); }
+const DEFAULT_MONITORED_BRANDS = [
+  { slug: "plants-santos", name: "Plants", cities: ["Santos", "Guarujá", "São Vicente", "Praia Grande", "Cubatão"], platforms: ["Instagram"], matchTerms: ["Plants", "plantssantos", "@plantssantos"] },
+];
+
+async function ensureDefaultMonitoredBrands(db: Awaited<ReturnType<typeof getDb>>) {
+  if (!db) return;
+  for (const brand of DEFAULT_MONITORED_BRANDS) {
+    await upsert(db.insert(monitoredBrands).values(brand), monitoredBrands.slug, { name: brand.name, cities: brand.cities, platforms: brand.platforms, matchTerms: brand.matchTerms, isActive: 1, updatedAt: new Date() });
+  }
+}
+
 export async function listActiveMonitoredBrands(dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<MonitoredBrand[]> {
   const db = dbOverride ?? await getDb();
   if (!db) return [];
+  await ensureDefaultMonitoredBrands(db);
   return db.select().from(monitoredBrands).where(eq(monitoredBrands.isActive, 1)).orderBy(asc(monitoredBrands.name));
 }
 
@@ -642,6 +654,7 @@ export const DEFAULT_INGESTION_SOURCES = [
   { sourceKey: "instagram:verilonguinho", name: "Verilonguinho", kind: "instagram" as const, handle: "verilonguinho", url: "https://www.instagram.com/verilonguinho/?hl=pt" },
   { sourceKey: "instagram:goatclubsantos", name: "Goat Club", kind: "instagram" as const, handle: "goatclubsantos", url: "https://www.instagram.com/goatclubsantos/" },
   { sourceKey: "instagram:praioguaruja", name: "Praiô", kind: "instagram" as const, handle: "praioguaruja", url: "https://www.instagram.com/praioguaruja/" },
+  { sourceKey: "instagram:plantssantos", name: "Plants", kind: "instagram" as const, handle: "plantssantos", url: "https://www.instagram.com/plantssantos/" },
   { sourceKey: "instagram:botecoalmare", name: "Boteco Almare", kind: "instagram" as const, handle: "botecoalmare", url: "https://www.instagram.com/botecoalmare/" },
   { sourceKey: "instagram:doloresbarerestaurante", name: "Dolores Restaurante e Bar", kind: "instagram" as const, handle: "doloresbarerestaurante", url: "https://www.instagram.com/doloresbarerestaurante/?hl=pt", isEnabled: 0 as const },
   { sourceKey: "public:articket", name: "ArTicket", kind: "public" as const, handle: null, url: "https://articket.com.br/" },
@@ -652,6 +665,7 @@ export const DEFAULT_INGESTION_SOURCES = [
   { sourceKey: "public:ingresse", name: "Ingresse", kind: "public" as const, handle: null, url: "https://www.ingresse.com/" },
   { sourceKey: "public:sympla", name: "Sympla", kind: "public" as const, handle: null, url: "https://www.sympla.com.br/eventos/santos-sp" },
   { sourceKey: "public:weticket", name: "WeTicket", kind: "public" as const, handle: null, url: "https://www.weticket.com.br/" },
+  { sourceKey: "public:gandaya", name: "Gandaya", kind: "public" as const, handle: null, url: "https://gandaya.dance/" },
 ];
 
 async function ensureDefaultIngestionSources(db: Awaited<ReturnType<typeof getDb>>) {
