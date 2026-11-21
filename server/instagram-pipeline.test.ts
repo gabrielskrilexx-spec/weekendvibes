@@ -141,7 +141,7 @@ describe("Instagram weekend pipeline", () => {
     const inactiveHandles = new Set(["yellowhouse_santos", "mimadafesta"]);
     const activeHandles = new Set(INSTAGRAM_TARGETS.map(target => target.username).filter(handle => !inactiveHandles.has(handle)));
     const targets = selectInstagramApifyTargets({ posts: [], failedMetaProfiles: activeHandles, forceApifyAll: true, activeHandles });
-    expect(targets).toHaveLength(14);
+    expect(targets).toHaveLength(15);
     expect(targets.map(target => target.username)).not.toContain("yellowhouse_santos");
     expect(targets.map(target => target.username)).not.toContain("mimadafesta");
   });
@@ -160,7 +160,7 @@ describe("Instagram weekend pipeline", () => {
       delete process.env.META_INSTAGRAM_TOKEN;
       delete process.env.META_INSTAGRAM_ACCOUNT_ID;
       const result = await fetchInstagramPostsDetailed({ forceApifyAll: true, trigger: "manual" });
-      expect(result).toMatchObject({ apifyDispatch: "queued", apifyTargetCount: 14 });
+      expect(result).toMatchObject({ apifyDispatch: "queued", apifyTargetCount: 15 });
       expect(dispatchSpy).toHaveBeenCalledWith({ trigger: "manual", targets: activeTargets });
     } finally {
       sourceSpy.mockRestore();
@@ -332,7 +332,7 @@ describe("Instagram weekend pipeline", () => {
     expect(INSTAGRAM_TARGETS.map(target => target.username)).toEqual([
       "mobydicksantos", "projac.bar", "meulugar.bar", "nossoafterguaruja", "curvaosurfhouse",
       "flamingomusicbar", "rocketseaclub", "ativahouse", "casa412santos", "verilonguinho",
-      "goatclubsantos", "praioguaruja", "botecoalmare", "doloresbarerestaurante", "yellowhouse_santos", "mimadafesta",
+      "goatclubsantos", "praioguaruja", "botecoalmare", "doloresbarerestaurante", "plantssantos", "yellowhouse_santos", "mimadafesta",
     ]);
     expect(INSTAGRAM_TARGETS.every(target => target.directUrl.startsWith("https://www.instagram.com/"))).toBe(true);
     expect(INSTAGRAM_TARGETS.find(target => target.username === "nossoafterguaruja")).toMatchObject({ name: "Nosso After — Guarujá", city: "Guarujá", directUrl: "https://www.instagram.com/nossoafterguaruja/" });
@@ -373,6 +373,14 @@ describe("Instagram weekend pipeline", () => {
   it("mantém o permalink do Feed quando o Actor não fornece URL de perfil", () => {
     const [item] = normalizeInstagramMediaPayload([{ source_username: "meulugar.bar", item_type: "post", permalink: "https://www.instagram.com/p/feed123/", shortCode: "feed123", image_url: "https://cdn.example.com/feed.jpg", caption: "Agenda" }]);
     expect(item).toMatchObject({ url: "https://www.instagram.com/p/feed123/", permalink: "https://www.instagram.com/p/feed123/" });
+  });
+
+  it("inclui Plants como alvo de Instagram, sem tratá-la como venue", async () => {
+    expect(INSTAGRAM_TARGETS).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "Plants", username: "plantssantos", directUrl: "https://www.instagram.com/plantssantos/" }),
+    ]));
+    const { getInstagramTargetByUsername } = await import("./instagram-pipeline");
+    expect(getInstagramTargetByUsername("@plantssantos")?.name).toBe("Plants");
   });
 
   it("filters Highlights to agenda titles and normalizes Story media", () => {

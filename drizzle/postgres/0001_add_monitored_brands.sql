@@ -15,7 +15,7 @@ CREATE INDEX IF NOT EXISTS "monitoredBrands_active_idx" ON "monitoredBrands" USI
 --> statement-breakpoint
 INSERT INTO "monitoredBrands" ("slug", "name", "cities", "platforms", "matchTerms", "isActive", "updatedAt") VALUES
   ('nosso-after', 'Nosso After', ARRAY['Guarujá','Santos'], ARRAY['Instagram','Bilheterias itinerantes'], ARRAY['Nosso After','NossoAfter','nossoafterguaruja'], 1, now()),
-  ('plants-santos', 'Plants Santos', ARRAY['Santos'], ARRAY['Sympla','Ingresse'], ARRAY['Plants Santos','PlantsSantos'], 1, now()),
+  ('plants-santos', 'Plants', ARRAY['Santos','Guarujá','São Vicente','Praia Grande','Cubatão'], ARRAY['Instagram'], ARRAY['Plants','plantssantos','@plantssantos'], 1, now()),
   ('the-crew', 'The Crew', ARRAY['Santos'], ARRAY['ArTicket'], ARRAY['The Crew','The Crew Apresenta'], 1, now()),
   ('pandance', 'PANDANCE', ARRAY['Santos'], ARRAY['ArTicket'], ARRAY['PANDANCE','Pandance'], 1, now()),
   ('mimada-festa', 'Mimada Festa', ARRAY['Santos','Guarujá'], ARRAY['Zig','Sympla'], ARRAY['Mimada Festa','MimadaFesta'], 1, now())

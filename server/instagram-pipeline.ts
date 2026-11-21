@@ -185,6 +185,7 @@ export const INSTAGRAM_TARGETS = [
   { name: "Praiô", username: "praioguaruja", directUrl: "https://www.instagram.com/praioguaruja/" },
   { name: "Boteco Almare", username: "botecoalmare", directUrl: "https://www.instagram.com/botecoalmare/" },
   { name: "Dolores Restaurante e Bar", username: "doloresbarerestaurante", directUrl: "https://www.instagram.com/doloresbarerestaurante/" },
+  { name: "Plants", username: "plantssantos", directUrl: "https://www.instagram.com/plantssantos/" },
   { name: "Yellow House", username: "yellowhouse_santos", directUrl: "https://www.instagram.com/yellowhouse_santos/" },
   { name: "Mimada Festa", username: "mimadafesta", directUrl: "https://www.instagram.com/mimadafesta/" },
 ] as const;
@@ -1438,7 +1439,10 @@ export async function runInstagramPipeline(options: InstagramPipelineOptions = {
     const locationBrand = getMonitoredPublicBrand(`${event.locationName} ${event.address}`, undefined, activeBrands);
     const matchingBrand = eventBrand ?? locationBrand;
     const brandCityMatches = Boolean(matchingBrand?.cities.some(city => city.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === normalizedCity.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")));
-    const reasons = validateStructuredInstagramEvent(normalizedEvent, activeAliases, new Date(), brandCityMatches);
+    // Plants é uma organizadora/marca, não um palco. Sem um local físico
+    // reconhecido, o item segue para revisão em vez de publicação direta.
+    const plantsNeedsPhysicalVenue = matchingBrand?.name === "Plants";
+    const reasons = validateStructuredInstagramEvent(normalizedEvent, activeAliases, new Date(), brandCityMatches && !plantsNeedsPhysicalVenue);
     if (reasons.length > 0) {
       if (!isInstagramDraftCandidate(normalizedEvent, reasons)) {
         rejectedEvents.push(createStructuredEventRejection(normalizedEvent, index, reasons));
