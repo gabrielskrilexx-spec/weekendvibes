@@ -27,7 +27,7 @@ const DEFAULT_SOURCE_URLS = [
   "https://gandaya.dance/",
   "https://weticket.com.br/ap-22-edio-helloween-pedro-qua",
   "https://zig.tickets/pt-BR",
-  "http://www.turismosantos.com.br/pt-br/tags/parque-valongo",
+  "https://www.turismosantos.com.br/pt-br/tags/parque-valongo",
   "https://articket.com.br/o/58/eventos-litoral",
   "https://santosconventioncenter.com.br/agenda-2026/",
 ];
@@ -81,7 +81,16 @@ function logPublicFailureDiagnostics(url: string, error: unknown) {
 }
 
 
-type FetchFailure = { status: number | null; message: string };
+export type FetchFailure = {
+  sourceKey?: string;
+  url?: string;
+  status: number | null;
+  httpStatus?: number | null;
+  message: string;
+  errorCode?: "UPSTREAM_UNAVAILABLE" | "TIMEOUT" | "NETWORK_ERROR" | "PARSE_EMPTY" | "HTTP_ERROR" | "UNKNOWN";
+  retryable?: boolean;
+  attempts?: number;
+};
 type IngresseCacheStore = {
   read: typeof getIngestionPayloadCache;
   write: typeof saveIngestionPayloadCache;
@@ -93,11 +102,24 @@ function getHttpStatus(error: unknown) {
   return match ? Number(match[1]) : null;
 }
 
-export function sanitizeFetchFailure(error: unknown): FetchFailure {
+export function sanitizeFetchFailure(error: unknown, context: { sourceKey?: string; url?: string } = {}): FetchFailure {
   const status = getHttpStatus(error);
   const raw = error instanceof Error ? error.message : String(error ?? "Falha desconhecida");
   const message = raw.replace(/https?:\/\/[^\s]+/gi, "fonte pública").replace(/Bearer\s+[^\s]+/gi, "Bearer [redacted]").slice(0, 240);
-  return { status, message: message || "Falha de coleta da fonte pública" };
+  const candidate = error && typeof error === "object" ? error as { code?: unknown; attempts?: unknown; retryable?: unknown } : {};
+  const code = String(candidate.code ?? "");
+  const errorCode: FetchFailure["errorCode"] = status === 502 || status === 503 || status === 504
+    ? "UPSTREAM_UNAVAILABLE"
+    : code === "TIMEOUT" || /timeout|timed out|tempo limite|aborted/i.test(raw)
+      ? "TIMEOUT"
+      : code === "NETWORK_ERROR" || /fetch failed|econn|enotfound|eai_again|network|socket/i.test(raw)
+        ? "NETWORK_ERROR"
+        : /conteúdo vazio|sem dados|sem dados estruturados|JSON inválido/i.test(raw)
+          ? "PARSE_EMPTY"
+          : status !== null ? "HTTP_ERROR" : "UNKNOWN";
+  const retryable = typeof candidate.retryable === "boolean" ? candidate.retryable : errorCode === "UPSTREAM_UNAVAILABLE" || errorCode === "TIMEOUT" || errorCode === "NETWORK_ERROR";
+  const attempts = typeof candidate.attempts === "number" && Number.isFinite(candidate.attempts) ? Math.max(1, Math.trunc(candidate.attempts)) : 1;
+  return { sourceKey: context.sourceKey, url: context.url, status, httpStatus: status, message: message || "Falha de coleta da fonte pública", errorCode, retryable, attempts };
 }
 export function isWafBlockedFailure(status: number | null | undefined, message: string) {
   const normalized = message.toLowerCase();
@@ -1327,7 +1349,15 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean; signal?
     return { url, html, text: text.slice(0, 16_000), imageUrl: structured?.imageUrl ?? meta("og:image"), structured, adapter: "ticket360", adapterError: structured ? undefined : "Adaptador Ticket360 não encontrou dados estruturados públicos." };
   }
   if (isParqueValongoUrl(url)) {
-    const response = await fetchExternal(url, { headers: SANTOS_PUBLIC_REQUEST_HEADERS }, PARQUE_VALONGO_FETCH_TIMEOUT_MS, false, options.signal);
+    const preferredUrl = url.replace(/^http:\/\//i, "https://");
+    let response: Response;
+    try {
+      response = await fetchExternal(preferredUrl, { headers: SANTOS_PUBLIC_REQUEST_HEADERS }, PARQUE_VALONGO_FETCH_TIMEOUT_MS, false, options.signal);
+    } catch (error) {
+      if (/^https:\/\//i.test(preferredUrl) && (isTimeoutFailure(error) || [502, 503, 504].includes(getHttpStatus(error) ?? 0))) {
+        response = await fetchExternal(preferredUrl.replace(/^https:\/\//i, "http://"), { headers: SANTOS_PUBLIC_REQUEST_HEADERS }, PARQUE_VALONGO_FETCH_TIMEOUT_MS, false, options.signal);
+      } else throw error;
+    }
     const html = await readExternalBody(response);
     const meta = readMetaTags(html);
     const structured = parseParqueValongoEventMetadata(html, url);
@@ -1458,7 +1488,7 @@ export type IngestionSourceReport = {
   updated: number;
   ignored: number;
   duplicates: number;
-  errors: Array<{ sourceUrl?: string; status: number | null; message: string }>;
+  errors: Array<Pick<FetchFailure, "sourceKey" | "url" | "status" | "httpStatus" | "message" | "errorCode" | "retryable" | "attempts"> & { sourceUrl?: string }>;
   durationMs: number;
   medianDurationMs: number;
   p95DurationMs: number;
@@ -1525,7 +1555,7 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
         const safeDurationMs = Number.isFinite(durationMs) ? Math.max(0, durationMs) : 0;
         report.durationMs += safeDurationMs;
         report.latencySamples.push(safeDurationMs);
-        report.errors.push({ sourceUrl: url, status: failure.status, message: formatPublicFetchFailure(failure) });
+        report.errors.push({ ...failure, sourceUrl: url, url, sourceKey: publicSourceKey(url), message: formatPublicFetchFailure(failure) });
       }
       return;
     }
@@ -1534,15 +1564,15 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
     report.latencySamples.push(durationMs);
     if (page.value.circuitOpen) {
       report.rejectionReasons.fetchFailed += 1;
-      report.errors.push({ sourceUrl: url, status: null, message: "Fonte pausada pelo Circuit Breaker durante o cooldown." });
+        report.errors.push({ sourceUrl: url, url, sourceKey: publicSourceKey(url), status: null, httpStatus: null, errorCode: "UPSTREAM_UNAVAILABLE", retryable: true, attempts: 0, message: "Fonte pausada pelo Circuit Breaker durante o cooldown." });
     } else if (input.matchesTargetVenue && !input.matchesTargetVenue(page.value.text)) {
       report.filtered += 1;
       report.rejectionReasons.outsideTargetVenue += 1;
     } else if (page.value.cacheFallback?.used) {
-      report.errors.push({ sourceUrl: url, status: page.value.cacheFallback.status, message: `Fallback utilizado: ${page.value.cacheFallback.message}` });
+        report.errors.push({ sourceUrl: url, url, sourceKey: publicSourceKey(url), status: page.value.cacheFallback.status, httpStatus: page.value.cacheFallback.status, errorCode: "UPSTREAM_UNAVAILABLE", retryable: true, attempts: 1, message: `Fallback utilizado: ${page.value.cacheFallback.message}` });
     }
     if (page.value.adapterError && !isHealthyEmptyPublicPage(page.value)) {
-      report.errors.push({ sourceUrl: url, status: null, message: page.value.adapterError });
+      report.errors.push({ sourceUrl: url, url, sourceKey: publicSourceKey(url), status: null, httpStatus: null, errorCode: "PARSE_EMPTY", retryable: false, attempts: 1, message: page.value.adapterError });
     }
   });
   for (const event of input.acceptedEvents ?? []) getReport(event.sourceKey).persistable += 1;
@@ -1595,10 +1625,10 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
   const circuitOpenPages = fulfilledPages.filter(page => page.circuitOpen === true);
   const rejectedPages = pages.filter((result): result is PromiseRejectedResult => result.status === "rejected");
   const fetchFailures = [
-    ...circuitOpenPages.map(page => ({ sourceUrl: page.url, status: null, message: "Fonte pausada pelo Circuit Breaker durante o cooldown.", fallbackUsed: false })),
-    ...fallbackPages.map(page => ({ sourceUrl: page.url, ...page.cacheFallback, status: page.cacheFallback?.status ?? null })),
-    ...rejectedPages.map((result, index) => ({ sourceUrl: candidateUrls[index], ...sanitizeFetchFailure(result.reason) })),
-  ].map(failure => ({ sourceUrl: String(failure.sourceUrl).slice(0, 1000), status: failure.status ?? null, message: formatPublicFetchFailure({ status: failure.status ?? null, message: String(failure.message).slice(0, 240) }), fallbackUsed: "used" in failure && failure.used === true }));
+    ...circuitOpenPages.map(page => ({ sourceUrl: page.url, sourceKey: publicSourceKey(page.url), url: page.url, status: null, httpStatus: null, errorCode: "UPSTREAM_UNAVAILABLE" as const, retryable: true, attempts: 0, message: "Fonte pausada pelo Circuit Breaker durante o cooldown.", fallbackUsed: false })),
+    ...fallbackPages.map(page => ({ sourceUrl: page.url, sourceKey: publicSourceKey(page.url), url: page.url, ...page.cacheFallback, status: page.cacheFallback?.status ?? null, httpStatus: page.cacheFallback?.status ?? null, errorCode: "UPSTREAM_UNAVAILABLE" as const, retryable: true, attempts: 1 })),
+    ...rejectedPages.map((result, index) => ({ sourceUrl: candidateUrls[index], ...sanitizeFetchFailure(result.reason, { sourceKey: publicSourceKey(candidateUrls[index]), url: candidateUrls[index] }) })),
+  ].map(failure => ({ ...failure, sourceUrl: String(failure.sourceUrl).slice(0, 1000), url: String(failure.url ?? failure.sourceUrl).slice(0, 1000), status: failure.status ?? null, httpStatus: failure.httpStatus ?? failure.status ?? null, message: formatPublicFetchFailure({ status: failure.status ?? null, message: String(failure.message).slice(0, 240) }), fallbackUsed: "used" in failure && failure.used === true }));
   const fetchFailed = fetchFailures.length;
   const outsideTargetVenue = fulfilledPages.filter(page => !matchesTargetContent(page.text, page.url)).length;
   const sourcePages = fulfilledPages.filter(page => matchesTargetContent(page.text, page.url));
