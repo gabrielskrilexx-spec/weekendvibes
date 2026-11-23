@@ -34,6 +34,17 @@ describe("VenueSpotlight", () => {
     expect(markup).toContain("Rua do Comércio, nº 111 – Centro, Santos/SP (CEP 11010-122)");
   });
 
+  it("não reutiliza a capa do Vallum para Yellow House ou Meu Lugar", () => {
+    const markup = renderToStaticMarkup(<VenueSpotlight selectedVenue="" onSelect={vi.fn()} events={[]} />);
+    const yellow = markup.match(/src="([^"]+)"[^>]*alt="Foto de Yellow House"/)?.[1];
+    const meuLugar = markup.match(/src="([^"]+)"[^>]*alt="Foto de Meu Lugar"/)?.[1];
+    const vallum = markup.match(/src="([^"]+)"[^>]*alt="Foto de Vallum Garden"/)?.[1];
+    expect(yellow).toBe("/images/venues/yellow-house.jpg");
+    expect(meuLugar).toBe("/images/venues/meu-lugar.jpg");
+    expect(vallum).toBe("/venues/vallum-garden.webp");
+    expect(new Set([yellow, meuLugar, vallum]).size).toBe(3);
+  });
+
   it("formata data e horário no fuso America/Sao_Paulo", () => {
     const utcBoundaryEvent = { id: 2, title: "Evento em horário local", eventDate: "2026-12-13T02:00:00.000Z", locationName: "Casa 412" } as never;
     const markup = renderToStaticMarkup(<VenueSpotlight selectedVenue="casa-412" onSelect={vi.fn()} events={[utcBoundaryEvent]} />);

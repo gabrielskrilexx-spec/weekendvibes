@@ -119,6 +119,14 @@ test("renderiza os 20 venues oficiais com imagens válidas e sem imagens quebrad
     expect(image.complete, `${image.src} deve terminar o carregamento`).toBe(true);
     expect(image.width, `${image.src} deve ter dimensões válidas`).toBeGreaterThan(0);
   }
+  const affectedVenueImages = await Promise.all(["Yellow House", "Meu Lugar", "Vallum Garden"].map(async name => {
+    const image = venueSection.locator(`img[alt="Foto de ${name}"]`);
+    await expect(image).toHaveCount(1);
+    return image.evaluate(element => ({ src: new URL((element as HTMLImageElement).currentSrc || (element as HTMLImageElement).src).pathname, width: (element as HTMLImageElement).naturalWidth }));
+  }));
+  expect(affectedVenueImages.map(image => image.src)).toEqual(["/images/venues/yellow-house.jpg", "/images/venues/meu-lugar.jpg", "/venues/vallum-garden.webp"]);
+  expect(new Set(affectedVenueImages.map(image => image.src)).size).toBe(3);
+  for (const image of affectedVenueImages) expect(image.width).toBeGreaterThan(0);
   const statuses = await Promise.all(venuePaths.map(async path => {
     const response = await page.request.get(path);
     return { path, status: response.status(), contentType: response.headers()["content-type"] ?? "" };
