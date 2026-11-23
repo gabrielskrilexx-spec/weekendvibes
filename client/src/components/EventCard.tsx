@@ -5,16 +5,14 @@ import type { Event } from "../../../drizzle/schema";
 import FavoriteReminderControls from "./FavoriteReminderControls";
 import { responsiveImageProps, EVENT_CARD_IMAGE_SIZES } from "@/lib/responsiveImages";
 import { sanitizeEventText } from "../../../shared/event-text";
-import { resolveVenueCoverFallback } from "../../../shared/event-media";
+import { resolveEventCoverImage as resolveSharedEventCoverImage, resolveVenueCoverFallback } from "../../../shared/event-media";
 import { isInstagramEvent, resolveEventActionCta } from "@/lib/event-action";
 import { canonicalEventUrl, shareEventLink } from "@/lib/event-share";
 
 const genreLabels: Record<string, string> = { funk: "Funk", house_eletronica: "House/Eletrônica", samba_pagode: "Samba/Pagode", rap_trap: "Rap/Trap" };
 const categoryColors: Record<string, string> = { show: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-400/15 dark:text-orange-200 dark:border-orange-300/20", balada: "bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200 dark:bg-fuchsia-400/15 dark:text-fuchsia-200 dark:border-fuchsia-300/20", evento_musical: "bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-300/15 dark:text-yellow-100 dark:border-yellow-200/20" };
 export function resolveEventCoverImage(event: Pick<Event, "imageUrl" | "locationName" | "sourceType" | "title" | "category" | "sourceUrl">) {
-  const persistedImage = event.imageUrl?.trim();
-  if (persistedImage) return persistedImage;
-  return resolveVenueCoverFallback(event);
+  return resolveSharedEventCoverImage(event);
 }
 
 export function getEventPriceLabel(event: Pick<Event, "priceCents" | "priceNote" | "ticketStatus"> & Partial<Pick<Event, "sourceType" | "sourceUrl">> & { ticketUrl?: string | null }) {

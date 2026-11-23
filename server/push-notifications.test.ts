@@ -122,6 +122,7 @@ describe("Web Push service", () => {
   });
 
   it("prefere a capa persistida e usa a capa oficial da venue quando ausente", () => {
+    expect(toAbsolutePushImageUrl({ imageUrl: "https://cdn.articket.com.br/flyer.webp", locationName: "Yellow House" })).toBe("https://cdn.articket.com.br/flyer.webp");
     expect(toAbsolutePushImageUrl({ imageUrl: "/images/venues/praio.jpg", locationName: "Praiô" })).toBe("https://weekendvibes-dh6w.vercel.app/images/venues/praio.jpg");
     expect(toAbsolutePushImageUrl({ imageUrl: "", locationName: "Curvão Surf House" })).toBe("https://weekendvibes-dh6w.vercel.app/images/venues/curvao.jpg");
     expect(toAbsolutePushImageUrl({ imageUrl: "http://insecure.example/flyer.jpg", locationName: "Curvão Surf House" })).toBe("https://weekendvibes-dh6w.vercel.app/images/venues/curvao.jpg");

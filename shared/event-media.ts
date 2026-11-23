@@ -1,4 +1,5 @@
 type EventMediaInput = {
+  imageUrl?: string | null;
   title?: string | null;
   locationName?: string | null;
   sourceUrl?: string | null;
@@ -33,4 +34,15 @@ export function resolveVenueCoverFallback(input: EventMediaInput) {
   const matched = VENUE_COVER_RULES.find(rule => rule.terms.some(term => searchable.includes(normalize(term))));
   if (matched) return matched.imageUrl;
   return "/images/venues/venue-placeholder.svg";
+}
+
+export function isVenueCoverAsset(value: string | null | undefined) {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  return normalized.startsWith("/venues/") || normalized.startsWith("/images/venues/") || normalized.includes("/venues/");
+}
+
+export function resolveEventCoverImage(input: EventMediaInput) {
+  const persistedImage = input.imageUrl?.trim();
+  if (persistedImage && !isVenueCoverAsset(persistedImage)) return persistedImage;
+  return resolveVenueCoverFallback(input);
 }

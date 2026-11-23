@@ -47,6 +47,8 @@ describe("EventCard interaction", () => {
 
   it("prioriza uma capa persistida sobre o fallback da venue", () => {
     expect(resolveEventCoverImage({ imageUrl: "/manus-storage/instagram-covers/event.webp", title: "Evento", locationName: "Dolores", sourceType: "instagram_feed", category: "balada", sourceUrl: null })).toBe("/manus-storage/instagram-covers/event.webp");
+    expect(resolveEventCoverImage({ imageUrl: "https://cdn.articket.com.br/flyer.webp", title: "MC KELVINHO", locationName: "Yellow House", sourceType: "public:articket", category: "show", sourceUrl: "https://articket.com.br/e/7522/kelvinho-01" })).toBe("https://cdn.articket.com.br/flyer.webp");
+    expect(resolveEventCoverImage({ imageUrl: "/images/venues/vallum-garden.webp", title: "Evento", locationName: "Yellow House", sourceType: "public:articket", category: "show", sourceUrl: null })).toBe("/images/venues/yellow-house.jpg");
   });
 
   it("limpa Markdown bruto das descrições e usa fallback por categoria", () => {

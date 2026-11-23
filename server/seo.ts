@@ -1,5 +1,5 @@
 import type { Event } from "../drizzle/schema";
-import { resolveVenueCoverFallback } from "../shared/event-media";
+import { resolveEventCoverImage } from "../shared/event-media";
 import { sanitizeEventText } from "../shared/event-text";
 import type { IndexableVenue } from "../shared/venue-slugs";
 
@@ -103,8 +103,7 @@ export function buildEventCanonicalUrl(event: Pick<Event, "slug">, origin = DEFA
 export function buildEventJsonLd(event: SeoEvent, origin = DEFAULT_PUBLIC_ORIGIN, routeUrl = buildEventCanonicalUrl(event, origin)) : EventJsonLd {
   const startDate = formatSaoPauloIso(event.eventDate);
   const endDate = formatSaoPauloIso(event.endDate ?? new Date(new Date(event.eventDate).getTime() + 4 * 60 * 60 * 1000));
-  const fallbackImage = resolveVenueCoverFallback({ title: event.title, locationName: event.locationName, sourceUrl: event.sourceUrl, sourceType: event.sourceType });
-  const image = absolutePublicUrl(event.imageUrl || fallbackImage, origin);
+  const image = absolutePublicUrl(resolveEventCoverImage(event), origin);
   const description = sanitizeEventText(event.description) || `Evento em ${event.locationName}, ${event.city}.`;
   const locationAddress = {
     "@type": "PostalAddress" as const,
