@@ -1657,7 +1657,6 @@ export async function saveEvent(data: InsertEvent) {
     imageUrl: durableImageUrl || incomingImageUrl || resolveVenueCoverFallback(normalizedLocation),
   };
   if (!ALLOWED_CITIES.includes(normalized.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos em Santos e Guarujá");
-  assertEventDateIsCurrentOrFuture(normalized.eventDate, new Date(), normalized.title);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const stableSourceUrl = isArticketEvent(normalized);
@@ -1667,6 +1666,10 @@ export async function saveEvent(data: InsertEvent) {
       ? or(eq(events.sourceHash, normalized.sourceHash), and(sql`${events.sourceUrl} = ${normalized.sourceUrl}`, eq(events.eventDate, normalized.eventDate)))
       : and(sql`${events.sourceUrl} = ${normalized.sourceUrl}`, eq(events.eventDate, normalized.eventDate));
   const existing = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, priceNote: events.priceNote, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, description: events.description, sourceUrl: events.sourceUrl, isPublished: events.isPublished }).from(events).where(identityCondition).limit(1);
+  if (existing[0]?.isPublished === 1 && existing[0].eventDate.getTime() !== normalized.eventDate.getTime()) {
+    return { created: false, id: existing[0].id, duplicate: true, updated: false } as const;
+  }
+  assertEventDateIsCurrentOrFuture(normalized.eventDate, new Date(), normalized.title);
   const dayStartUtc = saoPauloDayStartUtc(normalized.eventDate);
   const nextDayStartUtc = saoPauloNextDayStartUtc(normalized.eventDate);
   const fuzzyCandidates = existing[0]
