@@ -10,7 +10,7 @@ import { upsert } from "./pg-upsert";
 import { serializePayloadJson } from "./json-contracts";
 import type { CircuitState, FailureCategory } from "../shared/domain";
 import { sanitizeEventText } from "../shared/event-text";
-import { resolveVenueCoverFallback } from "../shared/event-media";
+import { isVenueCoverAsset, resolveVenueCoverFallback } from "../shared/event-media";
 import { selectRelatedEvents } from "../shared/related-events";
 import { persistRemoteImage } from "./media-persistence";
 import { canonicalVenueSlug, dedupeVenueAliases, normalizeVenueValue, type IndexableVenue } from "../shared/venue-slugs";
@@ -1647,6 +1647,14 @@ async function recordEventChangeAlerts(eventId: number, previous: Pick<Event, "e
   }
 }
 
+/** Preserve a durable external flyer when a later collection only supplies an empty or venue fallback image. */
+export function preserveExistingEventCover(existingImageUrl: string | null | undefined, incomingImageUrl: string | null | undefined) {
+  const existing = existingImageUrl?.trim() ?? "";
+  const incoming = incomingImageUrl?.trim() ?? "";
+  if (/^https:\/\//i.test(existing) && (!incoming || isVenueCoverAsset(incoming))) return existing;
+  return incoming;
+}
+
 export async function saveEvent(data: InsertEvent) {
   const normalizedLocation = normalizeEventLocation(data);
   const incomingImageUrl = normalizedLocation.imageUrl?.trim() || "";
@@ -1684,7 +1692,7 @@ export async function saveEvent(data: InsertEvent) {
     const identityMatch = Boolean(existing[0]);
     const keepIncoming = identityMatch || eventQuality(normalized) > eventQuality(duplicate);
     if (keepIncoming) {
-      const merged = { ...normalized, latitude: normalized.latitude || duplicate.latitude, longitude: normalized.longitude || duplicate.longitude, imageUrl: normalized.imageUrl || duplicate.imageUrl, description: normalized.description || duplicate.description, isPublished: normalized.isPublished === 0 ? (duplicate.isPublished ?? 0) : normalized.isPublished, updatedAt: new Date() };
+      const merged = { ...normalized, latitude: normalized.latitude || duplicate.latitude, longitude: normalized.longitude || duplicate.longitude, imageUrl: preserveExistingEventCover(duplicate.imageUrl, normalized.imageUrl) || duplicate.imageUrl || normalized.imageUrl, description: normalized.description || duplicate.description, isPublished: normalized.isPublished === 0 ? (duplicate.isPublished ?? 0) : normalized.isPublished, updatedAt: new Date() };
       await recordEventChangeAlerts(duplicate.id, duplicate, normalized, db);
       await db.update(events).set(merged).where(eq(events.id, duplicate.id));
       const changes = classifyEventChanges(duplicate, normalized);
