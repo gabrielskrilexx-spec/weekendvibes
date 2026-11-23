@@ -1,6 +1,6 @@
 import webPush from "web-push";
 import { deletePushSubscription, listPushSubscriptions, upsertPushSubscription } from "./db";
-import { resolveVenueCoverFallback } from "../shared/event-media";
+import { resolveEventCoverImage, resolveVenueCoverFallback } from "../shared/event-media";
 
 export const DEFAULT_PUBLIC_ORIGIN = "https://weekendvibes-dh6w.vercel.app";
 
@@ -148,7 +148,7 @@ export function toAbsolutePushImageUrl(
       return "";
     }
   };
-  return normalize(event.imageUrl?.trim() ?? "") || normalize(resolveVenueCoverFallback(event));
+  return normalize(resolveEventCoverImage(event)) || normalize(resolveVenueCoverFallback(event));
 }
 
 export function buildWeekendPushPayload(events: PushEventMedia[]) {

@@ -11,7 +11,7 @@ import { isInstagramEvent, resolveEventActionCta } from "@/lib/event-action";
 import { buildEventShareUrl } from "../../../shared/related-events";
 import { trackEngagement } from "@/lib/analytics";
 import { canonicalVenueSlug } from "../../../shared/venue-slugs";
-import { resolveVenueCoverFallback } from "../../../shared/event-media";
+import { resolveEventCoverImage, resolveVenueCoverFallback } from "../../../shared/event-media";
 
 const EventDetailMap = lazy(() => import("@/components/EventDetailMap"));
 
@@ -34,7 +34,7 @@ export function buildSocialShareUrls(url: string, text: string) {
 }
 
 export function resolveEventDetailImage(event: { imageUrl?: string | null; locationName?: string | null; sourceUrl?: string | null; sourceType?: string | null; title?: string | null; category?: string | null }) {
-  return event.imageUrl?.trim() || resolveVenueCoverFallback(event) || "/icons/icon-512.png";
+  return resolveEventCoverImage(event) || "/images/venues/venue-placeholder.svg";
 }
 
 export default function EventDetail() {
