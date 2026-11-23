@@ -59,6 +59,21 @@ describe("adapters de ticketeiras oficiais", () => {
     expect(parsed).toMatchObject({ title: "Jungle Room • Pink Edition", eventDate: "2026-09-04T23:00:00-03:00", locationName: "GOAT CLUB", city: "Santos", priceCents: 8000, sourceUrl: "https://blackpass.com.br/event/700" });
   });
 
+  it("preserva horário explícito em data numérica completa", () => {
+    const html = `<script type="application/ld+json">${JSON.stringify({ name: "Show no GOAT", startDate: "2030-11-28T23:30:00-03:00", location: { name: "GOAT CLUB", address: { addressLocality: "Santos" } } })}</script>`;
+    expect(parseTicketingEventMetadata(html, "https://tickets.example/show")).toMatchObject({ eventDate: "2030-11-28T23:30:00-03:00", eventDateEstimated: false, sourceUrl: "https://tickets.example/show" });
+  });
+
+  it("marca data completa sem horário como provisória às 20h BRT", () => {
+    const html = `<script type="application/ld+json">${JSON.stringify({ name: "Festival no GOAT", startDate: "2030-11-28", location: { name: "GOAT CLUB", address: { addressLocality: "Santos" } } })}</script>`;
+    expect(parseTicketingEventMetadata(html, "https://tickets.example/festival")).toMatchObject({ eventDate: "2030-11-28T20:00:00-03:00", eventDateEstimated: true, sourceUrl: "https://tickets.example/festival" });
+  });
+
+  it("rejeita data sem ano em vez de inferir o ano", () => {
+    const html = `<title>Festa no GOAT</title><main>GOAT CLUB, Santos — 20.MAR</main>`;
+    expect(parseTicketingEventMetadata(html, "https://tickets.example/sem-ano")).toBeUndefined();
+  });
+
   it("normaliza item do catálogo JSON público do Black Pass", () => {
     const parsed = parseBlackPassCatalogEvent({
       id: 700,

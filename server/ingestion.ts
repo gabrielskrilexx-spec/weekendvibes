@@ -452,13 +452,32 @@ function readPriceCents(value: unknown) {
   return Number.isFinite(amount) ? Math.round(amount * 100) : 0;
 }
 
-function parsePortugueseEventDate(value: string) {
+type ParsedEventDate = { value: string; timeEstimated: boolean };
+function parseEventDateValue(value: string): ParsedEventDate | undefined {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return undefined;
+  const isoDate = normalized.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+  if (isoDate && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(normalized)) return { value: `${isoDate[1]}-${isoDate[2]}-${isoDate[3]}T20:00:00-03:00`, timeEstimated: true };
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(normalized)) return { value: normalized, timeEstimated: false };
+  const numeric = normalized.match(/\b(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})(?:[^0-9]{1,12}(\d{1,2})(?::|h)(\d{2})?)?/i);
+  if (numeric) {
+    return {
+      value: `${numeric[3]}-${numeric[2].padStart(2, "0")}-${numeric[1].padStart(2, "0")}T${(numeric[4] ?? "20").padStart(2, "0")}:${numeric[5] ?? "00"}:00-03:00`,
+      timeEstimated: !numeric[4],
+    };
+  }
   const months: Record<string, string> = { janeiro: "01", fevereiro: "02", março: "03", abril: "04", maio: "05", junho: "06", julho: "07", agosto: "08", setembro: "09", outubro: "10", novembro: "11", dezembro: "12" };
-  const match = value.match(/(\d{1,2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})(?:\s+às\s+(\d{1,2}):(\d{2}))?/i);
-  if (!match) return "";
-  const month = months[normalizeText(match[2])];
-  if (!month) return "";
-  return `${match[3]}-${month}-${match[1].padStart(2, "0")}T${(match[4] ?? "20").padStart(2, "0")}:${match[5] ?? "00"}:00-03:00`;
+  const textual = normalized.match(/\b(\d{1,2})\s*(?:de\s+)?([a-zç]+)\s*(?:de\s+)?(\d{4})(?:[^0-9]{1,12}(\d{1,2})(?::|h)(\d{2})?)?/i);
+  if (!textual) return undefined;
+  const month = months[normalizeText(textual[2])];
+  if (!month) return undefined;
+  return {
+    value: `${textual[3]}-${month}-${textual[1].padStart(2, "0")}T${(textual[4] ?? "20").padStart(2, "0")}:${textual[5] ?? "00"}:00-03:00`,
+    timeEstimated: !textual[4],
+  };
+}
+export function parsePortugueseEventDate(value: string) {
+  return parseEventDateValue(value)?.value ?? "";
 }
 
 export function parseZigEventMetadata(html: string, url: string) {
@@ -947,7 +966,10 @@ export function parseTicketingEventMetadata(html: string, url: string) {
   const h1Text = $("h1").first().text();
   const pageTitle = $("title").first().text();
   const title = typeof jsonLd?.name === "string" ? jsonLd.name : meta("og:title") || stripHtml(h1Text) || stripHtml(pageTitle);
-  const eventDate = typeof jsonLd?.startDate === "string" ? jsonLd.startDate : (meta("event:start_time") || visibleText.match(/(?:sex|sab|dom|seg|ter|qua|qui)[^0-9]{0,20}(\d{1,2})[\/ .-]+([a-záéêç]+|\d{1,2})[^0-9]{0,12}(\d{1,2})h?(\d{2})?/i)?.[0] || "");
+  const parsedDate = typeof jsonLd?.startDate === "string"
+    ? parseEventDateValue(jsonLd.startDate)
+    : parseEventDateValue(meta("event:start_time") || visibleText);
+  const eventDate = parsedDate?.value ?? "";
   const locationName = typeof location.name === "string" ? location.name : (visibleText.match(/(?:Guarujá|Guaruja|Santos)[^,|]{0,80}/i)?.[0] ?? "").trim();
   const rawCity = typeof address.addressLocality === "string" ? address.addressLocality : (/guaruj[aá]/i.test(visibleText) ? "Guarujá" : /santos/i.test(visibleText) ? "Santos" : "");
   const street = typeof address.streetAddress === "string" ? address.streetAddress : "";
@@ -957,8 +979,8 @@ export function parseTicketingEventMetadata(html: string, url: string) {
   const offerNote = [offers.name, offers.description].filter((value): value is string => typeof value === "string" && value.trim().length > 0).join(" — ").trim();
   const lotNote = visibleText.match(/(?:\d{1,2}[º°o]?|primeiro|segundo|terceiro)\s*lote[^.;|]{0,120}/i)?.[0]?.trim() ?? "";
   const priceNote = (offerNote || lotNote || undefined)?.slice(0, 255);
-  if (!title && !eventDate && !locationName) return undefined;
-  return { title, eventDate, locationName, address: street, city, priceCents, priceNote, sourceUrl: url, imageUrl: meta("og:image"), text: visibleText.slice(0, 16_000) };
+  if (!title || !eventDate || !locationName || !city) return undefined;
+  return { title, eventDate, eventDateEstimated: parsedDate?.timeEstimated === true, locationName, address: street, city, priceCents, priceNote, sourceUrl: url, imageUrl: meta("og:image"), text: visibleText.slice(0, 16_000) };
 }
 
 export function parseArticketEventMetadata(html: string, url: string) {
@@ -1098,7 +1120,7 @@ type PublicPage = {
   adapter?: "blackpass" | "mringressos" | "ingresse" | "sympla" | "weticket" | "ticket360" | "zig" | "articket" | "parque-valongo" | "eventos-litoral" | "blue-med" | "gandaya" | "generic";
   adapterError?: string;
   durationMs?: number;
-  structured?: Record<string, string | number | undefined> | Array<Record<string, string | number | undefined>>;
+  structured?: Record<string, string | number | boolean | undefined> | Array<Record<string, string | number | boolean | undefined>>;
   cacheFallback?: { used: true; status: number | null; message: string };
   fetchFailure?: FetchFailure;
   circuitOpen?: boolean;
@@ -1449,7 +1471,7 @@ export type IngestionPipelineOptions = { dryRun?: boolean; sourceKey?: string; s
 type PublicSourceReportInput = {
   candidateUrls: string[];
   pages: PromiseSettledResult<PublicPage>[];
-  payloadEvents?: Array<Record<string, string | number>>;
+  payloadEvents?: Array<Record<string, string | number | boolean>>;
   acceptedEvents?: Array<{ sourceKey: string }>;
   rejectedEvents?: Array<{ sourceKey: string; reason: "invalidStructuredEvent" | "pastEvent" }>;
   duplicateSourceKeys?: string[];
@@ -1624,10 +1646,10 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
       { role: "system", content: `Extraia somente eventos públicos de música, shows ou baladas nos locais oficiais Vallum Garden, Moby Dick, Ativa House, Casa 412, Verilonguinho, Meu Lugar, Goat Club, Laroc Club Guarujá, Lucky Scope, Curvão Surf House, Guarujá Golf Club, Praia Verde Beach Club, Praia Verde, Casa Grande Hotel Resort, Casa Grande Hotel, Praiô, Flamingos, Projac Bar, Boteco Almare, Dolores Restaurante e Bar, Arena Club, Yellow House, Arena Jequitimar, Parque Valongo, Armazém 3, Blue Med Convention Center ou Santos Convention Center, localizados exclusivamente em Santos ou Guarujá. Ignore eventos passados, cidades diferentes, locais fora dessa allowlist e eventos de gastronomia, esporte, teatro ou exposição sem música. Retorne somente JSON no schema. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Se o gênero não puder ser inferido com segurança, descarte o evento. Use o SOURCE_URL correspondente como sourceUrl e IMAGE_URL quando houver.${monitoredBrandInstructions}` },
       { role: "user", content: rawText },
     ],
-    response_format: { type: "json_schema", json_schema: { name: "event_batch", strict: true, schema: { type: "object", properties: { events: { type: "array", items: { type: "object", properties: { title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string" }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "samba_pagode", "rap_trap"] }, priceCents: { type: "integer" }, sourceUrl: { type: "string" }, imageUrl: { type: "string" }, latitude: { type: "string" }, longitude: { type: "string" } }, required: ["title", "summary", "eventDate", "locationName", "address", "city", "category", "genre", "priceCents", "sourceUrl", "imageUrl", "latitude", "longitude"], additionalProperties: false } } }, required: ["events"], additionalProperties: false } } },
+    response_format: { type: "json_schema", json_schema: { name: "event_batch", strict: true, schema: { type: "object", properties: { events: { type: "array", items: { type: "object", properties: { title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, eventDateEstimated: { type: "boolean" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string" }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "samba_pagode", "rap_trap"] }, priceCents: { type: "integer" }, sourceUrl: { type: "string" }, imageUrl: { type: "string" }, latitude: { type: "string" }, longitude: { type: "string" } }, required: ["title", "summary", "eventDate", "eventDateEstimated", "locationName", "address", "city", "category", "genre", "priceCents", "sourceUrl", "imageUrl", "latitude", "longitude"], additionalProperties: false } } }, required: ["events"], additionalProperties: false } } },
   });
 
-  const payload = JSON.parse(String(structured.choices?.[0]?.message?.content ?? "{\"events\":[]}")) as { events: Array<Record<string, string | number>> };
+  const payload = JSON.parse(String(structured.choices?.[0]?.message?.content ?? "{\"events\":[]}")) as { events: Array<Record<string, string | number | boolean>> };
   let imported = 0;
   let added = 0;
   let updated = 0;
@@ -1675,7 +1697,8 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
       dryRunAcceptedEvents += 1;
       continue;
     }
-    const saved = await saveEvent({ title: String(event.title), slug: `${normalizeSlug(String(event.title))}-${date.getTime()}`, description: String(event.summary), eventDate: date, locationName: String(event.locationName), address: String(event.address), city, category: category as "show" | "balada" | "evento_musical", genre, priceCents: Number(event.priceCents) || 0, priceNote: event.priceNote === undefined ? undefined : String(event.priceNote).slice(0, 255), sourceUrl, sourceType, imageUrl: String(event.imageUrl || ""), latitude, longitude, sourceHash, isPublished: 1 });
+    const eventDateEstimated = event.eventDateEstimated === true;
+    const saved = await saveEvent({ title: String(event.title), slug: `${normalizeSlug(String(event.title))}-${date.getTime()}`, description: String(event.summary), eventDate: date, locationName: String(event.locationName), address: String(event.address), city, category: category as "show" | "balada" | "evento_musical", genre, priceCents: Number(event.priceCents) || 0, priceNote: event.priceNote === undefined ? undefined : String(event.priceNote).slice(0, 255), sourceUrl, sourceType, imageUrl: String(event.imageUrl || ""), latitude, longitude, sourceHash, isPublished: eventDateEstimated ? 0 : 1, isArchived: 0 });
     if (!saved || typeof saved !== "object") {
       added += 1;
       sourceOutcomes.push({ sourceKey, created: true, updated: false });

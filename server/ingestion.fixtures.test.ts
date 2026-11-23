@@ -76,6 +76,23 @@ describe("fixtures dos conectores públicos", () => {
     expect(parseArticketEventMetadata(fixture("articket-santos.html"), "https://articket.com.br/e/7163/feijuca-no-arcos-tiee")).toMatchObject({ title: "Feijuca no Arcos", city: "Santos", priceCents: 5000, imageUrl: "https://cdn.example/feijuca.jpg" });
   });
 
+  it("preserva horário explícito do fixture de bilheteria", () => {
+    const parsed = parseArticketEventMetadata(fixture("articket-santos.html"), "https://articket.com.br/e/7163/feijuca-no-arcos-tiee");
+    expect(parsed?.eventDate).toBe("2030-11-28T20:00:00-03:00");
+    expect(parsed?.eventDateEstimated).toBe(false);
+  });
+
+  it("retorna timestamp provisório e mantém sourceUrl quando a página traz apenas a data", () => {
+    const html = `<script type="application/ld+json">${JSON.stringify({ "@type": "Event", name: "Festival sem hora", startDate: "2031-12-11", location: { name: "GOAT CLUB", address: { addressLocality: "Santos", streetAddress: "Rua Example" } } })}</script>`;
+    const sourceUrl = "https://articket.com.br/e/9999/festival-sem-hora";
+    expect(parseArticketEventMetadata(html, sourceUrl)).toMatchObject({ eventDate: "2031-12-11T20:00:00-03:00", eventDateEstimated: true, sourceUrl });
+  });
+
+  it("não cria evento ArTicket quando a data da página não tem ano", () => {
+    const html = `<script type="application/ld+json">${JSON.stringify({ "@type": "Event", name: "Festa sem ano", startDate: "20.MAR", location: { name: "GOAT CLUB", address: { addressLocality: "Santos" } } })}</script>`;
+    expect(parseArticketEventMetadata(html, "https://articket.com.br/e/9998/festa-sem-ano")).toBeUndefined();
+  });
+
   it("normaliza O Encontro do Articket e corrige a cidade pelo venue oficial", () => {
     expect(parseArticketEventMetadata(fixture("articket-o-encontro.html"), "https://articket.com.br/e/7160/o-encontro?utm_source=instagram")).toMatchObject({
       title: "O ENCONTRO",

@@ -98,4 +98,15 @@ describe("public ingestion dry-run", () => {
     expect(result).toMatchObject({ dryRun: true, dryRunAcceptedEvents: 1, matchedSources: 1 });
     expect(mocks.saveEvent).not.toHaveBeenCalled();
   });
+
+  it("salva data sem horário como revisão manual, preservando origem", async () => {
+    process.env.INGESTION_FOCUS_URLS = "https://source.example/events";
+    mocks.invokeLLM.mockResolvedValue({ choices: [{ message: { content: JSON.stringify({ events: [{ title: "Show sem hora", summary: "Evento musical", eventDate: "2030-08-14T20:00:00-03:00", eventDateEstimated: true, locationName: "Vallum Garden", address: "Rua A, Santos", city: "Santos", category: "show", genre: "funk", priceCents: 1000, sourceUrl: "https://source.example/events", imageUrl: "", latitude: "", longitude: "" }] }) } }] });
+    mocks.saveEvent.mockResolvedValue({ created: true, id: 42, updated: false });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, headers: { get: () => "text/html" }, text: async () => "Vallum Garden Santos", json: async () => ({}) }));
+
+    await runIngestionPipeline();
+
+    expect(mocks.saveEvent).toHaveBeenCalledWith(expect.objectContaining({ eventDate: new Date("2030-08-14T20:00:00-03:00"), sourceUrl: "https://source.example/events", isPublished: 0, isArchived: 0 }));
+  });
 });
