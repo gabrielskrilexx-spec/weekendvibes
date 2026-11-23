@@ -52,7 +52,7 @@ describe("EventCard interaction", () => {
   it("limpa Markdown bruto das descrições e usa fallback por categoria", () => {
     expect(sanitizeEventText("# ROTATIONS SESSIONS - **Quando:** sábado, 5 de dezembro `2026`"))
       .toBe("ROTATIONS SESSIONS - Quando: sábado, 5 de dezembro 2026");
-    expect(resolveEventCoverImage({ imageUrl: null, title: "Evento", locationName: "Espaço sem cadastro", sourceType: "public:discovery", category: "balada", sourceUrl: null })).toBe("/venues/vallum-garden.webp");
+    expect(resolveEventCoverImage({ imageUrl: null, title: "Evento", locationName: "Espaço sem cadastro", sourceType: "public:discovery", category: "balada", sourceUrl: null })).toBe("/images/venues/venue-placeholder.svg");
   });
 
   it("aplica feedback visual de hover e foco sem remover a acessibilidade", () => {

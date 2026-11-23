@@ -3,7 +3,7 @@ import { Building2, CalendarDays, MapPin, X } from "lucide-react";
 import type { Event } from "../../../drizzle/schema";
 
 type VenueKey = string;
-const FALLBACK_IMAGE = "/venues/vallum-garden.webp";
+const FALLBACK_IMAGE = "/images/venues/venue-placeholder.svg";
 
 export type DynamicVenue = {
   slug: string;

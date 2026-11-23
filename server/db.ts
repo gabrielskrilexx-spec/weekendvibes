@@ -539,7 +539,7 @@ export type ActiveVenueCatalogItem = {
   description: string;
 };
 
-const VENUE_FALLBACK_IMAGE = "/venues/vallum-garden.webp";
+const VENUE_FALLBACK_IMAGE = "/images/venues/venue-placeholder.svg";
 const OFFICIAL_VENUE_CATALOG: Array<{
   slug: string;
   canonicalName: string;
@@ -565,10 +565,10 @@ const OFFICIAL_VENUE_CATALOG: Array<{
   { slug: "o-beco", canonicalName: "O Beco", city: "Santos", match: ["o beco", "o bēco"], query: "O Beco", imageUrl: "/venues/obeco.webp", description: "Bar e espaço de festas com programação urbana em Santos." },
   { slug: "dolores-restaurante-e-bar", canonicalName: "Dolores Restaurante e Bar", city: "Guarujá", match: ["dolores restaurante e bar", "dolores bar e restaurante", "dolores"], query: "Dolores Restaurante e Bar", imageUrl: "/venues/dolores.webp", description: "Restaurante e bar com atmosfera descontraída para bons encontros." },
   { slug: "projac-bar", canonicalName: "Projac Bar", city: "Guarujá", match: ["projac bar", "projac"], query: "Projac Bar", imageUrl: "/venues/projac.webp", description: "Bar e palco para noites de música e experiências na Baixada." },
-  { slug: "meu-lugar", canonicalName: "Meu Lugar", city: "Santos", match: ["meu lugar"], query: "Meu Lugar", imageUrl: "/venues/meulugar.webp", description: "Espaço acolhedor para encontros, música e programação noturna." },
+  { slug: "meu-lugar", canonicalName: "Meu Lugar", city: "Santos", match: ["meu lugar"], query: "Meu Lugar", imageUrl: "/images/venues/meu-lugar.jpg", description: "Espaço acolhedor para encontros, música e programação noturna." },
   { slug: "moby-dick", canonicalName: "Moby Dick", city: "Santos", match: ["moby dick"], query: "Moby Dick", imageUrl: "/venues/mobydick.webp", description: "Casa tradicional de shows e noites especiais em Santos." },
   { slug: "arena-club", canonicalName: "Arena Club", city: "Santos", match: ["arena club", "arena bar club"], query: "Arena Club Santos", imageUrl: "/venues/arena-club.webp", description: "Casa de shows, rock, reggae e música alternativa na Vila Mathias." },
-  { slug: "yellow-house", canonicalName: "Yellow House", city: "Santos", match: ["yellow house"], query: "Yellow House Santos", imageUrl: "/venues/yellow-house.webp", description: "Casa de shows e música urbana na Rua do Comércio, no Centro de Santos." },
+  { slug: "yellow-house", canonicalName: "Yellow House", city: "Santos", match: ["yellow house"], query: "Yellow House Santos", imageUrl: "/images/venues/yellow-house.jpg", description: "Casa de shows e música urbana na Rua do Comércio, no Centro de Santos." },
 ] as const;
 
 export async function listActiveVenueCatalog(dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<ActiveVenueCatalogItem[]> {

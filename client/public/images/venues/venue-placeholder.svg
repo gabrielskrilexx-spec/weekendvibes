@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-labelledby="title desc">
+  <title id="title">Imagem de venue indisponível</title>
+  <desc id="desc">Placeholder neutro do catálogo WeekendVibes</desc>
+  <rect width="1200" height="900" fill="#27272a"/>
+  <path d="M0 680 260 470l180 145 190-220 370 285 200-145V900H0Z" fill="#3f3f46"/>
+  <circle cx="600" cy="330" r="92" fill="#52525b"/>
+  <path d="M540 330h120M600 270v120" stroke="#d4d4d8" stroke-width="18" stroke-linecap="round"/>
+  <text x="600" y="790" fill="#e4e4e7" font-family="Arial, sans-serif" font-size="42" font-weight="700" text-anchor="middle">WeekendVibes</text>
+</svg>

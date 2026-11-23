@@ -73,13 +73,13 @@ export function formatSaoPauloIso(value: Date | string) {
 
 export function absolutePublicUrl(value: string | null | undefined, origin = DEFAULT_PUBLIC_ORIGIN) {
   const raw = value?.trim();
-  if (!raw) return `${origin}/venues/vallum-garden.webp`;
+  if (!raw) return `${origin}/images/venues/venue-placeholder.svg`;
   try {
     const url = new URL(raw, origin);
     if (url.protocol === "http:") url.protocol = "https:";
     return url.toString();
   } catch {
-    return `${origin}/venues/vallum-garden.webp`;
+    return `${origin}/images/venues/venue-placeholder.svg`;
   }
 }
 
