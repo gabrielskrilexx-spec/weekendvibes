@@ -185,7 +185,7 @@ export type GenreDiscoveryScanResult = {
 
 export async function runGenreDiscoveryScan(options: { now?: Date; sourceUrls?: string[] } = {}): Promise<GenreDiscoveryScanResult> {
   const now = options.now ?? new Date();
-  const discovery = await discoverCandidatePages({ dryRun: true, sourceUrls: options.sourceUrls, exploratorySourceUrls: [...DISCOVERY_REGIONAL_SOURCE_URLS] });
+  const discovery = await discoverCandidatePages({ dryRun: true, exploratoryApify: true, sourceUrls: options.sourceUrls, exploratorySourceUrls: [...DISCOVERY_REGIONAL_SOURCE_URLS] });
   const urls = discovery.urls.map(candidateUrl).filter(Boolean);
   const pages = await Promise.allSettled(urls.map((url: string) => guardedFetchPublicPage(url, { dryRun: true })));
   const stats = new Map<string, DiscoveryPlatformStat>();
