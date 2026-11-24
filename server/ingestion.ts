@@ -174,6 +174,15 @@ export function filterExplicitPublicSourceUrls(urls: string[], requestedUrls?: s
   return urls.filter(url => requested.has(sanitizePublicSourceUrl(url)));
 }
 
+export const EXPLORATORY_APIFY_CATALOG_URLS = [
+  "https://www.sympla.com.br/eventos/santos-sp",
+  "https://www.sympla.com.br/eventos/guaruja-sp",
+] as const;
+
+export function getExploratoryApifyCatalogUrls(requestedUrls?: string[]) {
+  return filterExplicitPublicSourceUrls([...EXPLORATORY_APIFY_CATALOG_URLS], requestedUrls);
+}
+
 async function getEnabledConfiguredSourceUrls() {
   const configuredUrls = getConfiguredSourceUrls();
   try {
@@ -1496,7 +1505,13 @@ export function buildApifyCatalogPayload(urls: string[], actorId = process.env.A
     pageFunction,
     maxCrawlPages: 20,
     maxConcurrency: 2,
+    maxRequestRetries: 1,
   };
+}
+
+function isBrowserApifyCatalogActor(actorId: string) {
+  const normalized = actorId.toLowerCase();
+  return normalized.includes("puppeteer") || normalized.includes("web-scraper");
 }
 
 export function shouldRunApifyCatalogFallback(baseUrl: string, page: Pick<PublicPage, "circuitOpen">, options: { exploratoryApify?: boolean } = {}) {
@@ -1516,7 +1531,7 @@ export async function fetchApifyCatalogLinks(urls: string[], options: { signal?:
     }, 45_000, true, options.signal);
     const body = await readExternalBody(response);
     const links = extractEmbeddedPublicEventUrls(body, urls[0]);
-    return { links, attempted: true, status: links.length > 0 ? "succeeded" : "empty", message: links.length > 0 ? undefined : "Actor concluiu sem retornar links /evento/." };
+    return { links, attempted: true, status: links.length > 0 ? "succeeded" : "empty", message: links.length > 0 ? `${links.length} link(s) de evento extraído(s) pelo Actor.` : "Actor concluiu sem retornar links de evento." };
   } catch (error) {
     const message = sanitizeFetchFailure(error).message;
     return { links: [], attempted: true, status: isTimeoutFailure(error) ? "timeout" : "failed", message };
@@ -1656,7 +1671,8 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean; signal?
 export async function discoverCandidatePages(options: IngestionPipelineOptions = {}, activeAliases: string[] = []) {
   const requestedSourceUrls = options.sourceUrls?.map(sanitizePublicSourceUrl);
   const configuredBases = filterExplicitPublicSourceUrls(await getEnabledConfiguredSourceUrls(), requestedSourceUrls);
-  const exploratoryBases = filterExplicitPublicSourceUrls(options.exploratorySourceUrls ?? [], requestedSourceUrls);
+  const forcedApifyBases = options.exploratoryApify ? getExploratoryApifyCatalogUrls(requestedSourceUrls) : [];
+  const exploratoryBases = filterExplicitPublicSourceUrls(Array.from(new Set([...(options.exploratorySourceUrls ?? []), ...forcedApifyBases])), requestedSourceUrls);
   const bases = options.sourceKey
     ? Array.from(new Set([...configuredBases, ...exploratoryBases])).filter(url => options.sourceKey === "public" || publicSourceKey(url) === options.sourceKey)
     : Array.from(new Set([...configuredBases, ...exploratoryBases]));
@@ -1677,6 +1693,17 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
   const discovered = new Set([...crawlBases.filter(url => !isPublicCatalogUrl(url)), ...regionalArticketCandidates.regional.map(candidate => candidate.url)]);
   const apifyStats: Array<{ sourceKey: string; urls: string[]; status: ApifyCatalogFallbackResult["status"]; attempted: boolean; message?: string }> = [];
   const basePages = await fetchWithConcurrency(crawlBases, url => guardedFetchPublicPage(url, { ...options, bypassCircuitBreaker: options.exploratoryApify === true }), PUBLIC_FETCH_CONCURRENCY);
+  const actorId = (process.env.APIFY_CATALOG_ACTOR_ID || process.env.APIFY_WEB_ACTOR_ID || "apify~cheerio-scraper").trim();
+  const browserApifySymplaUrls = options.exploratoryApify && isBrowserApifyCatalogActor(actorId)
+    ? getExploratoryApifyCatalogUrls(requestedSourceUrls)
+    : [];
+  const browserApifyCompleted = new Set<string>();
+  if (browserApifySymplaUrls.length > 0) {
+    const fallback = await fetchApifyCatalogLinks(browserApifySymplaUrls, options);
+    for (const link of fallback.links) discovered.add(link);
+    browserApifySymplaUrls.forEach(url => browserApifyCompleted.add(sanitizePublicSourceUrl(url)));
+    apifyStats.push({ sourceKey: "public:sympla", urls: browserApifySymplaUrls, status: fallback.status, attempted: fallback.attempted, message: fallback.message });
+  }
   const zigCatalogs = crawlBases.filter(url => publicSourceKey(url) === "public:zig" && isPublicCatalogUrl(url));
   const zigRegionalPages = await fetchWithConcurrency(Array.from(new Set(zigCatalogs.map(url => /guaruja/i.test(url) ? "Guarujá" : "Santos" as const))), city => fetchZigRegionalEventLinks(city, options), Math.min(2, PUBLIC_FETCH_CONCURRENCY));
   for (const result of zigRegionalPages) if (result.status === "fulfilled") for (const link of result.value.urls) discovered.add(link);
@@ -1720,7 +1747,8 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
     const extractedLinks = page ? extractPublicEventLinks(page.html, page.url) : [];
     for (const link of extractedLinks) discovered.add(link);
     const apifyEligible = isPublicCatalogUrl(baseUrl) && (options.exploratoryApify === true || (page ? shouldRunApifyCatalogFallback(baseUrl, page, options) : false));
-    if (extractedLinks.length === 0 && apifyEligible) {
+    const isBrowserApifyNonSymplaCatalog = isBrowserApifyCatalogActor(actorId) && publicSourceKey(baseUrl) !== "public:sympla";
+    if (extractedLinks.length === 0 && apifyEligible && !browserApifyCompleted.has(sanitizePublicSourceUrl(baseUrl)) && !isBrowserApifyNonSymplaCatalog) {
       const fallback = await fetchApifyCatalogLinks([baseUrl], options);
       for (const link of fallback.links) discovered.add(link);
       apifyStats.push({ sourceKey: publicSourceKey(baseUrl), urls: [baseUrl], status: fallback.status, attempted: fallback.attempted, message: fallback.message });

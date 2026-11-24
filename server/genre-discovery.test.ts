@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { candidateUrl, classifyDiscoveryGenres, detectDiscoveryCity, DISCOVERY_REGIONAL_SOURCE_URLS, filterDiscoveryCandidateUrls, isFutureDiscoveryDate, pageToDiscoveryCandidate, resolveDiscoveryCityFromKnownVenue } from "./genre-discovery";
-import { buildApifyCatalogPayload, extractEmbeddedPublicEventUrls, extractPublicEventLinks, extractSitemapUrls, extractZigApiEventUrls, fetchApifyCatalogLinks, isPublicCatalogUrl, parseZigApiEventPayload, parseZigEventMetadata, shouldRunApifyCatalogFallback } from "./ingestion";
+import { buildApifyCatalogPayload, extractEmbeddedPublicEventUrls, extractPublicEventLinks, extractSitemapUrls, extractZigApiEventUrls, fetchApifyCatalogLinks, getExploratoryApifyCatalogUrls, isPublicCatalogUrl, parseZigApiEventPayload, parseZigEventMetadata, shouldRunApifyCatalogFallback } from "./ingestion";
 
 describe("Radar de descoberta por estilo", () => {
   it("classifica todos os gêneros que aparecem no conjunto de textos", () => {
@@ -168,6 +168,30 @@ describe("Radar de descoberta por estilo", () => {
     expect(payload.pageFunction).toContain("href");
     expect(payload.pageFunction).toContain("evento");
     expect(payload.pageFunction).toContain("title");
+    expect(payload.maxConcurrency).toBe(2);
+    expect(payload.maxRequestRetries).toBe(1);
+  });
+
+  it("injeta os dois catálogos Sympla mesmo quando a fonte não está habilitada", () => {
+    expect(getExploratoryApifyCatalogUrls()).toEqual([
+      "https://www.sympla.com.br/eventos/santos-sp",
+      "https://www.sympla.com.br/eventos/guaruja-sp",
+    ]);
+  });
+
+  it("limita o scraper Apify de navegador aos dois catálogos Sympla", () => {
+    const payload = buildApifyCatalogPayload([
+      "https://www.sympla.com.br/eventos/santos-sp",
+      "https://www.sympla.com.br/eventos/guaruja-sp",
+      "https://blackpass.com.br/?city=santos",
+      "https://gandaya.dance/?city=guaruja",
+    ], "apify~puppeteer-scraper");
+    expect(payload.startUrls).toEqual([
+      { url: "https://www.sympla.com.br/eventos/santos-sp" },
+      { url: "https://www.sympla.com.br/eventos/guaruja-sp" },
+    ]);
+    expect(payload.startUrls).not.toEqual(expect.arrayContaining([{ url: expect.stringContaining("blackpass") }]));
+    expect(payload.startUrls).not.toEqual(expect.arrayContaining([{ url: expect.stringContaining("gandaya") }]));
   });
 
   it("mantém catálogos Sympla elegíveis ao Apify mesmo em cooldown exploratório", () => {

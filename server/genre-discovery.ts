@@ -2,7 +2,7 @@ import { and, asc, eq, gte, isNotNull, sql } from "drizzle-orm";
 import { discoveredEventCandidates, events, ingestionSources } from "../drizzle/schema";
 import { normalizeDiscoveredSourceUrl } from "../shared/source-url";
 import { sanitizeEventText } from "../shared/event-text";
-import { guardedFetchPublicPage, discoverCandidatePages, publicSourceKey, type PublicPage } from "./ingestion";
+import { EXPLORATORY_APIFY_CATALOG_URLS, guardedFetchPublicPage, discoverCandidatePages, publicSourceKey, type PublicPage } from "./ingestion";
 import { getDb, saveEvent } from "./db";
 
 export const DISCOVERY_GENRES = ["trap", "rap", "funk", "eletrônica"] as const;
@@ -11,8 +11,7 @@ export const DISCOVERY_CITIES = ["Santos", "Guarujá"] as const;
 export type DiscoveryCity = typeof DISCOVERY_CITIES[number];
 export type DiscoveryStatus = "pending" | "approved" | "rejected";
 export const DISCOVERY_REGIONAL_SOURCE_URLS = [
-  "https://www.sympla.com.br/eventos/santos-sp",
-  "https://www.sympla.com.br/eventos/guaruja-sp",
+  ...EXPLORATORY_APIFY_CATALOG_URLS,
   "https://zig.tickets/pt-BR?city=santos",
   "https://zig.tickets/pt-BR?city=guaruja",
   "https://blacktag.com.br/?city=santos",
