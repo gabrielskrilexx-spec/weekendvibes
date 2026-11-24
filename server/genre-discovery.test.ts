@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { candidateUrl, classifyDiscoveryGenres, detectDiscoveryCity, DISCOVERY_REGIONAL_SOURCE_URLS, filterDiscoveryCandidateUrls, isFutureDiscoveryDate, pageToDiscoveryCandidate, resolveDiscoveryCityFromKnownVenue } from "./genre-discovery";
-import { buildApifyCatalogPayload, extractEmbeddedPublicEventUrls, extractPublicEventLinks, extractSitemapUrls, extractZigApiEventUrls, fetchApifyCatalogLinks, getExploratoryApifyCatalogUrls, isPublicCatalogUrl, parseZigApiEventPayload, parseZigEventMetadata, shouldRunApifyCatalogFallback } from "./ingestion";
+import { buildApifyCatalogPayload, extractEmbeddedPublicEventUrls, extractPublicEventLinks, extractSitemapUrls, extractZigApiEventUrls, fetchApifyCatalogLinks, getExploratoryApifyActorId, getExploratoryApifyCatalogUrls, isPublicCatalogUrl, parseZigApiEventPayload, parseZigEventMetadata, shouldRunApifyCatalogFallback } from "./ingestion";
 
 describe("Radar de descoberta por estilo", () => {
   it("classifica todos os gêneros que aparecem no conjunto de textos", () => {
@@ -192,6 +192,33 @@ describe("Radar de descoberta por estilo", () => {
     ]);
     expect(payload.startUrls).not.toEqual(expect.arrayContaining([{ url: expect.stringContaining("blackpass") }]));
     expect(payload.startUrls).not.toEqual(expect.arrayContaining([{ url: expect.stringContaining("gandaya") }]));
+  });
+
+  it("usa Puppeteer por padrão no fallback exploratório do Sympla", async () => {
+    const originalToken = process.env.APIFY_API_TOKEN;
+    const originalActor = process.env.APIFY_CATALOG_ACTOR_ID;
+    const originalWebActor = process.env.APIFY_WEB_ACTOR_ID;
+    process.env.APIFY_API_TOKEN = "test-token";
+    delete process.env.APIFY_CATALOG_ACTOR_ID;
+    delete process.env.APIFY_WEB_ACTOR_ID;
+    const fetchMock = vi.fn(async () => new Response("[]", { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      expect(getExploratoryApifyActorId()).toBe("apify~puppeteer-scraper");
+      await fetchApifyCatalogLinks(getExploratoryApifyCatalogUrls(), { actorId: getExploratoryApifyActorId() });
+      const requestUrl = String(fetchMock.mock.calls[0]?.[0]);
+      expect(requestUrl).toContain("/acts/apify~puppeteer-scraper/");
+      const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit)?.body));
+      expect(body.startUrls).toEqual([
+        { url: "https://www.sympla.com.br/eventos/santos-sp" },
+        { url: "https://www.sympla.com.br/eventos/guaruja-sp" },
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+      if (originalToken === undefined) delete process.env.APIFY_API_TOKEN; else process.env.APIFY_API_TOKEN = originalToken;
+      if (originalActor === undefined) delete process.env.APIFY_CATALOG_ACTOR_ID; else process.env.APIFY_CATALOG_ACTOR_ID = originalActor;
+      if (originalWebActor === undefined) delete process.env.APIFY_WEB_ACTOR_ID; else process.env.APIFY_WEB_ACTOR_ID = originalWebActor;
+    }
   });
 
   it("mantém catálogos Sympla elegíveis ao Apify mesmo em cooldown exploratório", () => {

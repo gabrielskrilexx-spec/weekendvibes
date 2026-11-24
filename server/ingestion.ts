@@ -1514,13 +1514,17 @@ function isBrowserApifyCatalogActor(actorId: string) {
   return normalized.includes("puppeteer") || normalized.includes("web-scraper");
 }
 
+export function getExploratoryApifyActorId() {
+  return (process.env.APIFY_CATALOG_ACTOR_ID || process.env.APIFY_WEB_ACTOR_ID || "apify~puppeteer-scraper").trim();
+}
+
 export function shouldRunApifyCatalogFallback(baseUrl: string, page: Pick<PublicPage, "circuitOpen">, options: { exploratoryApify?: boolean } = {}) {
   return isPublicCatalogUrl(baseUrl) && (!page.circuitOpen || options.exploratoryApify === true);
 }
 
-export async function fetchApifyCatalogLinks(urls: string[], options: { signal?: AbortSignal } = {}): Promise<ApifyCatalogFallbackResult> {
+export async function fetchApifyCatalogLinks(urls: string[], options: { signal?: AbortSignal; actorId?: string } = {}): Promise<ApifyCatalogFallbackResult> {
   const token = process.env.APIFY_API_TOKEN?.trim();
-  const actorId = (process.env.APIFY_CATALOG_ACTOR_ID || process.env.APIFY_WEB_ACTOR_ID || "apify~cheerio-scraper").trim();
+  const actorId = (options.actorId || process.env.APIFY_CATALOG_ACTOR_ID || process.env.APIFY_WEB_ACTOR_ID || "apify~cheerio-scraper").trim();
   if (!token || urls.length === 0) return { links: [], attempted: false, status: "not_configured", message: "APIFY_API_TOKEN ausente ou nenhum catálogo elegível." };
   try {
     const actorPath = encodeURIComponent(actorId).replace(/%7E/gi, "~");
@@ -1671,7 +1675,7 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean; signal?
 export async function discoverCandidatePages(options: IngestionPipelineOptions = {}, activeAliases: string[] = []) {
   const requestedSourceUrls = options.sourceUrls?.map(sanitizePublicSourceUrl);
   const configuredBases = filterExplicitPublicSourceUrls(await getEnabledConfiguredSourceUrls(), requestedSourceUrls);
-  const forcedApifyBases = options.exploratoryApify ? getExploratoryApifyCatalogUrls(requestedSourceUrls) : [];
+  const forcedApifyBases = options.exploratoryApify ? getExploratoryApifyCatalogUrls() : [];
   const exploratoryBases = filterExplicitPublicSourceUrls(Array.from(new Set([...(options.exploratorySourceUrls ?? []), ...forcedApifyBases])), requestedSourceUrls);
   const bases = options.sourceKey
     ? Array.from(new Set([...configuredBases, ...exploratoryBases])).filter(url => options.sourceKey === "public" || publicSourceKey(url) === options.sourceKey)
@@ -1693,13 +1697,11 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
   const discovered = new Set([...crawlBases.filter(url => !isPublicCatalogUrl(url)), ...regionalArticketCandidates.regional.map(candidate => candidate.url)]);
   const apifyStats: Array<{ sourceKey: string; urls: string[]; status: ApifyCatalogFallbackResult["status"]; attempted: boolean; message?: string }> = [];
   const basePages = await fetchWithConcurrency(crawlBases, url => guardedFetchPublicPage(url, { ...options, bypassCircuitBreaker: options.exploratoryApify === true }), PUBLIC_FETCH_CONCURRENCY);
-  const actorId = (process.env.APIFY_CATALOG_ACTOR_ID || process.env.APIFY_WEB_ACTOR_ID || "apify~cheerio-scraper").trim();
-  const browserApifySymplaUrls = options.exploratoryApify && isBrowserApifyCatalogActor(actorId)
-    ? getExploratoryApifyCatalogUrls(requestedSourceUrls)
-    : [];
+  const exploratoryApifyActorId = getExploratoryApifyActorId();
+  const browserApifySymplaUrls = options.exploratoryApify ? getExploratoryApifyCatalogUrls() : [];
   const browserApifyCompleted = new Set<string>();
   if (browserApifySymplaUrls.length > 0) {
-    const fallback = await fetchApifyCatalogLinks(browserApifySymplaUrls, options);
+    const fallback = await fetchApifyCatalogLinks(browserApifySymplaUrls, { ...options, actorId: exploratoryApifyActorId });
     for (const link of fallback.links) discovered.add(link);
     browserApifySymplaUrls.forEach(url => browserApifyCompleted.add(sanitizePublicSourceUrl(url)));
     apifyStats.push({ sourceKey: "public:sympla", urls: browserApifySymplaUrls, status: fallback.status, attempted: fallback.attempted, message: fallback.message });
@@ -1747,8 +1749,8 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
     const extractedLinks = page ? extractPublicEventLinks(page.html, page.url) : [];
     for (const link of extractedLinks) discovered.add(link);
     const apifyEligible = isPublicCatalogUrl(baseUrl) && (options.exploratoryApify === true || (page ? shouldRunApifyCatalogFallback(baseUrl, page, options) : false));
-    const isBrowserApifyNonSymplaCatalog = isBrowserApifyCatalogActor(actorId) && publicSourceKey(baseUrl) !== "public:sympla";
-    if (extractedLinks.length === 0 && apifyEligible && !browserApifyCompleted.has(sanitizePublicSourceUrl(baseUrl)) && !isBrowserApifyNonSymplaCatalog) {
+    const isExploratoryNonSymplaCatalog = options.exploratoryApify && publicSourceKey(baseUrl) !== "public:sympla";
+    if (extractedLinks.length === 0 && apifyEligible && !browserApifyCompleted.has(sanitizePublicSourceUrl(baseUrl)) && !isExploratoryNonSymplaCatalog) {
       const fallback = await fetchApifyCatalogLinks([baseUrl], options);
       for (const link of fallback.links) discovered.add(link);
       apifyStats.push({ sourceKey: publicSourceKey(baseUrl), urls: [baseUrl], status: fallback.status, attempted: fallback.attempted, message: fallback.message });

@@ -195,6 +195,8 @@ export async function runGenreDiscoveryScan(options: { now?: Date; sourceUrls?: 
     stats.set(platform, created);
     return created;
   };
+  const symplaStat = getStats("public:sympla");
+  symplaStat.apifyUrls = [...EXPLORATORY_APIFY_CATALOG_URLS];
   for (const fallback of discovery.apifyStats ?? []) {
     const platformStat = getStats(fallback.sourceKey);
     platformStat.apifyStatus = fallback.status;
