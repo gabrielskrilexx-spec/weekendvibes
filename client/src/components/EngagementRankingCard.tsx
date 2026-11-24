@@ -1,8 +1,0 @@
-import { BarChart3 } from "lucide-react";
-import { trpc } from "@/lib/trpc";
-export default function EngagementRankingCard() {
-  const query = trpc.engagement.ranking.useQuery({ days: 7 });
-  const events = query.data?.events ?? [];
-  const venues = query.data?.venues ?? [];
-  return <section className="mt-6 rounded-3xl border border-orange-300/20 bg-orange-300/[.06] p-5" aria-labelledby="engagement-ranking-title"><div className="flex items-center gap-2"><BarChart3 size={18} className="text-orange-300" /><h2 id="engagement-ranking-title" className="font-black">Compartilhamentos recentes</h2><span className="ml-auto text-xs text-zinc-500">7 dias</span></div>{query.isLoading ? <p className="mt-3 text-sm text-zinc-400" role="status">Carregando ranking…</p> : query.isError ? <p className="mt-3 text-sm text-rose-200">Não foi possível carregar o ranking.</p> : !events.length && !venues.length ? <p className="mt-3 text-sm text-zinc-400">Ainda não há dados de engagement.</p> : <div className="mt-4 grid gap-4 sm:grid-cols-2"><div><p className="text-xs font-black uppercase tracking-wider text-zinc-500">Eventos</p><ol className="mt-2 space-y-1 text-sm">{events.slice(0, 5).map(row => <li key={row.id} className="flex justify-between"><span>Evento #{row.id}</span><strong>{row.total}</strong></li>)}</ol></div><div><p className="text-xs font-black uppercase tracking-wider text-zinc-500">Palcos</p><ol className="mt-2 space-y-1 text-sm">{venues.slice(0, 5).map(row => <li key={row.id} className="flex justify-between"><span>{row.id}</span><strong>{row.total}</strong></li>)}</ol></div></div>}</section>;
-}
