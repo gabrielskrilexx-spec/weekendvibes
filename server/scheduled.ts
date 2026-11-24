@@ -35,12 +35,33 @@ function getScheduledFailureLogContext(error: unknown) {
   return { ...context, integration, upstreamStatus, degraded: failure.degraded === true, failureKind };
 }
 
+function isIsolated503Warning(source: { read?: unknown; errors?: unknown[] }) {
+  const errors = Array.isArray(source.errors) ? source.errors : [];
+  return errors.length > 0
+    && errors.every(error => {
+      if (!error || typeof error !== "object") return false;
+      const value = error as Record<string, unknown>;
+      return Number(value.status ?? value.httpStatus ?? 0) === 503;
+    })
+    && Number(source.read ?? 0) > errors.length;
+}
+
 function buildPublicAutomationSummary(result: unknown, startedAt: string, finishedAt: string) {
   const value = result && typeof result === "object" ? result as Record<string, unknown> : {};
   const reports = Array.isArray(value.sourceReports) ? value.sourceReports.filter(item => item && typeof item === "object") as Array<Record<string, unknown>> : [];
   const fallback = reports.length > 0 ? reports : [value];
   const sources = fallback.map((source, index) => {
-    const errors = Array.isArray(source.errors) ? source.errors.slice(0, 10).map(error => ({ status: null, message: String(error instanceof Error ? error.message : error ?? "Falha não especificada").replace(/https?:\/\/[^\s]+/gi, "fonte pública").slice(0, 240) })) : [];
+    const rawErrors = Array.isArray(source.errors) ? source.errors.slice(0, 10) : [];
+    const isolated503 = isIsolated503Warning({
+      read: Number(source.read ?? source.discovered ?? 0) || 0,
+      errors: rawErrors.map(error => ({ status: error && typeof error === "object" ? Number((error as Record<string, unknown>).status ?? (error as Record<string, unknown>).httpStatus ?? 0) || null : null })),
+    });
+    const errors = isolated503 ? [] : rawErrors.map(error => {
+      const item = error && typeof error === "object" ? error as Record<string, unknown> : {};
+      const status = Number(item.status ?? item.httpStatus ?? 0) || null;
+      const message = error instanceof Error ? error.message : typeof item.message === "string" ? item.message : String(error ?? "Falha não especificada");
+      return { status, message: message.replace(/https?:\/\/[^\s]+/gi, "fonte pública").slice(0, 240) };
+    });
     if (source.skipped === true && typeof source.reason === "string") errors.push({ status: null, message: source.reason.slice(0, 240) });
     return { sourceKey: String(source.sourceKey ?? (reports.length > 0 ? `public-${index + 1}` : "public")), read: Number(source.read ?? source.discovered ?? 0) || 0, added: Number(source.added ?? source.persisted ?? source.imported ?? 0) || 0, updated: Number(source.updated ?? 0) || 0, ignored: Number(source.ignored ?? source.filtered ?? 0) || 0, errors };
   });

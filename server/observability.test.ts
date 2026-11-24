@@ -34,4 +34,16 @@ describe("observability trends", () => {
     expect(calculateSystemHealthStatus({ openSources: 4, activeSources: 10, recentRuns: 10, recentFailures: 1 })).toBe("degraded");
     expect(calculateSystemHealthStatus({ openSources: 7, activeSources: 10, recentRuns: 10, recentFailures: 1 })).toBe("critical");
   });
+
+  it("mantém healthy quando o único 503 é uma falha isolada de URL", () => {
+    expect(calculateSystemHealthStatus({
+      openSources: 0,
+      activeSources: 10,
+      recentRuns: 10,
+      recentFailures: 4,
+      allCircuitsClosed: true,
+      staleRuns: 0,
+      isolatedUrlFailures: 4,
+    })).toBe("healthy");
+  });
 });

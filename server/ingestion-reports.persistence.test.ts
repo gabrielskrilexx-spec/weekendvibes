@@ -12,7 +12,7 @@ vi.mock("./db", () => ({
   recordIngestionSourceReportSummary: mocks.recordIngestionSourceReportSummary,
 }));
 
-import { finishIngestionRun } from "./ingestion-reports";
+import { finishIngestionRun, reconcileExpiredIngestionRuns } from "./ingestion-reports";
 
 describe("ingestion run observability persistence", () => {
   beforeEach(() => {
@@ -88,5 +88,24 @@ describe("ingestion run observability persistence", () => {
       "Coleta concluída: 7 lidos, 0 novos, 2 atualizados, 5 ignorados; 0 erro(s).",
       db,
     );
+  });
+
+  it("expira run assíncrono QUEUED após duas horas sem consultar a Apify", async () => {
+    const set = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    const db = {
+      select: vi.fn().mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ id: 149, routine: "instagram-stories-async", startedAt: new Date("2026-11-24T07:00:00.000Z"), details: JSON.stringify({ status: "QUEUED" }) }]),
+        }),
+      }),
+      update: vi.fn().mockReturnValue({ set }),
+    };
+    mocks.getDb.mockResolvedValue(db);
+
+    const result = await reconcileExpiredIngestionRuns({ now: new Date("2026-11-24T10:00:00.000Z") });
+
+    expect(result).toMatchObject({ reconciledCount: 1, runIds: [149] });
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "failed", failedCount: 1, httpStatus: 504, finishedAt: new Date("2026-11-24T10:00:00.000Z") }));
+    expect(JSON.parse(set.mock.calls[0]?.[0]?.details)).toMatchObject({ error: "timeout_exceeded_2h", reconciliation: { reason: "timeout_exceeded_2h", routine: "instagram-stories-async" } });
   });
 });

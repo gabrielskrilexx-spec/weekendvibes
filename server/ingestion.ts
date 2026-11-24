@@ -872,9 +872,19 @@ const BLACKPASS_REQUEST_HEADERS = {
   "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
 };
 
-async function fetchPublicAdapterJson<T>(input: string, init: RequestInit = {}, timeoutMs = 12_000, attempts = 2, externalSignal?: AbortSignal): Promise<T> {
+export const PUBLIC_ADAPTER_MAX_ATTEMPTS = 3;
+export const PUBLIC_ADAPTER_RETRY_DELAYS_MS = [300, 1_200] as const;
+
+function isRetryablePublicAdapterFailure(error: unknown) {
+  const status = getHttpStatus(error);
+  if (status !== null) return [502, 503, 504].includes(status);
+  return isTimeoutFailure(error) || /fetch failed|econnreset|econnrefused|enotfound|eai_again|network|socket/i.test(String(error instanceof Error ? error.message : error));
+}
+
+async function fetchPublicAdapterJson<T>(input: string, init: RequestInit = {}, timeoutMs = 12_000, attempts = PUBLIC_ADAPTER_MAX_ATTEMPTS, externalSignal?: AbortSignal): Promise<T> {
   let lastError: unknown;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+  const maxAttempts = Math.min(PUBLIC_ADAPTER_MAX_ATTEMPTS, Math.max(1, Math.trunc(attempts)));
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       const response = await fetchExternal(input, init, timeoutMs, false, externalSignal);
       if (!response.ok) throw createFetchError(`Fonte pública respondeu ${response.status}`, response.status);
@@ -882,11 +892,14 @@ async function fetchPublicAdapterJson<T>(input: string, init: RequestInit = {}, 
     } catch (error) {
       lastError = error;
       const failure = sanitizeFetchFailure(error);
-      if (failure.status !== null || !isTimeoutFailure(error) || attempt === attempts - 1) {
-        console.warn("[Public adapter] request failed", { url: input, status: failure.status, message: failure.message });
-        throw Object.assign(error instanceof Error ? error : new Error(failure.message), { fetchFailure: failure });
+      const currentAttempt = attempt + 1;
+      if (!isRetryablePublicAdapterFailure(error) || currentAttempt >= maxAttempts) {
+        console.warn("[Public adapter] request failed", { url: input, status: failure.status, attempts: currentAttempt, message: failure.message });
+        const finalError = error instanceof Error ? error : new Error(failure.message);
+        throw Object.assign(finalError, { attempts: currentAttempt, retryable: isRetryablePublicAdapterFailure(error), fetchFailure: { ...failure, attempts: currentAttempt } });
       }
-      await new Promise(resolve => setTimeout(resolve, 150 * (attempt + 1)));
+      const delay = PUBLIC_ADAPTER_RETRY_DELAYS_MS[Math.min(attempt, PUBLIC_ADAPTER_RETRY_DELAYS_MS.length - 1)];
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
   throw lastError instanceof Error ? lastError : new Error("Falha na fonte pública");
@@ -1190,10 +1203,15 @@ async function guardedFetchPublicPage(url: string, options: { dryRun?: boolean; 
     const failure = sanitizeFetchFailure(error);
     logPublicFailureDiagnostics(url, error);
     if (!options.dryRun) {
-      try {
-        await registerSourceFailure({ sourceKey, routine: "public-agenda", status: failure.status ?? undefined, message: failure.message });
-      } catch (registrationError) {
-        console.warn("[Ingestion] Could not persist isolated public source failure:", sanitizeFetchFailure(registrationError).message);
+      const isolatedIngresseItem503 = sourceKey === "public:ingresse" && isIngresseEventUrl(url) && failure.status === 503;
+      if (isolatedIngresseItem503) {
+        console.warn("[Ingestion] Ingresse item returned HTTP 503; item isolated", { sourceKey, url: url.replace(/https?:\/\/[^/]+/i, "fonte pública"), attempts: failure.attempts ?? 1, errorCode: failure.errorCode });
+      } else {
+        try {
+          await registerSourceFailure({ sourceKey, routine: "public-agenda", status: failure.status ?? undefined, message: failure.message });
+        } catch (registrationError) {
+          console.warn("[Ingestion] Could not persist isolated public source failure:", sanitizeFetchFailure(registrationError).message);
+        }
       }
     }
     throw Object.assign(error instanceof Error ? error : new Error(failure.message), { fetchFailure: failure, fetchDurationMs: Math.max(0, Date.now() - startedAt) });

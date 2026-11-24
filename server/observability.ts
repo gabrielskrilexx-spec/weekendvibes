@@ -78,9 +78,21 @@ export function summarizeTelemetryTrend(series: TelemetryPoint[], periodDays = 7
   };
 }
 
-export function calculateSystemHealthStatus(input: { openSources: number; activeSources: number; recentRuns: number; recentFailures: number }): SystemHealthStatus {
+export function calculateSystemHealthStatus(input: {
+  openSources: number;
+  activeSources: number;
+  recentRuns: number;
+  recentFailures: number;
+  allCircuitsClosed?: boolean;
+  staleRuns?: number;
+  isolatedUrlFailures?: number;
+}): SystemHealthStatus {
   const openRate = input.activeSources > 0 ? input.openSources / input.activeSources : 0;
   const failureRate = input.recentRuns > 0 ? input.recentFailures / input.recentRuns : 0;
+  const allCircuitsClosed = input.allCircuitsClosed ?? input.openSources === 0;
+  const noStaleRuns = (input.staleRuns ?? 0) === 0;
+  const isolatedUrlFailures = Math.max(0, Number(input.isolatedUrlFailures ?? 0));
+  if (allCircuitsClosed && noStaleRuns && input.recentFailures > 0 && isolatedUrlFailures >= input.recentFailures) return "healthy";
   const rate = Math.max(openRate, failureRate);
   if (rate >= 0.6) return "critical";
   if (rate > 0.3) return "degraded";

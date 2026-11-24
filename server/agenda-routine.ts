@@ -39,6 +39,14 @@ async function archiveAgendaEvents() {
   const expiredSoldOutEvents = await archiveExpiredSoldOutEvents();
   return pastEvents + expiredSoldOutEvents;
 }
+async function reconcileStaleRunsSafely(routine: "public-agenda" | "instagram-agenda") {
+  try {
+    return await reconcileStaleIngestionRuns();
+  } catch (error) {
+    console.warn(`[Agenda routine] ${routine} stale-run reconciliation failed; continuing pipeline`, safeAutomationError(error));
+    return { reconciledCount: 0, runIds: [] as number[], pendingCount: 0, pendingRunIds: [] as number[] };
+  }
+}
 export const DEFAULT_PUBLIC_AGENDA_TIMEOUT_MS = 25_000;
 export const DEFAULT_MANUAL_PUBLIC_AGENDA_TIMEOUT_MS = 45_000;
 export const DEFAULT_INSTAGRAM_AGENDA_TIMEOUT_MS = 30_000;
@@ -139,8 +147,9 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
       : Number(raw.filtered ?? Math.max(0, read - Number(raw.approvedPosts ?? raw.matchedSources ?? 0)));
     const sourceErrorCount = Array.isArray(raw.sourceReports) ? raw.sourceReports.reduce((sum, source) => {
       if (!source || typeof source !== "object") return sum;
-      const errors = (source as { errors?: unknown }).errors;
-      return sum + (Array.isArray(errors) ? errors.length : 0);
+      const report = source as { read?: unknown; errors?: unknown[] };
+      const errors = Array.isArray(report.errors) ? report.errors : [];
+      return sum + (isIsolatedUrl503Warning(report) ? 0 : errors.length);
     }, 0) : 0;
     const hasPartialFailure = raw.degraded === true || Number(raw.fetchFailures ?? 0) > 0 || Number(raw.fetchFailed ?? 0) > 0 || sourceErrorCount > 0;
     const reconciliation = reconcileIngestionResult({
@@ -227,6 +236,10 @@ async function trackedStep<T>(routine: string, sourceKey: string, work: () => Pr
 
 export async function runPublicAgendaStep(options: AgendaStepOptions = {}) {
   const execute = async () => {
+    const reconciled = await reconcileStaleRunsSafely("public-agenda");
+    if (reconciled.reconciledCount > 0) {
+      console.info("[Agenda routine] Stale ingestion runs reconciled", JSON.stringify(reconciled));
+    }
     const archived = options.archive === false ? 0 : await archiveAgendaEvents();
     let expiredSources = { deactivatedCount: 0, sourceKeys: [] as string[] };
     if (!options.sourceUrls) {
@@ -238,7 +251,7 @@ export async function runPublicAgendaStep(options: AgendaStepOptions = {}) {
     }
     console.info("[Agenda routine] Expired single-event sources deactivated", JSON.stringify({ routine: "public-agenda", deactivated: expiredSources.deactivatedCount, sourceKeys: expiredSources.sourceKeys }));
     const result = await runIngestionPipeline({ sourceKey: options.sourceKey, sourceUrls: options.sourceUrls, signal: options.signal });
-    return { archived, expiredSources, result };
+    return { archived, expiredSources, reconciled, result };
   };
   return options.track === false ? execute() : trackedStep("public-agenda", options.sourceKey ?? "public", execute, options);
 }
@@ -246,10 +259,7 @@ export async function runPublicAgendaStep(options: AgendaStepOptions = {}) {
 export async function runInstagramAgendaStep(options: AgendaStepOptions = {}) {
   const execute = async () => {
     const archived = options.archive === false ? 0 : await archiveAgendaEvents();
-    const reconciled = await reconcileStaleIngestionRuns().catch(error => {
-      console.warn("[Agenda routine] Scheduled Instagram stale-run reconciliation failed; continuing pipeline", safeAutomationError(error));
-      return { reconciledCount: 0, runIds: [] as number[] };
-    });
+    const reconciled = await reconcileStaleRunsSafely("instagram-agenda");
     if (reconciled.reconciledCount > 0) {
       console.info("[Agenda routine] Instagram stale runs reconciled", JSON.stringify(reconciled));
     }
@@ -295,6 +305,17 @@ function automationErrorStatus(error: unknown) {
   const candidate = (error as { upstreamStatus?: unknown; status?: unknown; statusCode?: unknown }).upstreamStatus ?? (error as { status?: unknown }).status ?? (error as { statusCode?: unknown }).statusCode;
   const status = Number(candidate);
   return Number.isInteger(status) && status > 0 ? status : null;
+}
+
+function isIsolatedUrl503Warning(source: { read?: unknown; errors?: unknown[] }) {
+  const errors = Array.isArray(source.errors) ? source.errors : [];
+  return errors.length > 0
+    && errors.every(error => automationErrorStatus(error) === 503)
+    && safeAutomationNumber(source.read) > errors.length;
+}
+
+export function isIsolatedUrl503WarningForTest(source: { read?: number; errors?: Array<{ status?: number | null }> }) {
+  return isIsolatedUrl503Warning(source);
 }
 
 function normalizeRejectionReasonKey(reason: string) {
@@ -347,10 +368,13 @@ function sourceReportsFromResult(sourceKey: string, result: unknown): Automation
   }
   return provided.map(report => {
     const persisted = safeAutomationNumber(report.persistable ?? report.persisted ?? report.imported);
-    const errors = Array.isArray(report.errors) ? report.errors.slice(0, 20).map(error => {
+    const rawErrors = Array.isArray(report.errors) ? report.errors.slice(0, 20) : [];
+    const isolated503 = isIsolatedUrl503Warning({ read: report.read, errors: rawErrors });
+    if (isolated503) console.warn("[Agenda routine] Isolated HTTP 503 treated as item warning", { sourceKey: String(report.sourceKey ?? sourceKey), read: safeAutomationNumber(report.read), count: rawErrors.length });
+    const errors = isolated503 ? [] : rawErrors.map(error => {
       const item = error && typeof error === "object" ? error as Record<string, unknown> : {};
       return { status: automationErrorStatus(item), message: safeAutomationError(item.message) };
-    }) : [];
+    });
     const reportKnownSkipped = sumRejectionReasons(report.rejectionReasons);
     return {
       sourceKey: String(report.sourceKey ?? sourceKey).slice(0, 160),

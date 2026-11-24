@@ -1233,8 +1233,18 @@ export function isInstagramRunStale(startedAt: Date | string, now = new Date(), 
 
 export const SCHEDULED_INSTAGRAM_STALE_RUN_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
-/** Libera locks lógicos deixados por invocações serverless encerradas antes do finally. */
-export async function reconcileStaleIngestionRuns(options: { now?: Date; maxAgeMs?: number } = {}) {
+export type ReconciledExpiredIngestionRun = {
+  id: number;
+  routine: string;
+  startedAt: Date;
+};
+
+/**
+ * Libera locks lógicos deixados por invocações serverless encerradas antes do
+ * finally. A expiração é deliberadamente independente do conteúdo de details:
+ * QUEUED, RUNNING ou details nulo são igualmente runs abertos após duas horas.
+ */
+export async function reconcileExpiredIngestionRuns(options: { now?: Date; maxAgeMs?: number } = {}) {
   const db = await getDb();
   if (!db) return { reconciledCount: 0, runIds: [] as number[], pendingCount: 0, pendingRunIds: [] as number[] };
   const now = options.now ?? new Date();
@@ -1244,31 +1254,28 @@ export async function reconcileStaleIngestionRuns(options: { now?: Date; maxAgeM
     .from(ingestionRuns)
     .where(and(eq(ingestionRuns.status, "running"), lt(ingestionRuns.startedAt, cutoff)));
   const runIds: number[] = [];
-  const pendingRunIds: number[] = [];
-  const { reconcileApifyStoriesRun } = await import("./apify-async");
   for (const run of staleRuns) {
-    if (run.routine === "instagram-stories-async") {
-      try {
-        const result = await reconcileApifyStoriesRun({ ...run, status: "running" });
-        if (result.status === "succeeded" || result.status === "failed") runIds.push(run.id);
-        else pendingRunIds.push(run.id);
-      } catch (error) {
-        pendingRunIds.push(run.id);
-        console.warn("[Ingestion reconciliation] Apify status could not be verified; run remains pending", { runId: run.id, error: safeReportError(error) });
-      }
-      continue;
-    }
     await db.update(ingestionRuns).set({
       status: "failed",
       failedCount: 1,
       durationMs: Math.max(0, now.getTime() - new Date(run.startedAt).getTime()),
       httpStatus: 504,
-      details: JSON.stringify({ error: "stale_serverless_invocation", message: "A execução não concluiu antes do encerramento do worker; reconciliada automaticamente.", reconciliation: { degraded: true, stale: true, routine: run.routine }, trigger: "reconciliation" }).slice(0, 20000),
+      details: JSON.stringify({
+        error: "timeout_exceeded_2h",
+        message: "A execução permaneceu aberta por mais de 2 horas e foi encerrada automaticamente.",
+        reconciliation: { stale: true, timeoutExceeded: true, reason: "timeout_exceeded_2h", routine: run.routine },
+        trigger: "reconciliation",
+      }).slice(0, 20000),
       finishedAt: now,
     }).where(eq(ingestionRuns.id, run.id));
     runIds.push(run.id);
   }
-  return { reconciledCount: runIds.length, runIds, pendingCount: pendingRunIds.length, pendingRunIds };
+  return { reconciledCount: runIds.length, runIds, pendingCount: 0, pendingRunIds: [] as number[] };
+}
+
+/** Compatibilidade para chamadores existentes; a política agora é comum a todas as rotinas. */
+export async function reconcileStaleIngestionRuns(options: { now?: Date; maxAgeMs?: number } = {}) {
+  return reconcileExpiredIngestionRuns(options);
 }
 
 /**
@@ -1277,59 +1284,11 @@ export async function reconcileStaleIngestionRuns(options: { now?: Date; maxAgeM
  * invocation instead of leaving the dashboard permanently in "running".
  */
 export async function reconcileStaleInstagramAgendaRuns(options: { now?: Date; maxAgeMs?: number } = {}) {
-  const db = await getDb();
-  if (!db) return { reconciledCount: 0, runIds: [] as number[] };
-  const now = options.now ?? new Date();
-  const maxAgeMs = Number.isFinite(options.maxAgeMs)
-    ? Math.max(1, Number(options.maxAgeMs))
-    : SCHEDULED_INSTAGRAM_STALE_RUN_MAX_AGE_MS;
-  const cutoff = new Date(now.getTime() - maxAgeMs);
-  const staleRuns = await db.select({ id: ingestionRuns.id, startedAt: ingestionRuns.startedAt })
-    .from(ingestionRuns)
-    .where(and(eq(ingestionRuns.routine, "instagram-agenda"), eq(ingestionRuns.status, "running"), lt(ingestionRuns.startedAt, cutoff)));
-  const runIds: number[] = [];
-  for (const run of staleRuns) {
-    await db.update(ingestionRuns).set({
-      status: "failed",
-      failedCount: 1,
-      durationMs: Math.max(0, now.getTime() - new Date(run.startedAt).getTime()),
-      httpStatus: 504,
-      details: JSON.stringify({
-        error: "stale_serverless_invocation",
-        message: "A execução agendada não concluiu antes do encerramento do worker; reconciliada automaticamente.",
-        reconciliation: { degraded: true, stale: true },
-        trigger: "scheduled",
-      }).slice(0, 20000),
-      finishedAt: now,
-    }).where(eq(ingestionRuns.id, run.id));
-    runIds.push(run.id);
-  }
-  return { reconciledCount: runIds.length, runIds };
+  return reconcileExpiredIngestionRuns(options);
 }
 
 export async function reconcileStaleInstagramRuns(options: { now?: Date; maxAgeMs?: number } = {}) {
-  const db = await getDb();
-  if (!db) return { reconciledCount: 0, runIds: [] as number[] };
-  const now = options.now ?? new Date();
-  const maxAgeMs = Number.isFinite(options.maxAgeMs) ? Math.max(1, Number(options.maxAgeMs)) : INSTAGRAM_STALE_RUN_MAX_AGE_MS;
-  const cutoff = new Date(now.getTime() - maxAgeMs);
-  const staleRuns = await db.select({ id: ingestionRuns.id, startedAt: ingestionRuns.startedAt, details: ingestionRuns.details })
-    .from(ingestionRuns)
-    .where(and(eq(ingestionRuns.routine, "instagram-stories-async"), eq(ingestionRuns.status, "running"), lt(ingestionRuns.startedAt, cutoff)));
-  const runIds: number[] = [];
-  const pendingRunIds: number[] = [];
-  const { reconcileApifyStoriesRun } = await import("./apify-async");
-  for (const run of staleRuns) {
-    try {
-      const result = await reconcileApifyStoriesRun({ ...run, status: "running" });
-      if (result.status === "succeeded" || result.status === "failed") runIds.push(run.id);
-      else pendingRunIds.push(run.id);
-    } catch (error) {
-      pendingRunIds.push(run.id);
-      console.warn("[Instagram reconciliation] Apify status could not be verified; run remains pending", { runId: run.id, error: safeReportError(error) });
-    }
-  }
-  return { reconciledCount: runIds.length, runIds, pendingCount: pendingRunIds.length, pendingRunIds };
+  return reconcileExpiredIngestionRuns(options);
 }
 
 export async function finishIngestionRun(

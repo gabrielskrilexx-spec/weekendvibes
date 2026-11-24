@@ -18,7 +18,7 @@ vi.mock("./instagram-pipeline", () => ({ runInstagramPipeline: mocks.runInstagra
 vi.mock("./ingestion-reports", () => ({ startIngestionRun: mocks.startIngestionRun, finishIngestionRun: mocks.finishIngestionRun, reconcileStaleIngestionRuns: mocks.reconcileStaleIngestionRuns }));
 vi.mock("./geocoding", () => ({ processPendingGeocoding: mocks.processPendingGeocoding }));
 
-import { AGENDA_ROUTINE_COMPOSITION, buildAutomationSourceSummariesForTest, normalizeTrackedStepResultForTest, runFullAgendaRoutine, runInstagramAgendaStep, runPublicAgendaStep, runScheduledWithRetriesForTest, isRetryableAgendaErrorForTest, getInstagramAgendaTimeoutMs, getPublicAgendaTimeoutMs } from "./agenda-routine";
+import { AGENDA_ROUTINE_COMPOSITION, buildAutomationSourceSummariesForTest, normalizeTrackedStepResultForTest, runFullAgendaRoutine, runInstagramAgendaStep, runPublicAgendaStep, runScheduledWithRetriesForTest, isRetryableAgendaErrorForTest, getInstagramAgendaTimeoutMs, getPublicAgendaTimeoutMs, isIsolatedUrl503WarningForTest } from "./agenda-routine";
 
 describe("agenda routine composition", () => {
   beforeEach(() => { vi.clearAllMocks(); vi.stubEnv("CRITICAL_ALERT_WEBHOOK_URL", ""); });
@@ -38,6 +38,14 @@ describe("agenda routine composition", () => {
         sourceReports: [{ sourceKey: "public", read: 109, persistable: 0, rejectionReasons: { past_event: 103, duplicate: 6 } }],
       },
     }])).toEqual([{ sourceKey: "public", read: 109, added: 0, updated: 0, ignored: 109, errors: [] }]);
+  });
+
+  it("trata 503 de uma URL individual como aviso sem rebaixar a fonte", () => {
+    expect(isIsolatedUrl503WarningForTest({ read: 8, errors: [{ status: 503 }] })).toBe(true);
+    expect(buildAutomationSourceSummariesForTest([{
+      sourceKey: "public",
+      result: { read: 8, persisted: 7, sourceReports: [{ sourceKey: "public:ingresse", read: 8, added: 7, errors: [{ status: 503, message: "HTTP 503" }] }] },
+    }])).toEqual([{ sourceKey: "public:ingresse", read: 8, added: 7, updated: 0, ignored: 0, errors: [] }]);
   });
 
   it("compõe o fluxo completo manual com arquivamento único e as duas fontes", async () => {
