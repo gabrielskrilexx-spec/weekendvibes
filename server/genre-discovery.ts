@@ -133,6 +133,37 @@ export function pageToDiscoveryCandidate(page: Pick<PublicPage, "url" | "text" |
   };
 }
 
+export type DiscoveryPlatformStat = {
+  platform: string;
+  totalUrls: number;
+  totalEvents: number;
+  discardedByCity: number;
+  discardedByGenre: number;
+  duplicates: number;
+  duplicateItems: Array<{ title: string; url: string }>;
+  failures: number;
+  emptyPages: number;
+};
+
+function pageTitle(page: Pick<PublicPage, "text" | "structured">) {
+  const structured = Array.isArray(page.structured) ? page.structured[0] : page.structured;
+  const record = (structured ?? {}) as Record<string, unknown>;
+  return String(record.title ?? record.name ?? page.text.split(/[|\n·]/)[0] ?? "Página sem título").trim().slice(0, 255);
+}
+
+export function getDiscoveryRejectionReason(page: Pick<PublicPage, "url" | "text" | "structured">, now = new Date()) {
+  const structured = Array.isArray(page.structured) ? page.structured[0] : page.structured;
+  const record = (structured ?? {}) as Record<string, unknown>;
+  const structuredText = Object.values(record).filter(value => typeof value === "string").join(" ");
+  const title = String(record.title ?? record.name ?? page.text.split(/[|\n·]/)[0] ?? "").trim();
+  const locationSignals = `${readStructuredLocation(record)} ${title}`;
+  if (hasOutOfScopeCity(`${title} ${locationSignals}`) || !detectDiscoveryCity(locationSignals)) return "city" as const;
+  if (classifyDiscoveryGenres({ title, description: `${page.text} ${structuredText}` }).length === 0) return "genre" as const;
+  const rawDate = String(record.eventDate ?? record.startDate ?? "").trim();
+  if (!rawDate || !isFutureDiscoveryDate(new Date(rawDate), now)) return "date" as const;
+  return "other" as const;
+}
+
 export type GenreDiscoveryScanResult = {
   scannedPages: number;
   eligible: number;
@@ -140,14 +171,24 @@ export type GenreDiscoveryScanResult = {
   duplicates: number;
   filtered: number;
   errors: number;
+  platformStats: DiscoveryPlatformStat[];
 };
 
 export async function runGenreDiscoveryScan(options: { now?: Date; sourceUrls?: string[] } = {}): Promise<GenreDiscoveryScanResult> {
   const now = options.now ?? new Date();
   const discovery = await discoverCandidatePages({ dryRun: true, sourceUrls: options.sourceUrls, exploratorySourceUrls: [...DISCOVERY_REGIONAL_SOURCE_URLS] });
   const urls = discovery.urls.map(candidateUrl).filter(Boolean);
-  const pages = await Promise.allSettled(urls.map(url => guardedFetchPublicPage(url, { dryRun: true })));
-  const result: GenreDiscoveryScanResult = { scannedPages: pages.length, eligible: 0, inserted: 0, duplicates: 0, filtered: 0, errors: 0 };
+  const pages = await Promise.allSettled(urls.map((url: string) => guardedFetchPublicPage(url, { dryRun: true })));
+  const stats = new Map<string, DiscoveryPlatformStat>();
+  const getStats = (platform: string) => {
+    const current = stats.get(platform);
+    if (current) return current;
+    const created: DiscoveryPlatformStat = { platform, totalUrls: 0, totalEvents: 0, discardedByCity: 0, discardedByGenre: 0, duplicates: 0, duplicateItems: [], failures: 0, emptyPages: 0 };
+    stats.set(platform, created);
+    return created;
+  };
+  urls.forEach((url: string) => { getStats(publicSourceKey(url)).totalUrls += 1; });
+  const result: GenreDiscoveryScanResult = { scannedPages: pages.length, eligible: 0, inserted: 0, duplicates: 0, filtered: 0, errors: 0, platformStats: [] };
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const existingEvents = await db.select({ sourceUrl: events.sourceUrl }).from(events).where(isNotNull(events.sourceUrl));
@@ -157,17 +198,33 @@ export async function runGenreDiscoveryScan(options: { now?: Date; sourceUrls?: 
   const candidateUrls = filterDiscoveryCandidateUrls(urls, existingEventUrls, knownCandidates);
   for (let index = 0; index < pages.length; index += 1) {
     const settled = pages[index];
-    if (settled.status === "rejected") { result.errors += 1; continue; }
+    const sourceUrl = urls[index];
+    const platformStat = getStats(publicSourceKey(sourceUrl));
+    if (settled.status === "rejected") { result.errors += 1; platformStat.failures += 1; continue; }
     const page = settled.value;
+    platformStat.totalEvents += 1;
+    if (!page.text.trim() && !page.structured) platformStat.emptyPages += 1;
     const normalizedUrl = candidateUrl(page.url);
-    if (!candidateUrls.includes(normalizedUrl) || existingEventUrls.has(normalizedUrl) || knownCandidates.has(normalizedUrl)) { result.duplicates += 1; continue; }
+    if (!candidateUrls.includes(normalizedUrl) || existingEventUrls.has(normalizedUrl) || knownCandidates.has(normalizedUrl)) {
+      result.duplicates += 1;
+      platformStat.duplicates += 1;
+      if (platformStat.duplicateItems.length < 50) platformStat.duplicateItems.push({ title: pageTitle(page), url: normalizedUrl || page.url });
+      continue;
+    }
     const candidate = pageToDiscoveryCandidate(page, now);
-    if (!candidate) { result.filtered += 1; continue; }
+    if (!candidate) {
+      result.filtered += 1;
+      const reason = getDiscoveryRejectionReason(page, now);
+      if (reason === "city") platformStat.discardedByCity += 1;
+      if (reason === "genre") platformStat.discardedByGenre += 1;
+      continue;
+    }
     result.eligible += 1;
     const inserted = await db.insert(discoveredEventCandidates).values(candidate).onConflictDoNothing({ target: discoveredEventCandidates.canonicalUrl }).returning({ id: discoveredEventCandidates.id });
     if (inserted.length > 0) { result.inserted += 1; knownCandidates.add(normalizedUrl); }
     else result.duplicates += 1;
   }
+  result.platformStats = Array.from(stats.values()).sort((left, right) => left.platform.localeCompare(right.platform));
   return result;
 }
 

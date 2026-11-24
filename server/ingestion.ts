@@ -320,6 +320,58 @@ export function normalizeVenueCity(locationName: string, address: string, city: 
   return city;
 }
 
+function isSupportedPublicEventUrl(url: URL) {
+  const host = url.hostname.toLowerCase();
+  return (host.includes("articket") && /^\/e\/\d+(?:\/|$)/i.test(url.pathname))
+    || (host.includes("blacktag") && /^\/(?:evento|eventos|event|events)\//i.test(url.pathname))
+    || ((host === "zig.tickets" || host.endsWith(".zig.tickets")) && /^\/eventos?\//i.test(url.pathname))
+    || isIngresseEventUrl(url.href)
+    || (host.endsWith("blackpass.com.br") && /^\/event\//i.test(url.pathname))
+    || (host.endsWith("mringressos.com.br") && /^\/comprar\//i.test(url.pathname))
+    || (host.endsWith("sympla.com.br") && /^\/evento\//i.test(url.pathname))
+    || (host.endsWith("weticket.com.br") && /^\/[A-Za-z0-9][A-Za-z0-9-]+$/.test(url.pathname))
+    || (host.endsWith("ticket360.com.br") && /^\/(?:evento|eventos)\//i.test(url.pathname))
+    || host.endsWith("gandaya.dance") && /^\/(?:event|evento|events)\//i.test(url.pathname);
+}
+
+export function extractSitemapUrls(xml: string, baseUrl = "https://example.com/") {
+  const links = new Set<string>();
+  for (const match of Array.from(xml.matchAll(/<loc[^>]*>\s*([^<]+?)\s*<\/loc>/gi))) {
+    try {
+      const url = new URL(match[1].trim(), baseUrl);
+      if (isSupportedPublicEventUrl(url)) links.add(sanitizePublicSourceUrl(url.href));
+    } catch { /* ignore malformed sitemap entries */ }
+  }
+  return Array.from(links);
+}
+
+export function extractEmbeddedPublicEventUrls(payload: string, baseUrl: string) {
+  const links = new Set<string>();
+  const add = (value: unknown) => {
+    if (typeof value !== "string" || !/^https?:\/\//i.test(value) && !value.startsWith("/")) return;
+    try {
+      const url = new URL(value, baseUrl);
+      if (isSupportedPublicEventUrl(url)) links.add(sanitizePublicSourceUrl(url.href));
+    } catch { /* ignore malformed embedded URL */ }
+  };
+  const visit = (value: unknown, depth = 0): void => {
+    if (depth > 8 || value === null || value === undefined) return;
+    if (typeof value === "string") { add(value); return; }
+    if (Array.isArray(value)) { value.forEach(item => visit(item, depth + 1)); return; }
+    if (typeof value !== "object") return;
+    for (const [key, child] of Object.entries(value)) {
+      if (/^(?:url|@id|href|link|eventUrl|sourceUrl|permalink|canonicalUrl)$/i.test(key)) add(child);
+      visit(child, depth + 1);
+    }
+  };
+  const embeddedScripts = Array.from(payload.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi));
+  for (const block of embeddedScripts) {
+    try { visit(JSON.parse(block[1].trim())); } catch { /* malformed script is non-fatal */ }
+  }
+  for (const url of extractSitemapUrls(payload, baseUrl)) links.add(url);
+  return Array.from(links);
+}
+
 export function extractPublicEventLinks(html: string, baseUrl: string) {
   const links = new Set<string>();
   const absoluteBase = new URL(baseUrl);
@@ -341,7 +393,7 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
       const isWeTicket = url.hostname.endsWith("weticket.com.br") && /^\/[A-Za-z0-9][A-Za-z0-9-]+$/.test(url.pathname) && !["/perguntas-frequentes", "/politica-de-privacidade", "/termos-de-uso"].includes(url.pathname.toLowerCase());
       const anchorText = $(anchor).text().replace(/\s+/g, " ").trim();
       const isZigRegional = !isZig || /santos|guaruj[aá]/i.test(normalizeText(anchorText));
-      if ((isArticket || isBlacktag || isZig || isIngresseEvent || isBlackPass || isMrIngressos || isSympla || isWeTicket) && isZigRegional) addNormalizedLink(url);
+      if ((isArticket || isBlacktag || isZig || isIngresseEvent || isBlackPass || isMrIngressos || isSympla || isWeTicket || isSupportedPublicEventUrl(url)) && isZigRegional) addNormalizedLink(url);
     } catch {
       // Ignore malformed public links.
     }
@@ -371,7 +423,9 @@ export function extractPublicEventLinks(html: string, baseUrl: string) {
     }
   });
   $("script").each((_, script) => collectEmbeddedPath($(script).html() ?? ""));
-  return Array.from(links).slice(0, 60);
+  for (const url of extractEmbeddedPublicEventUrls(html, baseUrl)) links.add(url);
+  for (const url of extractSitemapUrls(html, baseUrl)) links.add(url);
+  return Array.from(links).slice(0, 120);
 }
 
 export type ArticketCandidateHint = { url: string; name?: string | null; text?: string | null };
@@ -1453,6 +1507,38 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
   const crawlBases = bases.filter(url => !isIngresseCatalogRootUrl(url) && !isArticketEventUrl(url));
   const discovered = new Set([...crawlBases, ...regionalArticketCandidates.regional.map(candidate => candidate.url)]);
   const basePages = await fetchWithConcurrency(crawlBases, url => guardedFetchPublicPage(url, options), PUBLIC_FETCH_CONCURRENCY);
+  const endpointUrls = crawlBases.flatMap(baseUrl => {
+    try {
+      const origin = new URL(baseUrl).origin;
+      const city = /guaruja/i.test(baseUrl) ? "guaruja" : "santos";
+      return [
+        `${origin}/api/events?city=${city}`,
+        `${origin}/api/search?city=${city}`,
+        `${origin}/api/events/search?city=${city}`,
+      ];
+    } catch { return []; }
+  }).filter(url => ["public:sympla", "public:ingresse", "public:zig", "public:blacktag"].includes(publicSourceKey(url)));
+  const endpointPages = endpointUrls.length
+    ? await fetchWithConcurrency(endpointUrls, url => guardedFetchPublicPage(url, options), Math.min(4, PUBLIC_FETCH_CONCURRENCY))
+    : [];
+  for (let index = 0; index < endpointPages.length; index += 1) {
+    const result = endpointPages[index];
+    if (result.status !== "fulfilled") continue;
+    for (const link of extractEmbeddedPublicEventUrls(result.value.html, result.value.url)) discovered.add(link);
+  }
+  const sitemapUrls = Array.from(new Set(crawlBases.flatMap(baseUrl => {
+    try {
+      const origin = new URL(baseUrl).origin;
+      return [`${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`];
+    } catch { return []; }
+  })));
+  const sitemapPages = sitemapUrls.length
+    ? await fetchWithConcurrency(sitemapUrls, url => guardedFetchPublicPage(url, options), Math.min(4, PUBLIC_FETCH_CONCURRENCY))
+    : [];
+  for (const result of sitemapPages) {
+    if (result.status !== "fulfilled") continue;
+    for (const link of extractSitemapUrls(result.value.html, result.value.url)) discovered.add(link);
+  }
   for (let index = 0; index < basePages.length; index += 1) {
     const result = basePages[index];
     if (result.status !== "fulfilled") continue;

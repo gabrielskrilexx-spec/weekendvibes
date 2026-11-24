@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { candidateUrl, classifyDiscoveryGenres, detectDiscoveryCity, DISCOVERY_REGIONAL_SOURCE_URLS, filterDiscoveryCandidateUrls, isFutureDiscoveryDate, pageToDiscoveryCandidate } from "./genre-discovery";
+import { extractEmbeddedPublicEventUrls, extractSitemapUrls } from "./ingestion";
 
 describe("Radar de descoberta por estilo", () => {
   it("classifica todos os gêneros que aparecem no conjunto de textos", () => {
@@ -105,5 +106,20 @@ describe("Radar de descoberta por estilo", () => {
       "https://www.ticket360.com.br/eventos/santos",
       "https://www.ticket360.com.br/eventos/guaruja",
     ]));
+  });
+
+  it("extrai eventos de __NEXT_DATA__ e ItemList JSON-LD", () => {
+    const next = JSON.stringify({ props: { pageProps: { events: [{ name: "Trap Santos", url: "/evento/trap-santos/123" }] } } });
+    const itemList = JSON.stringify({ "@type": "ItemList", itemListElement: [{ url: "https://www.sympla.com.br/evento/rap-guaruja/456" }] });
+    const html = `<script id="__NEXT_DATA__" type="application/json">${next}</script><script type="application/ld+json">${itemList}</script>`;
+    expect(extractEmbeddedPublicEventUrls(html, "https://www.sympla.com.br/eventos/santos-sp")).toEqual(expect.arrayContaining([
+      "https://www.sympla.com.br/evento/trap-santos/123",
+      "https://www.sympla.com.br/evento/rap-guaruja/456",
+    ]));
+  });
+
+  it("extrai somente URLs de evento válidas de sitemap público", () => {
+    const xml = `<urlset><url><loc>https://articket.com.br/e/7522/kelvinho</loc></url><url><loc>https://articket.com.br/termos</loc></url></urlset>`;
+    expect(extractSitemapUrls(xml)).toEqual(["https://articket.com.br/e/7522/kelvinho"]);
   });
 });
