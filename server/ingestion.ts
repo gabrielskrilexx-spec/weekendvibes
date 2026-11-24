@@ -556,6 +556,25 @@ export function parsePortugueseEventDate(value: string) {
   return parseEventDateValue(value)?.value ?? "";
 }
 
+function readZigEmbeddedEvent(html: string) {
+  const scripts = Array.from(html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi));
+  const visit = (value: unknown, depth = 0): Record<string, unknown> | undefined => {
+    if (depth > 8 || value === null || value === undefined) return undefined;
+    if (Array.isArray(value)) { for (const item of value) { const found = visit(item, depth + 1); if (found) return found; } return undefined; }
+    if (typeof value !== "object") return undefined;
+    const record = value as Record<string, unknown>;
+    const hasTitle = typeof record.name === "string" || typeof record.title === "string";
+    const hasDate = typeof record.startDate === "string" || typeof record.eventDate === "string" || typeof record.date === "string";
+    if (hasTitle && hasDate && (record.location || record.venue || record.address)) return record;
+    for (const child of Object.values(record)) { const found = visit(child, depth + 1); if (found) return found; }
+    return undefined;
+  };
+  for (const script of scripts) {
+    try { const found = visit(JSON.parse(script[1].trim())); if (found) return found; } catch { /* non-JSON script */ }
+  }
+  return undefined;
+}
+
 export function parseZigEventMetadata(html: string, url: string) {
   let jsonLd: Record<string, unknown> | undefined;
   try {
@@ -563,14 +582,15 @@ export function parseZigEventMetadata(html: string, url: string) {
   } catch {
     jsonLd = undefined;
   }
+  jsonLd ??= readZigEmbeddedEvent(html);
   const location = jsonLd?.location && typeof jsonLd.location === "object" ? jsonLd.location as Record<string, unknown> : {};
   const address = location.address && typeof location.address === "object" ? location.address as Record<string, unknown> : {};
   const offers = Array.isArray(jsonLd?.offers) ? (jsonLd.offers.find(item => item && typeof item === "object") as Record<string, unknown> | undefined) ?? {} : jsonLd?.offers && typeof jsonLd.offers === "object" ? jsonLd.offers as Record<string, unknown> : {};
   const meta = readMetaTags(html);
   const text = stripHtml(html);
-  const sourceText = text.replace(/\s+/g, " ").trim();
+  const sourceText = `${text} ${meta("og:description")}`.replace(/\s+/g, " ").trim();
   const title = typeof jsonLd?.name === "string" ? jsonLd.name.trim() : meta("og:title").trim() || html.match(/^#\s+([^\n]+)$/m)?.[1]?.trim() || sourceText.slice(0, 160);
-  const eventDate = typeof jsonLd?.startDate === "string" ? jsonLd.startDate : meta("event:start_time") || parsePortugueseEventDate(sourceText.match(/Quando:\s*([^\n|]+)/i)?.[1] ?? sourceText);
+  const eventDate = typeof jsonLd?.startDate === "string" ? jsonLd.startDate : typeof jsonLd?.eventDate === "string" ? jsonLd.eventDate : meta("event:start_time") || parsePortugueseEventDate(sourceText.match(/Quando:\s*([^\n|]+)/i)?.[1] ?? sourceText);
   const locationName = typeof location.name === "string" && location.name.trim()
     ? location.name.trim()
     : typeof jsonLd?.location === "string" && jsonLd.location.trim()
@@ -581,8 +601,11 @@ export function parseZigEventMetadata(html: string, url: string) {
           ? "Praia Verde Beach Club"
       : /osuco/i.test(`${title} ${text} ${url}`)
         ? "Osuco"
+        : /laroc/i.test(`${title} ${sourceText} ${url}`) ? "Laroc Club"
+        : /moby\s*dick/i.test(`${title} ${sourceText} ${url}`) ? "Moby Dick"
+        : /vallum/i.test(`${title} ${sourceText} ${url}`) ? "Vallum Garden"
         : "";
-  const city = typeof address.addressLocality === "string" ? address.addressLocality.trim() : (/guaruj[aá]/i.test(sourceText) ? "Guarujá" : /santos/i.test(sourceText) ? "Santos" : "");
+  const city = typeof address.addressLocality === "string" ? address.addressLocality.trim() : (/guaruj[aá]/i.test(sourceText) ? "Guarujá" : /santos/i.test(sourceText) ? "Santos" : /laroc/i.test(`${title} ${sourceText} ${url}`) ? "Guarujá" : /moby\s*dick|vallum/i.test(`${title} ${sourceText} ${url}`) ? "Santos" : "");
   const street = typeof address.streetAddress === "string" ? address.streetAddress : sourceText.match(/Endereço:\s*([^|]+)/i)?.[1]?.trim() ?? "";
   const priceCents = readPriceCents(offers.price ?? offers.lowPrice ?? offers.minPrice) || readPriceCents(sourceText.match(/R\$\s*[\d.,]+/i)?.[0] ?? "");
   const imageUrl = meta("og:image");
@@ -775,6 +798,24 @@ function isBlackPassEventUrl(url: string) {
 
 function isBlackPassRootUrl(url: string) {
   try { const parsed = new URL(url); return parsed.hostname.endsWith("blackpass.com.br") && ["", "/", "/events"].includes(parsed.pathname.replace(/\/$/, "")); } catch { return false; }
+}
+export function isPublicCatalogUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const path = parsed.pathname.replace(/\/$/, "");
+    if (isSymplaEventUrl(url) || isBlackPassEventUrl(url) || isMrIngressosEventUrl(url) || isWeTicketEventUrl(url) || isIngresseEventUrl(url)) return false;
+    if (host.endsWith("sympla.com.br")) return path === "/eventos" || path.startsWith("/eventos/");
+    if (host.endsWith("ingresse.com")) return path === "/search" || path === "/eventos" || path === "/events";
+    if (host.includes("blacktag")) return path === "" || path === "/eventos" || path === "/events";
+    if (host.endsWith("blackpass.com.br")) return isBlackPassRootUrl(url);
+    if (host.endsWith("mringressos.com.br")) return isMrIngressosCatalogUrl(url);
+    if (host === "gandaya.dance") return isGandayaRootUrl(url);
+    if (host.endsWith("weticket.com.br")) return path === "" || path === "/eventos" || path === "/events";
+    if (host.endsWith("ticket360.com.br")) return path === "" || path === "/eventos" || path.startsWith("/eventos/");
+    if (host.endsWith("zig.tickets")) return path === "" || path === "/pt-BR" || path === "/eventos" || path === "/event";
+  } catch { /* malformed public URL */ }
+  return false;
 }
 
 function isSymplaEventUrl(url: string) {
@@ -1358,6 +1399,27 @@ export async function fetchWithConcurrency<TItem, TResult>(items: TItem[], worke
   return results;
 }
 
+async function fetchZigEventApi(url: string, options: { signal?: AbortSignal } = {}) {
+  const slug = new URL(url).pathname.split("/").filter(Boolean).at(-1);
+  if (!slug) return undefined;
+  const endpoints = [
+    `https://api.zig.tickets/v1/events/${encodeURIComponent(slug)}`,
+    `https://api.zig.tickets/events/${encodeURIComponent(slug)}`,
+    `https://zig.tickets/api/events/${encodeURIComponent(slug)}`,
+  ];
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetchExternal(endpoint, { headers: { ...ZIG_REQUEST_HEADERS, accept: "application/json" } }, ZIG_FETCH_TIMEOUT_MS, false, options.signal);
+      const body = await readExternalBody(response);
+      const structured = parseZigEventMetadata(`<script type="application/ld+json">${body}</script>`, url);
+      if (structured) return structured;
+    } catch {
+      // 403/404 and unavailable API variants are safe fallbacks to the public shell.
+    }
+  }
+  return undefined;
+}
+
 async function fetchPublicPage(url: string, options: { dryRun?: boolean; signal?: AbortSignal } = {}): Promise<PublicPage> {
   if (isIngresseEventUrl(url)) return fetchIngresseEventApi(url, { read: getIngestionPayloadCache, write: saveIngestionPayloadCache }, options);
   if (isBlackPassEventUrl(url)) return fetchBlackPassEventPage(url);
@@ -1405,7 +1467,7 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean; signal?
   if (new URL(url).hostname.endsWith("zig.tickets")) {
     const response = await fetchExternal(url, { headers: { ...ZIG_REQUEST_HEADERS, accept: "text/markdown,text/html,application/xhtml+xml;q=0.9,*/*;q=0.8", referer: "https://zig.tickets/pt-BR" } }, ZIG_FETCH_TIMEOUT_MS, false, options.signal);
     const html = await readExternalBody(response);
-    const structured = parseZigEventMetadata(html, url);
+    const structured = parseZigEventMetadata(html, url) ?? await fetchZigEventApi(url, options);
     const meta = readMetaTags(html);
     const text = structured?.text ?? meta("og:description") ?? "";
     if (!text) return { url, html, text: "", imageUrl: structured?.imageUrl ?? meta("og:image") ?? "", structured, adapter: "zig", emptyHealthy: true };
@@ -1505,7 +1567,7 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
   const regionalArticketCandidates = filterArticketRegionalCandidates(directArticketCandidates, activeAliases);
   let gandayaRegionalFiltered = 0;
   const crawlBases = bases.filter(url => !isIngresseCatalogRootUrl(url) && !isArticketEventUrl(url));
-  const discovered = new Set([...crawlBases, ...regionalArticketCandidates.regional.map(candidate => candidate.url)]);
+  const discovered = new Set([...crawlBases.filter(url => !isPublicCatalogUrl(url)), ...regionalArticketCandidates.regional.map(candidate => candidate.url)]);
   const basePages = await fetchWithConcurrency(crawlBases, url => guardedFetchPublicPage(url, options), PUBLIC_FETCH_CONCURRENCY);
   const endpointUrls = crawlBases.flatMap(baseUrl => {
     try {
@@ -1578,7 +1640,7 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
     try {
       const host = new URL(url).hostname;
       const belongsToSource = !options.sourceKey || options.sourceKey === "public" || publicSourceKey(url) === options.sourceKey;
-      const belongsToRequestedSource = !requestedSourceUrls || requestedSourceUrls.includes(sanitizePublicSourceUrl(url));
+      const belongsToRequestedSource = !requestedSourceUrls || requestedSourceUrls.some(requested => requested === sanitizePublicSourceUrl(url) || (isPublicCatalogUrl(requested) && publicSourceKey(requested) === publicSourceKey(url)));
       return belongsToSource && belongsToRequestedSource && (!host.endsWith("zig.tickets") || url !== "https://zig.tickets/pt-BR");
     } catch { return false; }
   }).slice(0, 120), articketRegionalFiltered: regionalArticketCandidates.filtered.length, gandayaRegionalFiltered };

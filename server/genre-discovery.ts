@@ -13,8 +13,6 @@ export type DiscoveryStatus = "pending" | "approved" | "rejected";
 export const DISCOVERY_REGIONAL_SOURCE_URLS = [
   "https://www.sympla.com.br/eventos/santos-sp",
   "https://www.sympla.com.br/eventos/guaruja-sp",
-  "https://www.ingresse.com/search?query=santos",
-  "https://www.ingresse.com/search?query=guaruja",
   "https://zig.tickets/pt-BR?city=santos",
   "https://zig.tickets/pt-BR?city=guaruja",
   "https://blacktag.com.br/?city=santos",
@@ -29,8 +27,6 @@ export const DISCOVERY_REGIONAL_SOURCE_URLS = [
   "https://mringressos.com.br/?cidade=guaruja",
   "https://www.weticket.com.br/?city=santos",
   "https://www.weticket.com.br/?city=guaruja",
-  "https://www.ticket360.com.br/eventos/santos",
-  "https://www.ticket360.com.br/eventos/guaruja",
 ] as const;
 
 const GENRE_TERMS: Record<DiscoveryGenre, RegExp> = {
@@ -69,6 +65,15 @@ export function detectDiscoveryCity(text: string): DiscoveryCity | undefined {
 
 function hasOutOfScopeCity(text: string) {
   return OUT_OF_SCOPE_CITY_PATTERNS.some(pattern => pattern.test(text));
+}
+
+const KNOWN_VENUE_CITY_PATTERNS: Array<[DiscoveryCity, RegExp]> = [
+  ["Guarujá", /laroc|sirena|cafe\s+de\s+la\s+musique|curv[aã]o|praia\s+verde|prai[oô]|projac|dolores|flamingos|boteco\s+al\s*mare|casa\s+grande\s+hotel|lucky\s+scope/i],
+  ["Santos", /moby\s*dick|vallum|blue\s*med|santos\s+convention|parque\s+valongo|arcos\s+do\s+valongo|arena\s+club|yellow\s+house|meu\s+lugar|o\s+beco|casa\s*412|goat\s+club|verilonguinho/i],
+];
+
+export function resolveDiscoveryCityFromKnownVenue(text: string): DiscoveryCity | undefined {
+  return KNOWN_VENUE_CITY_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0];
 }
 
 function readStructuredLocation(record: Record<string, unknown>) {
@@ -116,7 +121,8 @@ export function pageToDiscoveryCandidate(page: Pick<PublicPage, "url" | "text" |
   // Never use the complete visible page for geography: ticketing footers and
   // breadcrumbs commonly mention Santos even when the event is elsewhere.
   const locationSignals = `${readStructuredLocation(record)} ${title}`;
-  const city = hasOutOfScopeCity(`${title} ${locationSignals}`) ? undefined : detectDiscoveryCity(locationSignals);
+  const geoSignals = `${locationSignals} ${page.url}`;
+  const city = hasOutOfScopeCity(`${title} ${geoSignals}`) ? undefined : detectDiscoveryCity(locationSignals) ?? resolveDiscoveryCityFromKnownVenue(geoSignals);
   const matchedGenres = classifyDiscoveryGenres({ title, description: searchable });
   const canonicalUrl = candidateUrl(page.url);
   if (!canonicalUrl || !title || !city || !isFutureDiscoveryDate(eventDate, now) || matchedGenres.length === 0) return undefined;
@@ -157,7 +163,7 @@ export function getDiscoveryRejectionReason(page: Pick<PublicPage, "url" | "text
   const structuredText = Object.values(record).filter(value => typeof value === "string").join(" ");
   const title = String(record.title ?? record.name ?? page.text.split(/[|\n·]/)[0] ?? "").trim();
   const locationSignals = `${readStructuredLocation(record)} ${title}`;
-  if (hasOutOfScopeCity(`${title} ${locationSignals}`) || !detectDiscoveryCity(locationSignals)) return "city" as const;
+  if (hasOutOfScopeCity(`${title} ${locationSignals} ${page.url}`) || (!detectDiscoveryCity(locationSignals) && !resolveDiscoveryCityFromKnownVenue(`${locationSignals} ${page.url}`))) return "city" as const;
   if (classifyDiscoveryGenres({ title, description: `${page.text} ${structuredText}` }).length === 0) return "genre" as const;
   const rawDate = String(record.eventDate ?? record.startDate ?? "").trim();
   if (!rawDate || !isFutureDiscoveryDate(new Date(rawDate), now)) return "date" as const;
