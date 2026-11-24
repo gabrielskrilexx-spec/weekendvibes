@@ -565,7 +565,10 @@ export const appRouter = router({
   discovery: router({
     scanNow: adminOnly
       .input(z.object({ sourceUrls: z.array(z.string().url()).max(50).optional() }).strict().default({}))
-      .output(z.object({ scannedPages: z.number().int().nonnegative(), eligible: z.number().int().nonnegative(), inserted: z.number().int().nonnegative(), duplicates: z.number().int().nonnegative(), filtered: z.number().int().nonnegative(), errors: z.number().int().nonnegative() }).strict())
+      .output(z.object({
+        scannedPages: z.number().int().nonnegative(), eligible: z.number().int().nonnegative(), inserted: z.number().int().nonnegative(), duplicates: z.number().int().nonnegative(), filtered: z.number().int().nonnegative(), errors: z.number().int().nonnegative(),
+        platformStats: z.array(z.object({ platform: z.string(), totalUrls: z.number().int().nonnegative(), totalEvents: z.number().int().nonnegative(), discardedByCity: z.number().int().nonnegative(), discardedByGenre: z.number().int().nonnegative(), duplicates: z.number().int().nonnegative(), duplicateItems: z.array(z.object({ title: z.string(), url: z.string() }).strict()).max(50), failures: z.number().int().nonnegative(), emptyPages: z.number().int().nonnegative() }).strict()),
+      }).strict())
       .mutation(({ input }) => runGenreDiscoveryScan(input)),
     list: adminOnly
       .input(z.object({ status: z.enum(["pending", "approved", "rejected"]).default("pending"), genre: z.enum(DISCOVERY_GENRES).optional(), city: z.enum(DISCOVERY_CITIES).optional(), limit: z.number().int().positive().max(200).default(50), offset: z.number().int().nonnegative().default(0) }).strict())
