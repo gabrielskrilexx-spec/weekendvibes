@@ -412,6 +412,29 @@ export const ingestionSources = pgTable("ingestionSources", {
 export type IngestionSource = typeof ingestionSources.$inferSelect;
 export type InsertIngestionSource = typeof ingestionSources.$inferInsert;
 
+export const discoveredEventCandidates = pgTable("discoveredEventCandidates", {
+  id: serial("id").primaryKey(),
+  canonicalUrl: varchar("canonicalUrl", { length: 1000 }).notNull().unique(),
+  platform: varchar("platform", { length: 120 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  eventDate: timestamp("eventDate").notNull(),
+  city: varchar("city", { length: 100 }).notNull(),
+  venueNameRaw: varchar("venueNameRaw", { length: 255 }),
+  matchedGenres: text("matchedGenres").array().default(sql`'{}'::text[]`).notNull(),
+  flyerUrl: varchar("flyerUrl", { length: 1000 }),
+  description: text("description"),
+  sourceType: varchar("sourceType", { length: 64 }).default("public").notNull(),
+  status: enumText("status", ["pending", "approved", "rejected"]).default("pending").notNull(),
+  discoveredAt: timestamp("discoveredAt").defaultNow().notNull(),
+  reviewedAt: timestamp("reviewedAt"),
+}, table => ({
+  statusDateIdx: index("discovered_candidates_status_date_idx").on(table.status, table.eventDate),
+  genreIdx: index("discovered_candidates_genre_idx").on(table.status, table.city),
+}));
+
+export type DiscoveredEventCandidate = typeof discoveredEventCandidates.$inferSelect;
+export type InsertDiscoveredEventCandidate = typeof discoveredEventCandidates.$inferInsert;
+
 export const ingestionLeases = pgTable("ingestionLeases", {
   lockKey: varchar("lockKey", { length: 160 }).primaryKey(),
   holderId: varchar("holderId", { length: 120 }).notNull(),

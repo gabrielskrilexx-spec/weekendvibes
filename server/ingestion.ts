@@ -1147,7 +1147,7 @@ export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCac
   }
 }
 
-type PublicPage = {
+export type PublicPage = {
   url: string;
   html: string;
   text: string;
@@ -1188,7 +1188,7 @@ export function publicSourceKey(url: string) {
   return "public:unknown";
 }
 
-async function guardedFetchPublicPage(url: string, options: { dryRun?: boolean; signal?: AbortSignal } = {}): Promise<PublicPage> {
+export async function guardedFetchPublicPage(url: string, options: { dryRun?: boolean; signal?: AbortSignal } = {}): Promise<PublicPage> {
   const startedAt = Date.now();
   const sourceKey = publicSourceKey(url);
   if (!options.dryRun) {
@@ -1434,7 +1434,7 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean; signal?
   }
 }
 
-async function discoverCandidatePages(options: IngestionPipelineOptions = {}, activeAliases: string[] = []) {
+export async function discoverCandidatePages(options: IngestionPipelineOptions = {}, activeAliases: string[] = []) {
   const requestedSourceUrls = options.sourceUrls?.map(sanitizePublicSourceUrl);
   const configuredBases = filterExplicitPublicSourceUrls(await getEnabledConfiguredSourceUrls(), requestedSourceUrls);
   const bases = options.sourceKey
@@ -1475,7 +1475,7 @@ async function discoverCandidatePages(options: IngestionPipelineOptions = {}, ac
       const articketLinks = discoverArticketEventLinks(result.value.html, result.value.url, activeAliases);
       for (const link of articketLinks) {
         discovered.add(link);
-        await upsertDiscoveredArticketSource({ url: link, name: formatArticketSourceName(link) }).catch(error => console.warn("[Articket discoverer] Could not persist discovered URL:", sanitizeFetchFailure(error).message));
+        if (!options.dryRun) await upsertDiscoveredArticketSource({ url: link, name: formatArticketSourceName(link) }).catch(error => console.warn("[Articket discoverer] Could not persist discovered URL:", sanitizeFetchFailure(error).message));
       }
     }
     if (isMrIngressosCatalogUrl(baseUrl)) {
