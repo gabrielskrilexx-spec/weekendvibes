@@ -1437,9 +1437,10 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean; signal?
 export async function discoverCandidatePages(options: IngestionPipelineOptions = {}, activeAliases: string[] = []) {
   const requestedSourceUrls = options.sourceUrls?.map(sanitizePublicSourceUrl);
   const configuredBases = filterExplicitPublicSourceUrls(await getEnabledConfiguredSourceUrls(), requestedSourceUrls);
+  const exploratoryBases = filterExplicitPublicSourceUrls(options.exploratorySourceUrls ?? [], requestedSourceUrls);
   const bases = options.sourceKey
-    ? configuredBases.filter(url => options.sourceKey === "public" || publicSourceKey(url) === options.sourceKey)
-    : configuredBases;
+    ? Array.from(new Set([...configuredBases, ...exploratoryBases])).filter(url => options.sourceKey === "public" || publicSourceKey(url) === options.sourceKey)
+    : Array.from(new Set([...configuredBases, ...exploratoryBases]));
   const sourceHints = await listIngestionSources().catch(() => []);
   const sourceByUrl = new Map(sourceHints.map(source => [sanitizePublicSourceUrl(source.url), source]));
   const directArticketCandidates = bases.filter(isArticketEventUrl).map(url => ({
@@ -1515,7 +1516,7 @@ export type IngestionSourceReport = {
   rejectionReasons: { fetchFailed: number; outsideTargetVenue: number; invalidStructuredEvent: number; duplicate: number; pastEvent: number };
 };
 
-export type IngestionPipelineOptions = { dryRun?: boolean; sourceKey?: string; sourceUrls?: string[]; signal?: AbortSignal };
+export type IngestionPipelineOptions = { dryRun?: boolean; sourceKey?: string; sourceUrls?: string[]; exploratorySourceUrls?: string[]; signal?: AbortSignal };
 type PublicSourceReportInput = {
   candidateUrls: string[];
   pages: PromiseSettledResult<PublicPage>[];
