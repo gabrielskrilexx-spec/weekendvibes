@@ -66,7 +66,7 @@ describe("public ingestion dry-run", () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(vi.mocked(allowSourceAttempt)).toHaveBeenCalledWith("public:sympla");
-    expect(result).toMatchObject({ fetchFailures: [expect.objectContaining({ message: "Fonte pausada pelo Circuit Breaker durante o cooldown." })] });
+    expect(result).toMatchObject({ skipped: true, reason: "Nenhuma fonte de ingestão configurada" });
   });
 
   it("carrega marcas ativas do Neon e aceita uma edição da cidade configurada", async () => {

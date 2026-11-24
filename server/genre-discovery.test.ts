@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { candidateUrl, classifyDiscoveryGenres, detectDiscoveryCity, DISCOVERY_REGIONAL_SOURCE_URLS, filterDiscoveryCandidateUrls, isFutureDiscoveryDate, pageToDiscoveryCandidate } from "./genre-discovery";
-import { extractEmbeddedPublicEventUrls, extractSitemapUrls } from "./ingestion";
+import { candidateUrl, classifyDiscoveryGenres, detectDiscoveryCity, DISCOVERY_REGIONAL_SOURCE_URLS, filterDiscoveryCandidateUrls, isFutureDiscoveryDate, pageToDiscoveryCandidate, resolveDiscoveryCityFromKnownVenue } from "./genre-discovery";
+import { extractEmbeddedPublicEventUrls, extractPublicEventLinks, extractSitemapUrls, isPublicCatalogUrl, parseZigEventMetadata } from "./ingestion";
 
 describe("Radar de descoberta por estilo", () => {
   it("classifica todos os gêneros que aparecem no conjunto de textos", () => {
@@ -87,8 +87,6 @@ describe("Radar de descoberta por estilo", () => {
     expect(DISCOVERY_REGIONAL_SOURCE_URLS).toEqual(expect.arrayContaining([
       "https://www.sympla.com.br/eventos/santos-sp",
       "https://www.sympla.com.br/eventos/guaruja-sp",
-      "https://www.ingresse.com/search?query=santos",
-      "https://www.ingresse.com/search?query=guaruja",
       "https://zig.tickets/pt-BR?city=santos",
       "https://zig.tickets/pt-BR?city=guaruja",
       "https://blacktag.com.br/?city=santos",
@@ -103,11 +101,41 @@ describe("Radar de descoberta por estilo", () => {
       "https://mringressos.com.br/?cidade=guaruja",
       "https://www.weticket.com.br/?city=santos",
       "https://www.weticket.com.br/?city=guaruja",
-      "https://www.ticket360.com.br/eventos/santos",
-      "https://www.ticket360.com.br/eventos/guaruja",
     ]));
   });
 
+  it("expande uma listagem Sympla sem tratar a própria listagem como evento", () => {
+    const catalog = "https://www.sympla.com.br/eventos/guaruja-sp";
+    const html = `<a href="/evento/baile-guaruja/123">Baile Trap Guarujá</a><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ events: [{ url: "https://www.sympla.com.br/evento/funk-guaruja/456" }] })}</script>`;
+    expect(isPublicCatalogUrl(catalog)).toBe(true);
+    expect(extractPublicEventLinks(html, catalog)).toEqual(expect.arrayContaining([
+      "https://www.sympla.com.br/evento/baile-guaruja/123",
+      "https://www.sympla.com.br/evento/funk-guaruja/456",
+    ]));
+    expect(extractPublicEventLinks(html, catalog)).not.toContain(catalog);
+  });
+
+  it("extrai shell SPA da Zig usando OpenGraph quando o HTML não tem corpo", () => {
+    const html = `<meta property="og:title" content="Baile Trap Laroc"><meta property="og:description" content="28/11/2026 às 23:00 · Laroc Club, Guarujá · Funk e Trap"><meta property="og:image" content="https://cdn.zig.tickets/laroc.jpg">`;
+    expect(parseZigEventMetadata(html, "https://zig.tickets/eventos/baile-trap-laroc")).toMatchObject({
+      title: "Baile Trap Laroc",
+      city: "Guarujá",
+      locationName: "Laroc Club",
+      imageUrl: "https://cdn.zig.tickets/laroc.jpg",
+    });
+  });
+
+  it("resolve Santos ou Guarujá por uma casa conhecida sem addressLocality", () => {
+    expect(resolveDiscoveryCityFromKnownVenue("Laroc Club Guarujá")).toBe("Guarujá");
+    expect(resolveDiscoveryCityFromKnownVenue("Vallum Garden")).toBe("Santos");
+    const candidate = pageToDiscoveryCandidate({
+      url: "https://zig.tickets/eventos/trap-no-laroc",
+      text: "Trap e Funk",
+      imageUrl: "",
+      structured: { title: "Trap no Laroc", startDate: "2026-12-05T23:00:00-03:00", locationName: "Laroc Club", description: "Funk e Trap" },
+    }, new Date("2026-11-24T12:00:00.000Z"));
+    expect(candidate?.city).toBe("Guarujá");
+  });
   it("extrai eventos de __NEXT_DATA__ e ItemList JSON-LD", () => {
     const next = JSON.stringify({ props: { pageProps: { events: [{ name: "Trap Santos", url: "/evento/trap-santos/123" }] } } });
     const itemList = JSON.stringify({ "@type": "ItemList", itemListElement: [{ url: "https://www.sympla.com.br/evento/rap-guaruja/456" }] });
