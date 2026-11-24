@@ -7,7 +7,7 @@ import { getDb, saveEvent } from "./db";
 
 export const DISCOVERY_GENRES = ["trap", "rap", "funk", "eletrônica"] as const;
 export type DiscoveryGenre = typeof DISCOVERY_GENRES[number];
-export const DISCOVERY_CITIES = ["Santos", "Guarujá", "São Vicente", "Praia Grande", "Cubatão"] as const;
+export const DISCOVERY_CITIES = ["Santos", "Guarujá"] as const;
 export type DiscoveryCity = typeof DISCOVERY_CITIES[number];
 export type DiscoveryStatus = "pending" | "approved" | "rejected";
 
@@ -15,23 +15,58 @@ const GENRE_TERMS: Record<DiscoveryGenre, RegExp> = {
   trap: /\btrap\b/i,
   rap: /\brap\b|hip[ -]?hop/i,
   funk: /\bfunk\b|baile funk/i,
-  "eletrônica": /eletr[oô]nic|\bhouse\b|techno|tech house|rave|dj|\bedm\b|\bafter\b/i,
+  "eletrônica": /m[uú]sica\s+eletr[oô]nica|\b(?:tech\s*house|deep\s*house|house|techno|trance|psytrance|progressive|edm|after)\b|\bsunset\s+eletr[oô]nico|\b(?:line[- ]?up|lineup)\b[^.!?]{0,100}\b(?:dj|djs)\b/i,
 };
-const CITY_PATTERNS: Array<[DiscoveryCity, RegExp]> = [
-  ["São Vicente", /s[aã]o\s+vicente/i],
-  ["Praia Grande", /praia\s+grande/i],
-  ["Cubatão", /cubat[aã]o/i],
+const DISCOVERY_CITY_PATTERNS: Array<[DiscoveryCity, RegExp]> = [
   ["Guarujá", /guaruj[aá]/i],
   ["Santos", /santos/i],
 ];
+const OUT_OF_SCOPE_CITY_PATTERNS = [
+  /praia\s+grande/i,
+  /s[aã]o\s+vicente/i,
+  /cubat[aã]o/i,
+  /curitiba|\bcwb\b/i,
+  /sorocaba/i,
+  /bauru/i,
+  /mogi(?:\s+das\s+cruzes|\s+mirim|\s+mogiano)?/i,
+  /bel[eé]m/i,
+  /s[aã]o\s+paulo/i,
+  /rio\s+de\s+janeiro|\brio\b/i,
+];
+const ADMINISTRATIVE_ELECTRONIC_TERMS = /ingressos?\s+eletr[oô]nicos?|ingresso\s+eletr[oô]nico|bilhete\s+eletr[oô]nico|documento\s+eletr[oô]nico|pagamento\s+eletr[oô]nico|meia[- ]entrada\s+eletr[oô]nica/gi;
 
 export function classifyDiscoveryGenres(input: { title?: string; subtitle?: string; lineup?: string; description?: string; tags?: string[] } | string): DiscoveryGenre[] {
   const text = typeof input === "string" ? input : [input.title, input.subtitle, input.lineup, input.description, ...(input.tags ?? [])].filter(Boolean).join(" ");
-  return DISCOVERY_GENRES.filter(genre => GENRE_TERMS[genre].test(text));
+  const searchable = text.replace(ADMINISTRATIVE_ELECTRONIC_TERMS, " ");
+  return DISCOVERY_GENRES.filter(genre => GENRE_TERMS[genre].test(searchable));
 }
 
 export function detectDiscoveryCity(text: string): DiscoveryCity | undefined {
-  return CITY_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0];
+  return DISCOVERY_CITY_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0];
+}
+
+function hasOutOfScopeCity(text: string) {
+  return OUT_OF_SCOPE_CITY_PATTERNS.some(pattern => pattern.test(text));
+}
+
+function readStructuredLocation(record: Record<string, unknown>) {
+  const location = record.location && typeof record.location === "object" ? record.location as Record<string, unknown> : {};
+  const address = record.address && typeof record.address === "object" ? record.address as Record<string, unknown> : {};
+  const locationAddress = location.address && typeof location.address === "object" ? location.address as Record<string, unknown> : {};
+  return [
+    record.city,
+    record.addressLocality,
+    address.city,
+    address.addressLocality,
+    location.city,
+    location.addressLocality,
+    locationAddress.city,
+    locationAddress.addressLocality,
+    record.locationName,
+    record.venue,
+    record.venueName,
+    location.name,
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0).join(" ");
 }
 
 export function isFutureDiscoveryDate(value: Date | string | undefined, now = new Date()) {
@@ -46,13 +81,16 @@ export function candidateUrl(value: string) {
 
 export function pageToDiscoveryCandidate(page: Pick<PublicPage, "url" | "text" | "imageUrl" | "structured">, now = new Date()) {
   const structured = Array.isArray(page.structured) ? page.structured[0] : page.structured;
-  const record = structured ?? {};
+  const record = (structured ?? {}) as Record<string, unknown>;
   const structuredText = Object.values(record).filter(value => typeof value === "string").join(" ");
   const searchable = `${page.text} ${structuredText}`.replace(/\s+/g, " ").trim();
   const title = String(record.title ?? record.name ?? searchable.split(/[|\n·]/)[0] ?? "").trim().slice(0, 255);
   const rawDate = String(record.eventDate ?? record.startDate ?? "").trim();
   const eventDate = rawDate ? new Date(rawDate) : undefined;
-  const city = detectDiscoveryCity(`${record.city ?? ""} ${record.address ?? ""} ${record.locationName ?? ""} ${searchable}`);
+  // Never use the complete visible page for geography: ticketing footers and
+  // breadcrumbs commonly mention Santos even when the event is elsewhere.
+  const locationSignals = `${readStructuredLocation(record)} ${title}`;
+  const city = hasOutOfScopeCity(`${title} ${locationSignals}`) ? undefined : detectDiscoveryCity(locationSignals);
   const matchedGenres = classifyDiscoveryGenres({ title, description: searchable });
   const canonicalUrl = candidateUrl(page.url);
   if (!canonicalUrl || !title || !city || !isFutureDiscoveryDate(eventDate, now) || matchedGenres.length === 0) return undefined;
