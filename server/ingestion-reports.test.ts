@@ -127,6 +127,20 @@ describe("freshness and source reconciliation", () => {
   it("builds a source freshness view with explicit states", () => {
     expect(buildFreshnessForTest([{ sourceKey: "instagram", lastSuccessAt: new Date(now.getTime() - 500 * 60000), expectedMinutes: 60 }], now)[0].state).toBe("critical");
   });
+
+  it("keeps a recently successful itinerant source out of critical when it has no new events", () => {
+    const result = buildFreshnessForTest([{
+      sourceKey: "instagram:plantssantos",
+      lastSuccessAt: new Date(now.getTime() - 6 * 60 * 60000),
+      expectedMinutes: 1440,
+      isEnabled: true,
+      lastStatus: "succeeded",
+      circuitState: "closed",
+      lastEventAt: new Date(now.getTime() - 31 * 24 * 60 * 60000),
+    }], now)[0];
+    expect(result.state).toBe("idle");
+    expect(result.state).not.toBe("critical");
+  });
 });
 
 describe("ingestion P95 thresholds", () => {

@@ -280,7 +280,14 @@ function findRecord(details: unknown, key: string): Record<string, number> {
   return {};
 }
 
-export type FreshnessState = "healthy" | "delayed" | "critical" | "never";
+export type FreshnessState = "healthy" | "delayed" | "idle" | "critical" | "never";
+
+type FreshnessInput = { isEnabled?: boolean; lastStatus?: string | null; circuitState?: string | null; lastEventAt?: Date | string | null };
+
+function isStaleEvent(lastEventAt: Date | string | null | undefined, now: Date) {
+  if (!lastEventAt) return true;
+  return now.getTime() - new Date(lastEventAt).getTime() > 30 * 24 * 60 * 60 * 1000;
+}
 export type IngestionTimelineEntry = {
   id: string;
   runId: string;
@@ -311,14 +318,20 @@ export type DailyIngestionMetric = {
 export function getFreshnessState(
   lastSuccessAt: Date | string | null | undefined,
   expectedMinutes: number,
-  now = new Date()
+  now = new Date(),
+  context: FreshnessInput = {}
 ): FreshnessState {
+  if (context.isEnabled === false) return "never";
+  if (context.circuitState === "open") return "critical";
   if (!lastSuccessAt) return "never";
   const ageMinutes =
     Math.max(0, now.getTime() - new Date(lastSuccessAt).getTime()) / 60000;
   const expected = Math.max(60, expectedMinutes);
+  if (ageMinutes <= expected * 2 && context.lastStatus === "succeeded" && isStaleEvent(context.lastEventAt, now)) return "idle";
   if (ageMinutes <= expected * 1.25) return "healthy";
-  if (ageMinutes <= expected * 2.5) return "delayed";
+  if (ageMinutes <= expected * 2) {
+    return "delayed";
+  }
   return "critical";
 }
 
@@ -327,12 +340,16 @@ export function buildFreshnessForTest(
     sourceKey: string;
     lastSuccessAt: Date | string | null;
     expectedMinutes: number;
+    isEnabled?: boolean;
+    lastStatus?: string | null;
+    circuitState?: string | null;
+    lastEventAt?: Date | string | null;
   }>,
   now = new Date()
 ) {
   return input.map(item => ({
     ...item,
-    state: getFreshnessState(item.lastSuccessAt, item.expectedMinutes, now),
+    state: getFreshnessState(item.lastSuccessAt, item.expectedMinutes, now, item),
   }));
 }
 
@@ -1828,6 +1845,18 @@ export async function listIngestionReport(
     .groupBy(ingestionRuns.sourceKey)
     .orderBy(desc(sql`sum(${ingestionRuns.importedCount})`));
   const sourceConfigs = await db.select().from(ingestionSources);
+  const eventActivityRows = await db
+    .select({ sourceType: events.sourceType, lastEventAt: sql<Date>`max(${events.createdAt})` })
+    .from(events)
+    .where(eq(events.isArchived, 0))
+    .groupBy(events.sourceType);
+  const lastEventByType = new Map(eventActivityRows.map(row => [String(row.sourceType ?? ""), row.lastEventAt]));
+  const sourceLastEventAt = (sourceKey: string) => {
+    const types = sourceKey.startsWith("instagram:")
+      ? ["instagram_agenda_weekend", "instagram_story", "instagram_highlight"]
+      : sourceKey.startsWith("public:") ? [sourceKey.slice("public:".length)] : [sourceKey];
+    return types.map(type => lastEventByType.get(type)).filter(Boolean).sort((a, b) => new Date(b!).getTime() - new Date(a!).getTime())[0] ?? null;
+  };
   const sourceMetricGroups = new Map<string, { imported: number; runs: number; failed: number; realSuccesses: number; simulated: number }>();
   for (const run of trendRuns) {
     const sourceKey = String(run.sourceKey ?? "unknown");
@@ -1865,8 +1894,14 @@ export async function listIngestionReport(
     kind: source.kind,
     lastSuccessAt: source.lastSuccessAt?.toISOString() ?? null,
     lastValidCaptureAt: source.lastSuccessAt?.toISOString() ?? null,
+    lastEventAt: sourceLastEventAt(source.sourceKey)?.toISOString() ?? null,
     expectedMinutes: source.frequencyMinutes,
-    state: getFreshnessState(source.lastSuccessAt, source.frequencyMinutes),
+    state: getFreshnessState(source.lastSuccessAt, source.frequencyMinutes, new Date(), {
+      isEnabled: source.isEnabled === 1,
+      lastStatus: source.lastStatus,
+      circuitState: source.circuitState,
+      lastEventAt: sourceLastEventAt(source.sourceKey),
+    }),
   }));
   const feedLastSuccess = trendRuns
     .filter(run => run.status === "succeeded")
@@ -1887,6 +1922,7 @@ export async function listIngestionReport(
     lastValidCaptureAt: feedLastSuccess
       ? new Date(feedLastSuccess.finishedAt ?? feedLastSuccess.startedAt).toISOString()
       : null,
+    lastEventAt: null,
     expectedMinutes: 1440,
     state: getFreshnessState(
       feedLastSuccess?.finishedAt ?? feedLastSuccess?.startedAt,
