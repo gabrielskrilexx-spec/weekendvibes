@@ -1498,7 +1498,7 @@ export type ApifyCatalogFallbackResult = {
 export function buildApifyCatalogPayload(urls: string[], actorId = process.env.APIFY_CATALOG_ACTOR_ID || process.env.APIFY_WEB_ACTOR_ID || "apify~cheerio-scraper") {
   const eventPathExpression = "/\\/(?:evento|eventos|e|event)\\/[^\\/]+(?:\\/[^\\/]*)?$/i";
   const pageFunction = actorId.toLowerCase().includes("puppeteer")
-    ? `async ({ page, request }) => { await page.waitForSelector('a[href]', { timeout: 8000 }).catch(() => {}); await page.evaluate(() => window.scrollBy(0, Math.min(window.innerHeight * 2, 1600))); const pattern = ${eventPathExpression}; const links = await page.$$eval('a[href]', anchors => anchors.map(anchor => ({ url: new URL(anchor.href, location.href).href, title: (anchor.textContent || anchor.getAttribute('aria-label') || '').replace(/\\s+/g, ' ').trim() })).filter(item => { const parsed = new URL(item.url); return parsed.origin === location.origin && pattern.test(parsed.pathname) && !/^\\/eventos\\/(?:santos|guaruja)-sp\\/?$/i.test(parsed.pathname) && !/login|categoria|category|termos|privacidade|ingresso\\?/.test(parsed.pathname + parsed.search); })); return Array.from(new Map(links.map(item => [item.url, item])).values()); }`.replace("pattern = ${eventPathExpression}", `pattern = new RegExp(${JSON.stringify(eventPathExpression.slice(1, -2))}, 'i')`)
+    ? `async ({ page, request }) => { try { await page.waitForSelector('a[href]', { timeout: 8000 }); } catch (_) {} await page.evaluate(() => window.scrollBy(0, Math.min(window.innerHeight * 2, 1600))); const pattern = ${eventPathExpression}; const result = await page.$$eval('a[href]', anchors => { const links = anchors.map(anchor => ({ url: new URL(anchor.href, location.href).href, title: (anchor.textContent || anchor.getAttribute('aria-label') || '').replace(/\\s+/g, ' ').trim() })).filter(item => { const parsed = new URL(item.url); const allowedHost = parsed.hostname === 'bileto.sympla.com.br' || /(^|\\.)sympla\\.com\\.br$/i.test(parsed.hostname); return allowedHost && pattern.test(parsed.pathname) && !/^\\/eventos\\/(?:santos|guaruja)-sp\\/?$/i.test(parsed.pathname) && !/login|categoria|category|termos|privacidade|ingresso\\?/.test(parsed.pathname + parsed.search); }); return { links: Array.from(new Map(links.map(item => [item.url, item])).values()), debugTitle: document.title }; }); return result.links.length > 0 ? result.links : [{ debugTitle: result.debugTitle }]; }`.replace("pattern = ${eventPathExpression}", `pattern = new RegExp(${JSON.stringify(eventPathExpression.slice(1, -2))}, 'i')`)
     : `async ({ $, request }) => { const pattern = new RegExp(${JSON.stringify(eventPathExpression.slice(1, -2))}, 'i'); return $('a[href]').map((_, anchor) => ({ url: new URL($(anchor).attr('href'), request.url).href, title: $(anchor).text().replace(/\\s+/g, ' ').trim() })).get().filter(item => { const parsed = new URL(item.url); return parsed.origin === new URL(request.url).origin && pattern.test(parsed.pathname) && !/^\\/eventos\\/(?:santos|guaruja)-sp\\/?$/i.test(parsed.pathname) && !/login|categoria|category|termos|privacidade|ingresso\\?/.test(parsed.pathname + parsed.search); }).filter((item, index, all) => all.findIndex(candidate => candidate.url === item.url) === index); }`;
   return {
     startUrls: urls.slice(0, 2).map(url => ({ url })),
@@ -1506,6 +1506,7 @@ export function buildApifyCatalogPayload(urls: string[], actorId = process.env.A
     maxCrawlPages: 20,
     maxConcurrency: 2,
     maxRequestRetries: 1,
+    ...(actorId.toLowerCase().includes("puppeteer") ? { proxyConfiguration: { useApifyProxy: true } } : {}),
   };
 }
 
@@ -1535,7 +1536,17 @@ export async function fetchApifyCatalogLinks(urls: string[], options: { signal?:
     }, 45_000, true, options.signal);
     const body = await readExternalBody(response);
     const links = extractEmbeddedPublicEventUrls(body, urls[0]);
-    return { links, attempted: true, status: links.length > 0 ? "succeeded" : "empty", message: links.length > 0 ? `${links.length} link(s) de evento extraído(s) pelo Actor.` : "Actor concluiu sem retornar links de evento." };
+    let debugTitle = "";
+    if (links.length === 0) {
+      try {
+        const dataset = JSON.parse(body) as unknown;
+        const records = Array.isArray(dataset) ? dataset : [dataset];
+        debugTitle = records.map(record => record && typeof record === "object" && "debugTitle" in record ? String((record as { debugTitle?: unknown }).debugTitle ?? "").trim() : "").find(Boolean) ?? "";
+      } catch {
+        // A resposta pode ser texto de erro da API; o status/mensagem já será preservado.
+      }
+    }
+    return { links, attempted: true, status: links.length > 0 ? "succeeded" : "empty", message: links.length > 0 ? `${links.length} link(s) de evento extraído(s) pelo Actor.` : `Actor concluiu sem retornar links de evento.${debugTitle ? ` debugTitle: ${debugTitle}` : ""}` };
   } catch (error) {
     const message = sanitizeFetchFailure(error).message;
     return { links: [], attempted: true, status: isTimeoutFailure(error) ? "timeout" : "failed", message };

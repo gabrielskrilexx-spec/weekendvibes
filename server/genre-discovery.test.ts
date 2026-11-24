@@ -170,6 +170,10 @@ describe("Radar de descoberta por estilo", () => {
     expect(payload.pageFunction).toContain("title");
     expect(payload.maxConcurrency).toBe(2);
     expect(payload.maxRequestRetries).toBe(1);
+    expect(payload.proxyConfiguration).toEqual({ useApifyProxy: true });
+    expect(payload.pageFunction).toContain("try { await page.waitForSelector");
+    expect(payload.pageFunction).toContain("bileto.sympla.com.br");
+    expect(payload.pageFunction).toContain("debugTitle");
   });
 
   it("injeta os dois catálogos Sympla mesmo quando a fonte não está habilitada", () => {
@@ -218,6 +222,24 @@ describe("Radar de descoberta por estilo", () => {
       if (originalToken === undefined) delete process.env.APIFY_API_TOKEN; else process.env.APIFY_API_TOKEN = originalToken;
       if (originalActor === undefined) delete process.env.APIFY_CATALOG_ACTOR_ID; else process.env.APIFY_CATALOG_ACTOR_ID = originalActor;
       if (originalWebActor === undefined) delete process.env.APIFY_WEB_ACTOR_ID; else process.env.APIFY_WEB_ACTOR_ID = originalWebActor;
+    }
+  });
+
+  it("expõe o debugTitle quando o Actor não encontra links", async () => {
+    const originalToken = process.env.APIFY_API_TOKEN;
+    const originalActor = process.env.APIFY_CATALOG_ACTOR_ID;
+    process.env.APIFY_API_TOKEN = "test-token";
+    process.env.APIFY_CATALOG_ACTOR_ID = "apify~puppeteer-scraper";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([{ debugTitle: "Verificação de segurança · Sympla" }]), { status: 200, headers: { "content-type": "application/json" } })));
+    try {
+      await expect(fetchApifyCatalogLinks(getExploratoryApifyCatalogUrls())).resolves.toMatchObject({
+        status: "empty",
+        message: expect.stringContaining("debugTitle: Verificação de segurança · Sympla"),
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      if (originalToken === undefined) delete process.env.APIFY_API_TOKEN; else process.env.APIFY_API_TOKEN = originalToken;
+      if (originalActor === undefined) delete process.env.APIFY_CATALOG_ACTOR_ID; else process.env.APIFY_CATALOG_ACTOR_ID = originalActor;
     }
   });
 
