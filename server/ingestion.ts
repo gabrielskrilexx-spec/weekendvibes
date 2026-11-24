@@ -330,7 +330,7 @@ function isSupportedPublicEventUrl(url: URL) {
     || isIngresseEventUrl(url.href)
     || (host.endsWith("blackpass.com.br") && /^\/event\//i.test(url.pathname))
     || (host.endsWith("mringressos.com.br") && /^\/comprar\//i.test(url.pathname))
-    || (host.endsWith("sympla.com.br") && /^\/evento\//i.test(url.pathname))
+    || (host.endsWith("sympla.com.br") && (/^\/evento\/[^/]+/i.test(url.pathname) || /^\/eventos\/[^/]+\/[^/]+/i.test(url.pathname)))
     || (host.endsWith("weticket.com.br") && /^\/[A-Za-z0-9][A-Za-z0-9-]+$/.test(url.pathname))
     || (host.endsWith("ticket360.com.br") && /^\/(?:evento|eventos)\//i.test(url.pathname))
     || host.endsWith("gandaya.dance") && /^\/(?:event|evento|events)\//i.test(url.pathname);
@@ -1327,10 +1327,10 @@ export function publicSourceKey(url: string) {
   return "public:unknown";
 }
 
-export async function guardedFetchPublicPage(url: string, options: { dryRun?: boolean; signal?: AbortSignal } = {}): Promise<PublicPage> {
+export async function guardedFetchPublicPage(url: string, options: { dryRun?: boolean; signal?: AbortSignal; bypassCircuitBreaker?: boolean } = {}): Promise<PublicPage> {
   const startedAt = Date.now();
   const sourceKey = publicSourceKey(url);
-  if (!options.dryRun) {
+  if (!options.dryRun && !options.bypassCircuitBreaker) {
     const circuit = await allowSourceAttempt(sourceKey);
     if (!circuit.allowed) return { url, html: "", text: "", imageUrl: "", circuitOpen: true };
   }
@@ -1487,15 +1487,20 @@ export type ApifyCatalogFallbackResult = {
 };
 
 export function buildApifyCatalogPayload(urls: string[], actorId = process.env.APIFY_CATALOG_ACTOR_ID || process.env.APIFY_WEB_ACTOR_ID || "apify~cheerio-scraper") {
+  const eventPathExpression = "/\\/(?:evento|eventos|e|event)\\/[^\\/]+(?:\\/[^\\/]*)?$/i";
   const pageFunction = actorId.toLowerCase().includes("puppeteer")
-    ? `async ({ page, request }) => { const links = await page.$$eval('a[href]', anchors => anchors.map(anchor => ({ url: new URL(anchor.href, location.href).href, title: (anchor.textContent || '').trim() })).filter(item => new URL(item.url).pathname.startsWith('/evento/'))); return links; }`
-    : `async ({ $, request }) => $('a[href]').map((_, anchor) => ({ url: new URL($(anchor).attr('href'), request.url).href, title: $(anchor).text().replace(/\\s+/g, ' ').trim() })).get().filter(item => new URL(item.url).pathname.startsWith('/evento/'))`;
+    ? `async ({ page, request }) => { await page.waitForSelector('a[href]', { timeout: 8000 }).catch(() => {}); await page.evaluate(() => window.scrollBy(0, Math.min(window.innerHeight * 2, 1600))); const pattern = ${eventPathExpression}; const links = await page.$$eval('a[href]', anchors => anchors.map(anchor => ({ url: new URL(anchor.href, location.href).href, title: (anchor.textContent || anchor.getAttribute('aria-label') || '').replace(/\\s+/g, ' ').trim() })).filter(item => { const parsed = new URL(item.url); return parsed.origin === location.origin && pattern.test(parsed.pathname) && !/login|categoria|category|termos|privacidade|ingresso\\?/.test(parsed.pathname + parsed.search); })); return Array.from(new Map(links.map(item => [item.url, item])).values()); }`.replace("pattern = ${eventPathExpression}", `pattern = new RegExp(${JSON.stringify(eventPathExpression.slice(1, -2))}, 'i')`)
+    : `async ({ $, request }) => { const pattern = new RegExp(${JSON.stringify(eventPathExpression.slice(1, -2))}, 'i'); return $('a[href]').map((_, anchor) => ({ url: new URL($(anchor).attr('href'), request.url).href, title: $(anchor).text().replace(/\\s+/g, ' ').trim() })).get().filter(item => { const parsed = new URL(item.url); return parsed.origin === new URL(request.url).origin && pattern.test(parsed.pathname) && !/login|categoria|category|termos|privacidade|ingresso\\?/.test(parsed.pathname + parsed.search); }).filter((item, index, all) => all.findIndex(candidate => candidate.url === item.url) === index); }`;
   return {
     startUrls: urls.slice(0, 2).map(url => ({ url })),
     pageFunction,
     maxCrawlPages: 20,
     maxConcurrency: 2,
   };
+}
+
+export function shouldRunApifyCatalogFallback(baseUrl: string, page: Pick<PublicPage, "circuitOpen">, options: { exploratoryApify?: boolean } = {}) {
+  return isPublicCatalogUrl(baseUrl) && (!page.circuitOpen || options.exploratoryApify === true);
 }
 
 export async function fetchApifyCatalogLinks(urls: string[], options: { signal?: AbortSignal } = {}): Promise<ApifyCatalogFallbackResult> {
@@ -1664,10 +1669,14 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
   }));
   const regionalArticketCandidates = filterArticketRegionalCandidates(directArticketCandidates, activeAliases);
   let gandayaRegionalFiltered = 0;
-  const crawlBases = bases.filter(url => !isIngresseCatalogRootUrl(url) && !isArticketEventUrl(url));
+  const crawlBases = bases.filter(url => !isIngresseCatalogRootUrl(url) && !isArticketEventUrl(url)).sort((left, right) => {
+    const leftIsSympla = publicSourceKey(left) === "public:sympla" ? 0 : 1;
+    const rightIsSympla = publicSourceKey(right) === "public:sympla" ? 0 : 1;
+    return leftIsSympla - rightIsSympla;
+  });
   const discovered = new Set([...crawlBases.filter(url => !isPublicCatalogUrl(url)), ...regionalArticketCandidates.regional.map(candidate => candidate.url)]);
   const apifyStats: Array<{ sourceKey: string; urls: string[]; status: ApifyCatalogFallbackResult["status"]; attempted: boolean; message?: string }> = [];
-  const basePages = await fetchWithConcurrency(crawlBases, url => guardedFetchPublicPage(url, options), PUBLIC_FETCH_CONCURRENCY);
+  const basePages = await fetchWithConcurrency(crawlBases, url => guardedFetchPublicPage(url, { ...options, bypassCircuitBreaker: options.exploratoryApify === true }), PUBLIC_FETCH_CONCURRENCY);
   const zigCatalogs = crawlBases.filter(url => publicSourceKey(url) === "public:zig" && isPublicCatalogUrl(url));
   const zigRegionalPages = await fetchWithConcurrency(Array.from(new Set(zigCatalogs.map(url => /guaruja/i.test(url) ? "Guarujá" : "Santos" as const))), city => fetchZigRegionalEventLinks(city, options), Math.min(2, PUBLIC_FETCH_CONCURRENCY));
   for (const result of zigRegionalPages) if (result.status === "fulfilled") for (const link of result.value.urls) discovered.add(link);
@@ -1710,7 +1719,7 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
     const baseUrl = crawlBases[index];
     const extractedLinks = extractPublicEventLinks(result.value.html, result.value.url);
     for (const link of extractedLinks) discovered.add(link);
-    if (extractedLinks.length === 0 && isPublicCatalogUrl(baseUrl) && !result.value.circuitOpen) {
+    if (extractedLinks.length === 0 && shouldRunApifyCatalogFallback(baseUrl, result.value, options)) {
       const fallback = await fetchApifyCatalogLinks([baseUrl], options);
       for (const link of fallback.links) discovered.add(link);
       apifyStats.push({ sourceKey: publicSourceKey(baseUrl), urls: [baseUrl], status: fallback.status, attempted: fallback.attempted, message: fallback.message });
@@ -1773,7 +1782,7 @@ export type IngestionSourceReport = {
   rejectionReasons: { fetchFailed: number; outsideTargetVenue: number; invalidStructuredEvent: number; duplicate: number; pastEvent: number };
 };
 
-export type IngestionPipelineOptions = { dryRun?: boolean; sourceKey?: string; sourceUrls?: string[]; exploratorySourceUrls?: string[]; signal?: AbortSignal };
+export type IngestionPipelineOptions = { dryRun?: boolean; sourceKey?: string; sourceUrls?: string[]; exploratorySourceUrls?: string[]; exploratoryApify?: boolean; signal?: AbortSignal };
 type PublicSourceReportInput = {
   candidateUrls: string[];
   pages: PromiseSettledResult<PublicPage>[];

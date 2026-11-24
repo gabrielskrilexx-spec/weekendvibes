@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { candidateUrl, classifyDiscoveryGenres, detectDiscoveryCity, DISCOVERY_REGIONAL_SOURCE_URLS, filterDiscoveryCandidateUrls, isFutureDiscoveryDate, pageToDiscoveryCandidate, resolveDiscoveryCityFromKnownVenue } from "./genre-discovery";
-import { buildApifyCatalogPayload, extractEmbeddedPublicEventUrls, extractPublicEventLinks, extractSitemapUrls, extractZigApiEventUrls, fetchApifyCatalogLinks, isPublicCatalogUrl, parseZigApiEventPayload, parseZigEventMetadata } from "./ingestion";
+import { buildApifyCatalogPayload, extractEmbeddedPublicEventUrls, extractPublicEventLinks, extractSitemapUrls, extractZigApiEventUrls, fetchApifyCatalogLinks, isPublicCatalogUrl, parseZigApiEventPayload, parseZigEventMetadata, shouldRunApifyCatalogFallback } from "./ingestion";
 
 describe("Radar de descoberta por estilo", () => {
   it("classifica todos os gêneros que aparecem no conjunto de textos", () => {
@@ -166,8 +166,34 @@ describe("Radar de descoberta por estilo", () => {
       { url: "https://www.sympla.com.br/eventos/guaruja-sp" },
     ]);
     expect(payload.pageFunction).toContain("href");
-    expect(payload.pageFunction).toContain("/evento/");
+    expect(payload.pageFunction).toContain("evento");
     expect(payload.pageFunction).toContain("title");
+  });
+
+  it("mantém catálogos Sympla elegíveis ao Apify mesmo em cooldown exploratório", () => {
+    const catalog = "https://www.sympla.com.br/eventos/santos-sp";
+    expect(shouldRunApifyCatalogFallback(catalog, { circuitOpen: true }, { exploratoryApify: true })).toBe(true);
+    expect(shouldRunApifyCatalogFallback(catalog, { circuitOpen: true }, {})).toBe(false);
+  });
+
+  it("aceita rotas /evento/, /eventos/, /e/ e /event/ no payload do Actor", () => {
+    const payload = buildApifyCatalogPayload(["https://www.sympla.com.br/eventos/santos-sp"], "apify~cheerio-scraper");
+    expect(payload.pageFunction).toContain("evento");
+    expect(payload.pageFunction).toContain("eventos");
+    expect(payload.pageFunction).toContain("(?:evento|eventos|e|event)");
+    expect(payload.pageFunction).toContain("event");
+    const dataset = JSON.stringify([
+      { url: "https://www.sympla.com.br/evento/trap-santos/123", title: "Trap" },
+      { url: "https://blacktag.com.br/eventos/baile-guaruja", title: "Baile" },
+      { url: "https://articket.com.br/e/7522/kelvinho", title: "Kelvinho" },
+      { url: "https://blackpass.com.br/event/funk-santos", title: "Funk" },
+    ]);
+    expect(extractEmbeddedPublicEventUrls(dataset, "https://www.sympla.com.br/eventos/santos-sp")).toEqual(expect.arrayContaining([
+      "https://www.sympla.com.br/evento/trap-santos/123",
+      "https://blacktag.com.br/eventos/baile-guaruja",
+      "https://articket.com.br/e/7522/kelvinho",
+      "https://blackpass.com.br/event/funk-santos",
+    ]));
   });
 
   it("interpreta dataset Apify com objetos url/title e marca sucesso", async () => {
@@ -185,7 +211,7 @@ describe("Radar de descoberta por estilo", () => {
       const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
       const body = JSON.parse(String(request?.body));
       expect(body.startUrls).toEqual([{ url: "https://www.sympla.com.br/eventos/santos-sp" }]);
-      expect(body.pageFunction).toContain("/evento/");
+      expect(body.pageFunction).toContain("evento");
     } finally {
       vi.unstubAllGlobals();
       if (originalToken === undefined) delete process.env.APIFY_API_TOKEN; else process.env.APIFY_API_TOKEN = originalToken;
