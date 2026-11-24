@@ -1479,21 +1479,42 @@ export async function fetchZigRegionalEventLinks(city: "Santos" | "Guarujá", op
   }
 }
 
-export async function fetchApifyCatalogLinks(urls: string[], options: { signal?: AbortSignal } = {}) {
+export type ApifyCatalogFallbackResult = {
+  links: string[];
+  attempted: boolean;
+  status: "not_configured" | "succeeded" | "empty" | "timeout" | "failed";
+  message?: string;
+};
+
+export function buildApifyCatalogPayload(urls: string[], actorId = process.env.APIFY_CATALOG_ACTOR_ID || process.env.APIFY_WEB_ACTOR_ID || "apify~cheerio-scraper") {
+  const pageFunction = actorId.toLowerCase().includes("puppeteer")
+    ? `async ({ page, request }) => { const links = await page.$$eval('a[href]', anchors => anchors.map(anchor => ({ url: new URL(anchor.href, location.href).href, title: (anchor.textContent || '').trim() })).filter(item => new URL(item.url).pathname.startsWith('/evento/'))); return links; }`
+    : `async ({ $, request }) => $('a[href]').map((_, anchor) => ({ url: new URL($(anchor).attr('href'), request.url).href, title: $(anchor).text().replace(/\\s+/g, ' ').trim() })).get().filter(item => new URL(item.url).pathname.startsWith('/evento/'))`;
+  return {
+    startUrls: urls.slice(0, 2).map(url => ({ url })),
+    pageFunction,
+    maxCrawlPages: 20,
+    maxConcurrency: 2,
+  };
+}
+
+export async function fetchApifyCatalogLinks(urls: string[], options: { signal?: AbortSignal } = {}): Promise<ApifyCatalogFallbackResult> {
   const token = process.env.APIFY_API_TOKEN?.trim();
-  const actorId = (process.env.APIFY_CATALOG_ACTOR_ID || process.env.APIFY_WEB_ACTOR_ID)?.trim();
-  if (!token || !actorId || urls.length === 0) return [] as string[];
+  const actorId = (process.env.APIFY_CATALOG_ACTOR_ID || process.env.APIFY_WEB_ACTOR_ID || "apify~cheerio-scraper").trim();
+  if (!token || urls.length === 0) return { links: [], attempted: false, status: "not_configured", message: "APIFY_API_TOKEN ausente ou nenhum catálogo elegível." };
   try {
     const actorPath = encodeURIComponent(actorId).replace(/%7E/gi, "~");
-    const response = await fetchExternal(`https://api.apify.com/v2/acts/${actorPath}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}&timeout=20`, {
+    const response = await fetchExternal(`https://api.apify.com/v2/acts/${actorPath}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}&timeout=45`, {
       method: "POST",
       headers: { accept: "application/json", "content-type": "application/json", "user-agent": "WeekendVibes/1.0" },
-      body: JSON.stringify({ startUrls: urls.slice(0, 2).map(url => ({ url })), maxCrawlPages: 20, maxConcurrency: 2 }),
-    }, 25_000, true, options.signal);
+      body: JSON.stringify(buildApifyCatalogPayload(urls, actorId)),
+    }, 45_000, true, options.signal);
     const body = await readExternalBody(response);
-    return extractEmbeddedPublicEventUrls(body, urls[0]);
-  } catch {
-    return [] as string[];
+    const links = extractEmbeddedPublicEventUrls(body, urls[0]);
+    return { links, attempted: true, status: links.length > 0 ? "succeeded" : "empty", message: links.length > 0 ? undefined : "Actor concluiu sem retornar links /evento/." };
+  } catch (error) {
+    const message = sanitizeFetchFailure(error).message;
+    return { links: [], attempted: true, status: isTimeoutFailure(error) ? "timeout" : "failed", message };
   }
 }
 
@@ -1645,6 +1666,7 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
   let gandayaRegionalFiltered = 0;
   const crawlBases = bases.filter(url => !isIngresseCatalogRootUrl(url) && !isArticketEventUrl(url));
   const discovered = new Set([...crawlBases.filter(url => !isPublicCatalogUrl(url)), ...regionalArticketCandidates.regional.map(candidate => candidate.url)]);
+  const apifyStats: Array<{ sourceKey: string; urls: string[]; status: ApifyCatalogFallbackResult["status"]; attempted: boolean; message?: string }> = [];
   const basePages = await fetchWithConcurrency(crawlBases, url => guardedFetchPublicPage(url, options), PUBLIC_FETCH_CONCURRENCY);
   const zigCatalogs = crawlBases.filter(url => publicSourceKey(url) === "public:zig" && isPublicCatalogUrl(url));
   const zigRegionalPages = await fetchWithConcurrency(Array.from(new Set(zigCatalogs.map(url => /guaruja/i.test(url) ? "Guarujá" : "Santos" as const))), city => fetchZigRegionalEventLinks(city, options), Math.min(2, PUBLIC_FETCH_CONCURRENCY));
@@ -1688,8 +1710,10 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
     const baseUrl = crawlBases[index];
     const extractedLinks = extractPublicEventLinks(result.value.html, result.value.url);
     for (const link of extractedLinks) discovered.add(link);
-    if (extractedLinks.length === 0 && isPublicCatalogUrl(baseUrl)) {
-      for (const link of await fetchApifyCatalogLinks([baseUrl], options)) discovered.add(link);
+    if (extractedLinks.length === 0 && isPublicCatalogUrl(baseUrl) && !result.value.circuitOpen) {
+      const fallback = await fetchApifyCatalogLinks([baseUrl], options);
+      for (const link of fallback.links) discovered.add(link);
+      apifyStats.push({ sourceKey: publicSourceKey(baseUrl), urls: [baseUrl], status: fallback.status, attempted: fallback.attempted, message: fallback.message });
     }
     if (publicSourceKey(baseUrl) === "public:gandaya") {
       const payload = parseGandayaListingPayload(result.value.html);
@@ -1728,7 +1752,7 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
       const belongsToRequestedSource = !requestedSourceUrls || requestedSourceUrls.some(requested => requested === sanitizePublicSourceUrl(url) || (isPublicCatalogUrl(requested) && publicSourceKey(requested) === publicSourceKey(url)));
       return belongsToSource && belongsToRequestedSource && (!host.endsWith("zig.tickets") || url !== "https://zig.tickets/pt-BR");
     } catch { return false; }
-  }).slice(0, 120), articketRegionalFiltered: regionalArticketCandidates.filtered.length, gandayaRegionalFiltered };
+  }).slice(0, 120), articketRegionalFiltered: regionalArticketCandidates.filtered.length, gandayaRegionalFiltered, apifyStats };
 }
 
 export type IngestionSourceReport = {
