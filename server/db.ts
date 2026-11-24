@@ -309,7 +309,7 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-export const ALLOWED_CITIES = ["Santos", "Guarujá"] as const;
+export const ALLOWED_CITIES = ["Santos", "Guarujá", "São Vicente", "Praia Grande", "Cubatão"] as const;
 export const INSTAGRAM_AGENDA_SOURCE_TYPE = "instagram_agenda_weekend" as const;
 export const WEEKLY_AGENDA_SOURCE_TYPES = [INSTAGRAM_AGENDA_SOURCE_TYPE, "ingresse"] as const;
 export const MUSICAL_CATEGORIES = ["show", "balada", "evento_musical"] as const;
@@ -1696,7 +1696,7 @@ export async function saveEvent(data: InsertEvent) {
     description: sanitizeEventText(normalizedLocation.description),
     imageUrl: durableImageUrl || incomingImageUrl || resolveVenueCoverFallback(normalizedLocation),
   };
-  if (!ALLOWED_CITIES.includes(normalized.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos em Santos e Guarujá");
+  if (!ALLOWED_CITIES.includes(normalized.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos na Baixada Santista");
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const stableSourceUrl = isArticketEvent(normalized);
@@ -1767,7 +1767,7 @@ export async function backfillRemoteEventCovers(input: { limit?: number; dryRun?
 
 export async function updateEvent(id: number, input: Partial<InsertEvent>) {
   if (!Number.isInteger(id) || id <= 0) throw new Error("ID de evento inválido");
-  if (input.city && !ALLOWED_CITIES.includes(input.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos em Santos e Guarujá");
+  if (input.city && !ALLOWED_CITIES.includes(input.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos na Baixada Santista");
   if (input.eventDate) assertEventDateIsCurrentOrFuture(input.eventDate, new Date(), input.title);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");

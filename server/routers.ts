@@ -100,6 +100,7 @@ import { isAdminUser } from "./_core/admin-auth";
 import { runObservabilitySnapshotMaintenance } from "./scheduled-observability-maintenance";
 import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts, getExportJobsMetricsTrend, getExportJobAlertDetail, getExportJobsAlertSettings, updateExportJobsAlertSettings, getExportJobsTrendBucket, getExportJobsAlertEfficiency, compareExportJobsEfficiency, listExportJobsAlertSettingsHistory, recordExportAlertEvaluationSnapshot, listExportAlertEvaluationSnapshots, getExportJobsEfficiencyBucket, getExportJobsAlertEfficiencyTrend } from "./filtered-story-export-jobs";
 import { compareHeartbeatExecutionStats, evaluateHeartbeatHealth, evaluateHeartbeatPerformance, getHeartbeatExecutionStats, getHeartbeatHealthSettings, getHeartbeatExecutionSummary, listHeartbeatExecutionEvents, listHeartbeatHealthSettingsHistory, listHeartbeatIncidentsByRegression, recordHeartbeatExecutionEvent, updateHeartbeatHealthSettings, type HeartbeatEventType, type HeartbeatHealthEnvironment } from "./heartbeat-observability";
+import { approveGenreDiscoveryCandidate, DISCOVERY_CITIES, DISCOVERY_GENRES, listGenreDiscoveryCandidates, rejectGenreDiscoveryCandidate, runGenreDiscoveryScan } from "./genre-discovery";
 
 const safeFilter = (max = 120) => z.string().trim().max(max).optional();
 
@@ -561,6 +562,24 @@ const reprocessSandboxOutput = z
 const reprocessOutput = z.union([reprocessResultOutput, reprocessSandboxOutput]);
 
 export const appRouter = router({
+  discovery: router({
+    scanNow: adminOnly
+      .input(z.object({ sourceUrls: z.array(z.string().url()).max(50).optional() }).strict().default({}))
+      .output(z.object({ scannedPages: z.number().int().nonnegative(), eligible: z.number().int().nonnegative(), inserted: z.number().int().nonnegative(), duplicates: z.number().int().nonnegative(), filtered: z.number().int().nonnegative(), errors: z.number().int().nonnegative() }).strict())
+      .mutation(({ input }) => runGenreDiscoveryScan(input)),
+    list: adminOnly
+      .input(z.object({ status: z.enum(["pending", "approved", "rejected"]).default("pending"), genre: z.enum(DISCOVERY_GENRES).optional(), city: z.enum(DISCOVERY_CITIES).optional(), limit: z.number().int().positive().max(200).default(50), offset: z.number().int().nonnegative().default(0) }).strict())
+      .output(z.object({ items: z.array(z.object({ id: z.number().int().positive(), canonicalUrl: z.string().url(), platform: z.string(), title: z.string(), eventDate: z.string().datetime(), city: z.string(), venueNameRaw: z.string().nullable(), matchedGenres: z.array(z.enum(DISCOVERY_GENRES)), flyerUrl: z.string().nullable(), description: z.string().nullable(), status: z.enum(["pending", "approved", "rejected"]), discoveredAt: z.string().datetime(), reviewedAt: z.string().datetime().nullable() }).strict()).max(200) }).strict())
+      .query(async ({ input }) => ({ items: (await listGenreDiscoveryCandidates(input)).map(candidate => ({ id: candidate.id, canonicalUrl: candidate.canonicalUrl, platform: candidate.platform, title: candidate.title, eventDate: new Date(candidate.eventDate).toISOString(), city: candidate.city, venueNameRaw: candidate.venueNameRaw, matchedGenres: candidate.matchedGenres as Array<typeof DISCOVERY_GENRES[number]>, flyerUrl: candidate.flyerUrl, description: candidate.description, status: candidate.status, discoveredAt: new Date(candidate.discoveredAt).toISOString(), reviewedAt: candidate.reviewedAt ? new Date(candidate.reviewedAt).toISOString() : null })) })),
+    approve: adminOnly
+      .input(z.object({ id: z.number().int().positive(), addAsSource: z.boolean().default(false) }).strict())
+      .output(z.object({ success: z.literal(true), eventId: z.number().int().positive().optional(), created: z.boolean(), addAsSource: z.boolean() }).strict())
+      .mutation(async ({ input }) => { const result = await approveGenreDiscoveryCandidate(input.id, input.addAsSource); if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Candidato de descoberta não encontrado." }); return { success: true as const, eventId: result.eventId, created: result.created, addAsSource: result.addAsSource }; }),
+    reject: adminOnly
+      .input(z.object({ id: z.number().int().positive() }).strict())
+      .output(z.object({ success: z.literal(true), id: z.number().int().positive() }).strict())
+      .mutation(async ({ input }) => { const result = await rejectGenreDiscoveryCandidate(input.id); if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Candidato de descoberta não encontrado." }); return { success: true as const, id: result.id }; }),
+  }),
   push: router({
     diagnostics: adminOnly
       .output(z.object({ vapidConfigured: z.boolean(), activeDevices: z.number().int().nonnegative(), lastDispatch: z.object({ createdAt: z.string().datetime(), sent: z.number().int().nonnegative(), failed: z.number().int().nonnegative(), expired: z.number().int().nonnegative() }).strict().nullable() }).strict())
