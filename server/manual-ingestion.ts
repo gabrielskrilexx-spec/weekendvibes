@@ -277,13 +277,13 @@ async function getRecentInstagramRuns() {
 export async function getWednesdayRoutineStatus(now = new Date()) {
   await reconcileStaleIngestionRuns().catch(error => console.warn("[Manual ingestion] Stale-run reconciliation failed; continuing status read", error));
   const recentRuns = await getRecentInstagramRuns();
-  const isRunning = isWednesdayRoutineRunning() || recentRuns.some(run => run.status === "running");
+  const isRunning = isWednesdayRoutineRunning();
   const fallback = {
     enabled: false,
-    runMode: null as string | null,
-    timezone: null as string | null,
+    runMode: "manual/legado" as string,
+    timezone: "America/Sao_Paulo" as string,
     cron: null as string | null,
-    nextExecutionAt: null as string | null,
+    nextExecutionAt: getNextWednesdayExecution(now),
     lastExecutedAt: recentRuns[0]?.finishedAt ?? null,
     isRunning,
     progress: getManualRoutineProgress(),

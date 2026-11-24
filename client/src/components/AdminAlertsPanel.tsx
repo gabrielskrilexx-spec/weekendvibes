@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, XCircle } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { friendlyAdminErrorMessage } from "@/lib/adminFeedback";
 import { isAlertPausedForPlatformCooldown, isPlatformCooldownActive } from "./paused-platform-alerts";
 
 const integrationLabels: Record<string, string> = {
@@ -69,6 +70,8 @@ export default function AdminAlertsPanel() {
       </div>
     </div>
 
+    {report.isLoading && <p role="status" className="mt-5 rounded-2xl border border-white/10 p-5 text-sm text-zinc-400">Carregando alertas de integração…</p>}
+    {report.isError && <p role="alert" className="mt-5 rounded-2xl border border-rose-300/20 bg-rose-400/10 p-5 text-sm text-rose-100">Falha técnica ao carregar alertas: {friendlyAdminErrorMessage(report.error, "verifique a sessão e tente novamente.")}</p>}
     <div className="mt-5 grid gap-3 sm:grid-cols-4">
       <div className="rounded-2xl border border-red-300/20 bg-red-300/10 p-4"><XCircle size={17} className="text-red-200" /><p className="mt-3 text-2xl font-black">{openCount}</p><p className="text-xs text-zinc-400">Em aberto</p></div>
       <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-4"><CheckCircle2 size={17} className="text-emerald-200" /><p className="mt-3 text-2xl font-black">{resolvedCount}</p><p className="text-xs text-zinc-400">Resolvidos</p></div>

@@ -3,12 +3,14 @@ import type { TrpcContext } from "./_core/context";
 
 const mocks = vi.hoisted(() => ({
   runWednesdayRoutineNow: vi.fn(),
+  queueWednesdayRoutineNow: vi.fn(),
   runDryRun: vi.fn(),
 }));
 
 vi.mock("./manual-ingestion", () => ({
   getWednesdayRoutineStatus: vi.fn(),
   runWednesdayRoutineNow: mocks.runWednesdayRoutineNow,
+  queueWednesdayRoutineNow: mocks.queueWednesdayRoutineNow,
 }));
 vi.mock("./dry-run", () => ({ runDryRun: mocks.runDryRun }));
 
@@ -40,22 +42,14 @@ describe("admin runtime fallbacks", () => {
     vi.clearAllMocks();
   });
 
-  it("converte falha da execução manual em ACK JSON sanitizado", async () => {
-    mocks.runWednesdayRoutineNow.mockRejectedValueOnce(
+  it("converte falha da execução manual em erro tRPC sanitizado", async () => {
+    mocks.queueWednesdayRoutineNow.mockRejectedValueOnce(
       new Error("upstream timeout with token https://secret.example")
     );
 
-    const result = await appRouter
-      .createCaller(createAdminContext())
-      .adminRoutine.runNow();
-
-    expect(result).toEqual({
-      ok: false,
-      message: "Falha interna ao conectar com as fontes.",
-      details: [],
-    });
-    expect(result).not.toHaveProperty("stack");
-    expect(JSON.stringify(result)).not.toContain("secret.example");
+    await expect(
+      appRouter.createCaller(createAdminContext()).adminRoutine.runNow()
+    ).rejects.toThrow("O serviço está temporariamente indisponível. Tente novamente.");
   });
 
   it("converte falha do dry-run em relatório JSON sanitizado", async () => {
