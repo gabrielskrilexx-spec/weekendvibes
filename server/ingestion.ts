@@ -1489,8 +1489,8 @@ export type ApifyCatalogFallbackResult = {
 export function buildApifyCatalogPayload(urls: string[], actorId = process.env.APIFY_CATALOG_ACTOR_ID || process.env.APIFY_WEB_ACTOR_ID || "apify~cheerio-scraper") {
   const eventPathExpression = "/\\/(?:evento|eventos|e|event)\\/[^\\/]+(?:\\/[^\\/]*)?$/i";
   const pageFunction = actorId.toLowerCase().includes("puppeteer")
-    ? `async ({ page, request }) => { await page.waitForSelector('a[href]', { timeout: 8000 }).catch(() => {}); await page.evaluate(() => window.scrollBy(0, Math.min(window.innerHeight * 2, 1600))); const pattern = ${eventPathExpression}; const links = await page.$$eval('a[href]', anchors => anchors.map(anchor => ({ url: new URL(anchor.href, location.href).href, title: (anchor.textContent || anchor.getAttribute('aria-label') || '').replace(/\\s+/g, ' ').trim() })).filter(item => { const parsed = new URL(item.url); return parsed.origin === location.origin && pattern.test(parsed.pathname) && !/login|categoria|category|termos|privacidade|ingresso\\?/.test(parsed.pathname + parsed.search); })); return Array.from(new Map(links.map(item => [item.url, item])).values()); }`.replace("pattern = ${eventPathExpression}", `pattern = new RegExp(${JSON.stringify(eventPathExpression.slice(1, -2))}, 'i')`)
-    : `async ({ $, request }) => { const pattern = new RegExp(${JSON.stringify(eventPathExpression.slice(1, -2))}, 'i'); return $('a[href]').map((_, anchor) => ({ url: new URL($(anchor).attr('href'), request.url).href, title: $(anchor).text().replace(/\\s+/g, ' ').trim() })).get().filter(item => { const parsed = new URL(item.url); return parsed.origin === new URL(request.url).origin && pattern.test(parsed.pathname) && !/login|categoria|category|termos|privacidade|ingresso\\?/.test(parsed.pathname + parsed.search); }).filter((item, index, all) => all.findIndex(candidate => candidate.url === item.url) === index); }`;
+    ? `async ({ page, request }) => { await page.waitForSelector('a[href]', { timeout: 8000 }).catch(() => {}); await page.evaluate(() => window.scrollBy(0, Math.min(window.innerHeight * 2, 1600))); const pattern = ${eventPathExpression}; const links = await page.$$eval('a[href]', anchors => anchors.map(anchor => ({ url: new URL(anchor.href, location.href).href, title: (anchor.textContent || anchor.getAttribute('aria-label') || '').replace(/\\s+/g, ' ').trim() })).filter(item => { const parsed = new URL(item.url); return parsed.origin === location.origin && pattern.test(parsed.pathname) && !/^\\/eventos\\/(?:santos|guaruja)-sp\\/?$/i.test(parsed.pathname) && !/login|categoria|category|termos|privacidade|ingresso\\?/.test(parsed.pathname + parsed.search); })); return Array.from(new Map(links.map(item => [item.url, item])).values()); }`.replace("pattern = ${eventPathExpression}", `pattern = new RegExp(${JSON.stringify(eventPathExpression.slice(1, -2))}, 'i')`)
+    : `async ({ $, request }) => { const pattern = new RegExp(${JSON.stringify(eventPathExpression.slice(1, -2))}, 'i'); return $('a[href]').map((_, anchor) => ({ url: new URL($(anchor).attr('href'), request.url).href, title: $(anchor).text().replace(/\\s+/g, ' ').trim() })).get().filter(item => { const parsed = new URL(item.url); return parsed.origin === new URL(request.url).origin && pattern.test(parsed.pathname) && !/^\\/eventos\\/(?:santos|guaruja)-sp\\/?$/i.test(parsed.pathname) && !/login|categoria|category|termos|privacidade|ingresso\\?/.test(parsed.pathname + parsed.search); }).filter((item, index, all) => all.findIndex(candidate => candidate.url === item.url) === index); }`;
   return {
     startUrls: urls.slice(0, 2).map(url => ({ url })),
     pageFunction,
@@ -1715,17 +1715,19 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
   }
   for (let index = 0; index < basePages.length; index += 1) {
     const result = basePages[index];
-    if (result.status !== "fulfilled") continue;
     const baseUrl = crawlBases[index];
-    const extractedLinks = extractPublicEventLinks(result.value.html, result.value.url);
+    const page = result.status === "fulfilled" ? result.value : undefined;
+    const extractedLinks = page ? extractPublicEventLinks(page.html, page.url) : [];
     for (const link of extractedLinks) discovered.add(link);
-    if (extractedLinks.length === 0 && shouldRunApifyCatalogFallback(baseUrl, result.value, options)) {
+    const apifyEligible = isPublicCatalogUrl(baseUrl) && (options.exploratoryApify === true || (page ? shouldRunApifyCatalogFallback(baseUrl, page, options) : false));
+    if (extractedLinks.length === 0 && apifyEligible) {
       const fallback = await fetchApifyCatalogLinks([baseUrl], options);
       for (const link of fallback.links) discovered.add(link);
       apifyStats.push({ sourceKey: publicSourceKey(baseUrl), urls: [baseUrl], status: fallback.status, attempted: fallback.attempted, message: fallback.message });
     }
+    if (!page) continue;
     if (publicSourceKey(baseUrl) === "public:gandaya") {
-      const payload = parseGandayaListingPayload(result.value.html);
+      const payload = parseGandayaListingPayload(page.html);
       const listingEvents = payload && typeof payload === "object" ? [
         ...((payload as { main?: GandayaListingEvent }).main ? [(payload as { main: GandayaListingEvent }).main] : []),
         ...((payload as { sections?: Array<{ events?: GandayaListingEvent[] }> }).sections ?? []).flatMap(section => section.events ?? []),
@@ -1739,14 +1741,14 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
       }
     }
     if (publicSourceKey(baseUrl) === "public:articket") {
-      const articketLinks = discoverArticketEventLinks(result.value.html, result.value.url, activeAliases);
+      const articketLinks = discoverArticketEventLinks(page.html, page.url, activeAliases);
       for (const link of articketLinks) {
         discovered.add(link);
         if (!options.dryRun) await upsertDiscoveredArticketSource({ url: link, name: formatArticketSourceName(link) }).catch(error => console.warn("[Articket discoverer] Could not persist discovered URL:", sanitizeFetchFailure(error).message));
       }
     }
     if (isMrIngressosCatalogUrl(baseUrl)) {
-      for (const event of extractMrIngressosListingEvents(result.value.html, result.value.url)) discovered.add(event.url);
+      for (const event of extractMrIngressosListingEvents(page.html, page.url)) discovered.add(event.url);
     }
     if (isBlackPassRootUrl(baseUrl)) {
       const catalog = await fetchBlackPassCatalog().catch(error => { logPublicFailureDiagnostics(baseUrl, error); return []; });
