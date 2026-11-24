@@ -10,6 +10,28 @@ export type DiscoveryGenre = typeof DISCOVERY_GENRES[number];
 export const DISCOVERY_CITIES = ["Santos", "Guarujá"] as const;
 export type DiscoveryCity = typeof DISCOVERY_CITIES[number];
 export type DiscoveryStatus = "pending" | "approved" | "rejected";
+export const DISCOVERY_REGIONAL_SOURCE_URLS = [
+  "https://www.sympla.com.br/eventos/santos-sp",
+  "https://www.sympla.com.br/eventos/guaruja-sp",
+  "https://www.ingresse.com/search?query=santos",
+  "https://www.ingresse.com/search?query=guaruja",
+  "https://zig.tickets/pt-BR?city=santos",
+  "https://zig.tickets/pt-BR?city=guaruja",
+  "https://blacktag.com.br/?city=santos",
+  "https://blacktag.com.br/?city=guaruja",
+  "https://articket.com.br/?city=santos",
+  "https://articket.com.br/?city=guaruja",
+  "https://blackpass.com.br/?city=santos",
+  "https://blackpass.com.br/?city=guaruja",
+  "https://gandaya.dance/?city=santos",
+  "https://gandaya.dance/?city=guaruja",
+  "https://mringressos.com.br/?cidade=santos",
+  "https://mringressos.com.br/?cidade=guaruja",
+  "https://www.weticket.com.br/?city=santos",
+  "https://www.weticket.com.br/?city=guaruja",
+  "https://www.ticket360.com.br/eventos/santos",
+  "https://www.ticket360.com.br/eventos/guaruja",
+] as const;
 
 const GENRE_TERMS: Record<DiscoveryGenre, RegExp> = {
   trap: /\btrap\b/i,
@@ -79,6 +101,10 @@ export function candidateUrl(value: string) {
   return normalizeDiscoveredSourceUrl(value) ?? "";
 }
 
+export function filterDiscoveryCandidateUrls(urls: string[], existingEventUrls: ReadonlySet<string>, existingCandidateUrls: ReadonlySet<string>) {
+  return Array.from(new Set(urls.map(candidateUrl).filter(Boolean))).filter(canonical => !existingEventUrls.has(canonical) && !existingCandidateUrls.has(canonical));
+}
+
 export function pageToDiscoveryCandidate(page: Pick<PublicPage, "url" | "text" | "imageUrl" | "structured">, now = new Date()) {
   const structured = Array.isArray(page.structured) ? page.structured[0] : page.structured;
   const record = (structured ?? {}) as Record<string, unknown>;
@@ -118,25 +144,23 @@ export type GenreDiscoveryScanResult = {
 
 export async function runGenreDiscoveryScan(options: { now?: Date; sourceUrls?: string[] } = {}): Promise<GenreDiscoveryScanResult> {
   const now = options.now ?? new Date();
-  const discovery = await discoverCandidatePages({ dryRun: true, sourceUrls: options.sourceUrls });
+  const discovery = await discoverCandidatePages({ dryRun: true, sourceUrls: options.sourceUrls, exploratorySourceUrls: [...DISCOVERY_REGIONAL_SOURCE_URLS] });
   const urls = discovery.urls.map(candidateUrl).filter(Boolean);
   const pages = await Promise.allSettled(urls.map(url => guardedFetchPublicPage(url, { dryRun: true })));
   const result: GenreDiscoveryScanResult = { scannedPages: pages.length, eligible: 0, inserted: 0, duplicates: 0, filtered: 0, errors: 0 };
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const configuredSources = await db.select({ url: ingestionSources.url }).from(ingestionSources);
-  const blockedUrls = new Set(configuredSources.map(row => candidateUrl(row.url)));
-  const normalizedUrls = urls.filter(url => !blockedUrls.has(url));
   const existingEvents = await db.select({ sourceUrl: events.sourceUrl }).from(events).where(isNotNull(events.sourceUrl));
   const existingEventUrls = new Set(existingEvents.map(row => candidateUrl(row.sourceUrl ?? "")));
   const existingCandidates = await db.select({ canonicalUrl: discoveredEventCandidates.canonicalUrl }).from(discoveredEventCandidates);
   const knownCandidates = new Set(existingCandidates.map(row => candidateUrl(row.canonicalUrl)));
+  const candidateUrls = filterDiscoveryCandidateUrls(urls, existingEventUrls, knownCandidates);
   for (let index = 0; index < pages.length; index += 1) {
     const settled = pages[index];
     if (settled.status === "rejected") { result.errors += 1; continue; }
     const page = settled.value;
     const normalizedUrl = candidateUrl(page.url);
-    if (!normalizedUrls.includes(normalizedUrl) || existingEventUrls.has(normalizedUrl) || knownCandidates.has(normalizedUrl)) { result.duplicates += 1; continue; }
+    if (!candidateUrls.includes(normalizedUrl) || existingEventUrls.has(normalizedUrl) || knownCandidates.has(normalizedUrl)) { result.duplicates += 1; continue; }
     const candidate = pageToDiscoveryCandidate(page, now);
     if (!candidate) { result.filtered += 1; continue; }
     result.eligible += 1;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { candidateUrl, classifyDiscoveryGenres, detectDiscoveryCity, isFutureDiscoveryDate, pageToDiscoveryCandidate } from "./genre-discovery";
+import { candidateUrl, classifyDiscoveryGenres, detectDiscoveryCity, DISCOVERY_REGIONAL_SOURCE_URLS, filterDiscoveryCandidateUrls, isFutureDiscoveryDate, pageToDiscoveryCandidate } from "./genre-discovery";
 
 describe("Radar de descoberta por estilo", () => {
   it("classifica todos os gêneros que aparecem no conjunto de textos", () => {
@@ -65,5 +65,45 @@ describe("Radar de descoberta por estilo", () => {
 
   it("mantém URLs rejeitadas estáveis para bloqueio idempotente", () => {
     expect(candidateUrl("https://articket.com.br/e/123/festa?fbclid=tracking")).toBe("https://articket.com.br/e/123/festa");
+  });
+
+  it("não bloqueia candidato apenas porque sua URL está em ingestionSources", () => {
+    const sourceUrl = "https://articket.com.br/e/999/evento-inedito?utm_source=radar";
+    expect(filterDiscoveryCandidateUrls([sourceUrl], new Set(), new Set())).toEqual([
+      "https://articket.com.br/e/999/evento-inedito",
+    ]);
+  });
+
+  it("mantém bloqueados eventos já publicados ou já descobertos pelo Radar", () => {
+    const published = "https://articket.com.br/e/100/publicado";
+    const discovered = "https://sympla.com.br/evento/ja-descoberto/200";
+    expect(filterDiscoveryCandidateUrls([published, discovered, "https://articket.com.br/e/101/novo"], new Set([published]), new Set([discovered]))).toEqual([
+      "https://articket.com.br/e/101/novo",
+    ]);
+  });
+
+  it("mantém sementes exploratórias de Santos e Guarujá para as bilheteiras suportadas", () => {
+    expect(DISCOVERY_REGIONAL_SOURCE_URLS).toEqual(expect.arrayContaining([
+      "https://www.sympla.com.br/eventos/santos-sp",
+      "https://www.sympla.com.br/eventos/guaruja-sp",
+      "https://www.ingresse.com/search?query=santos",
+      "https://www.ingresse.com/search?query=guaruja",
+      "https://zig.tickets/pt-BR?city=santos",
+      "https://zig.tickets/pt-BR?city=guaruja",
+      "https://blacktag.com.br/?city=santos",
+      "https://blacktag.com.br/?city=guaruja",
+      "https://articket.com.br/?city=santos",
+      "https://articket.com.br/?city=guaruja",
+      "https://blackpass.com.br/?city=santos",
+      "https://blackpass.com.br/?city=guaruja",
+      "https://gandaya.dance/?city=santos",
+      "https://gandaya.dance/?city=guaruja",
+      "https://mringressos.com.br/?cidade=santos",
+      "https://mringressos.com.br/?cidade=guaruja",
+      "https://www.weticket.com.br/?city=santos",
+      "https://www.weticket.com.br/?city=guaruja",
+      "https://www.ticket360.com.br/eventos/santos",
+      "https://www.ticket360.com.br/eventos/guaruja",
+    ]));
   });
 });
