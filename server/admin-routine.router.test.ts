@@ -40,6 +40,10 @@ describe("adminRoutine tRPC contract", () => {
     expect(queueWednesdayRoutineNow).toHaveBeenCalledTimes(1);
     expect(runWednesdayRoutineNow).not.toHaveBeenCalled();
   });
+  it("propaga falha da fila manual como erro tRPC sanitizado", async () => {
+    vi.mocked(queueWednesdayRoutineNow).mockRejectedValueOnce(new Error("Database unavailable: connection timeout"));
+    await expect(appRouter.createCaller(context("admin")).adminRoutine.runNow()).rejects.toThrow("O serviço está temporariamente indisponível. Tente novamente.");
+  });
   it("reconhece disparo manual Instagram como job background persistido", async () => {
     const originalToken = process.env.META_INSTAGRAM_TOKEN;
     const originalAccount = process.env.META_INSTAGRAM_ACCOUNT_ID;

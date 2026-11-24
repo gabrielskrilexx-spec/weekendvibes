@@ -36,7 +36,7 @@ const formatExecution = (value?: string | null) =>
         timeStyle: "short",
         timeZone: "America/Sao_Paulo",
       }).format(new Date(value))
-    : "Calculando…";
+    : "Não configurada — execução manual";
 const dateFilterTimezone = (value: unknown) =>
   value && typeof value === "object" && "timezone" in value
     ? String((value as { timezone?: unknown }).timezone ?? "")

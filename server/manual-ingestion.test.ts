@@ -75,10 +75,12 @@ describe("manual Wednesday routine", () => {
   });
   it("retorna metadata indisponível quando nenhum job estruturado corresponde à rotina", async () => {
     mocks.listHeartbeatJobs.mockResolvedValue({ total: 1, actorUserId: "owner", jobs: [{ cronExpression: "0 0 10 * * 3", isEnable: true, timezone: "America/Sao_Paulo", runMode: "manual" }] });
-    const status = await getWednesdayRoutineStatus();
+    const now = new Date("2026-08-12T15:00:00.000Z");
+    const status = await getWednesdayRoutineStatus(now);
     expect(status.source).toBe("metadata-unavailable");
-    expect(status.nextExecutionAt).toBeNull();
-    expect(status.runMode).toBeNull();
+    expect(status.nextExecutionAt).toBe(getNextWednesdayExecution(now));
+    expect(status.timezone).toBe("America/Sao_Paulo");
+    expect(status.runMode).toBe("manual/legado");
   });
 
   it("usa lease persistido para impedir duas coletas concorrentes", async () => {

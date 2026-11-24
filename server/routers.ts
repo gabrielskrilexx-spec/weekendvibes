@@ -993,12 +993,8 @@ export const appRouter = router({
           startedAt: result.startedAt,
           status: "running" as const,
         };
-      } catch {
-        return {
-          ok: false as const,
-          message: "Falha interna ao conectar com as fontes.",
-          details: [],
-        };
+      } catch (error) {
+        return throwSanitizedAdminMutationError(error, "Não foi possível iniciar a ingestão manual.");
       }
     }),
   }),
