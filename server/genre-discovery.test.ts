@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { candidateUrl, classifyDiscoveryGenres, detectDiscoveryCity, DISCOVERY_REGIONAL_SOURCE_URLS, filterDiscoveryCandidateUrls, isFutureDiscoveryDate, pageToDiscoveryCandidate, resolveDiscoveryCityFromKnownVenue } from "./genre-discovery";
-import { extractEmbeddedPublicEventUrls, extractPublicEventLinks, extractSitemapUrls, extractZigApiEventUrls, fetchApifyCatalogLinks, isPublicCatalogUrl, parseZigApiEventPayload, parseZigEventMetadata } from "./ingestion";
+import { buildApifyCatalogPayload, extractEmbeddedPublicEventUrls, extractPublicEventLinks, extractSitemapUrls, extractZigApiEventUrls, fetchApifyCatalogLinks, isPublicCatalogUrl, parseZigApiEventPayload, parseZigEventMetadata } from "./ingestion";
 
 describe("Radar de descoberta por estilo", () => {
   it("classifica todos os gêneros que aparecem no conjunto de textos", () => {
@@ -143,16 +143,53 @@ describe("Radar de descoberta por estilo", () => {
     expect(extractZigApiEventUrls({ data: [payload] })).toEqual([url]);
   });
 
-  it("mantém o fallback Apify silencioso quando não há token e ator configurados", async () => {
+  it("mantém o fallback Apify silencioso quando não há token", async () => {
     const token = process.env.APIFY_API_TOKEN;
     const actor = process.env.APIFY_CATALOG_ACTOR_ID;
     delete process.env.APIFY_API_TOKEN;
     delete process.env.APIFY_CATALOG_ACTOR_ID;
     try {
-      await expect(fetchApifyCatalogLinks(["https://www.sympla.com.br/eventos/santos-sp"])).resolves.toEqual([]);
+      await expect(fetchApifyCatalogLinks(["https://www.sympla.com.br/eventos/santos-sp"])).resolves.toMatchObject({ links: [], attempted: false, status: "not_configured" });
     } finally {
       if (token === undefined) delete process.env.APIFY_API_TOKEN; else process.env.APIFY_API_TOKEN = token;
       if (actor === undefined) delete process.env.APIFY_CATALOG_ACTOR_ID; else process.env.APIFY_CATALOG_ACTOR_ID = actor;
+    }
+  });
+
+  it("monta payload Apify com startUrls e pageFunction explícita para /evento/", () => {
+    const payload = buildApifyCatalogPayload([
+      "https://www.sympla.com.br/eventos/santos-sp",
+      "https://www.sympla.com.br/eventos/guaruja-sp",
+    ], "apify~puppeteer-scraper");
+    expect(payload.startUrls).toEqual([
+      { url: "https://www.sympla.com.br/eventos/santos-sp" },
+      { url: "https://www.sympla.com.br/eventos/guaruja-sp" },
+    ]);
+    expect(payload.pageFunction).toContain("href");
+    expect(payload.pageFunction).toContain("/evento/");
+    expect(payload.pageFunction).toContain("title");
+  });
+
+  it("interpreta dataset Apify com objetos url/title e marca sucesso", async () => {
+    const originalToken = process.env.APIFY_API_TOKEN;
+    const originalActor = process.env.APIFY_CATALOG_ACTOR_ID;
+    process.env.APIFY_API_TOKEN = "test-token";
+    process.env.APIFY_CATALOG_ACTOR_ID = "apify~cheerio-scraper";
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify([
+      { url: "https://www.sympla.com.br/evento/trap-santos/123", title: "Trap Santos" },
+    ]), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await fetchApifyCatalogLinks(["https://www.sympla.com.br/eventos/santos-sp"]);
+      expect(result).toMatchObject({ links: ["https://www.sympla.com.br/evento/trap-santos/123"], attempted: true, status: "succeeded" });
+      const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+      const body = JSON.parse(String(request?.body));
+      expect(body.startUrls).toEqual([{ url: "https://www.sympla.com.br/eventos/santos-sp" }]);
+      expect(body.pageFunction).toContain("/evento/");
+    } finally {
+      vi.unstubAllGlobals();
+      if (originalToken === undefined) delete process.env.APIFY_API_TOKEN; else process.env.APIFY_API_TOKEN = originalToken;
+      if (originalActor === undefined) delete process.env.APIFY_CATALOG_ACTOR_ID; else process.env.APIFY_CATALOG_ACTOR_ID = originalActor;
     }
   });
 

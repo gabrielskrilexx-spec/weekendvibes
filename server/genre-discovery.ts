@@ -149,6 +149,9 @@ export type DiscoveryPlatformStat = {
   duplicateItems: Array<{ title: string; url: string }>;
   failures: number;
   emptyPages: number;
+  apifyStatus?: "not_configured" | "succeeded" | "empty" | "timeout" | "failed";
+  apifyMessage?: string;
+  apifyUrls?: string[];
 };
 
 function pageTitle(page: Pick<PublicPage, "text" | "structured">) {
@@ -193,6 +196,14 @@ export async function runGenreDiscoveryScan(options: { now?: Date; sourceUrls?: 
     stats.set(platform, created);
     return created;
   };
+  for (const fallback of discovery.apifyStats ?? []) {
+    const platformStat = getStats(fallback.sourceKey);
+    platformStat.apifyStatus = fallback.status;
+    platformStat.apifyMessage = fallback.message;
+    platformStat.apifyUrls = Array.from(new Set([...(platformStat.apifyUrls ?? []), ...fallback.urls]));
+    if (fallback.status === "timeout" || fallback.status === "failed") platformStat.failures += 1;
+    if (fallback.status === "empty" || fallback.status === "not_configured") platformStat.emptyPages += 1;
+  }
   urls.forEach((url: string) => { getStats(publicSourceKey(url)).totalUrls += 1; });
   const result: GenreDiscoveryScanResult = { scannedPages: pages.length, eligible: 0, inserted: 0, duplicates: 0, filtered: 0, errors: 0, platformStats: [] };
   const db = await getDb();
