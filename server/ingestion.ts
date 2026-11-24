@@ -40,6 +40,8 @@ const stripHtml = (value: string) => {
   return $.root().text().replace(/\s+/g, " ").trim();
 };
 const INGRESSE_SITE_API = "https://api-site.ingresse.com/events";
+const ZIG_PUBLIC_API_BASE = "https://m.zig.tickets/api/public/v1";
+const ZIG_PUBLIC_SITE_BASE = "https://zig.tickets";
 export const DEFAULT_INGRESSE_FETCH_TIMEOUT_MS = 15_000;
 export function getIngresseFetchTimeoutMs() {
   const configured = Number.parseInt(process.env.INGRESSE_FETCH_TIMEOUT_MS ?? "", 10);
@@ -365,6 +367,7 @@ export function extractEmbeddedPublicEventUrls(payload: string, baseUrl: string)
     }
   };
   const embeddedScripts = Array.from(payload.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi));
+  try { visit(JSON.parse(payload)); } catch { /* resposta pode ser HTML, não JSON puro */ }
   for (const block of embeddedScripts) {
     try { visit(JSON.parse(block[1].trim())); } catch { /* malformed script is non-fatal */ }
   }
@@ -614,6 +617,47 @@ export function parseZigEventMetadata(html: string, url: string) {
   const category = /show|festival|concerto|banda/.test(searchable) ? "show" : /balada|festa|dj|boate|reveillon|sunset|open\s+bar/.test(searchable) ? "balada" : genre ? "evento_musical" : "";
   if (!title || !eventDate || !city) return undefined;
   return { title: sanitizeEventText(title), summary: sanitizeEventText(sourceText.slice(0, 4_000)), eventDate, locationName, address: street, city, category, genre, priceCents, sourceUrl: url, imageUrl, latitude: "", longitude: "", text: sanitizeEventText(sourceText.slice(0, 16_000)) };
+}
+
+function normalizeZigApiDate(value: string, timezone?: string | null) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed)) return trimmed;
+  return timezone === "America/Sao_Paulo" || timezone === "America/Fortaleza" || !timezone ? `${trimmed}-03:00` : trimmed;
+}
+
+export function parseZigApiEventPayload(payload: unknown, url: string) {
+  const root = asRecord(payload);
+  const candidate = Array.isArray(root.data) ? root.data.find(item => asRecord(item).url === url || asRecord(item).slug === url.split("/").filter(Boolean).at(-1)) ?? root.data[0] : root.data ?? payload;
+  const event = asRecord(candidate);
+  const location = asRecord(event.location);
+  const images = asRecord(event.images);
+  const title = firstText(event.name, event.title);
+  const description = stripHtml(firstText(event.description, event.summary));
+  const locationName = firstText(location.name, event.locationName, event.venueName);
+  const city = firstText(location.city, event.city) || (/guaruj[aá]/i.test(`${title} ${description} ${locationName} ${url}`) ? "Guarujá" : /santos/i.test(`${title} ${description} ${locationName} ${url}`) ? "Santos" : "");
+  const timezone = firstText(event.timezone) || null;
+  const eventDate = normalizeZigApiDate(firstText(event.starts_at, event.startsAt, event.startDate, event.eventDate), timezone);
+  const address = firstText(location.formatted_address, event.address);
+  const imageUrl = firstText(images.banner, images.thumbnail, event.image, event.imageUrl);
+  const sourceUrl = firstText(event.url) || url;
+  const searchable = normalizeText(`${title} ${description} ${locationName} ${address}`);
+  const genre = /funk/.test(searchable) ? "rap_trap" : /rap|trap/.test(searchable) ? "rap_trap" : /house|eletronic|eletrônica|techno|trance|dj|balada|festa|music|sunset/.test(searchable) ? "house_eletronica" : "";
+  const category = /show|festival|concerto|banda/.test(searchable) ? "show" : /balada|festa|dj|boate|reveillon|sunset|open\s+bar/.test(searchable) ? "balada" : genre ? "evento_musical" : "";
+  if (!title || !eventDate || !locationName || !city) return undefined;
+  return { title: sanitizeEventText(title), summary: sanitizeEventText(description.slice(0, 4_000)), eventDate, locationName, address: sanitizeEventText(address), city, category, genre, priceCents: 0, sourceUrl, imageUrl: /^https?:\/\//i.test(imageUrl) ? imageUrl : "", latitude: firstText(location.latitude), longitude: firstText(location.longitude), text: sanitizeEventText(`${title} ${description} ${locationName} ${address} ${city}`.slice(0, 16_000)) };
+}
+
+export function extractZigApiEventUrls(payload: unknown) {
+  const root = asRecord(payload);
+  const events = Array.isArray(root.data) ? root.data : Array.isArray(payload) ? payload : [];
+  return Array.from(new Set(events.map(item => {
+    const event = asRecord(item);
+    const explicit = firstText(event.url);
+    if (explicit) return explicit;
+    const slug = firstText(event.slug);
+    return slug ? `${ZIG_PUBLIC_SITE_BASE}/evento/${encodeURIComponent(slug)}` : "";
+  }).filter(url => /^https?:\/\/(?:m\.)?zig\.tickets\/(?:evento|eventos|e)\//i.test(url))));
 }
 
 function extractTicket360Field(html: string, field: string) {
@@ -1403,21 +1447,54 @@ async function fetchZigEventApi(url: string, options: { signal?: AbortSignal } =
   const slug = new URL(url).pathname.split("/").filter(Boolean).at(-1);
   if (!slug) return undefined;
   const endpoints = [
+    `${ZIG_PUBLIC_API_BASE}/events/${encodeURIComponent(slug)}`,
     `https://api.zig.tickets/v1/events/${encodeURIComponent(slug)}`,
     `https://api.zig.tickets/events/${encodeURIComponent(slug)}`,
     `https://zig.tickets/api/events/${encodeURIComponent(slug)}`,
   ];
   for (const endpoint of endpoints) {
     try {
-      const response = await fetchExternal(endpoint, { headers: { ...ZIG_REQUEST_HEADERS, accept: "application/json" } }, ZIG_FETCH_TIMEOUT_MS, false, options.signal);
+      const response = await fetchExternal(endpoint, { headers: { ...ZIG_REQUEST_HEADERS, accept: "application/json", origin: ZIG_PUBLIC_SITE_BASE, referer: url } }, ZIG_FETCH_TIMEOUT_MS, false, options.signal);
       const body = await readExternalBody(response);
-      const structured = parseZigEventMetadata(`<script type="application/ld+json">${body}</script>`, url);
+      let payload: unknown;
+      try { payload = JSON.parse(body); } catch { payload = undefined; }
+      const structured = parseZigApiEventPayload(payload, url) ?? parseZigEventMetadata(`<script type="application/ld+json">${body}</script>`, url);
       if (structured) return structured;
     } catch {
       // 403/404 and unavailable API variants are safe fallbacks to the public shell.
     }
   }
   return undefined;
+}
+
+export async function fetchZigRegionalEventLinks(city: "Santos" | "Guarujá", options: { signal?: AbortSignal } = {}) {
+  const query = new URLSearchParams({ city, state: "SP", page: "1", per_page: "50" });
+  try {
+    const response = await fetchExternal(`${ZIG_PUBLIC_API_BASE}/events?${query}`, { headers: { ...ZIG_REQUEST_HEADERS, accept: "application/json", origin: ZIG_PUBLIC_SITE_BASE, referer: `${ZIG_PUBLIC_SITE_BASE}/pt-BR?city=${city.toLowerCase()}` } }, ZIG_FETCH_TIMEOUT_MS, false, options.signal);
+    const body = await readExternalBody(response);
+    const payload = JSON.parse(body) as unknown;
+    return { payload, urls: extractZigApiEventUrls(payload) };
+  } catch {
+    return { payload: undefined, urls: [] as string[] };
+  }
+}
+
+export async function fetchApifyCatalogLinks(urls: string[], options: { signal?: AbortSignal } = {}) {
+  const token = process.env.APIFY_API_TOKEN?.trim();
+  const actorId = (process.env.APIFY_CATALOG_ACTOR_ID || process.env.APIFY_WEB_ACTOR_ID)?.trim();
+  if (!token || !actorId || urls.length === 0) return [] as string[];
+  try {
+    const actorPath = encodeURIComponent(actorId).replace(/%7E/gi, "~");
+    const response = await fetchExternal(`https://api.apify.com/v2/acts/${actorPath}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}&timeout=20`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json", "user-agent": "WeekendVibes/1.0" },
+      body: JSON.stringify({ startUrls: urls.slice(0, 2).map(url => ({ url })), maxCrawlPages: 20, maxConcurrency: 2 }),
+    }, 25_000, true, options.signal);
+    const body = await readExternalBody(response);
+    return extractEmbeddedPublicEventUrls(body, urls[0]);
+  } catch {
+    return [] as string[];
+  }
 }
 
 async function fetchPublicPage(url: string, options: { dryRun?: boolean; signal?: AbortSignal } = {}): Promise<PublicPage> {
@@ -1569,10 +1646,14 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
   const crawlBases = bases.filter(url => !isIngresseCatalogRootUrl(url) && !isArticketEventUrl(url));
   const discovered = new Set([...crawlBases.filter(url => !isPublicCatalogUrl(url)), ...regionalArticketCandidates.regional.map(candidate => candidate.url)]);
   const basePages = await fetchWithConcurrency(crawlBases, url => guardedFetchPublicPage(url, options), PUBLIC_FETCH_CONCURRENCY);
+  const zigCatalogs = crawlBases.filter(url => publicSourceKey(url) === "public:zig" && isPublicCatalogUrl(url));
+  const zigRegionalPages = await fetchWithConcurrency(Array.from(new Set(zigCatalogs.map(url => /guaruja/i.test(url) ? "Guarujá" : "Santos" as const))), city => fetchZigRegionalEventLinks(city, options), Math.min(2, PUBLIC_FETCH_CONCURRENCY));
+  for (const result of zigRegionalPages) if (result.status === "fulfilled") for (const link of result.value.urls) discovered.add(link);
   const endpointUrls = crawlBases.flatMap(baseUrl => {
     try {
       const origin = new URL(baseUrl).origin;
       const city = /guaruja/i.test(baseUrl) ? "guaruja" : "santos";
+      if (publicSourceKey(baseUrl) === "public:zig") return [];
       return [
         `${origin}/api/events?city=${city}`,
         `${origin}/api/search?city=${city}`,
@@ -1605,7 +1686,11 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
     const result = basePages[index];
     if (result.status !== "fulfilled") continue;
     const baseUrl = crawlBases[index];
-    for (const link of extractPublicEventLinks(result.value.html, result.value.url)) discovered.add(link);
+    const extractedLinks = extractPublicEventLinks(result.value.html, result.value.url);
+    for (const link of extractedLinks) discovered.add(link);
+    if (extractedLinks.length === 0 && isPublicCatalogUrl(baseUrl)) {
+      for (const link of await fetchApifyCatalogLinks([baseUrl], options)) discovered.add(link);
+    }
     if (publicSourceKey(baseUrl) === "public:gandaya") {
       const payload = parseGandayaListingPayload(result.value.html);
       const listingEvents = payload && typeof payload === "object" ? [
