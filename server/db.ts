@@ -14,6 +14,7 @@ import { isVenueCoverAsset, resolveVenueCoverFallback } from "../shared/event-me
 import { selectRelatedEvents } from "../shared/related-events";
 import { persistRemoteImage } from "./media-persistence";
 import { canonicalVenueSlug, dedupeVenueAliases, normalizeVenueValue, type IndexableVenue } from "../shared/venue-slugs";
+import { normalizeDiscoveredSourceUrl, resolveDiscoveredSourceMatch } from "../shared/source-url";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -819,24 +820,8 @@ export function isContinuousIngestionSource(source: Pick<IngestionSource, "kind"
   return source.kind === "instagram" || (CONTINUOUS_PUBLIC_SOURCE_KEYS as readonly string[]).includes(source.sourceKey);
 }
 
-const TRACKING_QUERY_KEYS = new Set(["fbclid", "gclid", "igshid", "mc_cid", "mc_eid"]);
-
 export function normalizeExpiredSourceMatchUrl(value: unknown): string | null {
-  if (typeof value !== "string" || !value.trim()) return null;
-  try {
-    const url = new URL(value.trim());
-    if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) return null;
-    for (const key of Array.from(url.searchParams.keys())) {
-      const normalizedKey = key.toLowerCase();
-      if (normalizedKey.startsWith("utm_") || TRACKING_QUERY_KEYS.has(normalizedKey)) url.searchParams.delete(key);
-    }
-    url.searchParams.sort();
-    url.hash = "";
-    const pathname = url.pathname.replace(/\/+$/, "") || "/";
-    return `${url.origin}${pathname === "/" ? "" : pathname}${url.search}`;
-  } catch {
-    return null;
-  }
+  return normalizeDiscoveredSourceUrl(String(value ?? ""));
 }
 
 export function findExpiredSourceKeysForTest(
@@ -1073,7 +1058,23 @@ export async function updateDiscoveredArticketSourceName(input: { url: string; t
 export async function upsertDiscoveredInstagramLinkSource(input: { url: string; username?: string }, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) throw new Error("Database unavailable");
-  const url = input.url.trim();
+  const url = normalizeDiscoveredSourceUrl(input.url);
+  if (!url) throw new Error("Invalid discovered source URL");
+
+  // Compare against every persisted source, not only Instagram-created rows.
+  // This prevents a ticketing source such as public:articket-7402 from being
+  // shadowed by a second public:instagram-* record.
+  const existingSources = await db.select({ id: ingestionSources.id, sourceKey: ingestionSources.sourceKey, url: ingestionSources.url, kind: ingestionSources.kind }).from(ingestionSources);
+  const existing = resolveDiscoveredSourceMatch(existingSources, url);
+  if (existing) {
+    if (existing.url !== url) {
+      await db.update(ingestionSources).set({ url: url.slice(0, 1000), isEnabled: 1, updatedAt: new Date() }).where(eq(ingestionSources.id, existing.id));
+    } else {
+      await db.update(ingestionSources).set({ isEnabled: 1, updatedAt: new Date() }).where(eq(ingestionSources.id, existing.id));
+    }
+    return { id: existing.id, sourceKey: existing.sourceKey };
+  }
+
   const digest = createHash("sha256").update(url).digest("hex").slice(0, 24);
   const sourceKey = `public:instagram-${digest}`;
   await upsert(db.insert(ingestionSources).values({

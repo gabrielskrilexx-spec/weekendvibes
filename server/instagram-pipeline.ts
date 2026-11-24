@@ -8,6 +8,7 @@ import { resolveRegionalCoordinates } from "./geocoding";
 import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from "./circuit-breaker";
 import { persistManualReviewEvents, type ManualReviewEventInput } from "./manual-review";
 import { storagePut } from "./storage";
+import { normalizeDiscoveredSourceUrl } from "../shared/source-url";
 
 const META_GRAPH_BASE_URL = "https://graph.facebook.com/v26.0";
 export const DEFAULT_META_GRAPH_FETCH_TIMEOUT_MS = 8_000;
@@ -346,7 +347,10 @@ export async function persistDiscoverableInstagramLinks(posts: ReadonlyArray<Ins
   for (const post of posts) {
     const username = post.ownerUsername ?? post.username;
     const text = [post.caption, post.text, post.ocrText].filter(Boolean).join("\n");
-    for (const url of extractDiscoverableInstagramLinks(text)) discovered.set(url, username);
+    for (const rawUrl of extractDiscoverableInstagramLinks(text)) {
+      const url = normalizeDiscoveredSourceUrl(rawUrl);
+      if (url) discovered.set(url, username);
+    }
   }
   const sources = await Promise.all(Array.from(discovered, ([url, username]) => upsertDiscoveredInstagramLinkSource({ url, username })));
   return { discovered: sources.length, sources };
