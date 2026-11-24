@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { candidateUrl, classifyDiscoveryGenres, detectDiscoveryCity, DISCOVERY_REGIONAL_SOURCE_URLS, filterDiscoveryCandidateUrls, isFutureDiscoveryDate, pageToDiscoveryCandidate, resolveDiscoveryCityFromKnownVenue } from "./genre-discovery";
-import { extractEmbeddedPublicEventUrls, extractPublicEventLinks, extractSitemapUrls, isPublicCatalogUrl, parseZigEventMetadata } from "./ingestion";
+import { extractEmbeddedPublicEventUrls, extractPublicEventLinks, extractSitemapUrls, extractZigApiEventUrls, fetchApifyCatalogLinks, isPublicCatalogUrl, parseZigApiEventPayload, parseZigEventMetadata } from "./ingestion";
 
 describe("Radar de descoberta por estilo", () => {
   it("classifica todos os gêneros que aparecem no conjunto de textos", () => {
@@ -115,6 +115,17 @@ describe("Radar de descoberta por estilo", () => {
     expect(extractPublicEventLinks(html, catalog)).not.toContain(catalog);
   });
 
+  it("expande eventos Sympla a partir de resposta JSON de busca regional", () => {
+    for (const city of ["santos", "guaruja"]) {
+      const base = `https://www.sympla.com.br/eventos/${city}-sp`;
+      const payload = JSON.stringify({ data: [{ url: `https://www.sympla.com.br/evento/baile-${city}/987` }, { canonicalUrl: `https://www.sympla.com.br/evento/rap-${city}/988` }] });
+      expect(extractEmbeddedPublicEventUrls(payload, base)).toEqual(expect.arrayContaining([
+        `https://www.sympla.com.br/evento/baile-${city}/987`,
+        `https://www.sympla.com.br/evento/rap-${city}/988`,
+      ]));
+    }
+  });
+
   it("extrai shell SPA da Zig usando OpenGraph quando o HTML não tem corpo", () => {
     const html = `<meta property="og:title" content="Baile Trap Laroc"><meta property="og:description" content="28/11/2026 às 23:00 · Laroc Club, Guarujá · Funk e Trap"><meta property="og:image" content="https://cdn.zig.tickets/laroc.jpg">`;
     expect(parseZigEventMetadata(html, "https://zig.tickets/eventos/baile-trap-laroc")).toMatchObject({
@@ -123,6 +134,26 @@ describe("Radar de descoberta por estilo", () => {
       locationName: "Laroc Club",
       imageUrl: "https://cdn.zig.tickets/laroc.jpg",
     });
+  });
+
+  it("extrai evento Zig por payload JSON público quando o shell vem vazio", () => {
+    const url = "https://zig.tickets/evento/baile-do-laroc";
+    const payload = { id: 42, slug: "baile-do-laroc", name: "Baile do Laroc", description: "Funk e Trap no litoral", starts_at: "2026-12-05T23:00:00", timezone: "America/Sao_Paulo", url, images: { banner: "https://cdn.zig.tickets/laroc-banner.jpg" }, location: { name: "Laroc Club", city: "Guarujá", formatted_address: "Guarujá, SP" } };
+    expect(parseZigApiEventPayload(payload, url)).toMatchObject({ title: "Baile do Laroc", city: "Guarujá", eventDate: "2026-12-05T23:00:00-03:00", imageUrl: "https://cdn.zig.tickets/laroc-banner.jpg" });
+    expect(extractZigApiEventUrls({ data: [payload] })).toEqual([url]);
+  });
+
+  it("mantém o fallback Apify silencioso quando não há token e ator configurados", async () => {
+    const token = process.env.APIFY_API_TOKEN;
+    const actor = process.env.APIFY_CATALOG_ACTOR_ID;
+    delete process.env.APIFY_API_TOKEN;
+    delete process.env.APIFY_CATALOG_ACTOR_ID;
+    try {
+      await expect(fetchApifyCatalogLinks(["https://www.sympla.com.br/eventos/santos-sp"])).resolves.toEqual([]);
+    } finally {
+      if (token === undefined) delete process.env.APIFY_API_TOKEN; else process.env.APIFY_API_TOKEN = token;
+      if (actor === undefined) delete process.env.APIFY_CATALOG_ACTOR_ID; else process.env.APIFY_CATALOG_ACTOR_ID = actor;
+    }
   });
 
   it("resolve Santos ou Guarujá por uma casa conhecida sem addressLocality", () => {
