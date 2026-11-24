@@ -893,6 +893,31 @@ export async function recordSystemHealthTransition(input: { nextStatus: "healthy
   return { previousStatus, nextStatus: input.nextStatus, reason: input.reason.slice(0, 500), observedAt: input.observedAt ?? new Date() };
 }
 
+function countIsolatedUrl503Runs(runs: Array<{ status: string; details: string | null }>) {
+  return runs.filter(run => {
+    if (run.status !== "partial" || !run.details) return false;
+    try {
+      const root = JSON.parse(run.details) as Record<string, unknown>;
+      const summary = root.automationSummary && typeof root.automationSummary === "object"
+        ? root.automationSummary as Record<string, unknown>
+        : root;
+      const sources = Array.isArray(summary.sources) ? summary.sources : [];
+      const reports = sources.filter(source => source && typeof source === "object") as Array<Record<string, unknown>>;
+      return reports.length > 0 && reports.every(source => {
+        const errors = Array.isArray(source.errors) ? source.errors : [];
+        const read = Number(source.read ?? 0);
+        return errors.length > 0 && read > errors.length && errors.every(error => {
+          if (!error || typeof error !== "object") return false;
+          const item = error as Record<string, unknown>;
+          return Number(item.status ?? item.httpStatus ?? 0) === 503;
+        });
+      });
+    } catch {
+      return false;
+    }
+  }).length;
+}
+
 export async function getExecutiveObservabilityReport(now = new Date(), days = 14, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const safeDays = normalizeObservabilityPeriod(days);
   const db = dbOverride ?? await getDb();
@@ -905,7 +930,13 @@ export async function getExecutiveObservabilityReport(now = new Date(), days = 1
   const lastDay = series.at(-1);
   const recentRuns = lastDay?.total ?? 0;
   const recentFailures = recentRuns - (lastDay?.succeeded ?? 0);
-  return { generatedAt: now.toISOString(), periodDays: safeDays, sources, series, trends: summarizeTelemetryTrend(series), system_health_status: calculateSystemHealthStatus({ openSources: sources.open, activeSources: sources.active, recentRuns, recentFailures }), healthTransitions: await listSystemHealthTransitions(10, db) };
+  const recentRunRows = await db.select({ status: ingestionRuns.status, details: ingestionRuns.details, startedAt: ingestionRuns.startedAt })
+    .from(ingestionRuns)
+    .where(gte(ingestionRuns.startedAt, since));
+  const staleCutoff = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+  const staleRuns = recentRunRows.filter(run => run.status === "running" && run.startedAt < staleCutoff).length;
+  const isolatedUrlFailures = countIsolatedUrl503Runs(recentRunRows);
+  return { generatedAt: now.toISOString(), periodDays: safeDays, sources, series, trends: summarizeTelemetryTrend(series), system_health_status: calculateSystemHealthStatus({ openSources: sources.open, activeSources: sources.active, recentRuns, recentFailures, allCircuitsClosed: sources.open === 0, staleRuns, isolatedUrlFailures }), healthTransitions: await listSystemHealthTransitions(10, db) };
 }
 
 async function buildDailyTelemetrySeriesFromPostgres(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, since: Date, days: number) {
