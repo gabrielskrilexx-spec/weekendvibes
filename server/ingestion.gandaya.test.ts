@@ -72,6 +72,21 @@ describe("Gandaya public adapter", () => {
     const page = { url: "https://gandaya.dance/events/sorry-project-46c6", html: "", text: "Sorry Project", imageUrl: "https://gandaya-prod.s3.us-east-2.amazonaws.com/flyer", structured: { title: "Sorry Project", eventDate: "2026-12-05T01:00:00.000Z", locationName: "Centro Histórico de Santos", address: "Centro, Santos - SP", description: "", category: "balada" } };
     expect(publicPageToOneOffEvent(page, { cityOverride: "Santos", genreOverride: "funk" })).toMatchObject({ title: "Sorry Project", city: "Santos", genre: "funk", sourceUrl: page.url, imageUrl: page.imageUrl });
   });
+
+  it("accepts the Gandaya API event without description/tags when overrides supply city and genre", () => {
+    const parsed = parseGandayaEventMetadata({
+      alias: "sorry-project-46c6",
+      title: "Sorry Project",
+      date: { startDate: "2026-12-05T01:00:00.000Z", endDate: "2026-12-05T08:00:00.000Z" },
+      description: "",
+      tags: [],
+      lineup: [],
+      location: { name: "Centro Histórico de Santos", address: "Santos - SP" },
+      imageKey: "flyers/sorry-project.jpg",
+    }, "https://gandaya.dance/events/sorry-project-46c6", { allowMissingClassification: true });
+    expect(parsed).toMatchObject({ title: "Sorry Project", eventDate: "2026-12-05T01:00:00.000Z", imageUrl: "https://gandaya-prod.s3.us-east-2.amazonaws.com/flyers/sorry-project.jpg" });
+    expect(publicPageToOneOffEvent({ url: "https://www.gandaya.dance/events/sorry-project-46c6", html: "", text: "", imageUrl: parsed?.imageUrl ?? "", structured: parsed }, { cityOverride: "Santos", genreOverride: "funk" })).toMatchObject({ city: "Santos", genre: "funk", sourceUrl: "https://www.gandaya.dance/events/sorry-project-46c6" });
+  });
 });
 
 describe("Plants monitored brand", () => {

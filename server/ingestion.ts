@@ -731,7 +731,11 @@ function isBlueMedAgendaUrl(url: string) {
 type GandayaListingEvent = { id?: string | number; alias?: string; splashImageKey?: string | null; title?: string; date?: unknown; description?: string; location?: string; lowestTicketPrice?: number | string | null };
 type GandayaEvent = GandayaListingEvent & { imageKey?: string | null; compressedImageKey?: string | null; endDate?: string; tags?: string[]; lineup?: Array<{ name?: string } | string>; location?: { name?: string; address?: string; latitude?: number; longitude?: number } | string | null };
 
-function gandayaImageUrl(key: unknown) { return typeof key === "string" && key.trim() ? `https://gandaya-prod.s3.us-east-2.amazonaws.com/${key.trim()}` : ""; }
+function gandayaImageUrl(key: unknown) {
+  if (typeof key !== "string" || !key.trim()) return "";
+  const value = key.trim();
+  return /^https?:\/\//i.test(value) ? value : `https://gandaya-prod.s3.us-east-2.amazonaws.com/${value}`;
+}
 function gandayaEventUrl(alias: unknown) { return typeof alias === "string" && alias.trim() ? `https://gandaya.dance/events/${encodeURIComponent(alias.trim())}` : ""; }
 function cleanPublicDescription(value: unknown) { return sanitizeEventText(String(value ?? "")).replace(/\s{2,}/g, " ").trim().slice(0, 4_000); }
 function inferGandayaGenre(title: string, description: string) {
@@ -739,7 +743,7 @@ function inferGandayaGenre(title: string, description: string) {
   return /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : /house|eletronic|eletrônica|dj|balada|festa|m[uú]sica|music|sunset/.test(searchable) ? "house_eletronica" : "";
 }
 
-export function parseGandayaEventMetadata(event: GandayaEvent, url = gandayaEventUrl(event.alias)) {
+export function parseGandayaEventMetadata(event: GandayaEvent, url = gandayaEventUrl(event.alias), options: { allowMissingClassification?: boolean } = {}) {
   const title = sanitizeEventText(String(event.title ?? "")).trim();
   const lineup = Array.isArray(event.lineup) ? event.lineup.map(item => typeof item === "string" ? item : String(item?.name ?? "")).filter(Boolean).join(", ") : "";
   const tags = Array.isArray(event.tags) ? event.tags.join(" ") : "";
@@ -751,8 +755,8 @@ export function parseGandayaEventMetadata(event: GandayaEvent, url = gandayaEven
   const city = normalizeRegionalCity(cityMatch);
   const eventDate = typeof event.date === "object" && event.date ? String((event.date as { startDate?: string }).startDate ?? "").trim() : String(event.date ?? "").trim();
   const genre = inferGandayaGenre(title, description);
-  const category = /show|festival|concerto|banda/.test(normalizeText(`${title} ${description}`)) ? "show" : genre ? "balada" : "";
-  if (!title || !eventDate || !locationName || !city || !genre || !category || !url) return undefined;
+  const category = /show|festival|concerto|banda/.test(normalizeText(`${title} ${description}`)) ? "show" : genre ? "balada" : options.allowMissingClassification ? "evento_musical" : "";
+  if (!title || !eventDate || !locationName || (!city && !options.allowMissingClassification) || (!genre && !options.allowMissingClassification) || !category || !url) return undefined;
   const coords = typeof location === "object" ? location : {};
   return { title, summary: description || title, eventDate, locationName, address, city, category, genre, priceCents: readPriceCents(event.lowestTicketPrice), sourceUrl: url, imageUrl: gandayaImageUrl(event.imageKey ?? event.splashImageKey ?? event.compressedImageKey), latitude: String(coords.latitude ?? ""), longitude: String(coords.longitude ?? ""), text: sanitizeEventText(`${title} ${description} ${locationName} ${address} ${city}`).slice(0, 16_000) };
 }
@@ -768,8 +772,8 @@ export function extractGandayaEventLinks(payload: unknown) {
   }
   return Array.from(new Set(candidates.map(event => gandayaEventUrl(event.alias)).filter(Boolean)));
 }
-function isGandayaRootUrl(url: string) { try { const parsed = new URL(url); return parsed.hostname === "gandaya.dance" && ["", "/"].includes(parsed.pathname); } catch { return false; } }
-function isGandayaEventUrl(url: string) { try { const parsed = new URL(url); return parsed.hostname === "gandaya.dance" && /^\/events\/[A-Za-z0-9._~-]+/.test(parsed.pathname); } catch { return false; } }
+function isGandayaRootUrl(url: string) { try { const parsed = new URL(url); return /(?:^|\.)gandaya\.dance$/i.test(parsed.hostname) && ["", "/"].includes(parsed.pathname); } catch { return false; } }
+function isGandayaEventUrl(url: string) { try { const parsed = new URL(url); return /(?:^|\.)gandaya\.dance$/i.test(parsed.hostname) && /^\/events\/[A-Za-z0-9._~-]+/.test(parsed.pathname); } catch { return false; } }
 function parseGandayaListingPayload(value: string) { try { return JSON.parse(value) as unknown; } catch { return undefined; } }
 
 function parseBlueMedDate(value: string) {
@@ -1358,7 +1362,7 @@ export function publicSourceKey(url: string) {
     if (host.includes("ticket360.com.br")) return "public:ticket360";
     if (host.includes("articket")) return "public:articket";
     if (host.endsWith("zig.tickets")) return "public:zig";
-    if (host === "gandaya.dance" || host === "api.gandaya.dance") return "public:gandaya";
+    if (/(?:^|\.)gandaya\.dance$/.test(host)) return "public:gandaya";
   } catch {
     // Keep malformed URLs under the generic public source.
   }
@@ -1606,7 +1610,10 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean; signal?
       const text = JSON.stringify(payload).slice(0, 16_000);
       return { url, html: payloadText, text, imageUrl: "", adapter: "gandaya" };
     }
-    const structured = parseGandayaEventMetadata(payload as GandayaEvent, url);
+    const eventPayload = payload && typeof payload === "object"
+      ? ((payload as { event?: unknown; data?: unknown }).event ?? (payload as { data?: unknown }).data ?? payload)
+      : payload;
+    const structured = parseGandayaEventMetadata(eventPayload as GandayaEvent, url, { allowMissingClassification: true });
     if (!structured) throw createFetchError(`API pública Gandaya sem dados regionais completos para ${url}`);
     return { url, html: payloadText, text: structured.text, imageUrl: structured.imageUrl, structured, adapter: "gandaya" };
   }
