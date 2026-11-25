@@ -1588,7 +1588,11 @@ export const appRouter = router({
     importOneOffUrl: adminOnly
       .input(z.object({
         url: z.string().trim().url().refine(value => /^https:\/\//i.test(value), "A URL deve usar HTTPS"),
-        genreOverride: z.enum(["funk", "house_eletronica", "samba_pagode", "rap_trap"]).optional(),
+        genreOverride: z.preprocess(value => {
+          if (typeof value !== "string") return value;
+          const normalized = value.trim().toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          return ({ funk: "funk", house: "house_eletronica", house_eletronica: "house_eletronica", eletronica: "house_eletronica", samba: "samba_pagode", samba_pagode: "samba_pagode", pagode: "samba_pagode", rap: "rap_trap", trap: "rap_trap", rap_trap: "rap_trap" } as Record<string, string>)[normalized] ?? value;
+        }, z.enum(["funk", "house_eletronica", "samba_pagode", "rap_trap"])).optional(),
         cityOverride: z.enum(["Santos", "Guarujá"]).optional(),
         publishImmediately: z.boolean().default(true),
       }).strict())

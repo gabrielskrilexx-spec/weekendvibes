@@ -141,7 +141,7 @@ describe("events admin procedures", () => {
     });
   });
   it("imports a one-off Gandaya URL directly into events", async () => {
-    const result = await appRouter.createCaller(ctx()).events.importOneOffUrl({ url: "https://gandaya.dance/events/sorry-project-46c6", cityOverride: "Santos", genreOverride: "funk", publishImmediately: true });
+    const result = await appRouter.createCaller(ctx()).events.importOneOffUrl({ url: "https://gandaya.dance/events/sorry-project-46c6", cityOverride: "Santos", genreOverride: "Funk", publishImmediately: true });
     expect(result).toMatchObject({ ok: true, id: 77, title: "Sorry Project", city: "Santos" });
   });
 });
