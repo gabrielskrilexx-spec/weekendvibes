@@ -181,7 +181,15 @@ describe("Radar de descoberta por estilo", () => {
     expect(payload.proxyConfiguration).toEqual({ useApifyProxy: true });
     expect(payload.pageFunction).toContain("try { await page.waitForSelector");
     expect(payload.pageFunction).toContain("bileto.sympla.com.br");
+    expect(payload.pageFunction).toMatch(/\$\$eval\([^\n]+anchors => \{ const pattern = new RegExp/);
     expect(payload.pageFunction).toContain("debugTitle");
+  });
+
+  it("mantém URLs Bileto extraídas pelo Actor na validação do dataset", () => {
+    const dataset = JSON.stringify([{ url: "https://bileto.sympla.com.br/event/baile-trap-123", title: "Baile Trap" }]);
+    expect(extractEmbeddedPublicEventUrls(dataset, "https://www.sympla.com.br/eventos/santos-sp")).toEqual([
+      "https://bileto.sympla.com.br/event/baile-trap-123",
+    ]);
   });
 
   it("injeta os dois catálogos Sympla mesmo quando a fonte não está habilitada", () => {

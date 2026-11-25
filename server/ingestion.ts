@@ -251,10 +251,31 @@ function normalizeRegionalCity(value: string) {
   return GANDAYA_REGIONAL_CITIES.find(city => normalizeText(city) === normalized) ?? "";
 }
 
+function gandayaCityFromSignals(locationName: string, address: string, explicitCity?: string) {
+  const explicit = normalizeRegionalCity(explicitCity ?? "");
+  if (explicit) return explicit;
+  const locationText = normalizeText(locationName);
+  if (/\bcentro\s+historico\s+de\s+santos\b/.test(locationText)) return "Santos";
+  const addressText = normalizeText(address);
+  if (/(?:^|[,;|])\s*santos\s*(?:-|\/|,)\s*sp\b/.test(addressText) || /\bsantos\s*\/\s*sp\b/.test(addressText)) return "Santos";
+  if (/(?:^|[,;|])\s*guaruja\s*(?:-|\/|,)\s*sp\b/.test(addressText) || /\bguaruja\s*\/\s*sp\b/.test(addressText)) return "Guarujá";
+  if (/\b(?:praio|curvao\s+surf\s+house|laroc|sirena)\b/.test(locationText)) return "Guarujá";
+  return "";
+}
+
+function gandayaRegionalTextSignal(value: string) {
+  const normalized = normalizeText(value);
+  return /(?:^|[,;|()\n])\s*(?:santos|guaruja)\s*(?:-|\/|,)\s*(?:sp|sao\s+paulo)\b/.test(normalized)
+    || /\bcentro\s+historico\s+de\s+santos\b/.test(normalized)
+    || /\b(?:praio|curvao\s+surf\s+house|laroc|sirena)\b/.test(normalized);
+}
+
 export function isGandayaRegionalCandidate(candidate: { city?: unknown; location?: unknown; address?: unknown; text?: unknown }) {
-  const location = candidate.location && typeof candidate.location === "object" ? Object.values(candidate.location as Record<string, unknown>).join(" ") : candidate.location;
-  const searchable = normalizeText(`${candidate.city ?? ""} ${location ?? ""} ${candidate.address ?? ""} ${candidate.text ?? ""}`);
-  return GANDAYA_REGIONAL_CITIES.some(city => searchable.includes(normalizeText(city)));
+  const locationRecord = candidate.location && typeof candidate.location === "object" ? candidate.location as Record<string, unknown> : undefined;
+  const locationName = typeof candidate.location === "string" ? candidate.location : String(locationRecord?.name ?? "");
+  const address = String(candidate.address ?? locationRecord?.address ?? "");
+  if (gandayaCityFromSignals(locationName, address, String(candidate.city ?? locationRecord?.city ?? ""))) return true;
+  return gandayaRegionalTextSignal(String(candidate.text ?? ""));
 }
 
 export function filterGandayaRegionalCandidates<T extends { city?: unknown; location?: unknown; address?: unknown; text?: unknown }>(candidates: T[]) {
@@ -341,6 +362,7 @@ function isSupportedPublicEventUrl(url: URL) {
     || isIngresseEventUrl(url.href)
     || (host.endsWith("blackpass.com.br") && /^\/event\//i.test(url.pathname))
     || (host.endsWith("mringressos.com.br") && /^\/comprar\//i.test(url.pathname))
+    || (host === "bileto.sympla.com.br" && /^\/event\/[A-Za-z0-9._~-]+(?:\/|$)/i.test(url.pathname))
     || (host.endsWith("sympla.com.br") && (/^\/evento\/[^/]+/i.test(url.pathname) || /^\/eventos\/[^/]+\/[^/]+/i.test(url.pathname)))
     || (host.endsWith("weticket.com.br") && /^\/[A-Za-z0-9][A-Za-z0-9-]+$/.test(url.pathname))
     || (host.endsWith("ticket360.com.br") && /^\/(?:evento|eventos)\//i.test(url.pathname))
@@ -730,8 +752,8 @@ function isBlueMedAgendaUrl(url: string) {
   try { const parsed = new URL(url); return parsed.hostname.endsWith("santosconventioncenter.com.br") && /\/agenda(?:-2026)?\/?$/.test(parsed.pathname); } catch { return false; }
 }
 
-type GandayaListingEvent = { id?: string | number; alias?: string; splashImageKey?: string | null; title?: string; date?: unknown; description?: string; city?: string; address?: string; tags?: string[]; location?: { name?: string; address?: string; city?: string } | string | null; lowestTicketPrice?: number | string | null };
-type GandayaEvent = GandayaListingEvent & { imageKey?: string | null; compressedImageKey?: string | null; endDate?: string; tags?: string[]; lineup?: Array<{ name?: string } | string>; location?: { name?: string; address?: string; latitude?: number; longitude?: number } | string | null };
+type GandayaListingEvent = { id?: string | number; alias?: string; splashImageKey?: string | null; title?: string; date?: unknown; description?: string; city?: string; address?: string; tags?: string[]; location?: { name?: string; address?: string; city?: string; latitude?: number; longitude?: number } | string | null; lowestTicketPrice?: number | string | null };
+type GandayaEvent = GandayaListingEvent & { imageKey?: string | null; compressedImageKey?: string | null; endDate?: string; tags?: string[]; lineup?: Array<{ name?: string } | string>; location?: { name?: string; address?: string; city?: string; latitude?: number; longitude?: number } | string | null };
 
 function gandayaImageUrl(key: unknown) {
   if (typeof key !== "string" || !key.trim()) return "";
@@ -750,11 +772,10 @@ export function parseGandayaEventMetadata(event: GandayaEvent, url = gandayaEven
   const lineup = Array.isArray(event.lineup) ? event.lineup.map(item => typeof item === "string" ? item : String(item?.name ?? "")).filter(Boolean).join(", ") : "";
   const tags = Array.isArray(event.tags) ? event.tags.join(" ") : "";
   const description = cleanPublicDescription([event.description, tags, lineup].filter(Boolean).join(" "));
-  const location = typeof event.location === "object" && event.location ? event.location as { name?: string; address?: string; latitude?: number; longitude?: number } : {};
+  const location = typeof event.location === "object" && event.location ? event.location as { name?: string; address?: string; city?: string; latitude?: number; longitude?: number } : {};
   const locationName = typeof location === "object" ? String(location.name ?? "").trim() : String(event.location ?? "").trim();
   const address = typeof location === "object" ? String(location.address ?? "").trim() : "";
-  const cityMatch = `${locationName} ${address}`.match(/Santos|Guarujá|Guaruja|São Vicente|Sao Vicente|Praia Grande|Cubatão|Cubatao/i)?.[0] ?? "";
-  const city = normalizeRegionalCity(cityMatch);
+  const city = gandayaCityFromSignals(locationName, address, typeof location === "object" ? location.city : undefined);
   const eventDate = typeof event.date === "object" && event.date ? String((event.date as { startDate?: string }).startDate ?? "").trim() : String(event.date ?? "").trim();
   const genre = inferGandayaGenre(title, description);
   const category = /show|festival|concerto|banda/.test(normalizeText(`${title} ${description}`)) ? "show" : genre ? "balada" : options.allowMissingClassification ? "evento_musical" : "";
@@ -1613,7 +1634,7 @@ export type ApifyCatalogFallbackResult = {
 export function buildApifyCatalogPayload(urls: string[], actorId = process.env.APIFY_CATALOG_ACTOR_ID || process.env.APIFY_WEB_ACTOR_ID || "apify~cheerio-scraper") {
   const eventPathExpression = "/\\/(?:evento|eventos|e|event)\\/[^\\/]+(?:\\/[^\\/]*)?$/i";
   const pageFunction = actorId.toLowerCase().includes("puppeteer")
-    ? `async ({ page, request }) => { try { await page.waitForSelector('a[href]', { timeout: 8000 }); } catch (_) {} await page.evaluate(() => window.scrollBy(0, Math.min(window.innerHeight * 2, 1600))); const pattern = ${eventPathExpression}; const result = await page.$$eval('a[href]', anchors => { const links = anchors.map(anchor => ({ url: new URL(anchor.href, location.href).href, title: (anchor.textContent || anchor.getAttribute('aria-label') || '').replace(/\\s+/g, ' ').trim() })).filter(item => { const parsed = new URL(item.url); const allowedHost = parsed.hostname === 'bileto.sympla.com.br' || /(^|\\.)sympla\\.com\\.br$/i.test(parsed.hostname); return allowedHost && pattern.test(parsed.pathname) && !/^\\/eventos\\/(?:santos|guaruja)-sp\\/?$/i.test(parsed.pathname) && !/login|categoria|category|termos|privacidade|ingresso\\?/.test(parsed.pathname + parsed.search); }); return { links: Array.from(new Map(links.map(item => [item.url, item])).values()), debugTitle: document.title }; }); return result.links.length > 0 ? result.links : [{ debugTitle: result.debugTitle }]; }`.replace("pattern = ${eventPathExpression}", `pattern = new RegExp(${JSON.stringify(eventPathExpression.slice(1, -2))}, 'i')`)
+    ? `async ({ page, request }) => { try { await page.waitForSelector('a[href]', { timeout: 8000 }); } catch (_) {} await page.evaluate(() => window.scrollBy(0, Math.min(window.innerHeight * 2, 1600))); const result = await page.$$eval('a[href]', anchors => { const pattern = new RegExp(${JSON.stringify(eventPathExpression.slice(1, -2))}, 'i'); const links = anchors.map(anchor => ({ url: new URL(anchor.href, location.href).href, title: (anchor.textContent || anchor.getAttribute('aria-label') || '').replace(/\\s+/g, ' ').trim() })).filter(item => { const parsed = new URL(item.url); const allowedHost = parsed.hostname === 'bileto.sympla.com.br' || /(^|\\.)sympla\\.com\\.br$/i.test(parsed.hostname); return allowedHost && pattern.test(parsed.pathname) && !/^\\/eventos\\/(?:santos|guaruja)-sp\\/?$/i.test(parsed.pathname) && !/login|categoria|category|termos|privacidade|ingresso\\?/.test(parsed.pathname + parsed.search); }); return { links: Array.from(new Map(links.map(item => [item.url, item])).values()), debugTitle: document.title }; }); return result.links.length > 0 ? result.links : [{ debugTitle: result.debugTitle }]; }`
     : `async ({ $, request }) => { const pattern = new RegExp(${JSON.stringify(eventPathExpression.slice(1, -2))}, 'i'); return $('a[href]').map((_, anchor) => ({ url: new URL($(anchor).attr('href'), request.url).href, title: $(anchor).text().replace(/\\s+/g, ' ').trim() })).get().filter(item => { const parsed = new URL(item.url); return parsed.origin === new URL(request.url).origin && pattern.test(parsed.pathname) && !/^\\/eventos\\/(?:santos|guaruja)-sp\\/?$/i.test(parsed.pathname) && !/login|categoria|category|termos|privacidade|ingresso\\?/.test(parsed.pathname + parsed.search); }).filter((item, index, all) => all.findIndex(candidate => candidate.url === item.url) === index); }`;
   return {
     startUrls: urls.slice(0, 2).map(url => ({ url })),

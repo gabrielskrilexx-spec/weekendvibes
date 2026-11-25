@@ -40,13 +40,33 @@ describe("Gandaya public adapter", () => {
 
   it("keeps only Santos and Guarujá before detail fetches", () => {
     const result = filterGandayaRegionalCandidates([
-      { alias: "santos", location: "Espaço 14", text: "Santos" },
-      { alias: "guaruja", location: "Praiô", text: "Guarujá" },
+      { alias: "santos", location: "Espaço 14", text: "Santos - SP" },
+      { alias: "guaruja", location: "Praiô", text: "Guarujá - SP" },
       { alias: "rio", location: "Centro", text: "Rio de Janeiro" },
       { alias: "praia-grande", location: "Clube", text: "Praia Grande" },
+      { alias: "santos-dumont", location: "Bosque Esperia", address: "Av. Santos Dumont, 1313 - Santana, São Paulo - SP" },
+      { alias: "artist-santos", location: "Hotel Prince Tower", address: "R. Mamoré, 305 - Bom Retiro, São Paulo - SP", text: "Line-up: Bolinha Santos" },
     ]);
     expect(result.regional).toHaveLength(2);
-    expect(result.filtered).toHaveLength(2);
+    expect(result.filtered).toHaveLength(4);
+  });
+
+  it("does not infer city from Santos Dumont or an artist name", () => {
+    expect(parseGandayaEventMetadata({
+      alias: "santos-dumont",
+      title: "Samba do Mel",
+      description: "Funk ao som dos DJs.",
+      date: { startDate: "2026-12-05T20:00:00.000Z" },
+      location: { name: "Bosque Esperia", address: "Av. Santos Dumont, 1313 - Santana, São Paulo - SP" },
+    }, undefined, { allowMissingClassification: true })?.city).toBe("");
+    expect(parseGandayaEventMetadata({
+      alias: "artist-santos",
+      title: "Som D' Preto",
+      description: "Samba e pagode.",
+      lineup: [{ name: "Bolinha Santos" }],
+      date: { startDate: "2026-12-05T20:00:00.000Z" },
+      location: { name: "Hotel Prince Tower", address: "R. Mamoré, 305 - Bom Retiro, São Paulo - SP" },
+    }, undefined, { allowMissingClassification: true })?.city).toBe("");
   });
 
   it("discovers aliases from the public front-page payload", () => {
