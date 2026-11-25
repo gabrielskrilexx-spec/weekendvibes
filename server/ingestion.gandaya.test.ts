@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { extractGandayaEventLinks, filterGandayaRegionalCandidates, parseGandayaEventMetadata, publicPageToOneOffEvent, publicSourceKey } from "./ingestion";
+import { describe, expect, it, vi } from "vitest";
+import { extractGandayaEventLinks, fetchGandayaRegionalEventLinks, filterGandayaRegionalCandidates, parseGandayaEventMetadata, publicPageToOneOffEvent, publicSourceKey } from "./ingestion";
 import { DEFAULT_INGESTION_SOURCES, listIndexableVenueCatalogForTest } from "./db";
 
 describe("Gandaya public adapter", () => {
@@ -66,6 +66,30 @@ describe("Gandaya public adapter", () => {
       "https://gandaya.dance/events/sorry-project-46c6",
       "https://gandaya.dance/events/outro-evento",
     ]);
+  });
+
+  it("consulta POST /events/list, mantém apenas Santos/Guarujá e retorna diagnóstico", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(String(init?.body))).toMatchObject({ take: 100 });
+      return new Response(JSON.stringify([
+        { alias: "sorry-project-46c6", title: "Sorry Project", city: "Santos" },
+        { alias: "baile-guaruja", title: "Baile Guarujá", location: { name: "Praiô", city: "Guarujá" } },
+        { alias: "evento-rio", title: "Evento Rio", city: "Rio de Janeiro" },
+      ]), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(fetchGandayaRegionalEventLinks()).resolves.toMatchObject({
+        urls: ["https://gandaya.dance/events/sorry-project-46c6", "https://gandaya.dance/events/baile-guaruja"],
+        listingCount: 3,
+        regionalFiltered: 1,
+        status: "succeeded",
+      });
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
   });
 
   it("normalizes a Gandaya page for one-off import using explicit overrides", () => {

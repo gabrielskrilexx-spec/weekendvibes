@@ -151,7 +151,17 @@ export type DiscoveryPlatformStat = {
   apifyStatus?: "not_configured" | "succeeded" | "empty" | "timeout" | "failed";
   apifyMessage?: string;
   apifyUrls?: string[];
+  apiStatus?: "succeeded" | "empty" | "failed";
+  apiMessage?: string;
 };
+
+export function ensureDiscoveryPlatformStat(stats: DiscoveryPlatformStat[], platform: string) {
+  const current = stats.find(stat => stat.platform === platform);
+  if (current) return current;
+  const created: DiscoveryPlatformStat = { platform, totalUrls: 0, totalEvents: 0, discardedByCity: 0, discardedByGenre: 0, duplicates: 0, duplicateItems: [], failures: 0, emptyPages: 0 };
+  stats.push(created);
+  return created;
+}
 
 function pageTitle(page: Pick<PublicPage, "text" | "structured">) {
   const structured = Array.isArray(page.structured) ? page.structured[0] : page.structured;
@@ -191,7 +201,7 @@ export async function runGenreDiscoveryScan(options: { now?: Date; sourceUrls?: 
   const getStats = (platform: string) => {
     const current = stats.get(platform);
     if (current) return current;
-    const created: DiscoveryPlatformStat = { platform, totalUrls: 0, totalEvents: 0, discardedByCity: 0, discardedByGenre: 0, duplicates: 0, duplicateItems: [], failures: 0, emptyPages: 0 };
+    const created = ensureDiscoveryPlatformStat([], platform);
     stats.set(platform, created);
     return created;
   };
@@ -205,6 +215,11 @@ export async function runGenreDiscoveryScan(options: { now?: Date; sourceUrls?: 
     if (fallback.status === "timeout" || fallback.status === "failed") platformStat.failures += 1;
     if (fallback.status === "empty" || fallback.status === "not_configured") platformStat.emptyPages += 1;
   }
+  const gandayaStat = getStats("public:gandaya");
+  gandayaStat.apiStatus = discovery.gandayaApiStatus ?? "empty";
+  gandayaStat.apiMessage = discovery.gandayaApiMessage ?? "API Gandaya não foi consultada nesta varredura.";
+  if (gandayaStat.apiStatus === "failed") gandayaStat.failures += 1;
+  if (gandayaStat.apiStatus === "empty") gandayaStat.emptyPages += 1;
   urls.forEach((url: string) => { getStats(publicSourceKey(url)).totalUrls += 1; });
   const result: GenreDiscoveryScanResult = { scannedPages: pages.length, eligible: 0, inserted: 0, duplicates: 0, filtered: 0, errors: 0, platformStats: [] };
   const db = await getDb();

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { candidateUrl, classifyDiscoveryGenres, detectDiscoveryCity, DISCOVERY_REGIONAL_SOURCE_URLS, filterDiscoveryCandidateUrls, isFutureDiscoveryDate, pageToDiscoveryCandidate, resolveDiscoveryCityFromKnownVenue } from "./genre-discovery";
+import { candidateUrl, classifyDiscoveryGenres, detectDiscoveryCity, DISCOVERY_REGIONAL_SOURCE_URLS, ensureDiscoveryPlatformStat, filterDiscoveryCandidateUrls, isFutureDiscoveryDate, pageToDiscoveryCandidate, resolveDiscoveryCityFromKnownVenue } from "./genre-discovery";
 import { buildApifyCatalogPayload, extractEmbeddedPublicEventUrls, extractPublicEventLinks, extractSitemapUrls, extractZigApiEventUrls, fetchApifyCatalogLinks, getExploratoryApifyActorId, getExploratoryApifyCatalogUrls, isPublicCatalogUrl, parseZigApiEventPayload, parseZigEventMetadata, shouldRunApifyCatalogFallback } from "./ingestion";
 
 describe("Radar de descoberta por estilo", () => {
@@ -102,6 +102,14 @@ describe("Radar de descoberta por estilo", () => {
       "https://www.weticket.com.br/?city=santos",
       "https://www.weticket.com.br/?city=guaruja",
     ]));
+  });
+
+  it("materializa public:gandaya no diagnóstico mesmo sem links retornados", () => {
+    const stats: Array<{ platform: string; totalUrls: number; totalEvents: number; discardedByCity: number; discardedByGenre: number; duplicates: number; duplicateItems: Array<{ title: string; url: string }>; failures: number; emptyPages: number }> = [];
+    const gandaya = ensureDiscoveryPlatformStat(stats, "public:gandaya");
+    gandaya.apiStatus = "empty";
+    gandaya.apiMessage = "Nenhum alias regional encontrado.";
+    expect(stats).toEqual([expect.objectContaining({ platform: "public:gandaya", apiStatus: "empty", apiMessage: expect.stringContaining("Nenhum alias") })]);
   });
 
   it("expande uma listagem Sympla sem tratar a própria listagem como evento", () => {

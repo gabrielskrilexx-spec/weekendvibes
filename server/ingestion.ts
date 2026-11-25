@@ -250,12 +250,13 @@ function normalizeRegionalCity(value: string) {
   return GANDAYA_REGIONAL_CITIES.find(city => normalizeText(city) === normalized) ?? "";
 }
 
-export function isGandayaRegionalCandidate(candidate: { city?: string; location?: string; address?: string; text?: string }) {
-  const searchable = normalizeText(`${candidate.city ?? ""} ${candidate.location ?? ""} ${candidate.address ?? ""} ${candidate.text ?? ""}`);
+export function isGandayaRegionalCandidate(candidate: { city?: unknown; location?: unknown; address?: unknown; text?: unknown }) {
+  const location = candidate.location && typeof candidate.location === "object" ? Object.values(candidate.location as Record<string, unknown>).join(" ") : candidate.location;
+  const searchable = normalizeText(`${candidate.city ?? ""} ${location ?? ""} ${candidate.address ?? ""} ${candidate.text ?? ""}`);
   return GANDAYA_REGIONAL_CITIES.some(city => searchable.includes(normalizeText(city)));
 }
 
-export function filterGandayaRegionalCandidates<T extends { city?: string; location?: string; address?: string; text?: string }>(candidates: T[]) {
+export function filterGandayaRegionalCandidates<T extends { city?: unknown; location?: unknown; address?: unknown; text?: unknown }>(candidates: T[]) {
   const regional: T[] = [];
   const filtered: T[] = [];
   for (const candidate of candidates) (isGandayaRegionalCandidate(candidate) ? regional : filtered).push(candidate);
@@ -728,7 +729,7 @@ function isBlueMedAgendaUrl(url: string) {
   try { const parsed = new URL(url); return parsed.hostname.endsWith("santosconventioncenter.com.br") && /\/agenda(?:-2026)?\/?$/.test(parsed.pathname); } catch { return false; }
 }
 
-type GandayaListingEvent = { id?: string | number; alias?: string; splashImageKey?: string | null; title?: string; date?: unknown; description?: string; location?: string; lowestTicketPrice?: number | string | null };
+type GandayaListingEvent = { id?: string | number; alias?: string; splashImageKey?: string | null; title?: string; date?: unknown; description?: string; city?: string; address?: string; tags?: string[]; location?: { name?: string; address?: string; city?: string } | string | null; lowestTicketPrice?: number | string | null };
 type GandayaEvent = GandayaListingEvent & { imageKey?: string | null; compressedImageKey?: string | null; endDate?: string; tags?: string[]; lineup?: Array<{ name?: string } | string>; location?: { name?: string; address?: string; latitude?: number; longitude?: number } | string | null };
 
 function gandayaImageUrl(key: unknown) {
@@ -765,12 +766,56 @@ export function extractGandayaEventLinks(payload: unknown) {
   const candidates: GandayaListingEvent[] = [];
   if (Array.isArray(payload)) candidates.push(...payload.filter((item): item is GandayaListingEvent => Boolean(item && typeof item === "object")));
   if (payload && typeof payload === "object") {
-    const root = payload as { main?: unknown; sections?: unknown; otherEvents?: unknown };
+    const root = payload as { data?: unknown; events?: unknown; main?: unknown; sections?: unknown; otherEvents?: unknown };
+    for (const collection of [root.data, root.events]) if (Array.isArray(collection)) candidates.push(...collection.filter((item): item is GandayaListingEvent => Boolean(item && typeof item === "object")));
     if (root.main && typeof root.main === "object") candidates.push(root.main as GandayaListingEvent);
     for (const section of Array.isArray(root.sections) ? root.sections : []) if (section && typeof section === "object" && Array.isArray((section as { events?: unknown }).events)) candidates.push(...((section as { events: GandayaListingEvent[] }).events));
     if (Array.isArray(root.otherEvents)) candidates.push(...root.otherEvents.filter((item): item is GandayaListingEvent => Boolean(item && typeof item === "object")));
   }
   return Array.from(new Set(candidates.map(event => gandayaEventUrl(event.alias)).filter(Boolean)));
+}
+
+function gandayaListingCandidateText(event: GandayaListingEvent) {
+  const location = typeof event.location === "object" && event.location ? event.location : {};
+  return [event.city, event.address, event.title, event.description, event.tags?.join(" "), typeof event.location === "string" ? event.location : location.name, location.city, location.address].filter(Boolean).join(" ");
+}
+
+export type GandayaListingResult = {
+  urls: string[];
+  listingCount: number;
+  regionalFiltered: number;
+  status: "succeeded" | "empty" | "failed";
+  message: string;
+};
+
+export async function fetchGandayaRegionalEventLinks(options: { signal?: AbortSignal } = {}): Promise<GandayaListingResult> {
+  try {
+    const response = await fetchExternal(`${GANDAYA_API_BASE}/events/list`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json", "user-agent": "WeekendVibes/1.0", "cache-control": "no-cache" },
+      body: JSON.stringify({ take: 100 }),
+    }, GANDAYA_FETCH_TIMEOUT_MS, false, options.signal);
+    const payload = parseGandayaListingPayload(await readExternalBody(response));
+    if (!payload) return { urls: [], listingCount: 0, regionalFiltered: 0, status: "failed", message: "API Gandaya retornou JSON inválido." };
+    const allEvents = extractGandayaListingEvents(payload);
+    const regional = allEvents.filter(event => isGandayaRegionalCandidate({ text: gandayaListingCandidateText(event) }));
+    const urls = Array.from(new Set(regional.map(event => gandayaEventUrl(event.alias)).filter(Boolean)));
+    return { urls, listingCount: allEvents.length, regionalFiltered: allEvents.length - regional.length, status: urls.length > 0 ? "succeeded" : "empty", message: urls.length > 0 ? `${urls.length} alias(es) regionais encontrados; ${allEvents.length - regional.length} fora de Santos/Guarujá.` : `Nenhum alias regional encontrado; ${allEvents.length} evento(s) lido(s).` };
+  } catch (error) {
+    return { urls: [], listingCount: 0, regionalFiltered: 0, status: "failed", message: sanitizeFetchFailure(error).message };
+  }
+}
+
+function extractGandayaListingEvents(payload: unknown): GandayaListingEvent[] {
+  const events: GandayaListingEvent[] = [];
+  if (Array.isArray(payload)) events.push(...payload.filter((item): item is GandayaListingEvent => Boolean(item && typeof item === "object")));
+  if (!payload || typeof payload !== "object") return events;
+  const root = payload as { data?: unknown; events?: unknown; main?: unknown; sections?: unknown; otherEvents?: unknown };
+  for (const collection of [root.data, root.events]) if (Array.isArray(collection)) events.push(...collection.filter((item): item is GandayaListingEvent => Boolean(item && typeof item === "object")));
+  if (root.main && typeof root.main === "object") events.push(root.main as GandayaListingEvent);
+  for (const section of Array.isArray(root.sections) ? root.sections : []) if (section && typeof section === "object" && Array.isArray((section as { events?: unknown }).events)) events.push(...((section as { events: GandayaListingEvent[] }).events));
+  if (Array.isArray(root.otherEvents)) events.push(...root.otherEvents.filter((item): item is GandayaListingEvent => Boolean(item && typeof item === "object")));
+  return events;
 }
 function isGandayaRootUrl(url: string) { try { const parsed = new URL(url); return /(?:^|\.)gandaya\.dance$/i.test(parsed.hostname) && ["", "/"].includes(parsed.pathname); } catch { return false; } }
 function isGandayaEventUrl(url: string) { try { const parsed = new URL(url); return /(?:^|\.)gandaya\.dance$/i.test(parsed.hostname) && /^\/events\/[A-Za-z0-9._~-]+/.test(parsed.pathname); } catch { return false; } }
@@ -1740,13 +1785,15 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
   }));
   const regionalArticketCandidates = filterArticketRegionalCandidates(directArticketCandidates, activeAliases);
   let gandayaRegionalFiltered = 0;
-  const crawlBases = bases.filter(url => !isIngresseCatalogRootUrl(url) && !isArticketEventUrl(url)).sort((left, right) => {
+  const crawlBases = bases.filter(url => !isIngresseCatalogRootUrl(url) && !isArticketEventUrl(url) && !(options.exploratoryApify && isGandayaRootUrl(url))).sort((left, right) => {
     const leftIsSympla = publicSourceKey(left) === "public:sympla" ? 0 : 1;
     const rightIsSympla = publicSourceKey(right) === "public:sympla" ? 0 : 1;
     return leftIsSympla - rightIsSympla;
   });
   const discovered = new Set([...crawlBases.filter(url => !isPublicCatalogUrl(url)), ...regionalArticketCandidates.regional.map(candidate => candidate.url)]);
   const apifyStats: Array<{ sourceKey: string; urls: string[]; status: ApifyCatalogFallbackResult["status"]; attempted: boolean; message?: string }> = [];
+  let gandayaApiStatus: GandayaListingResult["status"] | undefined;
+  let gandayaApiMessage: string | undefined;
   const basePages = await fetchWithConcurrency(crawlBases, url => guardedFetchPublicPage(url, { ...options, bypassCircuitBreaker: options.exploratoryApify === true }), PUBLIC_FETCH_CONCURRENCY);
   const exploratoryApifyActorId = getExploratoryApifyActorId();
   const browserApifySymplaUrls = options.exploratoryApify ? getExploratoryApifyCatalogUrls() : [];
@@ -1756,6 +1803,13 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
     for (const link of fallback.links) discovered.add(link);
     browserApifySymplaUrls.forEach(url => browserApifyCompleted.add(sanitizePublicSourceUrl(url)));
     apifyStats.push({ sourceKey: "public:sympla", urls: browserApifySymplaUrls, status: fallback.status, attempted: fallback.attempted, message: fallback.message });
+  }
+  if (options.exploratoryApify && bases.some(url => publicSourceKey(url) === "public:gandaya")) {
+    const gandayaListing = await fetchGandayaRegionalEventLinks(options);
+    gandayaApiStatus = gandayaListing.status;
+    gandayaApiMessage = gandayaListing.message;
+    gandayaRegionalFiltered += gandayaListing.regionalFiltered;
+    for (const link of gandayaListing.urls) discovered.add(link);
   }
   const zigCatalogs = crawlBases.filter(url => publicSourceKey(url) === "public:zig" && isPublicCatalogUrl(url));
   const zigRegionalPages = await fetchWithConcurrency(Array.from(new Set(zigCatalogs.map(url => /guaruja/i.test(url) ? "Guarujá" : "Santos" as const))), city => fetchZigRegionalEventLinks(city, options), Math.min(2, PUBLIC_FETCH_CONCURRENCY));
@@ -1844,7 +1898,7 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
       const belongsToRequestedSource = !requestedSourceUrls || requestedSourceUrls.some(requested => requested === sanitizePublicSourceUrl(url) || (isPublicCatalogUrl(requested) && publicSourceKey(requested) === publicSourceKey(url)));
       return belongsToSource && belongsToRequestedSource && (!host.endsWith("zig.tickets") || url !== "https://zig.tickets/pt-BR");
     } catch { return false; }
-  }).slice(0, 120), articketRegionalFiltered: regionalArticketCandidates.filtered.length, gandayaRegionalFiltered, apifyStats };
+  }).slice(0, 120), articketRegionalFiltered: regionalArticketCandidates.filtered.length, gandayaRegionalFiltered, gandayaApiStatus, gandayaApiMessage, apifyStats };
 }
 
 export type IngestionSourceReport = {
