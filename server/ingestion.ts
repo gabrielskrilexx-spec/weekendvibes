@@ -243,7 +243,7 @@ const PUBLIC_PLATFORM_BY_SOURCE: Record<string, string> = {
 
 const GANDAYA_API_BASE = "https://api.gandaya.dance";
 export const GANDAYA_FETCH_TIMEOUT_MS = 20_000;
-export const GANDAYA_REGIONAL_CITIES = ["Santos", "Guarujá", "São Vicente", "Praia Grande", "Cubatão"] as const;
+export const GANDAYA_REGIONAL_CITIES = ["Santos", "Guarujá"] as const;
 
 function normalizeRegionalCity(value: string) {
   const normalized = normalizeText(value);
@@ -728,8 +728,8 @@ function isBlueMedAgendaUrl(url: string) {
   try { const parsed = new URL(url); return parsed.hostname.endsWith("santosconventioncenter.com.br") && /\/agenda(?:-2026)?\/?$/.test(parsed.pathname); } catch { return false; }
 }
 
-type GandayaListingEvent = { id?: string | number; alias?: string; splashImageKey?: string | null; title?: string; date?: string; description?: string; location?: string; lowestTicketPrice?: number | string | null };
-type GandayaEvent = GandayaListingEvent & { imageKey?: string | null; compressedImageKey?: string | null; endDate?: string; location?: { name?: string; address?: string; latitude?: number; longitude?: number } | string | null };
+type GandayaListingEvent = { id?: string | number; alias?: string; splashImageKey?: string | null; title?: string; date?: unknown; description?: string; location?: string; lowestTicketPrice?: number | string | null };
+type GandayaEvent = GandayaListingEvent & { imageKey?: string | null; compressedImageKey?: string | null; endDate?: string; tags?: string[]; lineup?: Array<{ name?: string } | string>; location?: { name?: string; address?: string; latitude?: number; longitude?: number } | string | null };
 
 function gandayaImageUrl(key: unknown) { return typeof key === "string" && key.trim() ? `https://gandaya-prod.s3.us-east-2.amazonaws.com/${key.trim()}` : ""; }
 function gandayaEventUrl(alias: unknown) { return typeof alias === "string" && alias.trim() ? `https://gandaya.dance/events/${encodeURIComponent(alias.trim())}` : ""; }
@@ -741,13 +741,15 @@ function inferGandayaGenre(title: string, description: string) {
 
 export function parseGandayaEventMetadata(event: GandayaEvent, url = gandayaEventUrl(event.alias)) {
   const title = sanitizeEventText(String(event.title ?? "")).trim();
-  const description = cleanPublicDescription(event.description);
+  const lineup = Array.isArray(event.lineup) ? event.lineup.map(item => typeof item === "string" ? item : String(item?.name ?? "")).filter(Boolean).join(", ") : "";
+  const tags = Array.isArray(event.tags) ? event.tags.join(" ") : "";
+  const description = cleanPublicDescription([event.description, tags, lineup].filter(Boolean).join(" "));
   const location = typeof event.location === "object" && event.location ? event.location as { name?: string; address?: string; latitude?: number; longitude?: number } : {};
   const locationName = typeof location === "object" ? String(location.name ?? "").trim() : String(event.location ?? "").trim();
   const address = typeof location === "object" ? String(location.address ?? "").trim() : "";
   const cityMatch = `${locationName} ${address}`.match(/Santos|Guarujá|Guaruja|São Vicente|Sao Vicente|Praia Grande|Cubatão|Cubatao/i)?.[0] ?? "";
   const city = normalizeRegionalCity(cityMatch);
-  const eventDate = String(event.date ?? "").trim();
+  const eventDate = typeof event.date === "object" && event.date ? String((event.date as { startDate?: string }).startDate ?? "").trim() : String(event.date ?? "").trim();
   const genre = inferGandayaGenre(title, description);
   const category = /show|festival|concerto|banda/.test(normalizeText(`${title} ${description}`)) ? "show" : genre ? "balada" : "";
   if (!title || !eventDate || !locationName || !city || !genre || !category || !url) return undefined;
@@ -757,6 +759,7 @@ export function parseGandayaEventMetadata(event: GandayaEvent, url = gandayaEven
 
 export function extractGandayaEventLinks(payload: unknown) {
   const candidates: GandayaListingEvent[] = [];
+  if (Array.isArray(payload)) candidates.push(...payload.filter((item): item is GandayaListingEvent => Boolean(item && typeof item === "object")));
   if (payload && typeof payload === "object") {
     const root = payload as { main?: unknown; sections?: unknown; otherEvents?: unknown };
     if (root.main && typeof root.main === "object") candidates.push(root.main as GandayaListingEvent);
@@ -1557,14 +1560,18 @@ async function fetchPublicPage(url: string, options: { dryRun?: boolean; signal?
   if (isIngresseEventUrl(url)) return fetchIngresseEventApi(url, { read: getIngestionPayloadCache, write: saveIngestionPayloadCache }, options);
   if (isBlackPassEventUrl(url)) return fetchBlackPassEventPage(url);
   if (isGandayaRootUrl(url) || isGandayaEventUrl(url)) {
-    const endpoint = isGandayaRootUrl(url) ? `${GANDAYA_API_BASE}/events/front-page` : `${GANDAYA_API_BASE}/events/${new URL(url).pathname.split("/").filter(Boolean).at(-1)}`;
+    const isCatalog = isGandayaRootUrl(url);
+    const endpoint = isCatalog ? `${GANDAYA_API_BASE}/events/list?take=100` : `${GANDAYA_API_BASE}/events/${new URL(url).pathname.split("/").filter(Boolean).at(-1)}`;
+    const requestInit: RequestInit = isCatalog
+      ? { method: "POST", body: JSON.stringify({}), headers: { accept: "application/json", "content-type": "application/json", "user-agent": "Mozilla/5.0", "cache-control": "no-cache" } }
+      : { headers: { accept: "application/json", "user-agent": "Mozilla/5.0", "cache-control": "no-cache" } };
     let response: Response;
     try {
-      response = await fetchExternal(endpoint, { headers: { accept: "application/json", "user-agent": "Mozilla/5.0", "cache-control": "no-cache" } }, GANDAYA_FETCH_TIMEOUT_MS, false, options.signal);
+      response = await fetchExternal(endpoint, requestInit, GANDAYA_FETCH_TIMEOUT_MS, false, options.signal);
     } catch (error) {
       if (!isTimeoutFailure(error) && !/fetch failed|econn|enotfound|eai_again|network|socket/i.test(String(error))) throw error;
       await new Promise(resolve => setTimeout(resolve, 150));
-      response = await fetchExternal(endpoint, { headers: { accept: "application/json", "user-agent": "Mozilla/5.0", "cache-control": "no-cache" } }, GANDAYA_FETCH_TIMEOUT_MS, false, options.signal);
+      response = await fetchExternal(endpoint, requestInit, GANDAYA_FETCH_TIMEOUT_MS, false, options.signal);
     }
     const payloadText = await readExternalBody(response);
     const payload = parseGandayaListingPayload(payloadText);
@@ -1769,7 +1776,7 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
     if (!page) continue;
     if (publicSourceKey(baseUrl) === "public:gandaya") {
       const payload = parseGandayaListingPayload(page.html);
-      const listingEvents = payload && typeof payload === "object" ? [
+      const listingEvents = Array.isArray(payload) ? payload.filter((item): item is GandayaListingEvent => Boolean(item && typeof item === "object")) : payload && typeof payload === "object" ? [
         ...((payload as { main?: GandayaListingEvent }).main ? [(payload as { main: GandayaListingEvent }).main] : []),
         ...((payload as { sections?: Array<{ events?: GandayaListingEvent[] }> }).sections ?? []).flatMap(section => section.events ?? []),
         ...((payload as { otherEvents?: GandayaListingEvent[] }).otherEvents ?? []),
