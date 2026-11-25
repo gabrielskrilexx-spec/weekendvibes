@@ -1313,6 +1313,32 @@ export type PublicPage = {
   emptyHealthy?: boolean;
 };
 
+export type OneOffEventOverrides = {
+  genreOverride?: "funk" | "house_eletronica" | "samba_pagode" | "rap_trap";
+  cityOverride?: "Santos" | "Guarujá";
+};
+
+export function publicPageToOneOffEvent(page: PublicPage, overrides: OneOffEventOverrides = {}) {
+  const record = (Array.isArray(page.structured) ? page.structured[0] : page.structured ?? {}) as Record<string, unknown>;
+  const read = (...keys: string[]) => keys.map(key => record[key]).find(value => value !== undefined && value !== null && String(value).trim() !== "");
+  const title = String(read("title", "name") ?? page.text.split(/[|\n·]/)[0] ?? "").trim();
+  const eventDate = String(read("eventDate", "startDate", "date") ?? "").trim();
+  const locationName = String(read("locationName", "venueName", "venue") ?? "").trim();
+  const address = String(read("address", "formattedAddress") ?? "").trim();
+  const city = overrides.cityOverride ?? String(read("city") ?? "").trim();
+  const category = String(read("category") ?? "").trim() || (String(read("genre") ?? "").trim() ? "balada" : "evento_musical");
+  const genre = overrides.genreOverride ?? String(read("genre") ?? "").trim();
+  const description = String(read("summary", "description", "text") ?? page.text ?? "").trim().slice(0, 5_000);
+  const priceCents = Number(read("priceCents") ?? 0);
+  const imageUrl = page.imageUrl?.trim() || String(read("imageUrl") ?? "").trim();
+  const latitude = String(read("latitude") ?? "").trim();
+  const longitude = String(read("longitude") ?? "").trim();
+  if (!title || !eventDate || !locationName || !city || !["Santos", "Guarujá"].includes(city) || !["show", "balada", "evento_musical"].includes(category)) return undefined;
+  const parsedDate = new Date(eventDate);
+  if (Number.isNaN(parsedDate.getTime())) return undefined;
+  return { title, description, eventDate: parsedDate, locationName, address, city: city as "Santos" | "Guarujá", category: category as "show" | "balada" | "evento_musical", genre: genre || undefined, priceCents: Number.isFinite(priceCents) && priceCents >= 0 ? Math.trunc(priceCents) : 0, sourceUrl: page.url, imageUrl, latitude: latitude || undefined, longitude: longitude || undefined, sourceType: publicSourceKey(page.url) };
+}
+
 export function isHealthyEmptyPublicPage(page: Pick<PublicPage, "text" | "adapter" | "emptyHealthy">) {
   return page.emptyHealthy === true && page.text.trim() === "" && (page.adapter === "weticket" || page.adapter === "zig");
 }

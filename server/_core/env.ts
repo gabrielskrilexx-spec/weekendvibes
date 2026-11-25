@@ -13,4 +13,5 @@ export const ENV = {
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   // Never use a VITE_* frontend credential for server-side integrations.
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  openaiApiKey: process.env.OPENAI_API_KEY?.trim() ?? "",
 };

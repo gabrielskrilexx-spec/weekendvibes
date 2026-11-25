@@ -56,7 +56,7 @@ import {
   recordPushDispatch,
 } from "./db";
 import { PushServiceConfigurationError, sendPushNotification } from "./push-notifications";
-import { invokeLLM } from "./_core/llm";
+import { getLLMConfigurationStatus, invokeLLM } from "./_core/llm";
 import { isSandboxRestrictedError } from "./external-fetch";
 import { validateMetaBusinessDiscoveryProfile } from "./instagram-pipeline";
 import {
@@ -101,6 +101,7 @@ import { runObservabilitySnapshotMaintenance } from "./scheduled-observability-m
 import { createPersistentExportJob, getPersistentExportJobStatus, getPersistentExportDownload, cancelPersistentExportJob, purgePersistentExportJobs, recoverOrphanedExportJobs, listExportHistory, listPendingFileDeleteQueue, getExportJobsMetrics, evaluateExportJobsOperationalAlerts, getExportJobsMetricsTrend, getExportJobAlertDetail, getExportJobsAlertSettings, updateExportJobsAlertSettings, getExportJobsTrendBucket, getExportJobsAlertEfficiency, compareExportJobsEfficiency, listExportJobsAlertSettingsHistory, recordExportAlertEvaluationSnapshot, listExportAlertEvaluationSnapshots, getExportJobsEfficiencyBucket, getExportJobsAlertEfficiencyTrend } from "./filtered-story-export-jobs";
 import { compareHeartbeatExecutionStats, evaluateHeartbeatHealth, evaluateHeartbeatPerformance, getHeartbeatExecutionStats, getHeartbeatHealthSettings, getHeartbeatExecutionSummary, listHeartbeatExecutionEvents, listHeartbeatHealthSettingsHistory, listHeartbeatIncidentsByRegression, recordHeartbeatExecutionEvent, updateHeartbeatHealthSettings, type HeartbeatEventType, type HeartbeatHealthEnvironment } from "./heartbeat-observability";
 import { approveGenreDiscoveryCandidate, DISCOVERY_CITIES, DISCOVERY_GENRES, listGenreDiscoveryCandidates, rejectGenreDiscoveryCandidate, runGenreDiscoveryScan } from "./genre-discovery";
+import { guardedFetchPublicPage, publicPageToOneOffEvent } from "./ingestion";
 
 const safeFilter = (max = 120) => z.string().trim().max(max).optional();
 
@@ -1580,6 +1581,31 @@ export const appRouter = router({
           duplicate: Boolean(result?.duplicate),
           updated: Boolean(result?.updated),
         };
+      }),
+    llmStatus: adminOnly
+      .output(z.object({ configured: z.boolean(), source: z.enum(["runtime", "env", "none"]) }).strict())
+      .query(() => getLLMConfigurationStatus()),
+    importOneOffUrl: adminOnly
+      .input(z.object({
+        url: z.string().trim().url().refine(value => /^https:\/\//i.test(value), "A URL deve usar HTTPS"),
+        genreOverride: z.enum(["funk", "house_eletronica", "samba_pagode", "rap_trap"]).optional(),
+        cityOverride: z.enum(["Santos", "Guarujá"]).optional(),
+        publishImmediately: z.boolean().default(true),
+      }).strict())
+      .output(z.object({ ok: z.literal(true), id: z.number().int().positive(), created: z.boolean(), duplicate: z.boolean(), updated: z.boolean(), title: z.string(), city: z.enum(["Santos", "Guarujá"]), sourceUrl: z.string().url() }).strict())
+      .mutation(async ({ input }) => {
+        try {
+          const page = await guardedFetchPublicPage(input.url, { dryRun: true, bypassCircuitBreaker: true });
+          const parsed = publicPageToOneOffEvent(page, { genreOverride: input.genreOverride, cityOverride: input.cityOverride });
+          if (!parsed) throw new TRPCError({ code: "BAD_REQUEST", message: "Não foi possível extrair título, data, local e cidade Santos/Guarujá dessa URL. Informe cidade e gênero quando a fonte não os publicar." });
+          const slugBase = parsed.title.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 150) || "evento-importado";
+          const result = await saveEvent({ ...parsed, slug: `${slugBase}-${Date.now().toString(36)}`, isPublished: input.publishImmediately ? 1 : 0 });
+          if (!result.id) throw new Error("A importação não retornou um ID de evento.");
+          return { ok: true as const, id: Number(result.id), created: Boolean(result.created), duplicate: Boolean(result.duplicate), updated: Boolean(result.updated), title: parsed.title, city: parsed.city, sourceUrl: parsed.sourceUrl };
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          return throwSanitizedAdminMutationError(error, "Não foi possível importar a URL avulsa.");
+        }
       }),
     update: adminOnly
       .input(

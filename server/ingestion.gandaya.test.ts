@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractGandayaEventLinks, filterGandayaRegionalCandidates, parseGandayaEventMetadata, publicSourceKey } from "./ingestion";
+import { extractGandayaEventLinks, filterGandayaRegionalCandidates, parseGandayaEventMetadata, publicPageToOneOffEvent, publicSourceKey } from "./ingestion";
 import { DEFAULT_INGESTION_SOURCES, listIndexableVenueCatalogForTest } from "./db";
 
 describe("Gandaya public adapter", () => {
@@ -66,6 +66,11 @@ describe("Gandaya public adapter", () => {
       "https://gandaya.dance/events/sorry-project-46c6",
       "https://gandaya.dance/events/outro-evento",
     ]);
+  });
+
+  it("normalizes a Gandaya page for one-off import using explicit overrides", () => {
+    const page = { url: "https://gandaya.dance/events/sorry-project-46c6", html: "", text: "Sorry Project", imageUrl: "https://gandaya-prod.s3.us-east-2.amazonaws.com/flyer", structured: { title: "Sorry Project", eventDate: "2026-12-05T01:00:00.000Z", locationName: "Centro Histórico de Santos", address: "Centro, Santos - SP", description: "", category: "balada" } };
+    expect(publicPageToOneOffEvent(page, { cityOverride: "Santos", genreOverride: "funk" })).toMatchObject({ title: "Sorry Project", city: "Santos", genre: "funk", sourceUrl: page.url, imageUrl: page.imageUrl });
   });
 });
 
