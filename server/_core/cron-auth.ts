@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
+import { reconcileExpiredIngestionRuns } from "../ingestion-reports";
 
 const CRON_SECRET_HEADER = "x-cron-secret";
 
@@ -7,7 +8,6 @@ export function hasValidInternalCronSecret(req: Pick<Request, "headers">): boole
   const configuredSecret = process.env.INTERNAL_CRON_SECRET;
   const receivedSecret = req.headers?.[CRON_SECRET_HEADER];
   if (!configuredSecret || typeof receivedSecret !== "string" || receivedSecret.length === 0) return false;
-
   const configuredBytes = Buffer.from(configuredSecret, "utf8");
   const receivedBytes = Buffer.from(receivedSecret, "utf8");
   if (configuredBytes.length !== receivedBytes.length) return false;
@@ -26,12 +26,22 @@ export function hasValidVercelCronSecret(req: Pick<Request, "headers">): boolean
   return configuredBytes.length === receivedBytes.length && timingSafeEqual(configuredBytes, receivedBytes);
 }
 
+function continueAfterCronAuth(next: NextFunction) {
+  void reconcileExpiredIngestionRuns().then(result => {
+    if (result.reconciledCount > 0) console.info("[CronAuth] stale ingestion runs reconciled", { count: result.reconciledCount, runIds: result.runIds });
+  }).catch(error => {
+    // A maintenance failure must never turn authentication into an outage.
+    console.warn("[CronAuth] stale-run sweeper skipped", { error: error instanceof Error ? error.message : "unknown_error" });
+  });
+  return next();
+}
+
 export function requireVercelCron(req: Request, res: Response, next: NextFunction) {
   if (!hasValidVercelCronSecret(req)) {
     console.warn("[CronAuth] Vercel Cron authentication rejected", { reason: "invalid_or_missing_secret" });
     return res.status(401).json({ ok: false, error: "unauthorized" });
   }
-  return next();
+  return continueAfterCronAuth(next);
 }
 
 export function cronAuthMode(req: Pick<Request, "headers">): "machine" | "session" {
@@ -47,5 +57,5 @@ export function requireInternalCron(req: Request, res: Response, next: NextFunct
     return res.status(401).json({ ok: false, error: "unauthorized" });
   }
   console.info("[CronAuth] M2M authentication accepted", { mode: "header" });
-  return next();
+  return continueAfterCronAuth(next);
 }

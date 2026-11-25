@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { extractOcrText, isGracefullyDegradedMetaFailure } from "./instagram-pipeline";
 import {
@@ -1269,10 +1269,10 @@ export async function reconcileExpiredIngestionRuns(options: { now?: Date; maxAg
   const cutoff = new Date(now.getTime() - maxAgeMs);
   const staleRuns = await db.select({ id: ingestionRuns.id, routine: ingestionRuns.routine, startedAt: ingestionRuns.startedAt, details: ingestionRuns.details })
     .from(ingestionRuns)
-    .where(and(eq(ingestionRuns.status, "running"), lt(ingestionRuns.startedAt, cutoff)));
+    .where(and(isNull(ingestionRuns.finishedAt), lt(ingestionRuns.startedAt, cutoff)));
   const runIds: number[] = [];
   for (const run of staleRuns) {
-    await db.update(ingestionRuns).set({
+    const result = await db.update(ingestionRuns).set({
       status: "failed",
       failedCount: 1,
       durationMs: Math.max(0, now.getTime() - new Date(run.startedAt).getTime()),
@@ -1284,8 +1284,22 @@ export async function reconcileExpiredIngestionRuns(options: { now?: Date; maxAg
         trigger: "reconciliation",
       }).slice(0, 20000),
       finishedAt: now,
-    }).where(eq(ingestionRuns.id, run.id));
+    }).where(and(eq(ingestionRuns.id, run.id), isNull(ingestionRuns.finishedAt), lt(ingestionRuns.startedAt, cutoff)));
+    const affected = Number((result as { rowCount?: number; affectedRows?: number } | undefined)?.rowCount ?? (result as { affectedRows?: number } | undefined)?.affectedRows ?? 1);
+    if (affected <= 0) continue;
     runIds.push(run.id);
+    await recordOperationalAlert({
+      dbOverride: db,
+      integration: "pipeline",
+      severity: "CRITICAL",
+      alertType: "ingestion_run_timeout",
+      runId: run.id,
+      title: "Execução de ingestão encerrada por timeout",
+      message: `A execução ${run.id} (${run.routine}) permaneceu aberta por mais de 2 horas e foi encerrada com timeout_exceeded_2h.`,
+    });
+  }
+  if (staleRuns.length === 0) {
+    await db.update(operationalAlerts).set({ isResolved: 1, updatedAt: now }).where(and(eq(operationalAlerts.alertType, "ingestion_run_timeout"), eq(operationalAlerts.isResolved, 0)));
   }
   return { reconciledCount: runIds.length, runIds, pendingCount: 0, pendingRunIds: [] as number[] };
 }
@@ -1715,6 +1729,33 @@ export function findConsecutiveFailureAlertsForTest(
   });
 }
 
+export function findConsecutivePartialAlertsForTest(
+  runs: Array<{ id: number; routine: string; sourceKey: string | null; status: string; startedAt: Date | string; httpStatus?: number | null; details: unknown }>,
+  minimum = 2,
+) {
+  const ordered = [...runs].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+  const byRoutine = new Map<string, typeof ordered>();
+  for (const run of ordered) {
+    const key = run.routine || run.sourceKey || "unknown";
+    const list = byRoutine.get(key) ?? [];
+    list.push(run);
+    byRoutine.set(key, list);
+  }
+  return Array.from(byRoutine.entries()).flatMap(([routine, items]) => {
+    const isQualifyingPartial = (item: (typeof items)[number]) => {
+      if (item.status !== "partial" || (item.httpStatus != null && item.httpStatus >= 400)) return false;
+      const text = JSON.stringify(parseDetails(item.details) ?? "");
+      return !/\b(?:http|status|statusCode|httpStatus)\s*[:=]?\s*5\d\d|\b5\d\d\b|timeout|network|fetch failed/i.test(text);
+    };
+    const partials: typeof items = [];
+    for (const item of items) {
+      if (!isQualifyingPartial(item)) break;
+      partials.push(item);
+    }
+    if (partials.length < minimum) return [];
+    return [{ routine, count: partials.length, runIds: partials.slice(0, minimum).map(item => item.id), latestStartedAt: new Date(partials[0].startedAt).toISOString() }];
+  });
+}
 export async function listIngestionReport(
   size = 20,
   filters: IngestionReportFilters = {}
@@ -1726,6 +1767,7 @@ export async function listIngestionReport(
       alerts: [],
       criticalAlerts: [],
       consecutiveFailures: [],
+      repeatedPartials: [],
       wafPersistentAlerts: [],
       sourceMetrics: [],
       sourceTelemetry: [],
@@ -2001,6 +2043,30 @@ export async function listIngestionReport(
       details: run.details,
     }))
   );
+  const repeatedPartials = findConsecutivePartialAlertsForTest(
+    trendRuns.map(run => ({
+      id: Number(run.id),
+      routine: String(run.routine ?? ""),
+      sourceKey: run.sourceKey == null ? null : String(run.sourceKey),
+      status: String(run.status),
+      startedAt: new Date(run.startedAt),
+      httpStatus: run.httpStatus,
+      details: run.details,
+    }))
+  );
+  if (repeatedPartials.length === 0) {
+    await db.update(operationalAlerts).set({ isResolved: 1, updatedAt: new Date() }).where(and(eq(operationalAlerts.alertType, "repeated_partial_without_http_failure"), eq(operationalAlerts.isResolved, 0)));
+  }
+  await Promise.all(repeatedPartials.map(alert => handleIngestionFailureAlert({
+    routine: alert.routine,
+    sourceKey: alert.routine,
+    integration: alert.routine.startsWith("instagram") ? "meta" : "public",
+    status: 207,
+    severity: "WARNING",
+    alertType: "repeated_partial_without_http_failure",
+    runId: alert.runIds[0],
+    message: `A rotina ${alert.routine} terminou parcialmente em ${alert.count} execuções consecutivas sem falha HTTP; revise filtros e parsing.`,
+  })));
   await Promise.all(
     consecutiveFailures.map(alert => notifyConsecutiveFailureWebhook(alert))
   );
@@ -2025,6 +2091,7 @@ export async function listIngestionReport(
     alerts: serializableAlerts,
     criticalAlerts,
     consecutiveFailures,
+    repeatedPartials,
     wafPersistentAlerts,
     sourceMetrics,
     sourceTelemetry,

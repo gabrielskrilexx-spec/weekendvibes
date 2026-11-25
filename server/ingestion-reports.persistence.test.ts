@@ -108,4 +108,24 @@ describe("ingestion run observability persistence", () => {
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "failed", failedCount: 1, httpStatus: 504, finishedAt: new Date("2026-11-24T10:00:00.000Z") }));
     expect(JSON.parse(set.mock.calls[0]?.[0]?.details)).toMatchObject({ error: "timeout_exceeded_2h", reconciliation: { reason: "timeout_exceeded_2h", routine: "instagram-stories-async" } });
   });
+
+  it("expira qualquer run aberto antigo, inclusive RUNNING e status nulo equivalente", async () => {
+    const set = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    const db = {
+      select: vi.fn().mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([
+            { id: 146, routine: "instagram-stories-async", startedAt: new Date("2026-11-24T06:00:00.000Z"), details: JSON.stringify({ status: "RUNNING" }) },
+            { id: 149, routine: "instagram-stories-async", startedAt: new Date("2026-11-24T06:30:00.000Z"), details: JSON.stringify({ status: null }) },
+          ]),
+        }),
+      }),
+      update: vi.fn().mockReturnValue({ set }),
+    };
+    mocks.getDb.mockResolvedValue(db);
+    const result = await reconcileExpiredIngestionRuns({ now: new Date("2026-11-24T10:00:00.000Z") });
+    expect(result).toMatchObject({ reconciledCount: 2, runIds: [146, 149] });
+    expect(set).toHaveBeenCalledTimes(2);
+    expect(mocks.recordOperationalAlert).toHaveBeenCalledTimes(2);
+  });
 });
