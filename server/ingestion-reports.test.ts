@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv, sortFilteredStoriesForTest, DEFAULT_PUBLIC_P95_THRESHOLD_MS, CRON_PUBLIC_P95_THRESHOLD_MS, INSTAGRAM_AGENDA_P95_THRESHOLD_MS, INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS, MANUAL_AGENDA_P95_THRESHOLD_MS, getEffectiveSourceP95ThresholdForTest, getEffectiveIngestionP95ThresholdForTest, findConsecutiveP95PerformanceAlertsForTest, classifyIngestionRunCategoryForTest, findConsecutiveWafBlocksForTest, buildWafProviderHistoryForTest, getNextCronExecutionAtForTest } from "./ingestion-reports";
+import { buildMetaIntegrationStatusForTest, buildFreshnessForTest, buildSourceReconciliationForTest, findConsecutiveFailureAlertsForTest, findConsecutivePartialAlertsForTest, buildWeeklyTrendForTest, buildDailyIngestionMetricsForTest, getPastEventRejectionQualityForTest, createSanitizedReprocessErrorForTest, getFreshnessState, isCriticalIngestionFailure, normalizeManualReprocessResultForTest, isZeroMediaMetaRunForTest, normalizeIngestionCountsForTest, normalizeReportForTransport, sanitizeReprocessErrorForTest, serializeIngestionRunForTest, serializeOperationalAlertForTest, buildFilteredStoriesCsv, sortFilteredStoriesForTest, DEFAULT_PUBLIC_P95_THRESHOLD_MS, CRON_PUBLIC_P95_THRESHOLD_MS, INSTAGRAM_AGENDA_P95_THRESHOLD_MS, INSTAGRAM_APIFY_PENDING_P95_THRESHOLD_MS, MANUAL_AGENDA_P95_THRESHOLD_MS, getEffectiveSourceP95ThresholdForTest, getEffectiveIngestionP95ThresholdForTest, findConsecutiveP95PerformanceAlertsForTest, classifyIngestionRunCategoryForTest, findConsecutiveWafBlocksForTest, buildWafProviderHistoryForTest, getNextCronExecutionAtForTest } from "./ingestion-reports";
 import { InstagramIntegrationFailure } from "./instagram-pipeline";
 import { sanitizeAgendaStepErrorForTest } from "./agenda-routine";
 
@@ -268,6 +268,17 @@ describe("consecutive failure observability", () => {
       { id: 2, routine: "instagram-agenda", sourceKey: "instagram", status: "failed", startedAt: new Date("2026-08-22T10:00:00.000Z"), details: { retries: 1 } },
       { id: 1, routine: "instagram-agenda", sourceKey: "instagram", status: "succeeded", startedAt: new Date("2026-08-22T09:00:00.000Z"), details: {} },
     ])).toEqual([]);
+  });
+});
+
+describe("repeated partial observability", () => {
+  it("detects partial repetido sem HTTP e ignora partial causado por 503", () => {
+    const base = new Date("2026-08-22T10:00:00.000Z");
+    expect(findConsecutivePartialAlertsForTest([
+      { id: 4, routine: "public-agenda", sourceKey: "public", status: "partial", startedAt: base, httpStatus: 200, details: { filtered: 3 } },
+      { id: 3, routine: "public-agenda", sourceKey: "public", status: "partial", startedAt: new Date(base.getTime() - 3600000), httpStatus: 200, details: { filtered: 2 } },
+      { id: 2, routine: "public-agenda", sourceKey: "public", status: "partial", startedAt: new Date(base.getTime() - 7200000), httpStatus: 503, details: { message: "HTTP 503" } },
+    ])).toEqual([{ routine: "public-agenda", count: 2, runIds: [4, 3], latestStartedAt: base.toISOString() }]);
   });
 });
 

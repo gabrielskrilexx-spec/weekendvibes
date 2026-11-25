@@ -915,11 +915,11 @@ export async function getExecutiveObservabilityReport(now = new Date(), days = 1
   const lastDay = series.at(-1);
   const recentRuns = lastDay?.total ?? 0;
   const recentFailures = recentRuns - (lastDay?.succeeded ?? 0);
-  const recentRunRows = await db.select({ status: ingestionRuns.status, details: ingestionRuns.details, startedAt: ingestionRuns.startedAt })
+  const recentRunRows = await db.select({ status: ingestionRuns.status, details: ingestionRuns.details, startedAt: ingestionRuns.startedAt, finishedAt: ingestionRuns.finishedAt })
     .from(ingestionRuns)
     .where(gte(ingestionRuns.startedAt, since));
   const staleCutoff = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-  const staleRuns = recentRunRows.filter(run => run.status === "running" && run.startedAt < staleCutoff).length;
+  const staleRuns = recentRunRows.filter(run => run.finishedAt == null && run.startedAt < staleCutoff).length;
   const isolatedUrlFailures = countIsolatedUrl503Runs(recentRunRows);
   return { generatedAt: now.toISOString(), periodDays: safeDays, sources, series, trends: summarizeTelemetryTrend(series), system_health_status: calculateSystemHealthStatus({ openSources: sources.open, activeSources: sources.active, recentRuns, recentFailures, allCircuitsClosed: sources.open === 0, staleRuns, isolatedUrlFailures }), healthTransitions: await listSystemHealthTransitions(10, db) };
 }
