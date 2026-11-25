@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { candidateUrl, classifyDiscoveryGenres, detectDiscoveryCity, DISCOVERY_REGIONAL_SOURCE_URLS, ensureDiscoveryPlatformStat, filterDiscoveryCandidateUrls, isFutureDiscoveryDate, pageToDiscoveryCandidate, resolveDiscoveryCityFromKnownVenue } from "./genre-discovery";
-import { buildApifyCatalogPayload, extractEmbeddedPublicEventUrls, extractPublicEventLinks, extractSitemapUrls, extractZigApiEventUrls, fetchApifyCatalogLinks, getExploratoryApifyActorId, getExploratoryApifyCatalogUrls, isPublicCatalogUrl, parseZigApiEventPayload, parseZigEventMetadata, shouldRunApifyCatalogFallback } from "./ingestion";
+import { buildApifyCatalogPayload, extractEmbeddedPublicEventUrls, extractPublicEventLinks, extractSitemapUrls, extractZigApiEventUrls, fetchApifyCatalogLinks, getExploratoryApifyActorId, getExploratoryApifyCatalogUrls, isPublicCatalogUrl, isZigRegionalCatalogUrl, parseZigApiEventPayload, parseZigEventMetadata, shouldRunApifyCatalogFallback } from "./ingestion";
 
 describe("Radar de descoberta por estilo", () => {
   it("classifica todos os gêneros que aparecem no conjunto de textos", () => {
@@ -249,6 +249,31 @@ describe("Radar de descoberta por estilo", () => {
       if (originalToken === undefined) delete process.env.APIFY_API_TOKEN; else process.env.APIFY_API_TOKEN = originalToken;
       if (originalActor === undefined) delete process.env.APIFY_CATALOG_ACTOR_ID; else process.env.APIFY_CATALOG_ACTOR_ID = originalActor;
     }
+  });
+
+  it("explica dataset Apify vazio sem inventar um título de página", async () => {
+    const originalToken = process.env.APIFY_API_TOKEN;
+    const originalActor = process.env.APIFY_CATALOG_ACTOR_ID;
+    process.env.APIFY_API_TOKEN = "test-token";
+    process.env.APIFY_CATALOG_ACTOR_ID = "apify~puppeteer-scraper";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("[]", { status: 200, headers: { "content-type": "application/json" } })));
+    try {
+      await expect(fetchApifyCatalogLinks(getExploratoryApifyCatalogUrls())).resolves.toMatchObject({
+        status: "empty",
+        message: expect.stringContaining("dataset vazio"),
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      if (originalToken === undefined) delete process.env.APIFY_API_TOKEN; else process.env.APIFY_API_TOKEN = originalToken;
+      if (originalActor === undefined) delete process.env.APIFY_CATALOG_ACTOR_ID; else process.env.APIFY_CATALOG_ACTOR_ID = originalActor;
+    }
+  });
+
+  it("identifica somente as sementes Zig com cidade regional explícita", () => {
+    expect(isZigRegionalCatalogUrl("https://zig.tickets/pt-BR?city=santos")).toBe(true);
+    expect(isZigRegionalCatalogUrl("https://zig.tickets/pt-BR?city=guaruja")).toBe(true);
+    expect(isZigRegionalCatalogUrl("https://zig.tickets/pt-BR")).toBe(false);
+    expect(isZigRegionalCatalogUrl("https://zig.tickets/pt-BR?city=sao-paulo")).toBe(false);
   });
 
   it("mantém catálogos Sympla elegíveis ao Apify mesmo em cooldown exploratório", () => {
