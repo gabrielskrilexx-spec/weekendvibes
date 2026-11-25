@@ -244,6 +244,7 @@ const PUBLIC_PLATFORM_BY_SOURCE: Record<string, string> = {
 const GANDAYA_API_BASE = "https://api.gandaya.dance";
 export const GANDAYA_FETCH_TIMEOUT_MS = 20_000;
 export const GANDAYA_REGIONAL_CITIES = ["Santos", "Guarujá"] as const;
+const GANDAYA_LISTING_PAGE_SIZE = 100;
 
 function normalizeRegionalCity(value: string) {
   const normalized = normalizeText(value);
@@ -788,19 +789,47 @@ export type GandayaListingResult = {
   message: string;
 };
 
+async function fetchGandayaEventDetail(alias: string, options: { signal?: AbortSignal } = {}) {
+  const response = await fetchExternal(`${GANDAYA_API_BASE}/events/${encodeURIComponent(alias)}`, {
+    headers: { accept: "application/json", "user-agent": "WeekendVibes/1.0", "cache-control": "no-cache" },
+  }, GANDAYA_FETCH_TIMEOUT_MS, false, options.signal);
+  const payload = parseGandayaListingPayload(await readExternalBody(response));
+  if (!payload) return undefined;
+  const eventPayload = payload && typeof payload === "object"
+    ? ((payload as { event?: unknown; data?: unknown }).event ?? (payload as { data?: unknown }).data ?? payload)
+    : payload;
+  return eventPayload && typeof eventPayload === "object"
+    ? parseGandayaEventMetadata({ ...(eventPayload as GandayaEvent), alias }, gandayaEventUrl(alias), { allowMissingClassification: true })
+    : undefined;
+}
+
 export async function fetchGandayaRegionalEventLinks(options: { signal?: AbortSignal } = {}): Promise<GandayaListingResult> {
   try {
-    const response = await fetchExternal(`${GANDAYA_API_BASE}/events/list`, {
+    const response = await fetchExternal(`${GANDAYA_API_BASE}/events/list?take=${GANDAYA_LISTING_PAGE_SIZE}`, {
       method: "POST",
       headers: { accept: "application/json", "content-type": "application/json", "user-agent": "WeekendVibes/1.0", "cache-control": "no-cache" },
-      body: JSON.stringify({ take: 100 }),
+      body: JSON.stringify({}),
     }, GANDAYA_FETCH_TIMEOUT_MS, false, options.signal);
     const payload = parseGandayaListingPayload(await readExternalBody(response));
     if (!payload) return { urls: [], listingCount: 0, regionalFiltered: 0, status: "failed", message: "API Gandaya retornou JSON inválido." };
     const allEvents = extractGandayaListingEvents(payload);
-    const regional = allEvents.filter(event => isGandayaRegionalCandidate({ text: gandayaListingCandidateText(event) }));
-    const urls = Array.from(new Set(regional.map(event => gandayaEventUrl(event.alias)).filter(Boolean)));
-    return { urls, listingCount: allEvents.length, regionalFiltered: allEvents.length - regional.length, status: urls.length > 0 ? "succeeded" : "empty", message: urls.length > 0 ? `${urls.length} alias(es) regionais encontrados; ${allEvents.length - regional.length} fora de Santos/Guarujá.` : `Nenhum alias regional encontrado; ${allEvents.length} evento(s) lido(s).` };
+    const aliases = Array.from(new Set(allEvents.map(event => typeof event.alias === "string" ? event.alias.trim() : "").filter(Boolean)));
+    const details = await fetchWithConcurrency(aliases, alias => fetchGandayaEventDetail(alias, options), 8);
+    const regional = new Set<string>();
+    let detailFailures = 0;
+    for (let index = 0; index < details.length; index += 1) {
+      const result = details[index];
+      const listingEvent = allEvents.find(event => event.alias === aliases[index]);
+      if (result.status === "fulfilled" && result.value && isGandayaRegionalCandidate({ city: result.value.city, address: result.value.address, location: result.value.locationName, text: result.value.text })) regional.add(aliases[index]);
+      else if (result.status === "fulfilled" && listingEvent && isGandayaRegionalCandidate({ text: gandayaListingCandidateText(listingEvent) })) regional.add(aliases[index]);
+      else if (result.status === "rejected") detailFailures += 1;
+    }
+    const urls = Array.from(regional, gandayaEventUrl).filter(Boolean);
+    const regionalFiltered = Math.max(0, aliases.length - regional.size);
+    const message = urls.length > 0
+      ? `${urls.length} alias(es) regionais encontrados após enriquecer ${aliases.length} detalhe(s); ${regionalFiltered} fora de Santos/Guarujá${detailFailures ? `; ${detailFailures} detalhe(s) falharam` : ""}.`
+      : `Nenhum alias regional encontrado após enriquecer ${aliases.length} detalhe(s)${detailFailures ? `; ${detailFailures} detalhe(s) falharam` : ""}.`;
+    return { urls, listingCount: aliases.length, regionalFiltered, status: urls.length > 0 ? "succeeded" : "empty", message };
   } catch (error) {
     return { urls: [], listingCount: 0, regionalFiltered: 0, status: "failed", message: sanitizeFetchFailure(error).message };
   }
@@ -819,6 +848,14 @@ function extractGandayaListingEvents(payload: unknown): GandayaListingEvent[] {
 }
 function isGandayaRootUrl(url: string) { try { const parsed = new URL(url); return /(?:^|\.)gandaya\.dance$/i.test(parsed.hostname) && ["", "/"].includes(parsed.pathname); } catch { return false; } }
 function isGandayaEventUrl(url: string) { try { const parsed = new URL(url); return /(?:^|\.)gandaya\.dance$/i.test(parsed.hostname) && /^\/events\/[A-Za-z0-9._~-]+/.test(parsed.pathname); } catch { return false; } }
+export function isZigRegionalCatalogUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (!/(?:^|\.)zig\.tickets$/i.test(parsed.hostname)) return false;
+    const city = normalizeText(parsed.searchParams.get("city") ?? "");
+    return city === "santos" || city === "guaruja";
+  } catch { return false; }
+}
 function parseGandayaListingPayload(value: string) { try { return JSON.parse(value) as unknown; } catch { return undefined; } }
 
 function parseBlueMedDate(value: string) {
@@ -1615,16 +1652,19 @@ export async function fetchApifyCatalogLinks(urls: string[], options: { signal?:
     const body = await readExternalBody(response);
     const links = extractEmbeddedPublicEventUrls(body, urls[0]);
     let debugTitle = "";
+    let datasetWasEmpty = false;
     if (links.length === 0) {
       try {
         const dataset = JSON.parse(body) as unknown;
         const records = Array.isArray(dataset) ? dataset : [dataset];
+        datasetWasEmpty = Array.isArray(dataset) && dataset.length === 0;
         debugTitle = records.map(record => record && typeof record === "object" && "debugTitle" in record ? String((record as { debugTitle?: unknown }).debugTitle ?? "").trim() : "").find(Boolean) ?? "";
       } catch {
         // A resposta pode ser texto de erro da API; o status/mensagem já será preservado.
       }
     }
-    return { links, attempted: true, status: links.length > 0 ? "succeeded" : "empty", message: links.length > 0 ? `${links.length} link(s) de evento extraído(s) pelo Actor.` : `Actor concluiu sem retornar links de evento.${debugTitle ? ` debugTitle: ${debugTitle}` : ""}` };
+    const emptyDiagnostic = debugTitle ? `debugTitle: ${debugTitle}` : datasetWasEmpty ? "dataset vazio (sem debugTitle)" : "dataset sem links de evento";
+    return { links, attempted: true, status: links.length > 0 ? "succeeded" : "empty", message: links.length > 0 ? `${links.length} link(s) de evento extraído(s) pelo Actor.` : `Actor concluiu sem retornar links de evento; ${emptyDiagnostic}.` };
   } catch (error) {
     const message = sanitizeFetchFailure(error).message;
     return { links: [], attempted: true, status: isTimeoutFailure(error) ? "timeout" : "failed", message };
@@ -1773,9 +1813,10 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
   const configuredBases = filterExplicitPublicSourceUrls(await getEnabledConfiguredSourceUrls(), requestedSourceUrls);
   const forcedApifyBases = options.exploratoryApify ? getExploratoryApifyCatalogUrls() : [];
   const exploratoryBases = filterExplicitPublicSourceUrls(Array.from(new Set([...(options.exploratorySourceUrls ?? []), ...forcedApifyBases])), requestedSourceUrls);
-  const bases = options.sourceKey
+  const bases = (options.sourceKey
     ? Array.from(new Set([...configuredBases, ...exploratoryBases])).filter(url => options.sourceKey === "public" || publicSourceKey(url) === options.sourceKey)
-    : Array.from(new Set([...configuredBases, ...exploratoryBases]));
+    : Array.from(new Set([...configuredBases, ...exploratoryBases])))
+    .filter(url => !options.exploratoryApify || publicSourceKey(url) !== "public:zig" || isZigRegionalCatalogUrl(url));
   const sourceHints = await listIngestionSources().catch(() => []);
   const sourceByUrl = new Map(sourceHints.map(source => [sanitizePublicSourceUrl(source.url), source]));
   const directArticketCandidates = bases.filter(isArticketEventUrl).map(url => ({

@@ -70,14 +70,25 @@ describe("Gandaya public adapter", () => {
 
   it("consulta POST /events/list, mantém apenas Santos/Guarujá e retorna diagnóstico", async () => {
     const originalFetch = globalThis.fetch;
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      expect(init?.method).toBe("POST");
-      expect(JSON.parse(String(init?.body))).toMatchObject({ take: 100 });
-      return new Response(JSON.stringify([
-        { alias: "sorry-project-46c6", title: "Sorry Project", city: "Santos" },
-        { alias: "baile-guaruja", title: "Baile Guarujá", location: { name: "Praiô", city: "Guarujá" } },
-        { alias: "evento-rio", title: "Evento Rio", city: "Rio de Janeiro" },
-      ]), { status: 200, headers: { "content-type": "application/json" } });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/events/list")) {
+        expect(url).toContain("take=100");
+        expect(init?.method).toBe("POST");
+        expect(JSON.parse(String(init?.body))).toEqual({});
+        return new Response(JSON.stringify([
+          { alias: "sorry-project-46c6", title: "Sorry Project" },
+          { alias: "baile-guaruja", title: "Baile Guarujá" },
+          { alias: "evento-rio", title: "Evento Rio" },
+        ]), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      const alias = url.split("/").at(-1);
+      const detail = alias === "sorry-project-46c6"
+        ? { alias, title: "Sorry Project", date: { startDate: "2026-12-05T01:00:00.000Z" }, location: { name: "Centro Histórico de Santos", address: "Centro, Santos - SP" } }
+        : alias === "baile-guaruja"
+          ? { alias, title: "Baile Guarujá", date: { startDate: "2026-12-06T01:00:00.000Z" }, location: { name: "Praiô", address: "Guarujá - SP" } }
+          : { alias, title: "Evento Rio", date: { startDate: "2026-12-07T01:00:00.000Z" }, location: { name: "Casa Rio", address: "Rio de Janeiro - RJ" } };
+      return new Response(JSON.stringify(detail), { status: 200, headers: { "content-type": "application/json" } });
     });
     vi.stubGlobal("fetch", fetchMock);
     try {
