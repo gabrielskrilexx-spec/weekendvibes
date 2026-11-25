@@ -4,7 +4,7 @@ import { appRouter } from "./routers";
 vi.mock("./db", () => ({
   listEvents: vi.fn().mockResolvedValue([]),
   getEventBySlug: vi.fn().mockResolvedValue(undefined),
-  saveEvent: vi.fn().mockResolvedValue(undefined),
+  saveEvent: vi.fn().mockResolvedValue({ created: true, id: 77, duplicate: false, updated: false }),
   updateEvent: vi.fn().mockResolvedValue({ updated: true, id: 1 }),
   deleteEvent: vi.fn().mockResolvedValue({ deleted: true, id: 1 }),
   deleteEvents: vi.fn().mockResolvedValue({ deleted: 2, deletedIds: [1, 2] }),
@@ -16,6 +16,7 @@ vi.mock("./db", () => ({
   getUserByOpenId: vi.fn(),
 }));
 vi.mock("./_core/llm", () => ({
+  getLLMConfigurationStatus: vi.fn().mockReturnValue({ configured: true, source: "runtime" }),
   invokeLLM: vi
     .fn()
     .mockResolvedValue({
@@ -37,6 +38,14 @@ vi.mock("./_core/llm", () => ({
       ],
     }),
 }));
+vi.mock("./ingestion", async importOriginal => {
+  const actual = await importOriginal<typeof import("./ingestion")>();
+  return {
+    ...actual,
+    guardedFetchPublicPage: vi.fn().mockResolvedValue({ url: "https://gandaya.dance/events/sorry-project-46c6", html: "", text: "Sorry Project", imageUrl: "https://gandaya-prod.s3.us-east-2.amazonaws.com/flyer", structured: { title: "Sorry Project", eventDate: "2026-12-05T01:00:00.000Z", locationName: "Centro Histórico de Santos", address: "Centro, Santos - SP", category: "balada" } }),
+    publicPageToOneOffEvent: vi.fn().mockReturnValue({ title: "Sorry Project", description: "", eventDate: new Date("2026-12-05T01:00:00.000Z"), locationName: "Centro Histórico de Santos", address: "Centro, Santos - SP", city: "Santos", category: "balada", genre: "funk", priceCents: 0, sourceUrl: "https://gandaya.dance/events/sorry-project-46c6", imageUrl: "https://gandaya-prod.s3.us-east-2.amazonaws.com/flyer", sourceType: "public:gandaya" }),
+  };
+});
 
 const base = {
   title: "Festival de Verão",
@@ -74,8 +83,8 @@ describe("events admin procedures", () => {
   it("allows admin CRUD operations with serializable contracts", async () => {
     const caller = appRouter.createCaller(ctx());
     await expect(caller.events.create(base)).resolves.toEqual({
-      created: false,
-      id: null,
+      created: true,
+      id: 77,
       duplicate: false,
       updated: false,
     });
@@ -130,5 +139,9 @@ describe("events admin procedures", () => {
       category: "show",
       priceCents: 5000,
     });
+  });
+  it("imports a one-off Gandaya URL directly into events", async () => {
+    const result = await appRouter.createCaller(ctx()).events.importOneOffUrl({ url: "https://gandaya.dance/events/sorry-project-46c6", cityOverride: "Santos", genreOverride: "funk", publishImmediately: true });
+    expect(result).toMatchObject({ ok: true, id: 77, title: "Sorry Project", city: "Santos" });
   });
 });
