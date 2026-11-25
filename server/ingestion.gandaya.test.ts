@@ -17,12 +17,33 @@ describe("Gandaya public adapter", () => {
     expect(parsed?.summary).not.toContain("**");
   });
 
-  it("keeps only the five Baixada Santista cities before detail fetches", () => {
+  it("parses the real Gandaya detail contract with nested date and location address", () => {
+    const parsed = parseGandayaEventMetadata({
+      id: 2088,
+      alias: "sorry-project-46c6",
+      title: "Sorry Project",
+      description: "Uma noite de funk e rap em Santos.",
+      tags: ["funk"],
+      date: { startDate: "2026-12-05T01:00:00.000Z", endDate: "2026-12-05T08:00:00.000Z" },
+      imageKey: "b8fce99f-ba71-475e-875a-9eeb977755f3",
+      location: { name: "Centro Histórico de Santos", address: "Centro, Santos - SP, 11010-000, Brasil" },
+    });
+    expect(parsed).toMatchObject({
+      title: "Sorry Project",
+      eventDate: "2026-12-05T01:00:00.000Z",
+      city: "Santos",
+      locationName: "Centro Histórico de Santos",
+      genre: "funk",
+      imageUrl: "https://gandaya-prod.s3.us-east-2.amazonaws.com/b8fce99f-ba71-475e-875a-9eeb977755f3",
+    });
+  });
+
+  it("keeps only Santos and Guarujá before detail fetches", () => {
     const result = filterGandayaRegionalCandidates([
       { alias: "santos", location: "Espaço 14", text: "Santos" },
       { alias: "guaruja", location: "Praiô", text: "Guarujá" },
       { alias: "rio", location: "Centro", text: "Rio de Janeiro" },
-      { alias: "itajai", location: "Clube", text: "Itajaí" },
+      { alias: "praia-grande", location: "Clube", text: "Praia Grande" },
     ]);
     expect(result.regional).toHaveLength(2);
     expect(result.filtered).toHaveLength(2);
@@ -35,6 +56,16 @@ describe("Gandaya public adapter", () => {
       "https://gandaya.dance/events/other-event",
     ]);
     expect(publicSourceKey("https://gandaya.dance/")).toBe("public:gandaya");
+  });
+
+  it("discovers aliases from the real POST /events/list array payload", () => {
+    expect(extractGandayaEventLinks([
+      { id: 2088, alias: "sorry-project-46c6", title: "Sorry Project" },
+      { id: 2089, alias: "outro-evento", title: "Outro evento" },
+    ])).toEqual([
+      "https://gandaya.dance/events/sorry-project-46c6",
+      "https://gandaya.dance/events/outro-evento",
+    ]);
   });
 });
 
