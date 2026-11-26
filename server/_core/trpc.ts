@@ -39,6 +39,22 @@ const requireUser = t.middleware(async opts => {
 
 export const protectedProcedure = t.procedure.use(requireUser);
 
+const databaseAvailability = t.middleware(async opts => {
+  try {
+    return await opts.next();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (/^(database_unavailable|Database unavailable)$/i.test(message.trim())) {
+      throw new TRPCError({
+        code: "SERVICE_UNAVAILABLE",
+        message: "O banco de dados está temporariamente indisponível. Tente novamente.",
+        cause: error,
+      });
+    }
+    throw error;
+  }
+});
+
 export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
@@ -54,4 +70,4 @@ export const adminProcedure = t.procedure.use(
       },
     });
   }),
-);
+).use(databaseAvailability);
