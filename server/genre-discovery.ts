@@ -140,6 +140,21 @@ export function pageToDiscoveryCandidate(page: Pick<PublicPage, "url" | "text" |
 
 export type DiscoveryPlatformStat = {
   platform: string;
+  funnel: {
+    fetched: number;
+    parsed: number;
+    rejectedByCity: number;
+    rejectedByGenre: number;
+    rejectedByDate: number;
+    duplicate: number;
+    eligible: number;
+    persisted: number;
+    blocked: number;
+    empty: number;
+  };
+  state?: "ok" | "blocked" | "catalog_empty" | "no_eligible_events" | "all_events_filtered";
+  blockedReasons?: Array<{ httpStatus: number | null; retryable: boolean; message: string }>;
+  apiDiagnostics?: { listingCount: number; regionalAliases: number; detailsAttempted: number; detailsFailed: number; outsideRegion: number; missingGenre: number; futureEligible: number; truncated: boolean };
   totalUrls: number;
   totalEvents: number;
   discardedByCity: number;
@@ -158,7 +173,7 @@ export type DiscoveryPlatformStat = {
 export function ensureDiscoveryPlatformStat(stats: DiscoveryPlatformStat[], platform: string) {
   const current = stats.find(stat => stat.platform === platform);
   if (current) return current;
-  const created: DiscoveryPlatformStat = { platform, totalUrls: 0, totalEvents: 0, discardedByCity: 0, discardedByGenre: 0, duplicates: 0, duplicateItems: [], failures: 0, emptyPages: 0 };
+  const created: DiscoveryPlatformStat = { platform, funnel: { fetched: 0, parsed: 0, rejectedByCity: 0, rejectedByGenre: 0, rejectedByDate: 0, duplicate: 0, eligible: 0, persisted: 0, blocked: 0, empty: 0 }, state: "ok", blockedReasons: [], totalUrls: 0, totalEvents: 0, discardedByCity: 0, discardedByGenre: 0, duplicates: 0, duplicateItems: [], failures: 0, emptyPages: 0 };
   stats.push(created);
   return created;
 }
@@ -189,6 +204,7 @@ export type GenreDiscoveryScanResult = {
   duplicates: number;
   filtered: number;
   errors: number;
+  funnel: DiscoveryPlatformStat["funnel"];
   platformStats: DiscoveryPlatformStat[];
 };
 
@@ -214,14 +230,26 @@ export async function runGenreDiscoveryScan(options: { now?: Date; sourceUrls?: 
     platformStat.apifyUrls = Array.from(new Set([...(platformStat.apifyUrls ?? []), ...fallback.urls]));
     if (fallback.status === "timeout" || fallback.status === "failed") platformStat.failures += 1;
     if (fallback.status === "empty" || fallback.status === "not_configured") platformStat.emptyPages += 1;
+    if (fallback.status === "timeout" || fallback.status === "failed") {
+      platformStat.funnel.blocked += 1;
+      platformStat.state = "blocked";
+      platformStat.blockedReasons?.push({ httpStatus: fallback.httpStatus ?? null, retryable: fallback.retryable ?? fallback.status === "timeout", message: fallback.message ?? fallback.status });
+    } else if (fallback.status === "empty" || fallback.status === "not_configured") {
+      platformStat.funnel.empty += 1;
+      platformStat.state = "catalog_empty";
+    }
   }
   const gandayaStat = getStats("public:gandaya");
   gandayaStat.apiStatus = discovery.gandayaApiStatus ?? "empty";
   gandayaStat.apiMessage = discovery.gandayaApiMessage ?? "API Gandaya não foi consultada nesta varredura.";
+  if (discovery.gandayaDiagnostics) gandayaStat.apiDiagnostics = discovery.gandayaDiagnostics;
   if (gandayaStat.apiStatus === "failed") gandayaStat.failures += 1;
   if (gandayaStat.apiStatus === "empty") gandayaStat.emptyPages += 1;
+  if (gandayaStat.apiStatus === "failed") { gandayaStat.funnel.blocked += 1; gandayaStat.state = "blocked"; }
+  if (gandayaStat.apiStatus === "empty") { gandayaStat.funnel.empty += 1; gandayaStat.state = "catalog_empty"; }
   urls.forEach((url: string) => { getStats(publicSourceKey(url)).totalUrls += 1; });
-  const result: GenreDiscoveryScanResult = { scannedPages: pages.length, eligible: 0, inserted: 0, duplicates: 0, filtered: 0, errors: 0, platformStats: [] };
+  const funnel: DiscoveryPlatformStat["funnel"] = { fetched: 0, parsed: 0, rejectedByCity: 0, rejectedByGenre: 0, rejectedByDate: 0, duplicate: 0, eligible: 0, persisted: 0, blocked: 0, empty: 0 };
+  const result: GenreDiscoveryScanResult = { scannedPages: pages.length, eligible: 0, inserted: 0, duplicates: 0, filtered: 0, errors: 0, funnel, platformStats: [] };
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const existingEvents = await db.select({ sourceUrl: events.sourceUrl }).from(events).where(isNotNull(events.sourceUrl));
@@ -233,14 +261,20 @@ export async function runGenreDiscoveryScan(options: { now?: Date; sourceUrls?: 
     const settled = pages[index];
     const sourceUrl = urls[index];
     const platformStat = getStats(publicSourceKey(sourceUrl));
-    if (settled.status === "rejected") { result.errors += 1; platformStat.failures += 1; continue; }
+    platformStat.funnel.fetched += 1;
+    funnel.fetched += 1;
+    if (settled.status === "rejected") { result.errors += 1; platformStat.failures += 1; platformStat.funnel.blocked += 1; funnel.blocked += 1; platformStat.state = "blocked"; continue; }
     const page = settled.value;
     platformStat.totalEvents += 1;
-    if (!page.text.trim() && !page.structured) platformStat.emptyPages += 1;
+    if (!page.text.trim() && !page.structured) { platformStat.emptyPages += 1; platformStat.funnel.empty += 1; funnel.empty += 1; platformStat.state = "catalog_empty"; continue; }
+    platformStat.funnel.parsed += 1;
+    funnel.parsed += 1;
     const normalizedUrl = candidateUrl(page.url);
     if (!candidateUrls.includes(normalizedUrl) || existingEventUrls.has(normalizedUrl) || knownCandidates.has(normalizedUrl)) {
       result.duplicates += 1;
       platformStat.duplicates += 1;
+      platformStat.funnel.duplicate += 1;
+      funnel.duplicate += 1;
       if (platformStat.duplicateItems.length < 50) platformStat.duplicateItems.push({ title: pageTitle(page), url: normalizedUrl || page.url });
       continue;
     }
@@ -250,13 +284,28 @@ export async function runGenreDiscoveryScan(options: { now?: Date; sourceUrls?: 
       const reason = getDiscoveryRejectionReason(page, now);
       if (reason === "city") platformStat.discardedByCity += 1;
       if (reason === "genre") platformStat.discardedByGenre += 1;
+      if (reason === "city") { platformStat.funnel.rejectedByCity += 1; funnel.rejectedByCity += 1; }
+      else if (reason === "genre") { platformStat.funnel.rejectedByGenre += 1; funnel.rejectedByGenre += 1; }
+      else { platformStat.funnel.rejectedByDate += 1; funnel.rejectedByDate += 1; }
       continue;
     }
     result.eligible += 1;
+    platformStat.funnel.eligible += 1;
+    funnel.eligible += 1;
     const inserted = await db.insert(discoveredEventCandidates).values(candidate).onConflictDoNothing({ target: discoveredEventCandidates.canonicalUrl }).returning({ id: discoveredEventCandidates.id });
-    if (inserted.length > 0) { result.inserted += 1; knownCandidates.add(normalizedUrl); }
-    else result.duplicates += 1;
+    if (inserted.length > 0) { result.inserted += 1; platformStat.funnel.persisted += 1; funnel.persisted += 1; knownCandidates.add(normalizedUrl); }
+    else {
+      result.duplicates += 1;
+      platformStat.duplicates += 1;
+      platformStat.funnel.duplicate += 1;
+      funnel.duplicate += 1;
+      if (platformStat.duplicateItems.length < 50) platformStat.duplicateItems.push({ title: candidate.title, url: normalizedUrl || candidate.canonicalUrl });
+    }
   }
+  Array.from(stats.values()).forEach(stat => {
+    if (stat.funnel.eligible === 0 && stat.funnel.parsed > 0) stat.state = "all_events_filtered";
+    else if (stat.funnel.eligible === 0 && stat.funnel.fetched > 0 && stat.funnel.empty === 0 && stat.funnel.blocked === 0) stat.state = "no_eligible_events";
+  });
   result.platformStats = Array.from(stats.values()).sort((left, right) => left.platform.localeCompare(right.platform));
   return result;
 }

@@ -767,6 +767,11 @@ function inferGandayaGenre(title: string, description: string) {
   return /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : /house|eletronic|eletrônica|dj|balada|festa|m[uú]sica|music|sunset/.test(searchable) ? "house_eletronica" : "";
 }
 
+function isFutureEventValue(value: string, now = new Date()) {
+  const date = new Date(value);
+  return Boolean(value) && !Number.isNaN(date.getTime()) && date.getTime() >= now.getTime();
+}
+
 export function parseGandayaEventMetadata(event: GandayaEvent, url = gandayaEventUrl(event.alias), options: { allowMissingClassification?: boolean } = {}) {
   const title = sanitizeEventText(String(event.title ?? "")).trim();
   const lineup = Array.isArray(event.lineup) ? event.lineup.map(item => typeof item === "string" ? item : String(item?.name ?? "")).filter(Boolean).join(", ") : "";
@@ -806,9 +811,24 @@ export type GandayaListingResult = {
   urls: string[];
   listingCount: number;
   regionalFiltered: number;
+  regionalAliases: number;
+  detailsAttempted: number;
+  detailsFailed: number;
+  outsideRegion: number;
+  missingGenre: number;
+  futureEligible: number;
+  truncated: boolean;
   status: "succeeded" | "empty" | "failed";
   message: string;
 };
+
+function readGandayaPagination(payload: unknown) {
+  const root = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  const pagination = root.pagination && typeof root.pagination === "object" ? root.pagination as Record<string, unknown> : {};
+  const cursor = String(root.nextCursor ?? root.next_cursor ?? pagination.nextCursor ?? pagination.next_cursor ?? "").trim();
+  const hasMore = Boolean(root.hasMore ?? root.has_more ?? pagination.hasMore ?? pagination.has_more ?? cursor);
+  return { cursor, hasMore };
+}
 
 async function fetchGandayaEventDetail(alias: string, options: { signal?: AbortSignal } = {}) {
   const response = await fetchExternal(`${GANDAYA_API_BASE}/events/${encodeURIComponent(alias)}`, {
@@ -826,33 +846,49 @@ async function fetchGandayaEventDetail(alias: string, options: { signal?: AbortS
 
 export async function fetchGandayaRegionalEventLinks(options: { signal?: AbortSignal } = {}): Promise<GandayaListingResult> {
   try {
-    const response = await fetchExternal(`${GANDAYA_API_BASE}/events/list?take=${GANDAYA_LISTING_PAGE_SIZE}`, {
-      method: "POST",
-      headers: { accept: "application/json", "content-type": "application/json", "user-agent": "WeekendVibes/1.0", "cache-control": "no-cache" },
-      body: JSON.stringify({}),
-    }, GANDAYA_FETCH_TIMEOUT_MS, false, options.signal);
-    const payload = parseGandayaListingPayload(await readExternalBody(response));
-    if (!payload) return { urls: [], listingCount: 0, regionalFiltered: 0, status: "failed", message: "API Gandaya retornou JSON inválido." };
-    const allEvents = extractGandayaListingEvents(payload);
+    const allEvents: GandayaListingEvent[] = [];
+    let cursor = "";
+    let truncated = false;
+    for (let page = 0; page < 5; page += 1) {
+      const response = await fetchExternal(`${GANDAYA_API_BASE}/events/list?take=${GANDAYA_LISTING_PAGE_SIZE}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, {
+        method: "POST",
+        headers: { accept: "application/json", "content-type": "application/json", "user-agent": "WeekendVibes/1.0", "cache-control": "no-cache" },
+        body: JSON.stringify(cursor ? { cursor, take: GANDAYA_LISTING_PAGE_SIZE } : {}),
+      }, GANDAYA_FETCH_TIMEOUT_MS, false, options.signal);
+      const payload = parseGandayaListingPayload(await readExternalBody(response));
+      if (!payload) return { urls: [], listingCount: 0, regionalFiltered: 0, regionalAliases: 0, detailsAttempted: 0, detailsFailed: 0, outsideRegion: 0, missingGenre: 0, futureEligible: 0, truncated: false, status: "failed", message: "API Gandaya retornou JSON inválido." };
+      allEvents.push(...extractGandayaListingEvents(payload));
+      const pagination = readGandayaPagination(payload);
+      if (!pagination.hasMore || !pagination.cursor) break;
+      cursor = pagination.cursor;
+      if (page === 4) truncated = true;
+    }
     const aliases = Array.from(new Set(allEvents.map(event => typeof event.alias === "string" ? event.alias.trim() : "").filter(Boolean)));
     const details = await fetchWithConcurrency(aliases, alias => fetchGandayaEventDetail(alias, options), 8);
     const regional = new Set<string>();
     let detailFailures = 0;
+    let missingGenre = 0;
+    let futureEligible = 0;
     for (let index = 0; index < details.length; index += 1) {
       const result = details[index];
       const listingEvent = allEvents.find(event => event.alias === aliases[index]);
-      if (result.status === "fulfilled" && result.value && isGandayaRegionalCandidate({ city: result.value.city, address: result.value.address, location: result.value.locationName, text: result.value.text })) regional.add(aliases[index]);
+      if (result.status === "fulfilled" && result.value) {
+        const isFuture = isFutureEventValue(result.value.eventDate);
+        if (isFuture) futureEligible += 1;
+        if (!result.value.genre) missingGenre += 1;
+        if (isFuture && isGandayaRegionalCandidate({ city: result.value.city, address: result.value.address, location: result.value.locationName, text: result.value.text })) regional.add(aliases[index]);
+      }
       else if (result.status === "fulfilled" && listingEvent && isGandayaRegionalCandidate({ text: gandayaListingCandidateText(listingEvent) })) regional.add(aliases[index]);
       else if (result.status === "rejected") detailFailures += 1;
     }
     const urls = Array.from(regional, gandayaEventUrl).filter(Boolean);
     const regionalFiltered = Math.max(0, aliases.length - regional.size);
     const message = urls.length > 0
-      ? `${urls.length} alias(es) regionais encontrados após enriquecer ${aliases.length} detalhe(s); ${regionalFiltered} fora de Santos/Guarujá${detailFailures ? `; ${detailFailures} detalhe(s) falharam` : ""}.`
-      : `Nenhum alias regional encontrado após enriquecer ${aliases.length} detalhe(s)${detailFailures ? `; ${detailFailures} detalhe(s) falharam` : ""}.`;
-    return { urls, listingCount: aliases.length, regionalFiltered, status: urls.length > 0 ? "succeeded" : "empty", message };
+      ? `${urls.length} alias(es) regionais encontrados; listing=${aliases.length}, detalhes=${aliases.length}, falhas=${detailFailures}, foraRegiao=${regionalFiltered}, semGenero=${missingGenre}, futuros=${futureEligible}${truncated ? "; catálogo truncado no limite de páginas" : ""}.`
+      : `Nenhum alias regional encontrado; listing=${aliases.length}, detalhes=${aliases.length}, falhas=${detailFailures}, foraRegiao=${regionalFiltered}, semGenero=${missingGenre}, futuros=${futureEligible}${truncated ? "; catálogo truncado no limite de páginas" : ""}.`;
+    return { urls, listingCount: aliases.length, regionalFiltered, regionalAliases: regional.size, detailsAttempted: aliases.length, detailsFailed: detailFailures, outsideRegion: regionalFiltered, missingGenre, futureEligible, truncated, status: urls.length > 0 ? "succeeded" : "empty", message };
   } catch (error) {
-    return { urls: [], listingCount: 0, regionalFiltered: 0, status: "failed", message: sanitizeFetchFailure(error).message };
+    return { urls: [], listingCount: 0, regionalFiltered: 0, regionalAliases: 0, detailsAttempted: 0, detailsFailed: 0, outsideRegion: 0, missingGenre: 0, futureEligible: 0, truncated: false, status: "failed", message: sanitizeFetchFailure(error).message };
   }
 }
 
@@ -1629,12 +1665,19 @@ export type ApifyCatalogFallbackResult = {
   attempted: boolean;
   status: "not_configured" | "succeeded" | "empty" | "timeout" | "failed";
   message?: string;
+  httpStatus?: number | null;
+  finalUrl?: string | null;
+  debugTitle?: string;
+  cardsBeforeScroll?: number;
+  cardsAfterScroll?: number;
+  linksByDomain?: Record<string, number>;
+  retryable?: boolean;
 };
 
 export function buildApifyCatalogPayload(urls: string[], actorId = process.env.APIFY_CATALOG_ACTOR_ID || process.env.APIFY_WEB_ACTOR_ID || "apify~cheerio-scraper") {
   const eventPathExpression = "/\\/(?:evento|eventos|e|event)\\/[^\\/]+(?:\\/[^\\/]*)?$/i";
   const pageFunction = actorId.toLowerCase().includes("puppeteer")
-    ? `async ({ page, request }) => { try { await page.waitForSelector('a[href]', { timeout: 8000 }); } catch (_) {} await page.evaluate(() => window.scrollBy(0, Math.min(window.innerHeight * 2, 1600))); const result = await page.$$eval('a[href]', anchors => { const pattern = new RegExp(${JSON.stringify(eventPathExpression.slice(1, -2))}, 'i'); const links = anchors.map(anchor => ({ url: new URL(anchor.href, location.href).href, title: (anchor.textContent || anchor.getAttribute('aria-label') || '').replace(/\\s+/g, ' ').trim() })).filter(item => { const parsed = new URL(item.url); const allowedHost = parsed.hostname === 'bileto.sympla.com.br' || /(^|\\.)sympla\\.com\\.br$/i.test(parsed.hostname); return allowedHost && pattern.test(parsed.pathname) && !/^\\/eventos\\/(?:santos|guaruja)-sp\\/?$/i.test(parsed.pathname) && !/login|categoria|category|termos|privacidade|ingresso\\?/.test(parsed.pathname + parsed.search); }); return { links: Array.from(new Map(links.map(item => [item.url, item])).values()), debugTitle: document.title }; }); return result.links.length > 0 ? result.links : [{ debugTitle: result.debugTitle }]; }`
+    ? `async ({ page, request }) => { try { await page.waitForSelector('a[href]', { timeout: 8000 }); } catch (_) {} const cardsBeforeScroll = await page.$$eval('a[href]', anchors => anchors.length); await page.evaluate(() => window.scrollBy(0, Math.min(window.innerHeight * 2, 1600))); const result = await page.$$eval('a[href]', anchors => { const pattern = new RegExp(${JSON.stringify(eventPathExpression.slice(1, -2))}, 'i'); const links = anchors.map(anchor => ({ url: new URL(anchor.href, location.href).href, title: (anchor.textContent || anchor.getAttribute('aria-label') || '').replace(/\\s+/g, ' ').trim() })).filter(item => { const parsed = new URL(item.url); const allowedHost = parsed.hostname === 'bileto.sympla.com.br' || /(^|\\.)sympla\\.com\\.br$/i.test(parsed.hostname); return allowedHost && pattern.test(parsed.pathname) && !/^\\/eventos\\/(?:santos|guaruja)-sp\\/?$/i.test(parsed.pathname) && !/login|categoria|category|termos|privacidade|ingresso\\?/.test(parsed.pathname + parsed.search); }); const linksByDomain = links.reduce((acc, item) => { const host = new URL(item.url).hostname; acc[host] = (acc[host] || 0) + 1; return acc; }, {}); return { links: Array.from(new Map(links.map(item => [item.url, item])).values()), debugTitle: document.title, linksByDomain }; }); const telemetry = { cardsBeforeScroll, cardsAfterScroll: result.links.length, linksByDomain: result.linksByDomain || {}, debugTitle: result.debugTitle, finalUrl: location.href }; return result.links.length > 0 ? [{ links: result.links, telemetry }] : [{ debugTitle: result.debugTitle, telemetry }]; }`
     : `async ({ $, request }) => { const pattern = new RegExp(${JSON.stringify(eventPathExpression.slice(1, -2))}, 'i'); return $('a[href]').map((_, anchor) => ({ url: new URL($(anchor).attr('href'), request.url).href, title: $(anchor).text().replace(/\\s+/g, ' ').trim() })).get().filter(item => { const parsed = new URL(item.url); return parsed.origin === new URL(request.url).origin && pattern.test(parsed.pathname) && !/^\\/eventos\\/(?:santos|guaruja)-sp\\/?$/i.test(parsed.pathname) && !/login|categoria|category|termos|privacidade|ingresso\\?/.test(parsed.pathname + parsed.search); }).filter((item, index, all) => all.findIndex(candidate => candidate.url === item.url) === index); }`;
   return {
     startUrls: urls.slice(0, 2).map(url => ({ url })),
@@ -1684,11 +1727,15 @@ export async function fetchApifyCatalogLinks(urls: string[], options: { signal?:
         // A resposta pode ser texto de erro da API; o status/mensagem já será preservado.
       }
     }
+    const records = (() => { try { const parsed = JSON.parse(body) as unknown; return Array.isArray(parsed) ? parsed : [parsed]; } catch { return []; } })();
+    const telemetry = records.find(record => record && typeof record === "object" && "telemetry" in record) as { telemetry?: Record<string, unknown> } | undefined;
+    const linksByDomain = links.reduce<Record<string, number>>((counts, link) => { try { const host = new URL(link).hostname; counts[host] = (counts[host] ?? 0) + 1; } catch { /* ignore */ } return counts; }, {});
     const emptyDiagnostic = debugTitle ? `debugTitle: ${debugTitle}` : datasetWasEmpty ? "dataset vazio (sem debugTitle)" : "dataset sem links de evento";
-    return { links, attempted: true, status: links.length > 0 ? "succeeded" : "empty", message: links.length > 0 ? `${links.length} link(s) de evento extraído(s) pelo Actor.` : `Actor concluiu sem retornar links de evento; ${emptyDiagnostic}.` };
+    return { links, attempted: true, status: links.length > 0 ? "succeeded" : "empty", httpStatus: response.status, finalUrl: response.url || null, debugTitle, linksByDomain, cardsBeforeScroll: Number(telemetry?.telemetry?.cardsBeforeScroll ?? 0) || 0, cardsAfterScroll: Number(telemetry?.telemetry?.cardsAfterScroll ?? 0) || 0, message: links.length > 0 ? `${links.length} link(s) de evento extraído(s) pelo Actor.` : `Actor concluiu sem retornar links de evento; ${emptyDiagnostic}.` };
   } catch (error) {
     const message = sanitizeFetchFailure(error).message;
-    return { links: [], attempted: true, status: isTimeoutFailure(error) ? "timeout" : "failed", message };
+    const failure = sanitizeFetchFailure(error);
+    return { links: [], attempted: true, status: isTimeoutFailure(error) ? "timeout" : "failed", httpStatus: failure.httpStatus ?? failure.status, retryable: failure.retryable, message };
   }
 }
 
@@ -1853,9 +1900,10 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
     return leftIsSympla - rightIsSympla;
   });
   const discovered = new Set([...crawlBases.filter(url => !isPublicCatalogUrl(url)), ...regionalArticketCandidates.regional.map(candidate => candidate.url)]);
-  const apifyStats: Array<{ sourceKey: string; urls: string[]; status: ApifyCatalogFallbackResult["status"]; attempted: boolean; message?: string }> = [];
+  const apifyStats: Array<{ sourceKey: string; urls: string[]; status: ApifyCatalogFallbackResult["status"]; attempted: boolean; message?: string; httpStatus?: number | null; retryable?: boolean }> = [];
   let gandayaApiStatus: GandayaListingResult["status"] | undefined;
   let gandayaApiMessage: string | undefined;
+  let gandayaDiagnostics: Omit<GandayaListingResult, "urls" | "status" | "message"> | undefined;
   const basePages = await fetchWithConcurrency(crawlBases, url => guardedFetchPublicPage(url, { ...options, bypassCircuitBreaker: options.exploratoryApify === true }), PUBLIC_FETCH_CONCURRENCY);
   const exploratoryApifyActorId = getExploratoryApifyActorId();
   const browserApifySymplaUrls = options.exploratoryApify ? getExploratoryApifyCatalogUrls() : [];
@@ -1864,12 +1912,13 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
     const fallback = await fetchApifyCatalogLinks(browserApifySymplaUrls, { ...options, actorId: exploratoryApifyActorId });
     for (const link of fallback.links) discovered.add(link);
     browserApifySymplaUrls.forEach(url => browserApifyCompleted.add(sanitizePublicSourceUrl(url)));
-    apifyStats.push({ sourceKey: "public:sympla", urls: browserApifySymplaUrls, status: fallback.status, attempted: fallback.attempted, message: fallback.message });
+    apifyStats.push({ sourceKey: "public:sympla", urls: browserApifySymplaUrls, status: fallback.status, attempted: fallback.attempted, message: fallback.message, httpStatus: fallback.httpStatus, retryable: fallback.retryable });
   }
   if (options.exploratoryApify && bases.some(url => publicSourceKey(url) === "public:gandaya")) {
     const gandayaListing = await fetchGandayaRegionalEventLinks(options);
     gandayaApiStatus = gandayaListing.status;
     gandayaApiMessage = gandayaListing.message;
+    gandayaDiagnostics = { regionalFiltered: gandayaListing.regionalFiltered, listingCount: gandayaListing.listingCount, regionalAliases: gandayaListing.regionalAliases, detailsAttempted: gandayaListing.detailsAttempted, detailsFailed: gandayaListing.detailsFailed, outsideRegion: gandayaListing.outsideRegion, missingGenre: gandayaListing.missingGenre, futureEligible: gandayaListing.futureEligible, truncated: gandayaListing.truncated };
     gandayaRegionalFiltered += gandayaListing.regionalFiltered;
     for (const link of gandayaListing.urls) discovered.add(link);
   }
@@ -1920,7 +1969,7 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
     if (extractedLinks.length === 0 && apifyEligible && !browserApifyCompleted.has(sanitizePublicSourceUrl(baseUrl)) && !isExploratoryNonSymplaCatalog) {
       const fallback = await fetchApifyCatalogLinks([baseUrl], options);
       for (const link of fallback.links) discovered.add(link);
-      apifyStats.push({ sourceKey: publicSourceKey(baseUrl), urls: [baseUrl], status: fallback.status, attempted: fallback.attempted, message: fallback.message });
+      apifyStats.push({ sourceKey: publicSourceKey(baseUrl), urls: [baseUrl], status: fallback.status, attempted: fallback.attempted, message: fallback.message, httpStatus: fallback.httpStatus, retryable: fallback.retryable });
     }
     if (!page) continue;
     if (publicSourceKey(baseUrl) === "public:gandaya") {
@@ -1960,11 +2009,12 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
       const belongsToRequestedSource = !requestedSourceUrls || requestedSourceUrls.some(requested => requested === sanitizePublicSourceUrl(url) || (isPublicCatalogUrl(requested) && publicSourceKey(requested) === publicSourceKey(url)));
       return belongsToSource && belongsToRequestedSource && (!host.endsWith("zig.tickets") || url !== "https://zig.tickets/pt-BR");
     } catch { return false; }
-  }).slice(0, 120), articketRegionalFiltered: regionalArticketCandidates.filtered.length, gandayaRegionalFiltered, gandayaApiStatus, gandayaApiMessage, apifyStats };
+  }).slice(0, 120), articketRegionalFiltered: regionalArticketCandidates.filtered.length, gandayaRegionalFiltered, gandayaApiStatus, gandayaApiMessage, gandayaDiagnostics, apifyStats };
 }
 
 export type IngestionSourceReport = {
   sourceKey: string;
+  funnel?: { fetched: number; parsed: number; rejectedByCity: number; rejectedByGenre: number; rejectedByDate: number; duplicate: number; eligible: number; persisted: number; blocked: number; empty: number };
   read: number;
   filtered: number;
   persistable: number;
@@ -2008,6 +2058,7 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
     if (current) return current;
     const created: IngestionSourceReport & { latencySamples: number[] } = {
       sourceKey,
+      funnel: { fetched: 0, parsed: 0, rejectedByCity: 0, rejectedByGenre: 0, rejectedByDate: 0, duplicate: 0, eligible: 0, persisted: 0, blocked: 0, empty: 0 },
       read: 0,
       filtered: 0,
       persistable: 0,
@@ -2030,8 +2081,10 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
   input.candidateUrls.forEach((url, index) => {
     const report = getReport(publicSourceKey(url));
     report.read += 1;
+    report.funnel!.fetched += 1;
     const page = input.pages[index];
     if (!page || page.status === "rejected") {
+      report.funnel!.blocked += 1;
       report.rejectionReasons.fetchFailed += 1;
       if (page?.status === "rejected") {
         const failure = sanitizeFetchFailure(page.reason);
@@ -2048,13 +2101,17 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
     report.latencySamples.push(durationMs);
     if (page.value.circuitOpen) {
       report.rejectionReasons.fetchFailed += 1;
+      report.funnel!.blocked += 1;
         report.errors.push({ sourceUrl: url, url, sourceKey: publicSourceKey(url), status: null, httpStatus: null, errorCode: "UPSTREAM_UNAVAILABLE", retryable: true, attempts: 0, message: "Fonte pausada pelo Circuit Breaker durante o cooldown." });
     } else if (input.matchesTargetVenue && !input.matchesTargetVenue(page.value.text)) {
       report.filtered += 1;
       report.rejectionReasons.outsideTargetVenue += 1;
+      report.funnel!.rejectedByCity += 1;
     } else if (page.value.cacheFallback?.used) {
         report.errors.push({ sourceUrl: url, url, sourceKey: publicSourceKey(url), status: page.value.cacheFallback.status, httpStatus: page.value.cacheFallback.status, errorCode: "UPSTREAM_UNAVAILABLE", retryable: true, attempts: 1, message: `Fallback utilizado: ${page.value.cacheFallback.message}` });
     }
+    if (!page.value.text.trim() && !page.value.structured) report.funnel!.empty += 1;
+    else report.funnel!.parsed += 1;
     if (page.value.adapterError && !isHealthyEmptyPublicPage(page.value)) {
       report.errors.push({ sourceUrl: url, url, sourceKey: publicSourceKey(url), status: null, httpStatus: null, errorCode: "PARSE_EMPTY", retryable: false, attempts: 1, message: page.value.adapterError });
     }
@@ -2064,6 +2121,8 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
     const report = getReport(rejected.sourceKey);
     report.filtered += 1;
     report.rejectionReasons[rejected.reason] += 1;
+    if (rejected.reason === "pastEvent") report.funnel!.rejectedByDate += 1;
+    else report.funnel!.rejectedByGenre += 1;
   }
   for (const sourceKey of input.duplicateSourceKeys ?? []) {
     const report = getReport(sourceKey);
@@ -2071,6 +2130,7 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
     report.ignored += 1;
     report.filtered += 1;
     report.rejectionReasons.duplicate += 1;
+    report.funnel!.duplicate += 1;
   }
   for (const outcome of input.sourceOutcomes ?? []) {
     const report = getReport(outcome.sourceKey);
@@ -2080,6 +2140,7 @@ function buildPublicSourceReports(input: PublicSourceReportInput): IngestionSour
   }
   return Array.from(reports.values()).map(report => ({
     ...report,
+    funnel: { ...report.funnel!, eligible: report.persistable + report.added + report.updated, persisted: report.added + report.updated },
     regionalProcessed: report.sourceKey === "public:articket" || report.sourceKey === "public:gandaya" ? report.read : 0,
     ignored: report.filtered,
     medianDurationMs: percentile(report.latencySamples, 50),
