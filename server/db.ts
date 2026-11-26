@@ -24,15 +24,46 @@ export function throwDatabaseUnavailable(operation = "administrative query"): ne
 }
 
 export function getDatabaseErrorDiagnostic(error: unknown) {
-  const value = error && typeof error === "object" ? error as { code?: unknown; errno?: unknown; message?: unknown } : {};
-  const code = typeof value.code === "string" && /^[0-9A-Z_]{2,16}$/.test(value.code) ? value.code : null;
-  if (code) return `PG:${code}`;
-  const errno = typeof value.errno === "string" && /^[0-9A-Z_]{2,16}$/.test(value.errno) ? value.errno : null;
-  if (errno) return `ERR:${errno}`;
-  const message = typeof value.message === "string" ? value.message.toLowerCase() : "";
+  const causes: Array<{ code?: unknown; errno?: unknown; message?: unknown }> = [];
+  const visited = new Set<object>();
+  let current: unknown = error;
+  for (let depth = 0; depth < 8 && current && typeof current === "object" && !visited.has(current); depth += 1) {
+    visited.add(current);
+    const value = current as { code?: unknown; errno?: unknown; message?: unknown; cause?: unknown };
+    causes.push(value);
+    current = value.cause;
+  }
+  const code = causes.map(value => value.code).find(value => typeof value === "string" && /^[0-9A-Z_]{2,16}$/.test(value));
+  if (typeof code === "string") {
+    const kind = ({
+      "42P01": "relation_missing",
+      "42703": "column_missing",
+      "22P02": "invalid_parameter",
+      "57014": "query_canceled",
+      "23505": "unique_violation",
+    } as Record<string, string>)[code];
+    return `PG:${code}${kind ? `:${kind}` : ""}`;
+  }
+  const errno = causes.map(value => value.errno).find(value => typeof value === "string" && /^[0-9A-Z_]{2,16}$/.test(value));
+  if (typeof errno === "string") return `ERR:${errno}`;
+  const message = causes.map(value => typeof value.message === "string" ? value.message : "").join(" ").toLowerCase();
   if (/timeout|timed out|canceling statement/i.test(message)) return "ERR:timeout";
   if (/connection|connect|socket|network/i.test(message)) return "ERR:connection";
-  return "ERR:query";
+  if (/invalid.*date|invalid.*time|date.*parameter/i.test(message)) return "ERR:QUERY:invalid_date_param";
+  return "ERR:QUERY";
+}
+
+export function toPostgresDateParameter(value: Date | string | number, name = "date") {
+  const date = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`invalid_${name}_date_parameter`);
+  }
+  return date;
+}
+
+export function isOperationalSchemaError(error: unknown) {
+  const diagnostic = getDatabaseErrorDiagnostic(error);
+  return diagnostic.startsWith("PG:42P01") || diagnostic.startsWith("PG:42703");
 }
 
 const OPERATIONAL_SCHEMA_COLUMNS = {
@@ -59,6 +90,37 @@ export async function getOperationalSchemaDiagnostics(dbOverride?: Awaited<Retur
 }
 
 export { OPERATIONAL_SCHEMA_COLUMNS };
+
+const OPERATIONAL_SCHEMA_REPAIR_COLUMNS: Record<string, Record<string, string>> = {
+  ingestionRuns: {
+    routine: 'varchar(64) DEFAULT \'unknown\' NOT NULL', sourceKey: 'varchar(255)', status: 'text DEFAULT \'running\' NOT NULL', importedCount: 'integer DEFAULT 0 NOT NULL', failedCount: 'integer DEFAULT 0 NOT NULL', duration_ms: 'integer', httpStatus: 'integer', counts: 'text', details: 'text', startedAt: 'timestamp DEFAULT now() NOT NULL', finishedAt: 'timestamp',
+  },
+  operationalAlerts: {
+    integration: 'text DEFAULT \'pipeline\' NOT NULL', severity: 'text DEFAULT \'WARNING\' NOT NULL', alertType: 'varchar(80) DEFAULT \'operational\' NOT NULL', slaMinutes: 'integer DEFAULT 1440 NOT NULL', runId: 'varchar(32)', title: 'varchar(180) DEFAULT \'Operational alert\' NOT NULL', message: 'text DEFAULT \'\' NOT NULL', fingerprint: 'varchar(64) DEFAULT md5(random()::text || clock_timestamp()::text) NOT NULL', isResolved: 'integer DEFAULT 0 NOT NULL', createdAt: 'timestamp DEFAULT now() NOT NULL', updatedAt: 'timestamp DEFAULT now() NOT NULL',
+  },
+  ingestionSources: {
+    sourceKey: 'varchar(120) DEFAULT \'unknown\' NOT NULL', name: 'varchar(180) DEFAULT \'Unknown source\' NOT NULL', kind: 'text DEFAULT \'public\' NOT NULL', handle: 'varchar(180)', url: 'varchar(1000) DEFAULT \'\' NOT NULL', isEnabled: 'integer DEFAULT 1 NOT NULL', priority: 'integer DEFAULT 50 NOT NULL', frequencyMinutes: 'integer DEFAULT 10080 NOT NULL', p95LatencyThresholdMs: 'integer DEFAULT 3000 NOT NULL', scheduleTaskUid: 'varchar(65)', lastAttemptAt: 'timestamp', lastSuccessAt: 'timestamp', lastStatus: 'text DEFAULT \'never\' NOT NULL', lastMessage: 'text', lastExecutionFeedback: 'varchar(1000)', lastHttpStatus: 'integer', lastFailureReason: 'varchar(500)', circuitState: 'text DEFAULT \'closed\' NOT NULL', circuitFailureCount: 'integer DEFAULT 0 NOT NULL', circuitOpenedAt: 'timestamp', circuitNextAttemptAt: 'timestamp', circuitLastError: 'text', consecutive403Count: 'integer DEFAULT 0 NOT NULL', last403AlertedAt: 'timestamp', createdAt: 'timestamp DEFAULT now() NOT NULL', updatedAt: 'timestamp DEFAULT now() NOT NULL',
+  },
+};
+
+export async function ensureOperationalSchemaCompatibility(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) throwDatabaseUnavailable("operational schema compatibility");
+  if (typeof (db as { execute?: unknown }).execute !== "function") return [];
+  const diagnostics = await getOperationalSchemaDiagnostics(db);
+  for (const item of diagnostics) {
+    if (item.tableExists && item.missing.length === 0) continue;
+    if (!item.tableExists) await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS "${item.table}" ("id" serial PRIMARY KEY)`));
+    const present = new Set(item.present);
+    for (const column of item.missing) {
+      if (column === "id") continue;
+      const definition = OPERATIONAL_SCHEMA_REPAIR_COLUMNS[item.table]?.[column];
+      if (!definition || present.has(column)) continue;
+      await db.execute(sql.raw(`ALTER TABLE "${item.table}" ADD COLUMN IF NOT EXISTS "${column}" ${definition}`));
+    }
+  }
+  return getOperationalSchemaDiagnostics(db);
+}
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
@@ -395,7 +457,8 @@ export async function recordOperationalAlert(input: { integration: OperationalIn
 export async function listOperationalAlerts(limit = 25, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
   if (!db) throwDatabaseUnavailable();
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  await ensureOperationalSchemaCompatibility(db);
+  const cutoff = toPostgresDateParameter(new Date(Date.now() - 24 * 60 * 60 * 1000), "alerts_cutoff");
   const rows = await db.select({ id: operationalAlerts.id, alertType: operationalAlerts.alertType, severity: operationalAlerts.severity, title: operationalAlerts.title, message: operationalAlerts.message, runId: operationalAlerts.runId, isResolved: operationalAlerts.isResolved, createdAt: operationalAlerts.createdAt, updatedAt: operationalAlerts.updatedAt }).from(operationalAlerts).where(and(eq(operationalAlerts.isResolved, 0), gte(operationalAlerts.createdAt, cutoff))).orderBy(desc(operationalAlerts.createdAt)).limit(Math.min(100, Math.max(1, Math.trunc(limit))));
   return rows.map(row => ({ id: row.id, alertType: row.alertType, severity: row.severity, title: row.title, message: row.message, runId: row.runId ?? null, isResolved: row.isResolved === 1, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() }));
 }

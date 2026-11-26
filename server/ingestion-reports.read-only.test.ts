@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { listIngestionReport, runReportStage } from "./ingestion-reports";
-import { getDatabaseErrorDiagnostic } from "./db";
+import { getDatabaseErrorDiagnostic, toPostgresDateParameter } from "./db";
 import { readFileSync as readSqlFile } from "node:fs";
 import { OPERATIONAL_SCHEMA_COLUMNS } from "./db";
 
@@ -35,9 +35,17 @@ describe("listIngestionReport — contrato somente leitura", () => {
   });
 
   it("normaliza códigos PostgreSQL sem expor mensagem, URL ou stack", () => {
-    expect(getDatabaseErrorDiagnostic(Object.assign(new Error("password=secret host=db.internal"), { code: "42703" }))).toBe("PG:42703");
-    expect(getDatabaseErrorDiagnostic(Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014" }))).toBe("PG:57014");
+    expect(getDatabaseErrorDiagnostic(Object.assign(new Error("password=secret host=db.internal"), { code: "42703" }))).toBe("PG:42703:column_missing");
+    expect(getDatabaseErrorDiagnostic(Object.assign(new Error("wrapper"), { cause: Object.assign(new Error("canceling statement"), { code: "57014" }) }))).toBe("PG:57014:query_canceled");
+    expect(getDatabaseErrorDiagnostic(Object.assign(new Error("outer"), { cause: Object.assign(new Error("relation missing"), { cause: Object.assign(new Error("missing relation"), { code: "42P01" }) }) }))).toBe("PG:42P01:relation_missing");
     expect(getDatabaseErrorDiagnostic(new Error("connect ECONNRESET"))).toBe("ERR:connection");
+    expect(getDatabaseErrorDiagnostic(new Error("invalid date parameter"))).toBe("ERR:QUERY:invalid_date_param");
+  });
+
+  it("não envia uma data inválida ao driver PostgreSQL", () => {
+    const date = toPostgresDateParameter("2026-11-26T17:00:00.000Z", "report_cutoff");
+    expect(date.toISOString()).toBe("2026-11-26T17:00:00.000Z");
+    expect(() => toPostgresDateParameter("not-a-date", "report_cutoff")).toThrow("invalid_report_cutoff_date_parameter");
   });
 
   it("mantém o contrato das três tabelas alinhado às migrations PostgreSQL", () => {

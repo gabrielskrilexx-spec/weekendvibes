@@ -13,7 +13,7 @@ import {
   classifyCriticalMetaReason,
   sendCriticalMetaAlert,
 } from "./meta-alert-webhook";
-import { getDb, recordIngestionSourceReportSummary, recordOperationalAlert } from "./db";
+import { ensureOperationalSchemaCompatibility, getDatabaseErrorDiagnostic, getDb, recordIngestionSourceReportSummary, recordOperationalAlert, toPostgresDateParameter } from "./db";
 import { buildIngestionSourceReportSummaries } from "./ingestion-source-report";
 import { registerBackgroundTask } from "./background-tasks";
 import {
@@ -156,7 +156,7 @@ export async function runReportStage<T>(
     const message = safeReportError(error);
     console.error("[Admin reports] stage failed", {
       stage,
-      code: error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : undefined,
+      code: getDatabaseErrorDiagnostic(error),
       message,
     });
     return { value: fallback, diagnostic: `stage:${stage}` };
@@ -1793,10 +1793,11 @@ export async function listIngestionReport(
       message: "O banco de dados do relatório operacional está indisponível. Tente novamente em instantes.",
     });
   }
+  await ensureOperationalSchemaCompatibility(db);
   const safeSize = Math.min(Math.max(size, 1), 50);
   const periodDays = filters.periodDays ?? 7;
   const reportDiagnostics: string[] = [];
-  const cutoff = periodDays === "all" ? null : new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000);
+  const cutoff = periodDays === "all" ? null : toPostgresDateParameter(new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000), "report_cutoff");
   const sqlFilters = cutoff ? [gte(ingestionRuns.startedAt, cutoff)] : [];
   if (filters.routine)
     sqlFilters.push(eq(ingestionRuns.routine, filters.routine));
