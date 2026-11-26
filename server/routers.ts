@@ -562,15 +562,64 @@ const reprocessSandboxOutput = z
   .strict();
 const reprocessOutput = z.union([reprocessResultOutput, reprocessSandboxOutput]);
 
+const discoveryFunnelOutput = z.object({
+  fetched: z.number().int().nonnegative(),
+  parsed: z.number().int().nonnegative(),
+  rejectedByCity: z.number().int().nonnegative(),
+  rejectedByGenre: z.number().int().nonnegative(),
+  rejectedByDate: z.number().int().nonnegative(),
+  duplicate: z.number().int().nonnegative(),
+  eligible: z.number().int().nonnegative(),
+  persisted: z.number().int().nonnegative(),
+  blocked: z.number().int().nonnegative(),
+  empty: z.number().int().nonnegative(),
+}).strict();
+const discoveryPlatformStatOutput = z.object({
+  platform: z.string(),
+  funnel: discoveryFunnelOutput,
+  state: z.enum(["ok", "blocked", "catalog_empty", "no_eligible_events", "all_events_filtered"]).optional(),
+  blockedReasons: z.array(z.object({ httpStatus: z.number().int().nullable(), retryable: z.boolean(), message: z.string() }).strict()).optional(),
+  apiDiagnostics: z.object({
+    listingCount: z.number().int().nonnegative(),
+    regionalFiltered: z.number().int().nonnegative(),
+    regionalAliases: z.number().int().nonnegative(),
+    detailsAttempted: z.number().int().nonnegative(),
+    detailsFailed: z.number().int().nonnegative(),
+    outsideRegion: z.number().int().nonnegative(),
+    missingGenre: z.number().int().nonnegative(),
+    futureEligible: z.number().int().nonnegative(),
+    truncated: z.boolean(),
+  }).strict().optional(),
+  totalUrls: z.number().int().nonnegative(),
+  totalEvents: z.number().int().nonnegative(),
+  discardedByCity: z.number().int().nonnegative(),
+  discardedByGenre: z.number().int().nonnegative(),
+  duplicates: z.number().int().nonnegative(),
+  duplicateItems: z.array(z.object({ title: z.string(), url: z.string() }).strict()).max(50),
+  failures: z.number().int().nonnegative(),
+  emptyPages: z.number().int().nonnegative(),
+  apifyStatus: z.enum(["not_configured", "succeeded", "empty", "timeout", "failed"]).optional(),
+  apifyMessage: z.string().optional(),
+  apifyUrls: z.array(z.string().url()).optional(),
+  apiStatus: z.enum(["succeeded", "empty", "failed"]).optional(),
+  apiMessage: z.string().optional(),
+}).strict();
+export const discoveryScanOutput = z.object({
+  scannedPages: z.number().int().nonnegative(),
+  eligible: z.number().int().nonnegative(),
+  inserted: z.number().int().nonnegative(),
+  duplicates: z.number().int().nonnegative(),
+  filtered: z.number().int().nonnegative(),
+  errors: z.number().int().nonnegative(),
+  funnel: discoveryFunnelOutput,
+  platformStats: z.array(discoveryPlatformStatOutput),
+}).strict();
+
 export const appRouter = router({
   discovery: router({
     scanNow: adminOnly
       .input(z.object({ sourceUrls: z.array(z.string().url()).max(50).optional() }).strict().default({}))
-      .output(z.object({
-        scannedPages: z.number().int().nonnegative(), eligible: z.number().int().nonnegative(), inserted: z.number().int().nonnegative(), duplicates: z.number().int().nonnegative(), filtered: z.number().int().nonnegative(), errors: z.number().int().nonnegative(),
-        funnel: z.object({ fetched: z.number().int().nonnegative(), parsed: z.number().int().nonnegative(), rejectedByCity: z.number().int().nonnegative(), rejectedByGenre: z.number().int().nonnegative(), rejectedByDate: z.number().int().nonnegative(), duplicate: z.number().int().nonnegative(), eligible: z.number().int().nonnegative(), persisted: z.number().int().nonnegative(), blocked: z.number().int().nonnegative(), empty: z.number().int().nonnegative() }).strict(),
-        platformStats: z.array(z.object({ platform: z.string(), funnel: z.object({ fetched: z.number().int().nonnegative(), parsed: z.number().int().nonnegative(), rejectedByCity: z.number().int().nonnegative(), rejectedByGenre: z.number().int().nonnegative(), rejectedByDate: z.number().int().nonnegative(), duplicate: z.number().int().nonnegative(), eligible: z.number().int().nonnegative(), persisted: z.number().int().nonnegative(), blocked: z.number().int().nonnegative(), empty: z.number().int().nonnegative() }).strict(), state: z.enum(["ok", "blocked", "catalog_empty", "no_eligible_events", "all_events_filtered"]).optional(), blockedReasons: z.array(z.object({ httpStatus: z.number().int().nullable(), retryable: z.boolean(), message: z.string() }).strict()).optional(), totalUrls: z.number().int().nonnegative(), totalEvents: z.number().int().nonnegative(), discardedByCity: z.number().int().nonnegative(), discardedByGenre: z.number().int().nonnegative(), duplicates: z.number().int().nonnegative(), duplicateItems: z.array(z.object({ title: z.string(), url: z.string() }).strict()).max(50), failures: z.number().int().nonnegative(), emptyPages: z.number().int().nonnegative(), apifyStatus: z.enum(["not_configured", "succeeded", "empty", "timeout", "failed"]).optional(), apifyMessage: z.string().optional(), apifyUrls: z.array(z.string().url()).optional(), apiStatus: z.enum(["succeeded", "empty", "failed"]).optional(), apiMessage: z.string().optional() }).strict()),
-      }).strict())
+      .output(discoveryScanOutput)
       .mutation(({ input }) => runGenreDiscoveryScan(input)),
     list: adminOnly
       .input(z.object({ status: z.enum(["pending", "approved", "rejected"]).default("pending"), genre: z.enum(DISCOVERY_GENRES).optional(), city: z.enum(DISCOVERY_CITIES).optional(), limit: z.number().int().positive().max(200).default(50), offset: z.number().int().nonnegative().default(0) }).strict())

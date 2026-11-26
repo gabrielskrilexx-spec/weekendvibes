@@ -154,7 +154,7 @@ export type DiscoveryPlatformStat = {
   };
   state?: "ok" | "blocked" | "catalog_empty" | "no_eligible_events" | "all_events_filtered";
   blockedReasons?: Array<{ httpStatus: number | null; retryable: boolean; message: string }>;
-  apiDiagnostics?: { listingCount: number; regionalAliases: number; detailsAttempted: number; detailsFailed: number; outsideRegion: number; missingGenre: number; futureEligible: number; truncated: boolean };
+  apiDiagnostics?: { listingCount: number; regionalFiltered: number; regionalAliases: number; detailsAttempted: number; detailsFailed: number; outsideRegion: number; missingGenre: number; futureEligible: number; truncated: boolean };
   totalUrls: number;
   totalEvents: number;
   discardedByCity: number;
