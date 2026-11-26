@@ -243,6 +243,7 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     const alert = tree!.root.findByProps({ "data-testid": "admin-reports-error" });
     expect(JSON.stringify(tree!.toJSON())).toContain("serviço ou banco de dados está indisponível");
     expect(JSON.stringify(tree!.toJSON())).not.toContain("nenhum evento");
+    expect(JSON.stringify(tree!.toJSON())).toContain('"—"');
     expect(tree!.root.findByProps({ "aria-label": "Atualizar relatórios" })).toBeTruthy();
   });
 

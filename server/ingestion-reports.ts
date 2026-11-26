@@ -1761,44 +1761,14 @@ export async function listIngestionReport(
   filters: IngestionReportFilters = {}
 ) {
   const db = await getDb();
-  if (!db)
-    return {
-      runs: [],
-      alerts: [],
-      criticalAlerts: [],
-      consecutiveFailures: [],
-      repeatedPartials: [],
-      wafPersistentAlerts: [],
-      sourceMetrics: [],
-      sourceTelemetry: [],
-      freshness: [],
-      timeline: [],
-      reconciliationBySource: [],
-      weeklyTrend: [],
-      weeklySummary: {
-        runs: 0,
-        retries: 0,
-        fallbackList: 0,
-        duplicates: 0,
-        missingCoordinates: 0,
-        outOfBoundsCoordinates: 0,
-        inconsistentRuns: 0,
-        degradedRuns: 0,
-        rejectedEvents: 0,
-        rejectedPastEvents: 0,
-        rejectedOtherReasons: 0,
-      },
-      metaStatus: {
-        status: "never" as const,
-        lastSuccessfulSync: null,
-        lastAttempt: null,
-      },
-      scheduleStatus: await listRoutineScheduleStatus(),
-      automationStatus: buildAutomationStatusSnapshot([]),
-      filterEvaluatedAt: new Date().toISOString(),
-      pastEventRejectionThreshold: getPastEventRejectionThreshold(),
-      totals: { succeeded: 0, failed: 0, partial: 0, imported: 0 },
-    };
+  if (!db) {
+    // Banco indisponível não significa catálogo vazio. Retornar zeros aqui
+    // fazia o painel parecer saudável e escondia a causa operacional.
+    throw new TRPCError({
+      code: "SERVICE_UNAVAILABLE",
+      message: "O banco de dados do relatório operacional está indisponível. Tente novamente em instantes.",
+    });
+  }
   const safeSize = Math.min(Math.max(size, 1), 50);
   const periodDays = filters.periodDays ?? 7;
   const cutoff = periodDays === "all" ? null : new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000);

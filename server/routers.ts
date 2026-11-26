@@ -1236,18 +1236,31 @@ export const appRouter = router({
           })
           .optional()
       )
-      .query(({ input }) =>
-        listIngestionReport(input?.size ?? 20, {
-          periodDays: input?.periodDays,
-          routine: input?.routine,
-          status: input?.status,
-          trigger: input?.trigger,
-          runId: input?.runId,
-          sourceKey: input?.sourceKey,
-          executionKind: input?.executionKind,
-          telemetryCategory: input?.telemetryCategory,
-        })
-      ),
+      .query(async ({ input }) => {
+        try {
+          return await listIngestionReport(input?.size ?? 20, {
+            periodDays: input?.periodDays,
+            routine: input?.routine,
+            status: input?.status,
+            trigger: input?.trigger,
+            runId: input?.runId,
+            sourceKey: input?.sourceKey,
+            executionKind: input?.executionKind,
+            telemetryCategory: input?.telemetryCategory,
+          });
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          console.error(
+            "[Admin reports] summary query failed",
+            error instanceof Error ? error.message : "unknown error",
+          );
+          throw new TRPCError({
+            code: "SERVICE_UNAVAILABLE",
+            message: "O relatório operacional está temporariamente indisponível por falha na consulta. Tente novamente em instantes.",
+            cause: error,
+          });
+        }
+      }),
     geocoding: adminOnly.query(async () =>
       normalizeJsonForTransport(await listGeocodingSummary())
     ),
