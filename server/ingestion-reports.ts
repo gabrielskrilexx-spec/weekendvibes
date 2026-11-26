@@ -13,7 +13,6 @@ import {
   classifyCriticalMetaReason,
   sendCriticalMetaAlert,
 } from "./meta-alert-webhook";
-import { handleIngestionFailureAlert, notifyConsecutiveFailureWebhook, notifyPerformanceDegradationWebhook } from "./ingestion-failure-alerts";
 import { getDb, recordIngestionSourceReportSummary, recordOperationalAlert } from "./db";
 import { buildIngestionSourceReportSummaries } from "./ingestion-source-report";
 import { registerBackgroundTask } from "./background-tasks";
@@ -1892,12 +1891,6 @@ export async function listIngestionReport(
   }));
   const sourceTelemetry = buildSourceTelemetryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), durationMs: run.durationMs, httpStatus: run.httpStatus, details: run.details })));
   const wafPersistentAlerts = findConsecutiveWafBlocksForTest(trendRuns.map(run => ({ id: Number(run.id), sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, finishedAt: run.finishedAt, httpStatus: run.httpStatus, details: run.details })));
-  await Promise.all(wafPersistentAlerts.map(alert => handleIngestionFailureAlert({ routine: "waf-monitor", sourceKey: alert.sourceKey, integration: alert.sourceKey.startsWith("instagram") ? "meta" : "public", status: 403, severity: "CRITICAL", alertType: "waf_persistent", runId: alert.runIds[0], message: `Fonte ${alert.sourceKey} permanece bloqueada por WAF há ${alert.consecutiveRuns} execuções consecutivas. Última captura válida: ${alert.lastValidCaptureAt ?? "não registrada"}.` })));
-  const performanceAlerts = findConsecutiveP95PerformanceAlertsForTest(
-    trendRuns.map(run => ({ sourceKey: run.sourceKey, routine: run.routine, status: String(run.status), startedAt: run.startedAt, durationMs: run.durationMs })),
-    run => getEffectiveIngestionP95ThresholdForTest(run, sourceConfigs.find(source => source.sourceKey === run.sourceKey)),
-  );
-  await Promise.all(performanceAlerts.map(async alert => { const message = `Desempenho degradado: P95 de ${Math.round(alert.p95LatencyMs)} ms em ${alert.sourceKey}, acima do limite de ${alert.thresholdMs} ms por ${alert.consecutiveRuns} rodadas consecutivas.`; await handleIngestionFailureAlert({ routine: "performance-monitor", sourceKey: alert.sourceKey, integration: alert.sourceKey.startsWith("instagram") ? "meta" : "public", severity: "WARNING", alertType: "performance_degraded", message }); await notifyPerformanceDegradationWebhook({ ...alert, message }); }));
   const sourceTelemetryHistory = buildSourceTelemetryHistoryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, finishedAt: run.finishedAt, durationMs: run.durationMs, details: run.details })));
   const wafProviderHistory = buildWafProviderHistoryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, httpStatus: run.httpStatus, details: run.details })));
   const freshness = sourceConfigs.map(source => ({
@@ -2023,22 +2016,6 @@ export async function listIngestionReport(
       httpStatus: run.httpStatus,
       details: run.details,
     }))
-  );
-  if (repeatedPartials.length === 0) {
-    await db.update(operationalAlerts).set({ isResolved: 1, updatedAt: new Date() }).where(and(eq(operationalAlerts.alertType, "repeated_partial_without_http_failure"), eq(operationalAlerts.isResolved, 0)));
-  }
-  await Promise.all(repeatedPartials.map(alert => handleIngestionFailureAlert({
-    routine: alert.routine,
-    sourceKey: alert.routine,
-    integration: alert.routine.startsWith("instagram") ? "meta" : "public",
-    status: 207,
-    severity: "WARNING",
-    alertType: "repeated_partial_without_http_failure",
-    runId: alert.runIds[0],
-    message: `A rotina ${alert.routine} terminou parcialmente em ${alert.count} execuções consecutivas sem falha HTTP; revise filtros e parsing.`,
-  })));
-  await Promise.all(
-    consecutiveFailures.map(alert => notifyConsecutiveFailureWebhook(alert))
   );
   const criticalAlerts = serializableAlerts.filter(
     alert =>

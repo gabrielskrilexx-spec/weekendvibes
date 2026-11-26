@@ -1265,8 +1265,21 @@ export const appRouter = router({
       normalizeJsonForTransport(await listGeocodingSummary())
     ),
     telemetry: adminOnly.query(async () => {
-      const report = await listIngestionReport(50, { periodDays: 7 });
-      return { sourceTelemetry: sourceTelemetryOutput.parse(report.sourceTelemetry) };
+      try {
+        const report = await listIngestionReport(50, { periodDays: 7 });
+        return { sourceTelemetry: sourceTelemetryOutput.parse(report.sourceTelemetry) };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error(
+          "[Admin reports] telemetry query failed",
+          error instanceof Error ? error.message : "unknown error",
+        );
+        throw new TRPCError({
+          code: "SERVICE_UNAVAILABLE",
+          message: "A telemetria operacional está temporariamente indisponível por falha na consulta. Tente novamente em instantes.",
+          cause: error,
+        });
+      }
     }),
     brandMonitoring: adminOnly
       .output(z.array(z.object({ id: z.number().int().positive(), name: z.string(), slug: z.string(), platforms: z.array(z.string()), cities: z.array(z.string()), matchTerms: z.array(z.string()), isActive: z.boolean(), editionsDetected: z.number().int().nonnegative(), rescrapes: z.number().int().nonnegative(), latestEditionDate: z.string().datetime().nullable(), lastDetectedAt: z.string().datetime().nullable() }).strict()))
