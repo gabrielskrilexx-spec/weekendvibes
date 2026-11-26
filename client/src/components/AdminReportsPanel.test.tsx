@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   summaryInput: undefined as unknown,
   reportError: null as unknown,
   reportIsError: false,
+  reportIsLoading: false,
   apifyUsageData: { dateKey: "2026-09-19", requestCount: 1, dailyLimit: 3, remaining: 2, isLimitReached: false, nextReleaseAt: "2026-09-20T03:00:00.000Z", persistence: true },
   brandMonitoringData: [
     { id: 1, name: "Nosso After", slug: "nosso-after", platforms: ["Instagram", "Bilheterias itinerantes"], cities: ["Guarujá", "Santos"], matchTerms: ["nossoafterguaruja"], isActive: true, editionsDetected: 0, rescrapes: 0, latestEditionDate: null, lastDetectedAt: null },
@@ -55,7 +56,7 @@ vi.mock("recharts", () => { const passthrough = ({ children }: { children?: Reac
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     ingestionReports: {
-      summary: { useQuery: (input: unknown) => { mocks.summaryInput = input; return { data: mocks.reportIsError ? undefined : latestReportData, error: mocks.reportError, isError: mocks.reportIsError, isLoading: false, isFetching: false, refetch: mocks.reportRefetch }; } },
+      summary: { useQuery: (input: unknown) => { mocks.summaryInput = input; return { data: mocks.reportIsError || mocks.reportIsLoading ? undefined : latestReportData, error: mocks.reportError, isError: mocks.reportIsError, isLoading: mocks.reportIsLoading, isFetching: false, refetch: mocks.reportRefetch }; } },
       brandMonitoring: { useQuery: () => ({ data: mocks.brandMonitoringData, isLoading: false, isError: false, refetch: vi.fn() }) },
       apifyDailyUsage: { useQuery: () => ({ data: mocks.apifyUsageData, isLoading: false, isError: false, refetch: vi.fn() }) },
       setApifyDailyLimit: { useMutation: (options: { onSuccess?: (result: { dailyLimit: number }) => void }) => ({ isPending: false, mutate: vi.fn((input: { dailyLimit: number }) => options.onSuccess?.({ dailyLimit: input.dailyLimit })) }) },
@@ -80,6 +81,7 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     mocks.summaryInput = undefined;
     mocks.reportError = null;
     mocks.reportIsError = false;
+    mocks.reportIsLoading = false;
     mocks.apifyUsageData = { dateKey: "2026-09-19", requestCount: 1, dailyLimit: 3, remaining: 2, isLimitReached: false, nextReleaseAt: "2026-09-20T03:00:00.000Z", persistence: true };
     mocks.brandMonitoringData = [
       { id: 1, name: "Nosso After", slug: "nosso-after", platforms: ["Instagram", "Bilheterias itinerantes"], cities: ["Guarujá", "Santos"], matchTerms: ["nossoafterguaruja"], isActive: true, editionsDetected: 0, rescrapes: 0, latestEditionDate: null, lastDetectedAt: null },
@@ -245,6 +247,38 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     expect(JSON.stringify(tree!.toJSON())).not.toContain("nenhum evento");
     expect(JSON.stringify(tree!.toJSON())).toContain('"—"');
     expect(tree!.root.findByProps({ "aria-label": "Atualizar relatórios" })).toBeTruthy();
+  });
+
+  it("exibe carregamento sem zeros enganosos e informa a janela avaliada", async () => {
+    mocks.reportIsLoading = true;
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    expect(tree!.root.findByProps({ "data-testid": "admin-reports-loading" })).toBeTruthy();
+    const markup = JSON.stringify(tree!.toJSON());
+    expect(markup).toContain("Carregando relatório operacional");
+    expect(markup).toContain("últimos 7 dias");
+    expect(markup).toContain('"—"');
+  });
+
+  it("oferece retry acionável para erro técnico sem renderizar vazio legítimo", async () => {
+    mocks.reportIsError = true;
+    mocks.reportError = { data: { code: "FORBIDDEN", httpStatus: 403 } };
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    const retry = tree!.root.findByProps({ "aria-label": "Tentar novamente o relatório" });
+    expect(JSON.stringify(tree!.toJSON())).toContain("Relatório indisponível");
+    expect(JSON.stringify(tree!.toJSON())).toContain("permissão");
+    await act(async () => { retry.props.onClick(); });
+    expect(mocks.reportRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("diferencia sucesso sem registros da falha técnica na janela selecionada", async () => {
+    latestReportData = { ...reportData, totals: { succeeded: 0, failed: 0, partial: 0, imported: 0 } };
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    const markup = JSON.stringify(tree!.toJSON());
+    expect(markup).toContain("Nenhum registro de execuções em os últimos 7 dias.");
+    expect(markup).not.toContain("Relatório indisponível");
   });
 
   it("renderiza a série semanal de lidas, persistidos e rejeitados", async () => {
