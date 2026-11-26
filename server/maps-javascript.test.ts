@@ -37,7 +37,7 @@ describe("Google Maps JavaScript relay", () => {
     const response = createResponse();
     await handler?.({
       protocol: "http", secure: false, query: { callback: "__weekendVibesMapsReady" },
-      get(name: string) { return { host: "weekendvib-jscaalye.manus.space", "x-forwarded-proto": "https" }[name]; },
+      get(name: string) { return { host: "weekendvib-oficial.manus.space", "x-forwarded-proto": "https" }[name]; },
     }, response);
     expect(response.statusCode).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/javascript");
@@ -48,7 +48,7 @@ describe("Google Maps JavaScript relay", () => {
     expect(url.origin + url.pathname).toBe("https://forge.test/v1/maps/proxy/maps/api/js");
     expect(url.searchParams.get("key")).toBe("test-forge-key");
     expect(url.searchParams.get("callback")).toBe("__weekendVibesMapsReady");
-    expect(url.searchParams.get("origin")).toBe("https://weekendvib-jscaalye.manus.space");
+    expect(url.searchParams.get("origin")).toBe("https://weekendvib-oficial.manus.space");
   });
 
   it("prioriza o host encaminhado quando o request chega por host interno", async () => {
@@ -60,11 +60,11 @@ describe("Google Maps JavaScript relay", () => {
     await handler?.({
       protocol: "http", secure: false, query: { callback: "__weekendVibesMapsReady" },
       get(name: string) {
-        return { host: "127.0.0.1:3000", "x-forwarded-host": "weekendvib-jscaalye.manus.space", "x-forwarded-proto": "https" }[name];
+        return { host: "127.0.0.1:3000", "x-forwarded-host": "weekendvib-oficial.manus.space", "x-forwarded-proto": "https" }[name];
       },
     }, createResponse());
     const [request] = upstream.mock.calls[0] ?? [];
-    expect(new URL(String(request)).searchParams.get("origin")).toBe("https://weekendvib-jscaalye.manus.space");
+    expect(new URL(String(request)).searchParams.get("origin")).toBe("https://weekendvib-oficial.manus.space");
   });
 
   it("rejeita callback que não seja um identificador JavaScript simples sem chamar upstream", async () => {
@@ -76,7 +76,7 @@ describe("Google Maps JavaScript relay", () => {
     const response = createResponse();
     await handler?.({
       protocol: "https", secure: true, query: { callback: "alert(1)" },
-      get(name: string) { return name === "host" ? "weekendvib-jscaalye.manus.space" : undefined; },
+      get(name: string) { return name === "host" ? "weekendvib-oficial.manus.space" : undefined; },
     }, response);
     expect(response.statusCode).toBe(400);
     expect(response.body).toContain("invalid_callback");

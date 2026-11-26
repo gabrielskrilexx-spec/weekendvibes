@@ -1,5 +1,6 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { claimRateLimitRequest } from "../db";
+import { isAllowedConfiguredOrigin, resolvePublicOrigins } from "../public-origin";
 
 const LOCAL_ORIGINS = new Set([
   "http://localhost:3000",
@@ -91,8 +92,14 @@ function getAllowedOrigins(): Set<string> {
   const configured = (process.env.CORS_ALLOWED_ORIGINS ?? "")
     .split(",")
     .map(origin => origin.trim())
-    .filter(Boolean);
-  return new Set(Array.from(LOCAL_ORIGINS).concat(configured));
+    .filter(origin => isAllowedConfiguredOrigin(origin));
+  const publicOrigins = resolvePublicOrigins();
+  return new Set([
+    ...Array.from(LOCAL_ORIGINS),
+    ...configured,
+    ...(publicOrigins.canonicalOrigin ? [publicOrigins.canonicalOrigin] : []),
+    ...(publicOrigins.deploymentOrigin ? [publicOrigins.deploymentOrigin] : []),
+  ]);
 }
 
 export function createStrictCors(): RequestHandler {

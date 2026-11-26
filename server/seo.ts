@@ -2,8 +2,8 @@ import type { Event } from "../drizzle/schema";
 import { resolveEventCoverImage } from "../shared/event-media";
 import { sanitizeEventText } from "../shared/event-text";
 import type { IndexableVenue } from "../shared/venue-slugs";
-
-export const DEFAULT_PUBLIC_ORIGIN = "https://weekendvibes-dh6w.vercel.app";
+import { DEFAULT_PUBLIC_ORIGIN } from "./public-origin";
+export { DEFAULT_PUBLIC_ORIGIN } from "./public-origin";
 
 export type SeoEvent = Pick<Event, "id" | "slug" | "title" | "description" | "eventDate" | "endDate" | "locationName" | "address" | "city" | "sourceUrl" | "sourceType" | "imageUrl" | "updatedAt"> & {
   ticketUrl?: string | null;

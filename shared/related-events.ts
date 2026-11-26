@@ -52,11 +52,11 @@ export function selectRelatedEvents<T extends RelatedEventCandidate>(current: Re
     .map(item => item.candidate);
 }
 
-export function buildEventShareUrl(eventId: number, origin = typeof window !== "undefined" ? window.location.origin : "") {
+export function buildEventShareUrl(eventId: number, origin = "") {
   const base = `${origin}/evento/${encodeURIComponent(eventId)}`;
   return `${base}?utm_source=share&utm_medium=social&utm_campaign=event_share`;
 }
 
-export function buildCanonicalEventUrl(eventId: number, origin = typeof window !== "undefined" ? window.location.origin : "") {
+export function buildCanonicalEventUrl(eventId: number, origin = "") {
   return `${origin}/evento/${encodeURIComponent(eventId)}`;
 }

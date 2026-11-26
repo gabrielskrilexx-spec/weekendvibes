@@ -1,7 +1,7 @@
 export type EventShareData = { title: string; text: string; url: string };
 
 export function canonicalEventUrl(eventId: number, origin?: string) {
-  const base = origin ?? (typeof window !== "undefined" ? window.location.origin : "https://weekendvibes-dh6w.vercel.app");
+  const base = origin ?? (typeof window !== "undefined" ? window.location.origin : "https://weekendvib-oficial.manus.space");
   return `${base.replace(/\/$/, "")}/evento/${eventId}`;
 }
 

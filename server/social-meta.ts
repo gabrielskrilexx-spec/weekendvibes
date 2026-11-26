@@ -1,4 +1,6 @@
 import { Resvg } from "@resvg/resvg-js";
+import { resolvePublicOrigins } from "./public-origin";
+export { resolvePublicOrigins } from "./public-origin";
 
 export type SocialCardInput = {
   title: string;
@@ -19,28 +21,6 @@ export type SocialMetadata = {
   jsonLd?: unknown[];
   bodyFallback?: { heading: string; paragraphs: string[]; href?: string; linkLabel?: string };
 };
-
-export type PublicOrigins = { canonicalOrigin?: string; deploymentOrigin?: string };
-
-function normalizeOrigin(value: string | undefined) {
-  const raw = value?.trim();
-  if (!raw) return undefined;
-  try {
-    const url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
-    if (url.username || url.password || url.pathname !== "/" || url.search || url.hash) return undefined;
-    if (url.protocol !== "https:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") return undefined;
-    return url.origin;
-  } catch {
-    return undefined;
-  }
-}
-
-export function resolvePublicOrigins(env: NodeJS.ProcessEnv = process.env): PublicOrigins {
-  const configured = normalizeOrigin(env.PUBLIC_SITE_URL);
-  const deployment = normalizeOrigin(env.VERCEL_URL) ?? configured;
-  const canonical = configured ?? normalizeOrigin(env.VERCEL_PROJECT_PRODUCTION_URL);
-  return { ...(canonical ? { canonicalOrigin: canonical } : {}), ...(deployment ? { deploymentOrigin: deployment } : {}) };
-}
 
 export function escapeHtml(value: unknown) {
   return String(value ?? "")

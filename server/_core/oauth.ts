@@ -7,8 +7,7 @@ import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
 import { redactError } from "./security";
 import { ENV } from "./env";
-
-const GITHUB_CALLBACK_URI = "https://weekendvibes-dh6w.vercel.app/api/oauth/callback";
+import { getCanonicalPublicOrigin } from "../public-origin";
 
 type OAuthConfig = {
   clientId: string;
@@ -20,12 +19,14 @@ type OAuthConfig = {
 
 /** Read OAuth secrets at request time; Vercel functions can reuse a warm module between requests. */
 function getOAuthConfig(): OAuthConfig {
+  const configuredRedirect = (process.env.OAUTH_REDIRECT_URI ?? "").trim();
+  const redirectUri = configuredRedirect || `${getCanonicalPublicOrigin()}/api/oauth/callback`;
   return {
     clientId: (process.env.OAUTH_CLIENT_ID ?? "").trim(),
     clientSecret: (process.env.OAUTH_CLIENT_SECRET ?? "").trim(),
     adminLogin: (process.env.GITHUB_ADMIN_LOGIN ?? "").trim().toLowerCase(),
     adminId: (process.env.GITHUB_ADMIN_ID ?? "").trim(),
-    redirectUri: (process.env.OAUTH_REDIRECT_URI ?? "").trim(),
+    redirectUri,
   };
 }
 
@@ -112,7 +113,7 @@ async function fetchGithubJson<T>(url: string, init: RequestInit, stage: "exchan
 }
 
 async function completeGithubLogin(code: string, oauthState: ReturnType<typeof decodeOAuthState>, req: Request, res: Response) {
-  const { clientId, clientSecret, adminLogin, adminId } = getOAuthConfig();
+  const { clientId, clientSecret, adminLogin, adminId, redirectUri } = getOAuthConfig();
   if (!clientId || !clientSecret) {
     console.error("[OAuth] GitHub OAuth configuration incomplete", {
       provider: "github",
@@ -141,7 +142,7 @@ async function completeGithubLogin(code: string, oauthState: ReturnType<typeof d
       client_id: clientId,
       client_secret: clientSecret,
       code,
-      redirect_uri: GITHUB_CALLBACK_URI,
+      redirect_uri: redirectUri,
     }),
   }, "exchange");
   const accessToken = typeof tokenResponse.access_token === "string" ? tokenResponse.access_token : "";
@@ -185,7 +186,7 @@ export function registerOAuthRoutes(app: Express) {
     }
 
     const nonce = randomUUID();
-    const redirectUri = GITHUB_CALLBACK_URI;
+    const { redirectUri } = getOAuthConfig();
     const returnTo = getSafeReturnPath(getQueryParam(req, "redirect_to"), "/admin");
     const state = encodeOAuthState({ redirectUri, nonce, returnTo, provider: "github" });
     res.cookie(OAUTH_STATE_COOKIE, nonce, {
