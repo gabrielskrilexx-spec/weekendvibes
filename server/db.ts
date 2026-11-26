@@ -18,7 +18,7 @@ import { normalizeDiscoveredSourceUrl, resolveDiscoveredSourceMatch } from "../s
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
-function throwDatabaseUnavailable(operation = "administrative query"): never {
+export function throwDatabaseUnavailable(operation = "administrative query"): never {
   console.warn("[Database] unavailable", { operation });
   throw new Error("database_unavailable");
 }
@@ -759,7 +759,7 @@ export async function getConsolidatedIngestionSourceReport(dbOverride?: Awaited<
 
 export async function createCatalogSnapshot(report?: Awaited<ReturnType<typeof getConsolidatedIngestionSourceReport>>, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
-  if (!db) return null;
+  if (!db) throwDatabaseUnavailable("create catalog snapshot");
   const payload = report ?? await getConsolidatedIngestionSourceReport(db);
   const payloadJson = serializePayloadJson(payload);
   const snapshotHash = createHash("sha256").update(payloadJson).digest("hex");
@@ -770,7 +770,7 @@ export async function createCatalogSnapshot(report?: Awaited<ReturnType<typeof g
 
 export async function listCatalogSnapshots(limit = 20, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
-  if (!db) return [];
+  if (!db) throwDatabaseUnavailable("list catalog snapshots");
   return db.select({ id: catalogSnapshots.id, snapshotHash: catalogSnapshots.snapshotHash, generatedAt: catalogSnapshots.generatedAt, sourceCount: catalogSnapshots.sourceCount, createdAt: catalogSnapshots.createdAt }).from(catalogSnapshots).orderBy(desc(catalogSnapshots.createdAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 100));
 }
 
@@ -781,7 +781,7 @@ export function catalogSnapshotRetentionCutoff(days = 30, now = new Date()) {
 
 export async function deleteCatalogSnapshotsOlderThan(days = 30, now = new Date(), dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
-  if (!db) return 0;
+  if (!db) throwDatabaseUnavailable("delete catalog snapshots");
   const result = await db.delete(catalogSnapshots).where(lt(catalogSnapshots.createdAt, catalogSnapshotRetentionCutoff(days, now)));
   return Number((result as { affectedRows?: number }).affectedRows ?? 0);
 }
@@ -912,6 +912,7 @@ function countIsolatedUrl503Runs(runs: Array<{ status: string; details: string |
 export async function getExecutiveObservabilityReport(now = new Date(), days = 14, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const safeDays = normalizeObservabilityPeriod(days);
   const db = dbOverride ?? await getDb();
+  if (!db) throwDatabaseUnavailable("executive observability report");
   const sources = await getIngestionSourceSummary(db);
   if (!db) return { generatedAt: now.toISOString(), periodDays: safeDays, sources, series: buildDailyTelemetrySeries([], now, safeDays), trends: summarizeTelemetryTrend([]), system_health_status: calculateSystemHealthStatus({ openSources: sources.open, activeSources: sources.active, recentRuns: 0, recentFailures: 0 }), healthTransitions: [] };
   const since = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - safeDays + 1));
@@ -1140,7 +1141,7 @@ export async function listIngestionSourceOperationalTimeline(sourceKey: string, 
   const db = dbOverride ?? await getDb();
   const safePageSize = Math.min(Math.max(Math.trunc(pageSize), 5), 500);
   const safePage = Math.max(1, Math.trunc(page));
-  if (!db) return { items: [] as Array<Omit<IngestionSourceTimelineItem, "occurredAt"> & { occurredAt: string }>, page: safePage, pageSize: safePageSize, total: 0, hasNextPage: false, actionCounts: { all: 0, handle_changed: 0, reactivated: 0, reprocessed: 0 } };
+  if (!db) throwDatabaseUnavailable("list ingestion source operational timeline");
   if (status) {
     const [source] = await db.select({ circuitState: ingestionSources.circuitState }).from(ingestionSources).where(eq(ingestionSources.sourceKey, sourceKey)).limit(1);
     const matchesStatus = status === "open" ? source?.circuitState === "open" : source?.circuitState !== "open";

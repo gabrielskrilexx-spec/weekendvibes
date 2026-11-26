@@ -88,7 +88,7 @@ export async function recordHeartbeatExecutionEvent(input: {
   metadata?: Record<string, string | number | boolean | null>;
 }) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const event = {
     id: randomUUID(),
     heartbeatExecutionId: input.heartbeatExecutionId.trim().slice(0, 160),
@@ -113,7 +113,7 @@ export async function listHeartbeatExecutionEvents(input: {
   limit?: number;
 }) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const offset = Math.max(0, Math.trunc(input.offset ?? 0));
   const limit = Math.min(100, Math.max(1, Math.trunc(input.limit ?? 50)));
   const conditions = [eq(heartbeatExecutionEvents.heartbeatExecutionId, input.heartbeatExecutionId.trim())];
@@ -139,7 +139,7 @@ export async function listHeartbeatExecutionEvents(input: {
 
 export async function getHeartbeatExecutionSummary(heartbeatExecutionId: string) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const rows = await db.select().from(heartbeatExecutionEvents).where(eq(heartbeatExecutionEvents.heartbeatExecutionId, heartbeatExecutionId.trim())).orderBy(asc(heartbeatExecutionEvents.sequence), asc(heartbeatExecutionEvents.timestamp));
   const started = rows.find(row => row.eventType === "started");
   const terminal = [...rows].reverse().find(row => ["completed", "failed", "timeout"].includes(row.eventType));
@@ -158,7 +158,7 @@ export async function getHeartbeatExecutionSummary(heartbeatExecutionId: string)
 
 export async function listHeartbeatExecutionEventsForExport(input: { heartbeatExecutionId: string; eventType?: HeartbeatEventType; from?: string; to?: string }) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const conditions = [eq(heartbeatExecutionEvents.heartbeatExecutionId, input.heartbeatExecutionId.trim())];
   if (input.eventType) conditions.push(eq(heartbeatExecutionEvents.eventType, input.eventType));
   if (input.from) conditions.push(gte(heartbeatExecutionEvents.timestamp, new Date(input.from)));
@@ -179,7 +179,7 @@ export async function listHeartbeatExecutionEventsForExport(input: { heartbeatEx
 
 export async function listHeartbeatHealthSettingsHistory(input: { environment: HeartbeatHealthEnvironment; offset?: number; limit?: number }) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const offset = Math.max(0, Math.trunc(input.offset ?? 0));
   const limit = Math.min(50, Math.max(1, Math.trunc(input.limit ?? 20)));
   const rows = await db.select().from(exportJobsAlertSettingsAudit).where(eq(exportJobsAlertSettingsAudit.environment, input.environment)).orderBy(desc(exportJobsAlertSettingsAudit.changedAt)).limit(limit + 1).offset(offset);
@@ -189,7 +189,7 @@ export async function listHeartbeatHealthSettingsHistory(input: { environment: H
 
 export async function getHeartbeatHealthSettings(env = environment()): Promise<HeartbeatHealthSettings> {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const [row] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, settingKey(env))).limit(1);
   try {
     return clampSettings(row?.value ? JSON.parse(row.value) as Partial<HeartbeatHealthSettings> : {}, env);
@@ -200,7 +200,7 @@ export async function getHeartbeatHealthSettings(env = environment()): Promise<H
 
 export async function updateHeartbeatHealthSettings(input: Partial<Omit<HeartbeatHealthSettings, "environment">> & { environment: HeartbeatHealthEnvironment; changedByOpenId: string }) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const previous = await getHeartbeatHealthSettings(input.environment);
   const next = clampSettings(input, input.environment);
   const now = new Date();
@@ -212,7 +212,7 @@ export async function updateHeartbeatHealthSettings(input: Partial<Omit<Heartbea
 
 export async function getHeartbeatExecutionStats(input: { from?: string; to?: string; environment?: HeartbeatHealthEnvironment }) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const to = input.to ? new Date(input.to) : new Date();
   const from = input.from ? new Date(input.from) : new Date(to.getTime() - 24 * 60 * 60 * 1000);
   const rows = await db.select().from(heartbeatExecutionEvents).where(and(gte(heartbeatExecutionEvents.timestamp, from), lte(heartbeatExecutionEvents.timestamp, to))).orderBy(asc(heartbeatExecutionEvents.timestamp), asc(heartbeatExecutionEvents.sequence));
@@ -314,7 +314,7 @@ export async function evaluateHeartbeatPerformance(input: {
 
 export async function listHeartbeatIncidentsByRegression(input: { heartbeatExecutionId: string; from?: string; to?: string; offset?: number; limit?: number }) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const offset = Math.max(0, Math.trunc(input.offset ?? 0));
   const limit = Math.min(100, Math.max(1, Math.trunc(input.limit ?? 25)));
   const conditions = [eq(heartbeatExecutionEvents.heartbeatExecutionId, input.heartbeatExecutionId.trim()), inArray(heartbeatExecutionEvents.eventType, ["alert", "failed", "timeout"] as const)];
@@ -336,7 +336,7 @@ export async function evaluateHeartbeatHealth(input: {
   const settings = await getHeartbeatHealthSettings(env);
   const alerts: Array<"heartbeat_execution_failed" | "heartbeat_duration_anomaly"> = [];
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const failureKey = `heartbeat.health.failures.${env}`;
   const [failureRow] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, failureKey)).limit(1);
   const previousFailures = failureRow?.value ? Math.max(0, Number.parseInt(failureRow.value, 10) || 0) : 0;

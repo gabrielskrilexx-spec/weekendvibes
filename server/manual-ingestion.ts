@@ -1,6 +1,6 @@
 import { desc, eq, or } from "drizzle-orm";
 import { ingestionRuns } from "../drizzle/schema";
-import { acquireIngestionLease, getDb, recordOperationalAlert, releaseIngestionLease } from "./db";
+import { acquireIngestionLease, getDb, recordOperationalAlert, releaseIngestionLease, throwDatabaseUnavailable } from "./db";
 import { listHeartbeatJobs } from "./_core/heartbeat";
 import { notifyOwner } from "./_core/notification";
 import { getInstagramTargetByUsername, InstagramIntegrationFailure, runInstagramPipeline } from "./instagram-pipeline";
@@ -241,7 +241,7 @@ export function getNextWednesdayExecution(now = new Date()) {
 
 async function getRecentInstagramRuns() {
   const db = await getDb();
-  if (!db) return [];
+  if (!db) throwDatabaseUnavailable("list recent manual routine runs");
   const rows = await db.select({ id: ingestionRuns.id, routine: ingestionRuns.routine, sourceKey: ingestionRuns.sourceKey, status: ingestionRuns.status, startedAt: ingestionRuns.startedAt, finishedAt: ingestionRuns.finishedAt, httpStatus: ingestionRuns.httpStatus, durationMs: ingestionRuns.durationMs, importedCount: ingestionRuns.importedCount, details: ingestionRuns.details }).from(ingestionRuns).where(or(eq(ingestionRuns.sourceKey, "instagram"), eq(ingestionRuns.routine, "manual-agenda"), eq(ingestionRuns.routine, "instagram-stories-async"))).orderBy(desc(ingestionRuns.startedAt)).limit(6);
   return rows.map(row => {
     const parsedDetails = typeof row.details === "string" ? (() => { try { return JSON.parse(row.details) as unknown; } catch { return {}; } })() : row.details;

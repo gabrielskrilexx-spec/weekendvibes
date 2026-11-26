@@ -61,6 +61,7 @@ describe("chunk timeout", () => {
 describe("manual Wednesday routine", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getDb.mockResolvedValue({ select: vi.fn(() => ({ from: vi.fn(() => ({ where: vi.fn(() => ({ orderBy: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([]) })) })) })) })) });
     mocks.listHeartbeatJobs.mockResolvedValue({ total: 1, actorUserId: "owner", jobs: [{ taskUid: "runtime-uid", name: "qualquer nome", description: "Agenda semanal", cronExpression: "0 0 10 * * 3", isEnable: true, timezone: "America/Sao_Paulo", runMode: "full_auto", nextExecutionAt: "2026-08-19T13:00:00.000Z", lastExecutedAt: "2026-08-12T15:04:27.093Z" }] });
   });
   it("calcula a próxima quarta às 10h no fuso de São Paulo", async () => {

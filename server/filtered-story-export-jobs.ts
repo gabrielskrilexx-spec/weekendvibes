@@ -44,7 +44,7 @@ function toPublicJob(row: typeof filteredStoryExportJobs.$inferSelect): PublicJo
 
 async function getOwnedJob(jobId: string, ownerOpenId: string) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const [row] = await db.select().from(filteredStoryExportJobs).where(and(eq(filteredStoryExportJobs.id, jobId), eq(filteredStoryExportJobs.createdByOpenId, ownerOpenId))).limit(1);
   if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Exportação não encontrada." });
   return { db, row };
@@ -115,7 +115,7 @@ async function processPersistentExportJob(jobId: string, ownerOpenId: string, re
 
 export async function createPersistentExportJob(input: { format: ExportFormat; filters: ExportFilters; createdByOpenId: string }) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const jobId = randomUUID();
   const now = new Date();
   await db.insert(filteredStoryExportJobs).values({ id: jobId, format: input.format, status: "queued", progress: 0, filtersJson: JSON.stringify(input.filters), createdByOpenId: input.createdByOpenId.slice(0, 160), createdAt: now, updatedAt: now, expiresAt: new Date(now.getTime() + JOB_TTL_MS), fileDeletePending: false, recoveryAttempts: 0 });
@@ -146,7 +146,7 @@ export async function cancelPersistentExportJob(jobId: string, ownerOpenId: stri
 
 export async function purgePersistentExportJobs(before?: string | { before?: string; requestedByOpenId?: string }) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const cutoffValue = typeof before === "string" ? before : before?.before;
   const cutoff = cutoffValue ? new Date(cutoffValue) : new Date();
   const rows = await db.select({ id: filteredStoryExportJobs.id, fileKey: filteredStoryExportJobs.fileKey }).from(filteredStoryExportJobs).where(lt(filteredStoryExportJobs.expiresAt, cutoff));
@@ -159,7 +159,7 @@ export async function purgePersistentExportJobs(before?: string | { before?: str
 
 export async function recoverOrphanedExportJobs(limit = 5) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const now = new Date();
   const candidates = await db.select({ id: filteredStoryExportJobs.id, ownerOpenId: filteredStoryExportJobs.createdByOpenId, recoveryAttempts: filteredStoryExportJobs.recoveryAttempts, fileKey: filteredStoryExportJobs.fileKey }).from(filteredStoryExportJobs).where(or(eq(filteredStoryExportJobs.status, "queued"), and(eq(filteredStoryExportJobs.status, "processing"), staleLeaseCondition(now)))).limit(Math.min(20, Math.max(1, limit)));
   let recovered = 0;
@@ -192,14 +192,14 @@ export type ExportJobsMetrics = {
 
 export async function listPendingFileDeleteQueue(limit = 20) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const rows = await db.select({ id: filteredStoryExportJobs.id, fileKey: filteredStoryExportJobs.fileKey, expiresAt: filteredStoryExportJobs.expiresAt }).from(filteredStoryExportJobs).where(eq(filteredStoryExportJobs.fileDeletePending, true)).limit(Math.min(50, Math.max(1, limit)));
   return rows.map(row => ({ jobId: row.id, hasFile: Boolean(row.fileKey), expiresAt: row.expiresAt.toISOString() }));
 }
 
 export async function getExportJobsMetrics(windowHours = 24): Promise<ExportJobsMetrics> {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const hours = Math.min(720, Math.max(1, Math.trunc(windowHours)));
   const now = Date.now();
   const periodStart = now - hours * 60 * 60 * 1000;
@@ -246,7 +246,7 @@ function exportAlertSettingsKey(environment: ExportAlertEnvironment) {
 
 export async function getExportJobsAlertSettings(environment: ExportAlertEnvironment): Promise<ExportAlertSettings> {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const [row] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, exportAlertSettingsKey(environment))).limit(1);
   try {
     const parsed = row?.value ? JSON.parse(row.value) as Partial<ExportAlertSettings> : {};
@@ -264,7 +264,7 @@ export async function getExportJobsAlertSettings(environment: ExportAlertEnviron
 
 export async function updateExportJobsAlertSettings(input: Omit<ExportAlertSettings, "environment"> & { environment: ExportAlertEnvironment; changedByOpenId?: string }) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const settings = await getExportJobsAlertSettings(input.environment);
   const next: ExportAlertSettings = {
     environment: input.environment,
@@ -280,7 +280,7 @@ export async function updateExportJobsAlertSettings(input: Omit<ExportAlertSetti
 
 export async function listExportJobsAlertSettingsHistory(input: { environment: ExportAlertEnvironment; offset?: number; limit?: number; from?: string; to?: string; ownerOpenId?: string }) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const offset = Math.max(0, input.offset ?? 0);
   const limit = Math.min(50, Math.max(1, input.limit ?? 20));
   const conditions = [eq(exportJobsAlertSettingsAudit.environment, input.environment)];
@@ -295,7 +295,7 @@ export async function listExportJobsAlertSettingsHistory(input: { environment: E
 
 export async function getExportJobsMetricsTrend(windowDays = 30) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const days = Math.min(90, Math.max(1, Math.trunc(windowDays)));
   const now = new Date();
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -318,7 +318,7 @@ export async function getExportJobsMetricsTrend(windowDays = 30) {
 
 export async function getExportJobAlertDetail(alertId: string, _ownerOpenId: string) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const numericId = Number(alertId);
   if (!Number.isInteger(numericId) || numericId <= 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Alerta inválido." });
   const [alert] = await db.select().from(operationalAlerts).where(eq(operationalAlerts.id, numericId)).limit(1);
@@ -339,7 +339,7 @@ export async function getExportJobAlertDetail(alertId: string, _ownerOpenId: str
 
 export async function getExportJobsTrendBucket(input: { from: string; to: string; ownerOpenId?: string }) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const from = new Date(input.from);
   const to = new Date(input.to);
   if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from >= to) throw new TRPCError({ code: "BAD_REQUEST", message: "Intervalo temporal inválido." });
@@ -350,7 +350,7 @@ export async function getExportJobsTrendBucket(input: { from: string; to: string
 
 async function getExportJobsAlertEfficiencyForRange(input: { from: string; to: string; ownerOpenId?: string }) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const from = new Date(input.from);
   const to = new Date(input.to);
   if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from >= to) throw new TRPCError({ code: "BAD_REQUEST", message: "Intervalo temporal inválido." });
@@ -442,7 +442,7 @@ export async function evaluateExportJobsOperationalAlerts(windowHours = 24, hear
 
 export async function listExportHistory(filters: ExportHistoryFilters) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const offset = Math.max(0, filters.offset ?? 0);
   const limit = Math.min(50, Math.max(1, filters.limit ?? 20));
   const conditions = [eq(filteredStoryExportJobs.createdByOpenId, filters.ownerOpenId)];
@@ -479,7 +479,7 @@ export async function recordExportAlertEvaluationSnapshot(input: {
   heartbeatExecutionId?: string | null;
 }) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const insertBuilder = db.insert(exportAlertEvaluationSnapshots).values({
     environment: input.environment,
     windowStartedAt: input.windowStartedAt,
@@ -515,7 +515,7 @@ export async function listExportAlertEvaluationSnapshots(input: {
   limit?: number;
 }) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const offset = Math.max(0, Math.trunc(input.offset ?? 0));
   const limit = Math.min(100, Math.max(1, Math.trunc(input.limit ?? 25)));
   const conditions = [] as ReturnType<typeof eq>[];
@@ -548,7 +548,7 @@ export async function listExportAlertEvaluationSnapshots(input: {
 
 export async function getExportJobsEfficiencyBucket(input: { from: string; to: string; ownerOpenId?: string }) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const from = new Date(input.from);
   const to = new Date(input.to);
   if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from >= to) throw new TRPCError({ code: "BAD_REQUEST", message: "Intervalo temporal inválido." });
@@ -571,7 +571,7 @@ export async function getExportJobsEfficiencyBucket(input: { from: string; to: s
 
 export async function getExportJobsAlertEfficiencyTrend(windowDays = 30) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const days = Math.min(90, Math.max(1, Math.trunc(windowDays)));
   const now = new Date();
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -595,7 +595,7 @@ export async function getSnapshotExecutionHistory(input: { snapshotId: string; o
     return { snapshotId: input.snapshotId, heartbeatExecutionId: null, triggeredAt: null, durationMs: null, events: [] as Array<{ event: "evaluated"; occurredAt: string; message: string }> };
   }
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Banco de dados indisponível." });
   const [row] = await db.select({ id: exportAlertEvaluationSnapshots.id, heartbeatExecutionId: exportAlertEvaluationSnapshots.heartbeatExecutionId, evaluatedAt: exportAlertEvaluationSnapshots.evaluatedAt }).from(exportAlertEvaluationSnapshots).where(eq(exportAlertEvaluationSnapshots.id, snapshotId)).limit(1);
   if (!row) return { snapshotId: input.snapshotId, heartbeatExecutionId: null, triggeredAt: null, durationMs: null, events: [] as Array<{ event: "evaluated"; occurredAt: string; message: string }> };
   const occurredAt = row.evaluatedAt.toISOString();

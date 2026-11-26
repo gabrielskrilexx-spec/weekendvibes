@@ -28,4 +28,15 @@ describe("leituras administrativas quando o banco está indisponível", () => {
     await expect(db.listEvents()).rejects.toThrow("database_unavailable");
     await expect(db.listDraftEvents()).rejects.toThrow("database_unavailable");
   });
+
+  it("não mascara indisponibilidade em snapshots, observabilidade ou timeline", async () => {
+    delete process.env.DATABASE_URL;
+    vi.resetModules();
+    const db = await import("./db");
+    await expect(db.createCatalogSnapshot()).rejects.toThrow("database_unavailable");
+    await expect(db.listCatalogSnapshots()).rejects.toThrow("database_unavailable");
+    await expect(db.deleteCatalogSnapshotsOlderThan()).rejects.toThrow("database_unavailable");
+    await expect(db.getExecutiveObservabilityReport()).rejects.toThrow("database_unavailable");
+    await expect(db.listIngestionSourceOperationalTimeline("public:sympla")).rejects.toThrow("database_unavailable");
+  });
 });
