@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { listIngestionReport } from "./ingestion-reports";
+import { listIngestionReport, runReportStage } from "./ingestion-reports";
 
 const reportSource = readFileSync(new URL("./ingestion-reports.ts", import.meta.url), "utf8");
 const reportStart = reportSource.indexOf("export async function listIngestionReport");
@@ -21,5 +21,13 @@ describe("listIngestionReport — contrato somente leitura", () => {
       code: "SERVICE_UNAVAILABLE",
       message: expect.stringContaining("banco de dados"),
     });
+  });
+
+  it("isola uma etapa auxiliar com fallback e código sanitizado", async () => {
+    const result = await runReportStage("operational-alerts", [], async () => {
+      throw Object.assign(new Error("connection details should not reach the client"), { code: "57014" });
+    });
+    expect(result.value).toEqual([]);
+    expect(result.diagnostic).toBe("stage:operational-alerts");
   });
 });

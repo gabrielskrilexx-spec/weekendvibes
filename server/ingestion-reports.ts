@@ -138,6 +138,31 @@ function safeReportError(value: unknown) {
     .slice(0, 240);
 }
 
+type ReportStageResult<T> = { value: T; diagnostic: string | null };
+
+/**
+ * A report is an aggregate of several independent read-only projections. A
+ * secondary projection must not turn the whole report into SERVICE_UNAVAILABLE.
+ * Keep the stage name short and never return database/stack details to clients.
+ */
+export async function runReportStage<T>(
+  stage: string,
+  fallback: T,
+  operation: () => Promise<T>,
+): Promise<ReportStageResult<T>> {
+  try {
+    return { value: await operation(), diagnostic: null };
+  } catch (error) {
+    const message = safeReportError(error);
+    console.error("[Admin reports] stage failed", {
+      stage,
+      code: error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : undefined,
+      message,
+    });
+    return { value: fallback, diagnostic: `stage:${stage}` };
+  }
+}
+
 function buildAutomationStatusSnapshot(
   runs: Array<{
     id: number;
@@ -1770,6 +1795,7 @@ export async function listIngestionReport(
   }
   const safeSize = Math.min(Math.max(size, 1), 50);
   const periodDays = filters.periodDays ?? 7;
+  const reportDiagnostics: string[] = [];
   const cutoff = periodDays === "all" ? null : new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000);
   const sqlFilters = cutoff ? [gte(ingestionRuns.startedAt, cutoff)] : [];
   if (filters.routine)
@@ -1798,7 +1824,7 @@ export async function listIngestionReport(
     .orderBy(desc(ingestionRuns.startedAt))
     .limit(500);
   const trendRuns = trendRunsRaw.filter(run => filters.executionKind === "all" || !filters.executionKind || (filters.executionKind === "simulated" ? isSandboxExecution(run.details) : !isSandboxExecution(run.details)));
-  const metaRuns = await db
+  const metaRunsStage = await runReportStage("meta-status", [], async () => db
     .select({
       status: ingestionRuns.status,
       startedAt: ingestionRuns.startedAt,
@@ -1810,7 +1836,9 @@ export async function listIngestionReport(
     .from(ingestionRuns)
     .where(or(eq(ingestionRuns.sourceKey, "instagram"), eq(ingestionRuns.routine, "instagram-agenda"), eq(ingestionRuns.routine, "full-agenda")))
     .orderBy(desc(ingestionRuns.startedAt))
-    .limit(100);
+    .limit(100));
+  const metaRuns = metaRunsStage.value;
+  if (metaRunsStage.diagnostic) reportDiagnostics.push(metaRunsStage.diagnostic);
   const metaStatusRuns = metaRuns.flatMap(run => {
     if (run.routine !== "full-agenda") return [{ status: String(run.status), startedAt: run.startedAt, finishedAt: run.finishedAt }];
     const root = parseDetails(run.details);
@@ -1821,7 +1849,7 @@ export async function listIngestionReport(
     const status = source ? (Array.isArray(source.errors) && source.errors.length > 0 ? "partial" : "succeeded") : String(run.status);
     return [{ status, startedAt: run.startedAt, finishedAt: run.finishedAt }];
   });
-  const alerts = await db
+  const alertsStage = await runReportStage("operational-alerts", [], async () => db
     .select({
       id: operationalAlerts.id,
       integration: operationalAlerts.integration,
@@ -1836,31 +1864,29 @@ export async function listIngestionReport(
     })
     .from(operationalAlerts)
     .orderBy(desc(operationalAlerts.createdAt))
-    .limit(safeSize);
-  const [totals] = await db
+    .limit(safeSize));
+  const alerts = alertsStage.value;
+  if (alertsStage.diagnostic) reportDiagnostics.push(alertsStage.diagnostic);
+  const totalsStage = await runReportStage("run-totals", [{ succeeded: 0, failed: 0, partial: 0, imported: 0 }], async () => db
     .select({
       succeeded: sql<number>`count(*) filter (where ${ingestionRuns.status} = 'succeeded')`,
       failed: sql<number>`count(*) filter (where ${ingestionRuns.status} = 'failed')`,
       partial: sql<number>`count(*) filter (where ${ingestionRuns.status} = 'partial')`,
       imported: sql<number>`coalesce(sum(${ingestionRuns.importedCount}), 0)`,
     })
-    .from(ingestionRuns);
-  const sourceRows = await db
-    .select({
-      sourceKey: ingestionRuns.sourceKey,
-      imported: sql<number>`coalesce(sum(${ingestionRuns.importedCount}), 0)`,
-      runs: sql<number>`count(*)`,
-      failed: sql<number>`count(*) filter (where ${ingestionRuns.status} = 'failed')`,
-    })
-    .from(ingestionRuns)
-    .groupBy(ingestionRuns.sourceKey)
-    .orderBy(desc(sql`sum(${ingestionRuns.importedCount})`));
-  const sourceConfigs = await db.select().from(ingestionSources);
-  const eventActivityRows = await db
+    .from(ingestionRuns));
+  const [totals] = totalsStage.value;
+  if (totalsStage.diagnostic) reportDiagnostics.push(totalsStage.diagnostic);
+  const sourceConfigsStage = await runReportStage("ingestion-sources", [], async () => db.select().from(ingestionSources));
+  const sourceConfigs = sourceConfigsStage.value;
+  if (sourceConfigsStage.diagnostic) reportDiagnostics.push(sourceConfigsStage.diagnostic);
+  const eventActivityStage = await runReportStage("event-activity", [], async () => db
     .select({ sourceType: events.sourceType, lastEventAt: sql<Date>`max(${events.createdAt})` })
     .from(events)
     .where(eq(events.isArchived, 0))
-    .groupBy(events.sourceType);
+    .groupBy(events.sourceType));
+  const eventActivityRows = eventActivityStage.value;
+  if (eventActivityStage.diagnostic) reportDiagnostics.push(eventActivityStage.diagnostic);
   const lastEventByType = new Map(eventActivityRows.map(row => [String(row.sourceType ?? ""), row.lastEventAt]));
   const sourceLastEventAt = (sourceKey: string) => {
     const types = sourceKey.startsWith("instagram:")
@@ -2033,6 +2059,8 @@ export async function listIngestionReport(
       details: run.details,
     }))
   );
+  const scheduleStage = await runReportStage("routine-schedule", [], () => listRoutineScheduleStatus());
+  if (scheduleStage.diagnostic) reportDiagnostics.push(scheduleStage.diagnostic);
   return normalizeReportForTransport({
     runs: serializableRuns,
     alerts: serializableAlerts,
@@ -2050,8 +2078,9 @@ export async function listIngestionReport(
     weeklyTrend: buildWeeklyTrend(trendRuns),
     weeklySummary: buildWeeklyOperationalSummary(trendRuns),
     metaStatus: buildMetaIntegrationStatusForTest(metaStatusRuns),
-    scheduleStatus: await listRoutineScheduleStatus(),
+    scheduleStatus: scheduleStage.value,
     automationStatus,
+    diagnostics: reportDiagnostics,
     filterEvaluatedAt: new Date().toISOString(),
     pastEventRejectionThreshold: getPastEventRejectionThreshold(),
     totals: {
