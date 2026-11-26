@@ -35,6 +35,31 @@ export function getDatabaseErrorDiagnostic(error: unknown) {
   return "ERR:query";
 }
 
+const OPERATIONAL_SCHEMA_COLUMNS = {
+  ingestionRuns: ["id", "routine", "sourceKey", "status", "importedCount", "failedCount", "duration_ms", "httpStatus", "counts", "details", "startedAt", "finishedAt"],
+  operationalAlerts: ["id", "integration", "severity", "alertType", "slaMinutes", "runId", "title", "message", "fingerprint", "isResolved", "createdAt", "updatedAt"],
+  ingestionSources: ["id", "sourceKey", "name", "kind", "handle", "url", "isEnabled", "priority", "frequencyMinutes", "p95LatencyThresholdMs", "scheduleTaskUid", "lastAttemptAt", "lastSuccessAt", "lastStatus", "lastMessage", "lastExecutionFeedback", "lastHttpStatus", "lastFailureReason", "circuitState", "circuitFailureCount", "circuitOpenedAt", "circuitNextAttemptAt", "circuitLastError", "consecutive403Count", "last403AlertedAt", "createdAt", "updatedAt"],
+} as const;
+
+export async function getOperationalSchemaDiagnostics(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+  const db = dbOverride ?? await getDb();
+  if (!db) throwDatabaseUnavailable("operational schema diagnostics");
+  const rows = await db.execute(sql`
+    select table_name, column_name
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name in ('ingestionRuns', 'operationalAlerts', 'ingestionSources')
+    order by table_name, ordinal_position
+  `) as unknown as Array<{ table_name: string; column_name: string }>;
+  return Object.entries(OPERATIONAL_SCHEMA_COLUMNS).map(([table, expected]) => {
+    const present = rows.filter(row => row.table_name === table).map(row => row.column_name);
+    const missing = expected.filter(column => !present.includes(column));
+    return { table, tableExists: present.length > 0, expected: [...expected], present, missing, compatible: present.length > 0 && missing.length === 0 };
+  });
+}
+
+export { OPERATIONAL_SCHEMA_COLUMNS };
+
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {

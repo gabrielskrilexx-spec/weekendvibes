@@ -35,6 +35,13 @@ describe("friendlyAdminErrorMessage", () => {
     expect(friendlyAdminErrorMessage(new Error("unexpected"), "Mensagem segura")).toBe("Mensagem segura");
   });
 
+  it("preserva o diagnóstico técnico PostgreSQL no final da mensagem", () => {
+    expect(friendlyAdminErrorMessage({ status: 503, message: "O serviço está indisponível (PG:42703)." }, "fallback"))
+      .toMatch(/consulta não foi concluída.*\[PG:42703\]$/);
+    expect(friendlyAdminErrorMessage({ status: 503, message: "Falha técnica [ERR:connection]" }, "fallback"))
+      .toMatch(/consulta não foi concluída.*\[ERR:CONNECTION\]$/);
+  });
+
   it("does not present a protected Meta reactivation as a communication block", () => {
     expect(friendlyAdminErrorMessage({ status: 403, code: "PRECONDITION_FAILED", message: "Reativação bloqueada: OAuthException code 110" }, "fallback")).toContain("validação Meta bem-sucedida");
   });

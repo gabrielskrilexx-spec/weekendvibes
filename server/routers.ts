@@ -48,6 +48,7 @@ import {
   setPublicFeedRolloverHour,
   listOperationalAlerts,
   getDatabaseErrorDiagnostic,
+  getOperationalSchemaDiagnostics,
   getApifyDailyUsageStatus,
   setApifyDailyRequestLimit,
   getVenuePageData,
@@ -1194,6 +1195,25 @@ export const appRouter = router({
       }),
   }),
   ingestionReports: router({
+    schemaDiagnostics: adminOnly
+      .output(z.array(z.object({ table: z.string(), tableExists: z.boolean(), expected: z.array(z.string()), present: z.array(z.string()), missing: z.array(z.string()), compatible: z.boolean() }).strict()).length(3))
+      .query(async () => {
+        try {
+          return await getOperationalSchemaDiagnostics();
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          const diagnostic = getDatabaseErrorDiagnostic(error);
+          console.error("[Admin reports] schema diagnostics failed", {
+            diagnostic,
+            message: error instanceof Error ? error.message.slice(0, 240) : "unknown error",
+          });
+          throw new TRPCError({
+            code: "SERVICE_UNAVAILABLE",
+            message: `O diagnóstico do schema PostgreSQL está indisponível (${diagnostic}).`,
+            cause: error,
+          });
+        }
+      }),
     apifyDailyUsage: adminOnly
       .output(z.object({ dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), requestCount: z.number().int().nonnegative(), dailyLimit: z.number().int().positive(), remaining: z.number().int().nonnegative(), isLimitReached: z.boolean(), nextReleaseAt: z.string().datetime(), persistence: z.boolean() }).strict())
       .query(() => getApifyDailyUsageStatus()),

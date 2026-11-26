@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { listIngestionReport, runReportStage } from "./ingestion-reports";
 import { getDatabaseErrorDiagnostic } from "./db";
+import { readFileSync as readSqlFile } from "node:fs";
+import { OPERATIONAL_SCHEMA_COLUMNS } from "./db";
 
 const reportSource = readFileSync(new URL("./ingestion-reports.ts", import.meta.url), "utf8");
 const reportStart = reportSource.indexOf("export async function listIngestionReport");
@@ -36,5 +38,14 @@ describe("listIngestionReport — contrato somente leitura", () => {
     expect(getDatabaseErrorDiagnostic(Object.assign(new Error("password=secret host=db.internal"), { code: "42703" }))).toBe("PG:42703");
     expect(getDatabaseErrorDiagnostic(Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014" }))).toBe("PG:57014");
     expect(getDatabaseErrorDiagnostic(new Error("connect ECONNRESET"))).toBe("ERR:connection");
+  });
+
+  it("mantém o contrato das três tabelas alinhado às migrations PostgreSQL", () => {
+    const baseline = readSqlFile(new URL("../drizzle/postgres/0000_postgres_baseline.sql", import.meta.url), "utf8");
+    const compatibility = readSqlFile(new URL("../drizzle/postgres/0006_operational_schema_compatibility.sql", import.meta.url), "utf8");
+    for (const [table, columns] of Object.entries(OPERATIONAL_SCHEMA_COLUMNS)) {
+      expect(`${baseline}\n${compatibility}`).toContain(`"${table}"`);
+      for (const column of columns) expect(`${baseline}\n${compatibility}`).toContain(`"${column}"`);
+    }
   });
 });
