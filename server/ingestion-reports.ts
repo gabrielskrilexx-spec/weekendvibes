@@ -138,6 +138,12 @@ function safeReportError(value: unknown) {
     .slice(0, 240);
 }
 
+export function toSafeIsoDate(value: Date | string | null | undefined) {
+  if (value == null || value === "") return null;
+  const date = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
 type ReportStageResult<T> = { value: T; diagnostic: string | null };
 
 /**
@@ -1946,21 +1952,26 @@ export async function listIngestionReport(
   const wafPersistentAlerts = findConsecutiveWafBlocksForTest(trendRuns.map(run => ({ id: Number(run.id), sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, finishedAt: run.finishedAt, httpStatus: run.httpStatus, details: run.details })));
   const sourceTelemetryHistory = buildSourceTelemetryHistoryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, finishedAt: run.finishedAt, durationMs: run.durationMs, details: run.details })));
   const wafProviderHistory = buildWafProviderHistoryForTest(trendRuns.map(run => ({ sourceKey: run.sourceKey, status: String(run.status), startedAt: run.startedAt, httpStatus: run.httpStatus, details: run.details })));
-  const freshness = sourceConfigs.map(source => ({
-    sourceKey: source.sourceKey,
-    name: source.name,
-    kind: source.kind,
-    lastSuccessAt: source.lastSuccessAt?.toISOString() ?? null,
-    lastValidCaptureAt: source.lastSuccessAt?.toISOString() ?? null,
-    lastEventAt: sourceLastEventAt(source.sourceKey)?.toISOString() ?? null,
-    expectedMinutes: source.frequencyMinutes,
-    state: getFreshnessState(source.lastSuccessAt, source.frequencyMinutes, new Date(), {
-      isEnabled: source.isEnabled === 1,
-      lastStatus: source.lastStatus,
-      circuitState: source.circuitState,
-      lastEventAt: sourceLastEventAt(source.sourceKey),
-    }),
+  const freshnessStage = await runReportStage("freshness", [], async () => sourceConfigs.map(source => {
+    const lastEventAt = sourceLastEventAt(source.sourceKey);
+    return {
+      sourceKey: source.sourceKey,
+      name: source.name,
+      kind: source.kind,
+      lastSuccessAt: toSafeIsoDate(source.lastSuccessAt),
+      lastValidCaptureAt: toSafeIsoDate(source.lastSuccessAt),
+      lastEventAt: toSafeIsoDate(lastEventAt),
+      expectedMinutes: source.frequencyMinutes,
+      state: getFreshnessState(source.lastSuccessAt, source.frequencyMinutes, new Date(), {
+        isEnabled: source.isEnabled === 1,
+        lastStatus: source.lastStatus,
+        circuitState: source.circuitState,
+        lastEventAt,
+      }),
+    };
   }));
+  const freshness = freshnessStage.value;
+  if (freshnessStage.diagnostic) reportDiagnostics.push(freshnessStage.diagnostic);
   const feedLastSuccess = trendRuns
     .filter(run => run.status === "succeeded")
     .sort(

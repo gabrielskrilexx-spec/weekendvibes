@@ -76,6 +76,7 @@ export function getDatabaseErrorLogContext(error: unknown) {
     name: typeof root?.name === "string" ? root.name.slice(0, 80) : "Error",
     code: typeof root?.code === "string" ? root.code.slice(0, 32) : null,
     causeCode: typeof cause?.code === "string" ? cause.code.slice(0, 32) : null,
+    message: sanitizeDatabaseErrorMessage(root?.message),
     causeMessage: sanitizeDatabaseErrorMessage(cause?.message),
     diagnostic: getDatabaseErrorDiagnostic(error),
   };

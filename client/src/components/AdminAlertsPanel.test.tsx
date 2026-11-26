@@ -28,6 +28,17 @@ describe("AdminAlertsPanel", () => {
     expect(tree!.root.findAllByType("select")).toHaveLength(2);
   });
 
+  it("não exibe zero como contagem válida quando o resumo está indisponível", async () => {
+    reportState = { isLoading: false, isError: true, data: undefined as never };
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminAlertsPanel />); });
+    const markup = JSON.stringify(tree!.toJSON());
+    expect(markup).toContain("Falha técnica ao carregar alertas");
+    expect(markup).toContain('"—"');
+    expect(markup).not.toContain('>0</p>');
+    reportState = { isLoading: false, isError: false, data: { alerts: [{ id: 1, integration: "meta", title: "Meta sem mídias", message: "HTTP 200 sem mídias", isResolved: 0, createdAt: new Date("2026-08-15T12:00:00Z") }], criticalAlerts: [{ id: 1 } as never] } };
+  });
+
   it("arquiva todas as pendências após confirmação e preserva o histórico", async () => {
     const confirmSpy = vi.fn().mockReturnValue(true);
     vi.stubGlobal("window", { confirm: confirmSpy });

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { listIngestionReport, runReportStage } from "./ingestion-reports";
+import { listIngestionReport, runReportStage, toSafeIsoDate } from "./ingestion-reports";
 import { getDatabaseErrorDiagnostic, getDatabaseErrorLogContext, toPostgresDateParameter } from "./db";
 import { readFileSync as readSqlFile } from "node:fs";
 import { OPERATIONAL_SCHEMA_COLUMNS } from "./db";
@@ -51,9 +51,18 @@ describe("listIngestionReport — contrato somente leitura", () => {
       name: "Error",
       code: "DRIZZLE_WRAPPER",
       causeCode: "42703",
+      message: "wrapper",
       causeMessage: "[credential]=[redacted] [url redacted]",
       diagnostic: "PG:42703:column_missing",
     });
+  });
+
+  it("normaliza MAX(createdAt) como Date, string ISO, null ou inválida sem lançar TypeError", () => {
+    expect(toSafeIsoDate(new Date("2026-11-26T18:00:00.000Z"))).toBe("2026-11-26T18:00:00.000Z");
+    expect(toSafeIsoDate("2026-11-26T18:00:00.000Z")).toBe("2026-11-26T18:00:00.000Z");
+    expect(toSafeIsoDate(null)).toBeNull();
+    expect(toSafeIsoDate(undefined)).toBeNull();
+    expect(toSafeIsoDate("not-a-date")).toBeNull();
   });
 
   it("não envia uma data inválida ao driver PostgreSQL", () => {
