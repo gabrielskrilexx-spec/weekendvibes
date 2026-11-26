@@ -24,16 +24,8 @@ export function throwDatabaseUnavailable(operation = "administrative query"): ne
 }
 
 export function getDatabaseErrorDiagnostic(error: unknown) {
-  const causes: Array<{ code?: unknown; errno?: unknown; message?: unknown }> = [];
-  const visited = new Set<object>();
-  let current: unknown = error;
-  for (let depth = 0; depth < 8 && current && typeof current === "object" && !visited.has(current); depth += 1) {
-    visited.add(current);
-    const value = current as { code?: unknown; errno?: unknown; message?: unknown; cause?: unknown };
-    causes.push(value);
-    current = value.cause;
-  }
-  const code = causes.map(value => value.code).find(value => typeof value === "string" && /^[0-9A-Z_]{2,16}$/.test(value));
+  const causes = collectDatabaseErrorCauses(error);
+  const code = causes.map(value => value.code).find(value => typeof value === "string" && /^[0-9A-Z]{5}$/.test(value));
   if (typeof code === "string") {
     const kind = ({
       "42P01": "relation_missing",
@@ -51,6 +43,42 @@ export function getDatabaseErrorDiagnostic(error: unknown) {
   if (/connection|connect|socket|network/i.test(message)) return "ERR:connection";
   if (/invalid.*date|invalid.*time|date.*parameter/i.test(message)) return "ERR:QUERY:invalid_date_param";
   return "ERR:QUERY";
+}
+
+type DatabaseErrorCause = { name?: unknown; code?: unknown; errno?: unknown; message?: unknown; cause?: unknown };
+
+function collectDatabaseErrorCauses(error: unknown): DatabaseErrorCause[] {
+  const causes: DatabaseErrorCause[] = [];
+  const visited = new Set<object>();
+  let current: unknown = error;
+  for (let depth = 0; depth < 8 && current && typeof current === "object" && !visited.has(current); depth += 1) {
+    visited.add(current);
+    const value = current as DatabaseErrorCause;
+    causes.push(value);
+    current = value.cause;
+  }
+  return causes;
+}
+
+function sanitizeDatabaseErrorMessage(value: unknown) {
+  return String(value ?? "")
+    .replace(/https?:\/\/[^\s]+/gi, "[url redacted]")
+    .replace(/(?:password|passwd|pwd|token|secret|api[_-]?key)\s*[=:]\s*[^\s,;]+/gi, "[credential]=[redacted]")
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 240);
+}
+
+export function getDatabaseErrorLogContext(error: unknown) {
+  const [root, cause] = collectDatabaseErrorCauses(error);
+  return {
+    name: typeof root?.name === "string" ? root.name.slice(0, 80) : "Error",
+    code: typeof root?.code === "string" ? root.code.slice(0, 32) : null,
+    causeCode: typeof cause?.code === "string" ? cause.code.slice(0, 32) : null,
+    causeMessage: sanitizeDatabaseErrorMessage(cause?.message),
+    diagnostic: getDatabaseErrorDiagnostic(error),
+  };
 }
 
 export function toPostgresDateParameter(value: Date | string | number, name = "date") {

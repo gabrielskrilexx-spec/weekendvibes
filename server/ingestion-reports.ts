@@ -13,7 +13,7 @@ import {
   classifyCriticalMetaReason,
   sendCriticalMetaAlert,
 } from "./meta-alert-webhook";
-import { ensureOperationalSchemaCompatibility, getDatabaseErrorDiagnostic, getDb, recordIngestionSourceReportSummary, recordOperationalAlert, toPostgresDateParameter } from "./db";
+import { ensureOperationalSchemaCompatibility, getDatabaseErrorLogContext, getDb, recordIngestionSourceReportSummary, recordOperationalAlert, toPostgresDateParameter } from "./db";
 import { buildIngestionSourceReportSummaries } from "./ingestion-source-report";
 import { registerBackgroundTask } from "./background-tasks";
 import {
@@ -156,7 +156,7 @@ export async function runReportStage<T>(
     const message = safeReportError(error);
     console.error("[Admin reports] stage failed", {
       stage,
-      code: getDatabaseErrorDiagnostic(error),
+      ...getDatabaseErrorLogContext(error),
       message,
     });
     return { value: fallback, diagnostic: `stage:${stage}` };

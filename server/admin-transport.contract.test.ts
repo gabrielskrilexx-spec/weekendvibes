@@ -10,6 +10,10 @@ const maintenanceMocks = vi.hoisted(() => ({
   getExecutiveObservabilityReport: vi.fn().mockResolvedValue({ generatedAt: "2026-10-16T12:00:00.000Z", sources: { active: 1, open: 0, waf: 0, meta110: 0, network: 0 }, series: [], trends: { waf: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, meta110: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, network: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, succeeded: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" }, successRate: { current: 0, previous: 0, delta: 0, percentage: 0, direction: "flat" } } }),
   runIngestionSourceChunk: vi.fn().mockResolvedValue({ sourceKey: "public:ingresse", dryRun: true, result: { read: 1, persisted: 1, filtered: 0, sandboxRestricted: false, previewMock: false } }),
   runObservabilitySnapshotMaintenance: vi.fn().mockResolvedValue({ systemHealthStatus: "healthy", observedAt: "2026-10-17T12:00:00.000Z", snapshot: { id: 4, snapshotHash: "b".repeat(64), generatedAt: "2026-10-17T12:00:00.000Z", sourceCount: 12 }, deletedSnapshots: 2 }),
+  listIngestionReport: vi.fn().mockResolvedValue({ runs: [], alerts: [] }),
+  listOperationalAlerts: vi.fn().mockResolvedValue([]),
+  getDatabaseErrorDiagnostic: vi.fn().mockReturnValue("PG:42703:column_missing"),
+  getDatabaseErrorLogContext: vi.fn().mockReturnValue({ name: "Error", code: "WRAPPER", causeCode: "42703", causeMessage: "column missing", diagnostic: "PG:42703:column_missing" }),
 }));
 
 vi.mock("./db", () => ({
@@ -97,6 +101,9 @@ vi.mock("./db", () => ({
     }),
   listUserReminders: vi.fn().mockResolvedValue([]),
   getDb: vi.fn(),
+  listOperationalAlerts: maintenanceMocks.listOperationalAlerts,
+  getDatabaseErrorDiagnostic: maintenanceMocks.getDatabaseErrorDiagnostic,
+  getDatabaseErrorLogContext: maintenanceMocks.getDatabaseErrorLogContext,
 }));
 vi.mock("./manual-ingestion", () => ({
   runIngestionSourceChunk: maintenanceMocks.runIngestionSourceChunk,
@@ -109,7 +116,7 @@ vi.mock("./manual-ingestion", () => ({
   runWednesdayRoutineNow: vi.fn(),
 }));
 vi.mock("./ingestion-reports", () => ({
-  listIngestionReport: vi.fn().mockResolvedValue({ runs: [], alerts: [] }),
+  listIngestionReport: maintenanceMocks.listIngestionReport,
   reprocessIngestionSource: vi.fn(),
   sanitizeReprocessErrorForTest: vi.fn(),
 }));
@@ -155,6 +162,20 @@ describe("admin transport contracts", () => {
     await expect(caller.circuitBreaker.resetActive()).resolves.toEqual({ success: true, resetCount: 2, sourceKeys: ["instagram:bar", "public:agenda"] });
     expect(maintenanceMocks.resolveOperationalAlertsBefore).toHaveBeenCalledWith({ before: new Date("2026-08-20T15:00:00.000Z"), alertTypes: ["reconciliation_divergence"] });
     expect(maintenanceMocks.resetActiveIngestionSourceCircuitBreakers).toHaveBeenCalledWith();
+  });
+
+  it("preserva o diagnóstico categorizado nas falhas de summary e alertas", async () => {
+    const caller = appRouter.createCaller(adminContext);
+    maintenanceMocks.listIngestionReport.mockRejectedValueOnce(new Error("wrapped query failure"));
+    await expect(caller.ingestionReports.summary()).rejects.toMatchObject({
+      code: "SERVICE_UNAVAILABLE",
+      message: expect.stringContaining("PG:42703:column_missing"),
+    });
+    maintenanceMocks.listOperationalAlerts.mockRejectedValueOnce(new Error("wrapped alert failure"));
+    await expect(caller.operationalAlerts.list({ limit: 25 })).rejects.toMatchObject({
+      code: "SERVICE_UNAVAILABLE",
+      message: expect.stringContaining("PG:42703:column_missing"),
+    });
   });
 
   it("reativa uma fonte somente após teste controlado bem-sucedido", async () => {

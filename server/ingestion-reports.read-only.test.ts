@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { listIngestionReport, runReportStage } from "./ingestion-reports";
-import { getDatabaseErrorDiagnostic, toPostgresDateParameter } from "./db";
+import { getDatabaseErrorDiagnostic, getDatabaseErrorLogContext, toPostgresDateParameter } from "./db";
 import { readFileSync as readSqlFile } from "node:fs";
 import { OPERATIONAL_SCHEMA_COLUMNS } from "./db";
 
@@ -40,6 +40,20 @@ describe("listIngestionReport — contrato somente leitura", () => {
     expect(getDatabaseErrorDiagnostic(Object.assign(new Error("outer"), { cause: Object.assign(new Error("relation missing"), { cause: Object.assign(new Error("missing relation"), { code: "42P01" }) }) }))).toBe("PG:42P01:relation_missing");
     expect(getDatabaseErrorDiagnostic(new Error("connect ECONNRESET"))).toBe("ERR:connection");
     expect(getDatabaseErrorDiagnostic(new Error("invalid date parameter"))).toBe("ERR:QUERY:invalid_date_param");
+  });
+
+  it("registra nome, código e causa sem expor credenciais ou URLs", () => {
+    const error = Object.assign(new Error("wrapper"), {
+      code: "DRIZZLE_WRAPPER",
+      cause: Object.assign(new Error("password=secret https://db.internal/query"), { code: "42703" }),
+    });
+    expect(getDatabaseErrorLogContext(error)).toEqual({
+      name: "Error",
+      code: "DRIZZLE_WRAPPER",
+      causeCode: "42703",
+      causeMessage: "[credential]=[redacted] [url redacted]",
+      diagnostic: "PG:42703:column_missing",
+    });
   });
 
   it("não envia uma data inválida ao driver PostgreSQL", () => {

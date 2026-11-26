@@ -48,6 +48,7 @@ import {
   setPublicFeedRolloverHour,
   listOperationalAlerts,
   getDatabaseErrorDiagnostic,
+  getDatabaseErrorLogContext,
   getOperationalSchemaDiagnostics,
   getApifyDailyUsageStatus,
   setApifyDailyRequestLimit,
@@ -1274,7 +1275,7 @@ export const appRouter = router({
           const diagnostic = getDatabaseErrorDiagnostic(error);
           console.error(
             "[Admin reports] summary query failed",
-            { diagnostic, message: error instanceof Error ? error.message.slice(0, 240) : "unknown error" },
+            getDatabaseErrorLogContext(error),
           );
           throw new TRPCError({
             code: "SERVICE_UNAVAILABLE",
@@ -1292,13 +1293,11 @@ export const appRouter = router({
         return { sourceTelemetry: sourceTelemetryOutput.parse(report.sourceTelemetry) };
       } catch (error) {
         if (error instanceof TRPCError) throw error;
-        console.error(
-          "[Admin reports] telemetry query failed",
-          error instanceof Error ? error.message : "unknown error",
-        );
+        const diagnostic = getDatabaseErrorLogContext(error);
+        console.error("[Admin reports] telemetry query failed", diagnostic);
         throw new TRPCError({
           code: "SERVICE_UNAVAILABLE",
-          message: "A telemetria operacional está temporariamente indisponível por falha na consulta. Tente novamente em instantes.",
+          message: `A telemetria operacional está temporariamente indisponível por falha na consulta (${diagnostic.diagnostic}). Tente novamente em instantes.`,
           cause: error,
         });
       }
@@ -1380,10 +1379,7 @@ export const appRouter = router({
         } catch (error) {
           if (error instanceof TRPCError) throw error;
           const diagnostic = getDatabaseErrorDiagnostic(error);
-          console.error("[Admin alerts] list query failed", {
-            diagnostic,
-            message: error instanceof Error ? error.message.slice(0, 240) : "unknown error",
-          });
+          console.error("[Admin alerts] list query failed", getDatabaseErrorLogContext(error));
           throw new TRPCError({
             code: "SERVICE_UNAVAILABLE",
             message: `Os alertas de integração estão temporariamente indisponíveis (${diagnostic}). Tente novamente em instantes.`,

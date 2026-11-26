@@ -29,7 +29,7 @@ function getErrorMetadata(error: unknown) {
     .filter(value => typeof value === "string")
     .map(value => String(value).toLowerCase())
     .find(Boolean) ?? "";
-  const diagnosticMatch = raw.match(/\[?(PG:[0-9A-Z_]{2,16}|ERR:[0-9A-Z_]{2,16})\]?/i);
+  const diagnosticMatch = raw.match(/\[?(PG:[0-9A-Z_]{2,16}(?::[a-z0-9_]{2,64})?|ERR:[0-9A-Z_]{2,16}(?::[a-z0-9_]{2,64})?)\]?/i);
   const diagnostic = diagnosticMatch?.[1]?.toUpperCase() ?? "";
   return { raw, normalized: raw.toLowerCase(), status, code, diagnostic, searchable: `${raw} ${code}`.toLowerCase() };
 }

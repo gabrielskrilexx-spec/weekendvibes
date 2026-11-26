@@ -38,6 +38,10 @@ describe("friendlyAdminErrorMessage", () => {
   it("preserva o diagnóstico técnico PostgreSQL no final da mensagem", () => {
     expect(friendlyAdminErrorMessage({ status: 503, message: "O serviço está indisponível (PG:42703)." }, "fallback"))
       .toMatch(/consulta não foi concluída.*\[PG:42703\]$/);
+    expect(friendlyAdminErrorMessage({ status: 503, message: "O serviço está indisponível (PG:42703:column_missing)." }, "fallback"))
+      .toMatch(/consulta não foi concluída.*\[PG:42703:COLUMN_MISSING\]$/);
+    expect(friendlyAdminErrorMessage({ status: 503, message: "Falha técnica [ERR:QUERY:invalid_date_param]" }, "fallback"))
+      .toMatch(/consulta não foi concluída.*\[ERR:QUERY:INVALID_DATE_PARAM\]$/);
     expect(friendlyAdminErrorMessage({ status: 503, message: "Falha técnica [ERR:connection]" }, "fallback"))
       .toMatch(/consulta não foi concluída.*\[ERR:CONNECTION\]$/);
   });
