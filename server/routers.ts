@@ -47,6 +47,7 @@ import {
   getPublicFeedRolloverHour,
   setPublicFeedRolloverHour,
   listOperationalAlerts,
+  getDatabaseErrorDiagnostic,
   getApifyDailyUsageStatus,
   setApifyDailyRequestLimit,
   getVenuePageData,
@@ -1250,13 +1251,14 @@ export const appRouter = router({
           });
         } catch (error) {
           if (error instanceof TRPCError) throw error;
+          const diagnostic = getDatabaseErrorDiagnostic(error);
           console.error(
             "[Admin reports] summary query failed",
-            error instanceof Error ? error.message : "unknown error",
+            { diagnostic, message: error instanceof Error ? error.message.slice(0, 240) : "unknown error" },
           );
           throw new TRPCError({
             code: "SERVICE_UNAVAILABLE",
-            message: "O relatório operacional está temporariamente indisponível por falha na consulta. Tente novamente em instantes.",
+            message: `O relatório operacional está temporariamente indisponível por falha na consulta (${diagnostic}). Tente novamente em instantes.`,
             cause: error,
           });
         }
@@ -1352,7 +1354,23 @@ export const appRouter = router({
     list: adminOnly
       .input(z.object({ limit: z.number().int().positive().max(100).default(25) }).strict())
       .output(z.array(z.object({ id: z.number().int().positive(), alertType: z.string(), severity: z.enum(["INFO", "WARNING", "CRITICAL"]), title: z.string(), message: z.string(), runId: z.string().nullable(), isResolved: z.boolean(), createdAt: z.string().datetime(), updatedAt: z.string().datetime() }).strict()).max(100))
-      .query(({ input }) => listOperationalAlerts(input.limit)),
+      .query(async ({ input }) => {
+        try {
+          return await listOperationalAlerts(input.limit);
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          const diagnostic = getDatabaseErrorDiagnostic(error);
+          console.error("[Admin alerts] list query failed", {
+            diagnostic,
+            message: error instanceof Error ? error.message.slice(0, 240) : "unknown error",
+          });
+          throw new TRPCError({
+            code: "SERVICE_UNAVAILABLE",
+            message: `Os alertas de integração estão temporariamente indisponíveis (${diagnostic}). Tente novamente em instantes.`,
+            cause: error,
+          });
+        }
+      }),
     resolve: adminOnly
       .input(z.object({ id: z.number().int().positive() }))
       .output(

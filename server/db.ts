@@ -23,6 +23,18 @@ export function throwDatabaseUnavailable(operation = "administrative query"): ne
   throw new Error("database_unavailable");
 }
 
+export function getDatabaseErrorDiagnostic(error: unknown) {
+  const value = error && typeof error === "object" ? error as { code?: unknown; errno?: unknown; message?: unknown } : {};
+  const code = typeof value.code === "string" && /^[0-9A-Z_]{2,16}$/.test(value.code) ? value.code : null;
+  if (code) return `PG:${code}`;
+  const errno = typeof value.errno === "string" && /^[0-9A-Z_]{2,16}$/.test(value.errno) ? value.errno : null;
+  if (errno) return `ERR:${errno}`;
+  const message = typeof value.message === "string" ? value.message.toLowerCase() : "";
+  if (/timeout|timed out|canceling statement/i.test(message)) return "ERR:timeout";
+  if (/connection|connect|socket|network/i.test(message)) return "ERR:connection";
+  return "ERR:query";
+}
+
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {

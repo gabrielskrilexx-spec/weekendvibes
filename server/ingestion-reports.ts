@@ -1805,7 +1805,20 @@ export async function listIngestionReport(
   if (filters.sourceKey)
     sqlFilters.push(eq(ingestionRuns.sourceKey, filters.sourceKey));
   const runsRaw = await db
-    .select()
+    .select({
+      id: ingestionRuns.id,
+      routine: ingestionRuns.routine,
+      sourceKey: ingestionRuns.sourceKey,
+      status: ingestionRuns.status,
+      importedCount: ingestionRuns.importedCount,
+      failedCount: ingestionRuns.failedCount,
+      durationMs: ingestionRuns.durationMs,
+      httpStatus: ingestionRuns.httpStatus,
+      counts: sql<string | null>`substring(${ingestionRuns.counts} from 1 for 20000)`,
+      details: sql<string | null>`substring(${ingestionRuns.details} from 1 for 20000)`,
+      startedAt: ingestionRuns.startedAt,
+      finishedAt: ingestionRuns.finishedAt,
+    })
     .from(ingestionRuns)
     .where(and(...sqlFilters))
     .orderBy(desc(ingestionRuns.startedAt))
@@ -1818,7 +1831,20 @@ export async function listIngestionReport(
     )
     .slice(0, safeSize);
   const trendRunsRaw = await db
-    .select()
+    .select({
+      id: ingestionRuns.id,
+      routine: ingestionRuns.routine,
+      sourceKey: ingestionRuns.sourceKey,
+      status: ingestionRuns.status,
+      importedCount: ingestionRuns.importedCount,
+      failedCount: ingestionRuns.failedCount,
+      durationMs: ingestionRuns.durationMs,
+      httpStatus: ingestionRuns.httpStatus,
+      counts: sql<string | null>`substring(${ingestionRuns.counts} from 1 for 20000)`,
+      details: sql<string | null>`substring(${ingestionRuns.details} from 1 for 20000)`,
+      startedAt: ingestionRuns.startedAt,
+      finishedAt: ingestionRuns.finishedAt,
+    })
     .from(ingestionRuns)
     .where(cutoff ? gte(ingestionRuns.startedAt, cutoff) : undefined)
     .orderBy(desc(ingestionRuns.startedAt))

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { listIngestionReport, runReportStage } from "./ingestion-reports";
+import { getDatabaseErrorDiagnostic } from "./db";
 
 const reportSource = readFileSync(new URL("./ingestion-reports.ts", import.meta.url), "utf8");
 const reportStart = reportSource.indexOf("export async function listIngestionReport");
@@ -29,5 +30,11 @@ describe("listIngestionReport — contrato somente leitura", () => {
     });
     expect(result.value).toEqual([]);
     expect(result.diagnostic).toBe("stage:operational-alerts");
+  });
+
+  it("normaliza códigos PostgreSQL sem expor mensagem, URL ou stack", () => {
+    expect(getDatabaseErrorDiagnostic(Object.assign(new Error("password=secret host=db.internal"), { code: "42703" }))).toBe("PG:42703");
+    expect(getDatabaseErrorDiagnostic(Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014" }))).toBe("PG:57014");
+    expect(getDatabaseErrorDiagnostic(new Error("connect ECONNRESET"))).toBe("ERR:connection");
   });
 });
