@@ -9,19 +9,30 @@ describe("friendlyAdminErrorMessage", () => {
         "fallback"
       )
     ).toBe(
-      "Não foi possível comunicar com o servidor. Verifique a conexão e tente novamente."
+      "Não foi possível comunicar com o servidor durante a consulta (falha de rede ou transporte). Verifique a conexão e tente novamente."
     );
     expect(
       friendlyAdminErrorMessage(
         new Error("fetch failed with HTTP 403"),
         "fallback"
       )
-    ).toContain("bloqueou temporariamente");
+    ).toContain("não tem permissão");
   });
 
   it("maps typed REST authorization failures to friendly messages", () => {
-    expect(friendlyAdminErrorMessage({ status: 401, code: "UNAUTHORIZED", message: "unauthorized" }, "fallback")).toContain("sessão administrativa expirou");
+    expect(friendlyAdminErrorMessage({ status: 401, code: "UNAUTHORIZED", message: "unauthorized" }, "fallback")).toContain("ausente ou expirada");
     expect(friendlyAdminErrorMessage({ status: 403, code: "FORBIDDEN", message: "forbidden" }, "fallback")).toContain("não tem permissão");
+  });
+
+  it("reconhece códigos e status aninhados no formato tRPC", () => {
+    expect(friendlyAdminErrorMessage({ shape: { data: { code: "UNAUTHORIZED", httpStatus: 401 } } }, "fallback")).toContain("ausente ou expirada");
+    expect(friendlyAdminErrorMessage({ data: { code: "FORBIDDEN", httpStatus: 403 } }, "fallback")).toContain("autenticado, mas não tem permissão");
+    expect(friendlyAdminErrorMessage({ data: { code: "SERVICE_UNAVAILABLE", httpStatus: 503 } }, "fallback")).toContain("banco de dados está indisponível");
+  });
+
+  it("diferencia indisponibilidade de um erro desconhecido", () => {
+    expect(friendlyAdminErrorMessage({ status: 503, message: "database unavailable" }, "fallback")).toContain("consulta não foi concluída");
+    expect(friendlyAdminErrorMessage(new Error("unexpected"), "Mensagem segura")).toBe("Mensagem segura");
   });
 
   it("does not present a protected Meta reactivation as a communication block", () => {
@@ -34,7 +45,7 @@ describe("friendlyAdminErrorMessage", () => {
         new Error("UNAUTHORIZED: token=secret"),
         "fallback"
       )
-    ).toContain("sessão administrativa expirou");
+    ).toContain("ausente ou expirada");
     expect(
       friendlyAdminErrorMessage(new Error("unexpected"), "Mensagem segura")
     ).toBe("Mensagem segura");

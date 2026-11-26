@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   toastWarning: vi.fn(),
   toastInfo: vi.fn(),
   summaryInput: undefined as unknown,
+  reportError: null as unknown,
+  reportIsError: false,
   apifyUsageData: { dateKey: "2026-09-19", requestCount: 1, dailyLimit: 3, remaining: 2, isLimitReached: false, nextReleaseAt: "2026-09-20T03:00:00.000Z", persistence: true },
   brandMonitoringData: [
     { id: 1, name: "Nosso After", slug: "nosso-after", platforms: ["Instagram", "Bilheterias itinerantes"], cities: ["Guarujá", "Santos"], matchTerms: ["nossoafterguaruja"], isActive: true, editionsDetected: 0, rescrapes: 0, latestEditionDate: null, lastDetectedAt: null },
@@ -53,7 +55,7 @@ vi.mock("recharts", () => { const passthrough = ({ children }: { children?: Reac
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     ingestionReports: {
-      summary: { useQuery: (input: unknown) => { mocks.summaryInput = input; return { data: latestReportData, refetch: mocks.reportRefetch }; } },
+      summary: { useQuery: (input: unknown) => { mocks.summaryInput = input; return { data: mocks.reportIsError ? undefined : latestReportData, error: mocks.reportError, isError: mocks.reportIsError, isLoading: false, isFetching: false, refetch: mocks.reportRefetch }; } },
       brandMonitoring: { useQuery: () => ({ data: mocks.brandMonitoringData, isLoading: false, isError: false, refetch: vi.fn() }) },
       apifyDailyUsage: { useQuery: () => ({ data: mocks.apifyUsageData, isLoading: false, isError: false, refetch: vi.fn() }) },
       setApifyDailyLimit: { useMutation: (options: { onSuccess?: (result: { dailyLimit: number }) => void }) => ({ isPending: false, mutate: vi.fn((input: { dailyLimit: number }) => options.onSuccess?.({ dailyLimit: input.dailyLimit })) }) },
@@ -76,6 +78,8 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     mocks.toastWarning.mockReset();
     mocks.toastInfo.mockReset();
     mocks.summaryInput = undefined;
+    mocks.reportError = null;
+    mocks.reportIsError = false;
     mocks.apifyUsageData = { dateKey: "2026-09-19", requestCount: 1, dailyLimit: 3, remaining: 2, isLimitReached: false, nextReleaseAt: "2026-09-20T03:00:00.000Z", persistence: true };
     mocks.brandMonitoringData = [
       { id: 1, name: "Nosso After", slug: "nosso-after", platforms: ["Instagram", "Bilheterias itinerantes"], cities: ["Guarujá", "Santos"], matchTerms: ["nossoafterguaruja"], isActive: true, editionsDetected: 0, rescrapes: 0, latestEditionDate: null, lastDetectedAt: null },
@@ -229,6 +233,17 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     const alertText = alert.findAllByType("p").map(node => node.children.join(" ")).join(" ").replace(/\s+/g, " ");
     expect(alertText).toContain("ultrapassou 50 %");
     expect(alertText).toContain("#77 (60%)");
+  });
+
+  it("exibe falha de consulta sem sugerir relatório vazio e mantém Atualizar disponível", async () => {
+    mocks.reportIsError = true;
+    mocks.reportError = { data: { code: "SERVICE_UNAVAILABLE", httpStatus: 503 } };
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    const alert = tree!.root.findByProps({ "data-testid": "admin-reports-error" });
+    expect(JSON.stringify(tree!.toJSON())).toContain("serviço ou banco de dados está indisponível");
+    expect(JSON.stringify(tree!.toJSON())).not.toContain("nenhum evento");
+    expect(tree!.root.findByProps({ "aria-label": "Atualizar relatórios" })).toBeTruthy();
   });
 
   it("renderiza a série semanal de lidas, persistidos e rejeitados", async () => {
