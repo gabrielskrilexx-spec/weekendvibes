@@ -18,6 +18,11 @@ import { normalizeDiscoveredSourceUrl, resolveDiscoveredSourceMatch } from "../s
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
+function throwDatabaseUnavailable(operation = "administrative query"): never {
+  console.warn("[Database] unavailable", { operation });
+  throw new Error("database_unavailable");
+}
+
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
@@ -50,7 +55,7 @@ export async function getDb() {
 
 export async function upsertPushSubscription(input: { userId?: number; endpoint: string; p256dh: string; auth: string }) {
   const db = await getDb();
-  if (!db) throw new Error("database_unavailable");
+  if (!db) throwDatabaseUnavailable();
   await db.insert(pushSubscriptions).values(input).onConflictDoUpdate({
     target: pushSubscriptions.endpoint,
     set: { p256dh: input.p256dh, auth: input.auth, ...(input.userId ? { userId: input.userId } : {}) },
@@ -59,20 +64,20 @@ export async function upsertPushSubscription(input: { userId?: number; endpoint:
 
 export async function deletePushSubscription(endpoint: string) {
   const db = await getDb();
-  if (!db) throw new Error("database_unavailable");
+  if (!db) throwDatabaseUnavailable();
   const deleted = await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint)).returning({ id: pushSubscriptions.id });
   return deleted.length;
 }
 
 export async function listPushSubscriptions(userId?: number) {
   const db = await getDb();
-  if (!db) throw new Error("database_unavailable");
+  if (!db) throwDatabaseUnavailable();
   return db.select({ endpoint: pushSubscriptions.endpoint, p256dh: pushSubscriptions.p256dh, auth: pushSubscriptions.auth, userId: pushSubscriptions.userId }).from(pushSubscriptions).where(userId ? eq(pushSubscriptions.userId, userId) : undefined);
 }
 
 export async function listUpcomingWeekendEvents(now = new Date()) {
   const db = await getDb();
-  if (!db) throw new Error("database_unavailable");
+  if (!db) throwDatabaseUnavailable();
   const end = new Date(now.getTime() + 4 * 24 * 60 * 60 * 1000);
   return db.select({ id: events.id, title: events.title, description: events.description, eventDate: events.eventDate, city: events.city, imageUrl: events.imageUrl, locationName: events.locationName, sourceUrl: events.sourceUrl, sourceType: events.sourceType, category: events.category })
     .from(events)
@@ -92,7 +97,7 @@ export function getDueEventReminderWindow(now = new Date()) {
 
 export async function listDueEventReminders(now = new Date()) {
   const db = await getDb();
-  if (!db) throw new Error("database_unavailable");
+  if (!db) throwDatabaseUnavailable();
   const window = getDueEventReminderWindow(now);
   return db.select({ id: eventReminders.id, userId: eventReminders.userId, eventId: eventReminders.eventId, title: events.title, eventDate: events.eventDate, imageUrl: events.imageUrl, locationName: events.locationName, sourceUrl: events.sourceUrl, sourceType: events.sourceType, category: events.category })
     .from(eventReminders).innerJoin(events, eq(events.id, eventReminders.eventId))
@@ -102,19 +107,19 @@ export async function listDueEventReminders(now = new Date()) {
 
 export async function deactivateEventReminder(id: number) {
   const db = await getDb();
-  if (!db) throw new Error("database_unavailable");
+  if (!db) throwDatabaseUnavailable();
   await db.update(eventReminders).set({ isActive: 0, updatedAt: new Date() }).where(eq(eventReminders.id, id));
 }
 
 export async function recordPushDispatch(input: { dispatchType: string; title: string; sent: number; failed: number; expired: number; errorMessage?: string | null }) {
   const db = await getDb();
-  if (!db) throw new Error("database_unavailable");
+  if (!db) throwDatabaseUnavailable();
   await db.insert(pushDispatches).values(input);
 }
 
 export async function getPushDiagnostics() {
   const db = await getDb();
-  if (!db) throw new Error("database_unavailable");
+  if (!db) throwDatabaseUnavailable();
   const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(pushSubscriptions);
   const [last] = await db.select({ createdAt: pushDispatches.createdAt, sent: pushDispatches.sent, failed: pushDispatches.failed, expired: pushDispatches.expired }).from(pushDispatches).orderBy(desc(pushDispatches.createdAt)).limit(1);
   return { vapidConfigured: Boolean(process.env.VITE_VAPID_PUBLIC_KEY?.trim() && process.env.VAPID_PRIVATE_KEY?.trim() && process.env.VAPID_SUBJECT?.trim()), activeDevices: Number(count ?? 0), lastDispatch: last ? { createdAt: last.createdAt.toISOString(), sent: last.sent, failed: last.failed, expired: last.expired } : null };
@@ -143,7 +148,7 @@ export async function checkDatabaseHealth(getDbProvider: typeof getDb = getDb) {
 
 export async function issueAdminMagicLink(openId: string, ttlMs = 5 * 60_000) {
   const db = await getDb();
-  if (!db) throw new Error("database_unavailable");
+  if (!db) throwDatabaseUnavailable();
   const token = randomBytes(32).toString("hex");
   const tokenHash = createHash("sha256").update(token, "utf8").digest("hex");
   const boundedTtl = Math.max(30_000, Math.min(5 * 60_000, Math.trunc(ttlMs)));
@@ -352,7 +357,7 @@ export async function recordOperationalAlert(input: { integration: OperationalIn
 
 export async function listOperationalAlerts(limit = 25, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
-  if (!db) return [];
+  if (!db) throwDatabaseUnavailable();
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const rows = await db.select({ id: operationalAlerts.id, alertType: operationalAlerts.alertType, severity: operationalAlerts.severity, title: operationalAlerts.title, message: operationalAlerts.message, runId: operationalAlerts.runId, isResolved: operationalAlerts.isResolved, createdAt: operationalAlerts.createdAt, updatedAt: operationalAlerts.updatedAt }).from(operationalAlerts).where(and(eq(operationalAlerts.isResolved, 0), gte(operationalAlerts.createdAt, cutoff))).orderBy(desc(operationalAlerts.createdAt)).limit(Math.min(100, Math.max(1, Math.trunc(limit))));
   return rows.map(row => ({ id: row.id, alertType: row.alertType, severity: row.severity, title: row.title, message: row.message, runId: row.runId ?? null, isResolved: row.isResolved === 1, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() }));
@@ -519,9 +524,9 @@ export async function purgeResolvedOperationalAlerts(retentionDays = 30, now = n
 
 const normalizeAlias = (value: string) => value.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-export async function listLocationAliases(dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<LocationAlias[]> {
+export async function listLocationAliases(dbOverride?: Awaited<ReturnType<typeof getDb>>, failIfUnavailable = true): Promise<LocationAlias[]> {
   const db = dbOverride ?? await getDb();
-  if (!db) return [];
+  if (!db) { if (failIfUnavailable) throwDatabaseUnavailable(); return []; }
   return db.select().from(locationAliases).orderBy(asc(locationAliases.city), asc(locationAliases.canonicalName), asc(locationAliases.alias));
 }
 
@@ -677,9 +682,9 @@ async function ensureDefaultIngestionSources(db: Awaited<ReturnType<typeof getDb
   }
 }
 
-export async function listIngestionSources(dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<IngestionSource[]> {
+export async function listIngestionSources(dbOverride?: Awaited<ReturnType<typeof getDb>>, failIfUnavailable = true): Promise<IngestionSource[]> {
   const db = dbOverride ?? await getDb();
-  if (!db) return [];
+  if (!db) { if (failIfUnavailable) throwDatabaseUnavailable(); return []; }
   await ensureDefaultIngestionSources(db);
   return db.select().from(ingestionSources).orderBy(asc(ingestionSources.kind), asc(ingestionSources.priority), asc(ingestionSources.name));
 }
@@ -696,12 +701,13 @@ export function classifyIngestionSourceFailure(source: Pick<IngestionSource, "la
 }
 
 export async function listFilteredIngestionSources(filters: IngestionSourceListFilters = {}, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
-  const rows = await listIngestionSources(dbOverride);
+  const rows = await listIngestionSources(dbOverride, true);
   return rows.filter(source => (!filters.openOnly || source.circuitState === "open") && (!filters.failureCategory || classifyIngestionSourceFailure(source) === filters.failureCategory) && (!filters.since || (source.lastAttemptAt ? new Date(source.lastAttemptAt).getTime() >= filters.since.getTime() : false)));
 }
 
 export async function getIngestionSourceSummary(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
+  if (!db) throwDatabaseUnavailable();
   if (db && typeof (db as unknown as { execute?: unknown }).execute === "function") {
     const result = await db.execute(sql`
       SELECT count(*) FILTER (WHERE "isEnabled" = 1)::int AS active_total,
@@ -864,7 +870,7 @@ export async function deactivateExpiredSources(now = new Date(), dbOverride?: Aw
 
 export async function listSystemHealthTransitions(limit = 10, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
-  if (!db) return [];
+  if (!db) throwDatabaseUnavailable();
   return db.select({ id: systemHealthTransitions.id, previousStatus: systemHealthTransitions.previousStatus, nextStatus: systemHealthTransitions.nextStatus, reason: systemHealthTransitions.reason, observedAt: systemHealthTransitions.observedAt }).from(systemHealthTransitions).orderBy(desc(systemHealthTransitions.observedAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 50));
 }
 
@@ -948,7 +954,7 @@ async function buildDailyTelemetrySeriesFromPostgres(db: NonNullable<Awaited<Ret
 }
 
 export async function listEnabledInstagramSources(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
-  const rows = await listIngestionSources(dbOverride);
+  const rows = await listIngestionSources(dbOverride, false);
   return rows.filter(source => source.kind === "instagram" && source.isEnabled === 1);
 }
 
@@ -963,7 +969,7 @@ export type InstagramSyncStatus = {
 
 export async function listLatestInstagramSyncStatuses(dbOverride?: Awaited<ReturnType<typeof getDb>>): Promise<InstagramSyncStatus[]> {
   const db = dbOverride ?? await getDb();
-  if (!db) return [];
+  if (!db) throwDatabaseUnavailable();
   const runs = await db.select({ status: ingestionRuns.status, details: ingestionRuns.details, startedAt: ingestionRuns.startedAt, finishedAt: ingestionRuns.finishedAt })
     .from(ingestionRuns)
     .where(eq(ingestionRuns.routine, "instagram-stories-async"))
@@ -1111,13 +1117,13 @@ export async function updateIngestionSource(id: number, input: { isEnabled: bool
 
 export async function listIngestionSourceHandleAudit(sourceKey: string, limit = 20, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
-  if (!db) return [];
+  if (!db) throwDatabaseUnavailable();
   return db.select({ id: ingestionSourceHandleAuditLogs.id, sourceKey: ingestionSourceHandleAuditLogs.sourceKey, previousHandle: ingestionSourceHandleAuditLogs.previousHandle, nextHandle: ingestionSourceHandleAuditLogs.nextHandle, changedAt: ingestionSourceHandleAuditLogs.changedAt }).from(ingestionSourceHandleAuditLogs).where(eq(ingestionSourceHandleAuditLogs.sourceKey, sourceKey)).orderBy(desc(ingestionSourceHandleAuditLogs.changedAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 100));
 }
 
 export async function listIngestionSourceActionAudit(sourceKey: string, limit = 20, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
   const db = dbOverride ?? await getDb();
-  if (!db) return [];
+  if (!db) throwDatabaseUnavailable();
   return db.select({ id: ingestionSourceActionAuditLogs.id, sourceKey: ingestionSourceActionAuditLogs.sourceKey, action: ingestionSourceActionAuditLogs.action, operatorOpenId: ingestionSourceActionAuditLogs.operatorOpenId, details: ingestionSourceActionAuditLogs.details, actedAt: ingestionSourceActionAuditLogs.actedAt }).from(ingestionSourceActionAuditLogs).where(eq(ingestionSourceActionAuditLogs.sourceKey, sourceKey)).orderBy(desc(ingestionSourceActionAuditLogs.actedAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 100));
 }
 
@@ -1223,9 +1229,9 @@ export async function getCircuitBreakerStatus(sourceKey: string, now = new Date(
   return { sourceKey, state: source.circuitState, failureCount: source.circuitFailureCount, allowed: source.circuitState !== "open", nextAttemptAt: source.circuitNextAttemptAt };
 }
 
-export async function listCircuitBreakerStatuses(dbOverride?: Awaited<ReturnType<typeof getDb>>) {
+export async function listCircuitBreakerStatuses(dbOverride?: Awaited<ReturnType<typeof getDb>>, failIfUnavailable = true) {
   const db = dbOverride ?? await getDb();
-  if (!db) return [];
+  if (!db) { if (failIfUnavailable) throwDatabaseUnavailable(); return []; }
   await ensureDefaultIngestionSources(db);
   return db.select({ sourceKey: ingestionSources.sourceKey, name: ingestionSources.name, kind: ingestionSources.kind, circuitState: ingestionSources.circuitState, circuitFailureCount: ingestionSources.circuitFailureCount, circuitOpenedAt: ingestionSources.circuitOpenedAt, circuitNextAttemptAt: ingestionSources.circuitNextAttemptAt, circuitLastError: ingestionSources.circuitLastError, lastStatus: ingestionSources.lastStatus, lastMessage: ingestionSources.lastMessage, lastHttpStatus: ingestionSources.lastHttpStatus, lastFailureReason: ingestionSources.lastFailureReason }).from(ingestionSources).orderBy(asc(ingestionSources.kind), asc(ingestionSources.name));
 }
@@ -1432,12 +1438,12 @@ export function getTodayEventWindow(now = new Date(), rolloverHour = DEFAULT_PUB
 export async function listTodayEvents(options: { size?: number } = {}) {
   const rolloverHour = await getPublicFeedRolloverHour();
   const window = getTodayEventWindow(new Date(), rolloverHour);
-  return listEvents({ size: options.size ?? 12, windowStartUtc: window.windowStartUtc, windowEndUtc: window.windowEndUtc, activeAtUtc: window.activeAtUtc });
+  return listEvents({ size: options.size ?? 12, windowStartUtc: window.windowStartUtc, windowEndUtc: window.windowEndUtc, activeAtUtc: window.activeAtUtc, failIfUnavailable: false });
 }
 
-export async function listEvents(filters: { day?: string; date?: string; startDate?: string; endDate?: string; timeFrom?: string; timeTo?: string; city?: string; category?: string; genre?: string; venue?: string; neighborhood?: string; minPriceCents?: number; maxPriceCents?: number; page?: number; size?: number; windowStartUtc?: Date; windowEndUtc?: Date; activeAtUtc?: Date } = {}) {
+export async function listEvents(filters: { failIfUnavailable?: boolean; day?: string; date?: string; startDate?: string; endDate?: string; timeFrom?: string; timeTo?: string; city?: string; category?: string; genre?: string; venue?: string; neighborhood?: string; minPriceCents?: number; maxPriceCents?: number; page?: number; size?: number; windowStartUtc?: Date; windowEndUtc?: Date; activeAtUtc?: Date } = {}) {
   const db = await getDb();
-  if (!db) return [];
+  if (!db) { if (filters.failIfUnavailable !== false) throwDatabaseUnavailable(); return []; }
   const dayStartUtc = filters.windowStartUtc ?? saoPauloDayStartUtc();
   const conditions = [eq(events.isPublished, 1), eq(events.isArchived, 0), gte(events.eventDate, dayStartUtc), sql`${events.city} IN (${sql.join(ALLOWED_CITIES.map(city => sql`${city}`), sql`, `)})`];
   if (filters.windowEndUtc) conditions.push(lt(events.eventDate, filters.windowEndUtc));
@@ -1527,7 +1533,7 @@ export async function getEventById(id: number, dbOverride?: Awaited<ReturnType<t
 export async function listRelatedEvents(eventId: number, limit = 4) {
   const current = await getEventById(eventId);
   if (!current) return [];
-  const candidates = await listEvents({ size: 50, activeAtUtc: new Date() });
+  const candidates = await listEvents({ size: 50, activeAtUtc: new Date(), failIfUnavailable: false });
   return selectRelatedEvents(current, candidates, limit);
 }
 
@@ -1652,7 +1658,7 @@ export type PotentialEventCollision = {
 
 export async function listPotentialEventCollisions(limit = 100): Promise<PotentialEventCollision[]> {
   const db = await getDb();
-  if (!db) return [];
+  if (!db) throwDatabaseUnavailable();
   const rows = await db.select({ id: events.id, title: events.title, eventDate: events.eventDate, locationName: events.locationName, city: events.city, priceCents: events.priceCents, imageUrl: events.imageUrl, latitude: events.latitude, longitude: events.longitude, sourceUrl: events.sourceUrl }).from(events).where(and(eq(events.isPublished, 1), eq(events.isArchived, 0))).orderBy(asc(events.eventDate));
   const collisions: PotentialEventCollision[] = [];
   for (let index = 0; index < rows.length; index += 1) {
@@ -1854,7 +1860,7 @@ export type DraftEventRecord = {
 export async function listDraftEvents(input: { sourceType?: "all" | "instagram"; limit?: number } = {}) {
   const db = await getDb();
   const limit = Math.min(100, Math.max(1, Math.trunc(input.limit ?? 50)));
-  if (!db) return { items: [] as DraftEventRecord[], total: 0, limit } as const;
+  if (!db) throwDatabaseUnavailable();
   const conditions = [eq(events.isPublished, 0), eq(events.isArchived, 0)];
   if (input.sourceType === "instagram") conditions.push(like(events.sourceType, "instagram%"));
   const where = and(...conditions);

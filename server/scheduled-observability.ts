@@ -43,7 +43,7 @@ export async function observeScheduledIngestion(input: {
   }
 
   try {
-    const statuses = await listCircuitBreakerStatuses();
+    const statuses = await listCircuitBreakerStatuses(undefined, false);
     const openSources = statuses.filter(source => source.circuitState === "open");
     if (openSources.length > 0) {
       alerts.push("circuit_breaker_open");

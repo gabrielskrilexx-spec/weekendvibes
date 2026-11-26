@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const state = vi.hoisted(() => ({
-  query: { data: [{ key: "1:2", similarity: 0.82, civilDate: "2026-09-05", venue: "Laroc Club Guarujá", recommendedKeepId: 1, left: { id: 1, title: "Laroc Guarujá apresenta Meduza", eventDate: new Date("2026-09-05T13:00:00-03:00"), locationName: "Laroc Club Guarujá", city: "Guarujá", priceCents: 12000, imageUrl: "image", latitude: "-23", longitude: "-46", sourceUrl: "source" }, right: { id: 2, title: "Laroc Guarujá apresenta: Meduza", eventDate: new Date("2026-09-05T16:00:00-03:00"), locationName: "Laroc Club Guarujá", city: "Guarujá", priceCents: 0, imageUrl: "image", latitude: null, longitude: null, sourceUrl: "other" } }], isLoading: false, isError: false, isFetching: false, refetch: vi.fn() },
+  query: { data: [{ key: "1:2", similarity: 0.82, civilDate: "2026-09-05", venue: "Laroc Club Guarujá", recommendedKeepId: 1, left: { id: 1, title: "Laroc Guarujá apresenta Meduza", eventDate: new Date("2026-09-05T13:00:00-03:00"), locationName: "Laroc Club Guarujá", city: "Guarujá", priceCents: 12000, imageUrl: "image", latitude: "-23", longitude: "-46", sourceUrl: "source" }, right: { id: 2, title: "Laroc Guarujá apresenta: Meduza", eventDate: new Date("2026-09-05T16:00:00-03:00"), locationName: "Laroc Club Guarujá", city: "Guarujá", priceCents: 0, imageUrl: "image", latitude: null, longitude: null, sourceUrl: "other" } }], isLoading: false, isError: false, isFetching: false, error: undefined as { message: string; data?: { code?: string } } | undefined, refetch: vi.fn() },
   remove: { isPending: false, mutate: vi.fn() },
   resolveMany: { isPending: false, mutate: vi.fn() },
 }));
@@ -18,6 +18,18 @@ describe("CollisionReviewPanel", () => {
     expect(getDeleteCollisionErrorMessage({ message: "Database unavailable" })).toContain("indisponível");
   });
 
+  it("diferencia indisponibilidade do banco de uma lista sem colisões", () => {
+    state.query.data = [];
+    state.query.isError = true;
+    state.query.error = { message: "O banco de dados está temporariamente indisponível. Tente novamente.", data: { code: "SERVICE_UNAVAILABLE" } };
+    const markup = renderToStaticMarkup(<CollisionReviewPanel />);
+    expect(markup).toContain("Não foi possível carregar as colisões");
+    expect(markup).toContain("serviço ou banco de dados está indisponível");
+    expect(markup).toContain("Tentar novamente");
+    state.query.data = [{ key: "1:2", similarity: 0.82, civilDate: "2026-09-05", venue: "Laroc Club Guarujá", recommendedKeepId: 1, left: { id: 1, title: "Laroc Guarujá apresenta Meduza", eventDate: new Date("2026-09-05T13:00:00-03:00"), locationName: "Laroc Club Guarujá", city: "Guarujá", priceCents: 12000, imageUrl: "image", latitude: "-23", longitude: "-46", sourceUrl: "source" }, right: { id: 2, title: "Laroc Guarujá apresenta: Meduza", eventDate: new Date("2026-09-05T16:00:00-03:00"), locationName: "Laroc Club Guarujá", city: "Guarujá", priceCents: 0, imageUrl: "image", latitude: null, longitude: null, sourceUrl: "other" } }];
+    state.query.isError = false;
+    state.query.error = undefined;
+  });
   it("remove imediatamente do cache a colisão correspondente ao deletedId", () => {
     const rows = [{ left: { id: 10 }, right: { id: 20 } }, { left: { id: 30 }, right: { id: 40 } }];
     expect(removeCollisionByDeletedId(rows, "20")).toEqual([{ left: { id: 30 }, right: { id: 40 } }]);

@@ -71,7 +71,7 @@ export default function AdminAlertsPanel() {
     </div>
 
     {report.isLoading && <p role="status" className="mt-5 rounded-2xl border border-white/10 p-5 text-sm text-zinc-400">Carregando alertas de integração…</p>}
-    {report.isError && <p role="alert" className="mt-5 rounded-2xl border border-rose-300/20 bg-rose-400/10 p-5 text-sm text-rose-100">Falha técnica ao carregar alertas: {friendlyAdminErrorMessage(report.error, "verifique a sessão e tente novamente.")}</p>}
+    {report.isError && <p role="alert" className="mt-5 rounded-2xl border border-rose-300/20 bg-rose-400/10 p-5 text-sm text-rose-100">Falha técnica ao carregar alertas: {friendlyAdminErrorMessage(report.error, "verifique a sessão e tente novamente.")} <button type="button" onClick={() => void report.refetch()} className="ml-2 rounded-lg border border-rose-200/30 px-3 py-2 font-bold hover:bg-rose-300/10">Tentar novamente</button></p>}
     <div className="mt-5 grid gap-3 sm:grid-cols-4">
       <div className="rounded-2xl border border-red-300/20 bg-red-300/10 p-4"><XCircle size={17} className="text-red-200" /><p className="mt-3 text-2xl font-black">{openCount}</p><p className="text-xs text-zinc-400">Em aberto</p></div>
       <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-4"><CheckCircle2 size={17} className="text-emerald-200" /><p className="mt-3 text-2xl font-black">{resolvedCount}</p><p className="text-xs text-zinc-400">Resolvidos</p></div>
@@ -89,7 +89,7 @@ export default function AdminAlertsPanel() {
 
     <div className="mt-5 space-y-3" aria-live="polite">
       {report.isLoading && <p className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-zinc-400">Carregando alertas...</p>}
-      {report.isError && <p role="alert" className="rounded-2xl border border-red-300/30 bg-red-300/10 p-5 text-sm text-red-100">Não foi possível carregar os alertas de integração.</p>}
+      {report.isError && <p role="alert" className="rounded-2xl border border-red-300/30 bg-red-300/10 p-5 text-sm text-red-100">Não foi possível carregar os alertas de integração: {friendlyAdminErrorMessage(report.error, "tente novamente em instantes.")}</p>}
       {!report.isLoading && !report.isError && alerts.length === 0 && <p className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-zinc-500">Nenhum alerta corresponde aos filtros selecionados.</p>}
       {alerts.map(alert => {
         const rowPending = resolve.isPending && resolvingId === alert.id;

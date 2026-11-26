@@ -187,7 +187,7 @@ export function getExploratoryApifyCatalogUrls(requestedUrls?: string[]) {
 async function getEnabledConfiguredSourceUrls() {
   const configuredUrls = getConfiguredSourceUrls();
   try {
-    const sources = await listIngestionSources();
+    const sources = await listIngestionSources(undefined, false);
     const enabledDatabaseUrls = sources
       .filter(source => source.kind === "public" && source.isEnabled === 1)
       .map(source => sanitizePublicSourceUrl(source.url))
@@ -1885,7 +1885,7 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
     ? Array.from(new Set([...configuredBases, ...exploratoryBases])).filter(url => options.sourceKey === "public" || publicSourceKey(url) === options.sourceKey)
     : Array.from(new Set([...configuredBases, ...exploratoryBases])))
     .filter(url => !options.exploratoryApify || publicSourceKey(url) !== "public:zig" || isZigRegionalCatalogUrl(url));
-  const sourceHints = await listIngestionSources().catch(() => []);
+  const sourceHints = await listIngestionSources(undefined, false).catch(() => []);
   const sourceByUrl = new Map(sourceHints.map(source => [sanitizePublicSourceUrl(source.url), source]));
   const directArticketCandidates = bases.filter(isArticketEventUrl).map(url => ({
     url,

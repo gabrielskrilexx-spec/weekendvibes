@@ -1074,7 +1074,7 @@ export const appRouter = router({
   }),
   locationAliases: router({
     list: adminOnly.query(async () =>
-      normalizeJsonForTransport(await listLocationAliases())
+      normalizeJsonForTransport(await listLocationAliases(undefined, true))
     ),
     create: adminOnly
       .input(
@@ -1120,7 +1120,7 @@ export const appRouter = router({
   }),
   circuitBreaker: router({
     statuses: adminOnly.query(async () =>
-      normalizeJsonForTransport(await listCircuitBreakerStatuses())
+      normalizeJsonForTransport(await listCircuitBreakerStatuses(undefined, true))
     ),
     resetActive: adminOnly
       .output(z.object({ success: z.literal(true), resetCount: z.number().int().nonnegative(), sourceKeys: z.array(z.string().min(1).max(120)).max(100) }).strict())
@@ -1375,7 +1375,7 @@ export const appRouter = router({
       .query(async ({ input }) => normalizeJsonForTransport(await listFilteredIngestionSources({ openOnly: input?.openOnly, failureCategory: input?.failureCategory, since: input?.since ? new Date(input.since) : undefined }))),
     syncStatus: adminOnly
       .output(z.array(z.object({ username: z.string(), actorRunId: z.string().nullable(), status: z.enum(["running", "succeeded", "failed", "partial"]), providerStatus: z.string().nullable(), startedAt: z.string(), finishedAt: z.string().nullable() }).strict()))
-      .query(async () => normalizeJsonForTransport((await listLatestInstagramSyncStatuses()).map(item => ({ ...item, startedAt: item.startedAt.toISOString(), finishedAt: item.finishedAt?.toISOString() ?? null })))),
+      .query(async () => normalizeJsonForTransport((await listLatestInstagramSyncStatuses(undefined)).map(item => ({ ...item, startedAt: item.startedAt.toISOString(), finishedAt: item.finishedAt?.toISOString() ?? null })))),
     summary: adminOnly
       .query(async () => normalizeJsonForTransport(await getIngestionSourceSummary())),
     consolidatedReport: adminOnly
@@ -1479,7 +1479,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         try {
           if (input.isEnabled) {
-            const source = (await listIngestionSources()).find(item => item.id === input.id);
+            const source = (await listIngestionSources(undefined, true)).find(item => item.id === input.id);
             const handle = source?.handle?.replace(/^@+/, "").toLowerCase();
             if (source?.kind === "instagram" && (handle === "doloresbarerestaurante" || handle === "mimadafesta")) {
               const validation = await validateMetaBusinessDiscoveryProfile(handle);
@@ -1562,7 +1562,7 @@ export const appRouter = router({
           .optional()
       )
       .query(async ({ input }) =>
-        normalizeJsonForTransport(await listEvents(input ?? {}))
+        normalizeJsonForTransport(await listEvents({ ...(input ?? {}), failIfUnavailable: false }))
       ),
     today: publicProcedure
       .input(
