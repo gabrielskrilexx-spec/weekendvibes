@@ -88,12 +88,12 @@ describe("Web Push service", () => {
       { endpoint: "https://fcm.googleapis.com/fcm/send/one", p256dh: "p256dh-1", auth: "auth-1" },
       { endpoint: "https://web.push.apple.com/two", p256dh: "p256dh-2", auth: "auth-2" },
     ]);
-    const result = await sendPushNotification({ title: "Novos eventos", body: "Veja a agenda", url: "/agenda", image: "https://weekendvibes-dh6w.vercel.app/images/venues/curvao.jpg", tag: "new-events" });
+    const result = await sendPushNotification({ title: "Novos eventos", body: "Veja a agenda", url: "/agenda", image: "https://weekendvib-oficial.manus.space/images/venues/curvao.jpg", tag: "new-events" });
     expect(mocks.setVapidDetails).toHaveBeenCalledWith("mailto:admin@weekendvibes.com", "public-vapid", "private-vapid");
     expect(mocks.sendNotification).toHaveBeenCalledTimes(2);
     expect(mocks.sendNotification).toHaveBeenCalledWith(
       { endpoint: "https://fcm.googleapis.com/fcm/send/one", keys: { p256dh: "p256dh-1", auth: "auth-1" } },
-      JSON.stringify({ title: "Novos eventos", body: "Veja a agenda", url: "/agenda", image: "https://weekendvibes-dh6w.vercel.app/images/venues/curvao.jpg", tag: "new-events" }),
+      JSON.stringify({ title: "Novos eventos", body: "Veja a agenda", url: "/agenda", image: "https://weekendvib-oficial.manus.space/images/venues/curvao.jpg", tag: "new-events" }),
       { TTL: 3600, urgency: "high" },
     );
     expect(result).toEqual({ sent: 2, failed: 0, expired: 0 });
@@ -116,16 +116,16 @@ describe("Web Push service", () => {
       title: "WeekendVibes · agenda do fim de semana",
       body: "Sexta no Curvão · After Santos.",
       url: "/evento/42",
-      image: "https://weekendvibes-dh6w.vercel.app/images/venues/curvao.jpg",
+      image: "https://weekendvib-oficial.manus.space/images/venues/curvao.jpg",
       tag: "weekendvibes-weekend-alert",
     });
   });
 
   it("prefere a capa persistida e usa a capa oficial da venue quando ausente", () => {
     expect(toAbsolutePushImageUrl({ imageUrl: "https://cdn.articket.com.br/flyer.webp", locationName: "Yellow House" })).toBe("https://cdn.articket.com.br/flyer.webp");
-    expect(toAbsolutePushImageUrl({ imageUrl: "/images/venues/praio.jpg", locationName: "Praiô" })).toBe("https://weekendvibes-dh6w.vercel.app/images/venues/praio.jpg");
-    expect(toAbsolutePushImageUrl({ imageUrl: "", locationName: "Curvão Surf House" })).toBe("https://weekendvibes-dh6w.vercel.app/images/venues/curvao.jpg");
-    expect(toAbsolutePushImageUrl({ imageUrl: "http://insecure.example/flyer.jpg", locationName: "Curvão Surf House" })).toBe("https://weekendvibes-dh6w.vercel.app/images/venues/curvao.jpg");
+    expect(toAbsolutePushImageUrl({ imageUrl: "/images/venues/praio.jpg", locationName: "Praiô" })).toBe("https://weekendvib-oficial.manus.space/images/venues/praio.jpg");
+    expect(toAbsolutePushImageUrl({ imageUrl: "", locationName: "Curvão Surf House" })).toBe("https://weekendvib-oficial.manus.space/images/venues/curvao.jpg");
+    expect(toAbsolutePushImageUrl({ imageUrl: "http://insecure.example/flyer.jpg", locationName: "Curvão Surf House" })).toBe("https://weekendvib-oficial.manus.space/images/venues/curvao.jpg");
   });
 
   it("filtra o disparo de lembrete pela inscrição do usuário", async () => {

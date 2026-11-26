@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /admin
 Disallow: /api/
-Sitemap: https://weekendvibes-dh6w.vercel.app/sitemap.xml
+Sitemap: https://weekendvib-oficial.manus.space/sitemap.xml

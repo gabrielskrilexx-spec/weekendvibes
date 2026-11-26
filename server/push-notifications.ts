@@ -1,8 +1,8 @@
 import webPush from "web-push";
 import { deletePushSubscription, listPushSubscriptions, upsertPushSubscription } from "./db";
 import { resolveEventCoverImage, resolveVenueCoverFallback } from "../shared/event-media";
-
-export const DEFAULT_PUBLIC_ORIGIN = "https://weekendvibes-dh6w.vercel.app";
+import { DEFAULT_PUBLIC_ORIGIN } from "./public-origin";
+export { DEFAULT_PUBLIC_ORIGIN } from "./public-origin";
 
 export type PushSubscriptionInput = {
   endpoint: string;

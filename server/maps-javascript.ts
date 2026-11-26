@@ -1,9 +1,8 @@
 import type { Express, Request, Response } from "express";
 import { ENV } from "./_core/env";
+import { getCanonicalPublicOrigin } from "./public-origin";
 
 const MAPS_LIBRARIES = "marker,places,geocoding,geometry,routes";
-const PUBLIC_MAPS_HOST = "weekendvib-jscaalye.manus.space";
-
 export function registerMapsJavascriptRoute(app: Express): void {
   app.get("/api/maps/javascript", async (req: Request, res: Response) => {
     const baseUrl = ENV.forgeApiUrl.replace(/\/+$/, "");
@@ -23,7 +22,7 @@ export function registerMapsJavascriptRoute(app: Express): void {
     // encaminhar o host público. Não envie essa origem interna ao Forge, pois ela
     // não é uma origem autorizada para a chave do Maps.
     const internalHost = /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(requestHost);
-    const host = internalHost ? PUBLIC_MAPS_HOST : requestHost;
+    const host = internalHost ? new URL(getCanonicalPublicOrigin()).host : requestHost;
     const forwardedProto = req.get("x-forwarded-proto")?.split(",")[0]?.trim();
     const protocol = internalHost || forwardedProto === "https" || req.secure ? "https" : "http";
     const origin = `${protocol}://${host}`;

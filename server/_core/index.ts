@@ -27,6 +27,7 @@ import { requireInternalCron, requireVercelCron } from "./cron-auth";
 import { getDb } from "../db";
 import { sql } from "drizzle-orm";
 import { reminderPushHandler, weekendPushHandler } from "../scheduled-push";
+import { getPublicConfigurationDiagnostics } from "../public-origin";
 
 export async function createApp(server?: ReturnType<typeof createServer>) {
   const app = express();
@@ -74,6 +75,7 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
         status: "degraded",
         db: "unavailable",
         rateLimiter: "unavailable",
+        configuration: getPublicConfigurationDiagnostics(),
         timestamp,
       });
     }
@@ -84,6 +86,7 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
         status: "ok",
         db: "connected",
         rateLimiter: "active",
+        configuration: getPublicConfigurationDiagnostics(),
         timestamp,
       });
     } catch (error) {
@@ -92,6 +95,7 @@ export async function createApp(server?: ReturnType<typeof createServer>) {
         status: "degraded",
         db: "unavailable",
         rateLimiter: "unavailable",
+        configuration: getPublicConfigurationDiagnostics(),
         timestamp,
       });
     }

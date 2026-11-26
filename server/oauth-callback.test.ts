@@ -86,7 +86,7 @@ describe("OAuth callback", () => {
     expect(response.headers.Location).toMatch(/^https:\/\/github\.com\/login\/oauth\/authorize\?/);
     const location = new URL(String(response.headers.Location));
     expect(location.searchParams.get("client_id")).toBe("github-client");
-    expect(location.searchParams.get("redirect_uri")).toBe("https://weekendvibes-dh6w.vercel.app/api/oauth/callback");
+    expect(location.searchParams.get("redirect_uri")).toBe("https://weekendvib-oficial.manus.space/api/oauth/callback");
     expect(location.searchParams.get("state")).toBeTruthy();
   });
 
@@ -153,13 +153,13 @@ describe("OAuth callback", () => {
     vi.stubGlobal("fetch", fetchMock);
     const handler = register();
     const response = createResponse();
-    const state = encodeOAuthState({ redirectUri: "https://weekendvibes-dh6w.vercel.app/api/oauth/callback", nonce: "github-nonce", returnTo: "/admin", provider: "github" });
+    const state = encodeOAuthState({ redirectUri: "https://weekendvib-oficial.manus.space/api/oauth/callback", nonce: "github-nonce", returnTo: "/admin", provider: "github" });
     await handler?.({ query: { code: "github-code", state }, headers: { cookie: `${OAUTH_STATE_COOKIE}=github-nonce` }, protocol: "https" }, response);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://github.com/login/oauth/access_token");
     const tokenRequest = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(tokenRequest.headers).toEqual(expect.objectContaining({ Accept: "application/json", "Content-Type": "application/json" }));
-    expect(JSON.parse(String(tokenRequest.body))).toEqual({ client_id: "github-client", client_secret: "github-secret", code: "github-code", redirect_uri: "https://weekendvibes-dh6w.vercel.app/api/oauth/callback" });
+    expect(JSON.parse(String(tokenRequest.body))).toEqual({ client_id: "github-client", client_secret: "github-secret", code: "github-code", redirect_uri: "https://weekendvib-oficial.manus.space/api/oauth/callback" });
     expect(fetchMock.mock.calls[1]?.[0]).toBe("https://api.github.com/user");
     expect(mocks.upsertUser).toHaveBeenCalledWith(expect.objectContaining({ openId: "github:123", email: "admin-user@users.noreply.github.com", role: "admin", loginMethod: "github" }));
     expect(mocks.createSessionToken).toHaveBeenCalledWith("github:123", expect.any(Object));
@@ -174,7 +174,7 @@ describe("OAuth callback", () => {
     vi.stubGlobal("fetch", fetchMock);
     const handler = register();
     const response = createResponse();
-    const state = encodeOAuthState({ redirectUri: "https://weekendvibes-dh6w.vercel.app/api/oauth/callback", nonce: "github-error-nonce", provider: "github" });
+    const state = encodeOAuthState({ redirectUri: "https://weekendvib-oficial.manus.space/api/oauth/callback", nonce: "github-error-nonce", provider: "github" });
     await handler?.({ query: { code: "sensitive-oauth-code", state }, headers: { cookie: `${OAUTH_STATE_COOKIE}=github-error-nonce` } }, response);
     expect(response.statusCode).toBe(302);
     expect(response.redirectLocation).toBe("/admin?oauth_error=bad_verification_code");

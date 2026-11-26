@@ -53,7 +53,7 @@ export default function EventDetail() {
   const date = event ? new Date(event.eventDate) : new Date();
   const defaultWhatsappMessage = event ? `Confira ${event.title} no WeekendVibes — ${event.locationName}, ${event.city}.` : "Confira este evento no WeekendVibes.";
   const shareText = defaultWhatsappMessage;
-  const shareUrl = useMemo(() => event ? buildEventShareUrl(event.id) : "", [event?.id]);
+  const shareUrl = useMemo(() => event ? buildEventShareUrl(event.id, window.location.origin) : "", [event?.id]);
   const socialUrls = useMemo(() => buildSocialShareUrls(shareUrl, whatsappMessage || shareText), [shareUrl, whatsappMessage, shareText]);
 
   useEffect(() => {
