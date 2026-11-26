@@ -41,7 +41,7 @@ describe("adapters de ticketeiras oficiais", () => {
       locationName: "Casa Grande Hotel Resort & Spa",
       city: "Guarujá",
       category: "balada",
-      genre: "house_eletronica",
+      genre: "",
     });
     expect(publicSourceKey("https://www.ticket360.com.br/evento/34199/ingressos-para-festa-do-hawaii/ingressos")).toBe("public:ticket360");
     expect(containsTargetVenue("Casa Grande Hotel Resort & Spa, Guarujá", ["casa grande hotel resort"])).toBe(true);

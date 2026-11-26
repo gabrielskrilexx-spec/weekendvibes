@@ -54,6 +54,7 @@ import {
   listEngagementRanking,
   getPushDiagnostics,
   recordPushDispatch,
+  listExactDuplicateDiagnostics,
 } from "./db";
 import { PushServiceConfigurationError, sendPushNotification } from "./push-notifications";
 import { getLLMConfigurationStatus, invokeLLM } from "./_core/llm";
@@ -1162,6 +1163,14 @@ export const appRouter = router({
           await listPotentialEventCollisions(input?.limit ?? 100)
         )
       ),
+    diagnostics: adminOnly
+      .input(z.object({ limit: z.number().int().min(1).max(100).optional() }).optional())
+      .output(z.object({
+        scanned: z.number().int().nonnegative(),
+        sourceUrlGroups: z.array(z.object({ key: z.string(), count: z.number().int().min(2), records: z.array(z.object({ table: z.enum(["events", "discoveredEventCandidates"]), id: z.number().int().positive(), title: z.string(), sourceUrl: z.string().nullable(), eventDate: z.coerce.date(), locationName: z.string().nullable(), city: z.string(), status: z.string() }).strict()) }).strict()),
+        identityGroups: z.array(z.object({ key: z.string(), count: z.number().int().min(2), records: z.array(z.object({ table: z.enum(["events", "discoveredEventCandidates"]), id: z.number().int().positive(), title: z.string(), sourceUrl: z.string().nullable(), eventDate: z.coerce.date(), locationName: z.string().nullable(), city: z.string(), status: z.string() }).strict()) }).strict()),
+      }).strict())
+      .query(({ input }) => listExactDuplicateDiagnostics(input?.limit ?? 100)),
     resolveMany: adminOnly
       .input(
         z.object({ ids: z.array(z.number().int().positive()).min(1).max(100) })

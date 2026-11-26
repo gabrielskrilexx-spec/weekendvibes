@@ -4,6 +4,7 @@ import { normalizeDiscoveredSourceUrl } from "../shared/source-url";
 import { sanitizeEventText } from "../shared/event-text";
 import { EXPLORATORY_APIFY_CATALOG_URLS, guardedFetchPublicPage, discoverCandidatePages, publicSourceKey, type PublicPage } from "./ingestion";
 import { getDb, saveEvent } from "./db";
+import { classifyCanonicalGenres, canonicalGenreToPersisted } from "./genre-taxonomy";
 
 export const DISCOVERY_GENRES = ["trap", "rap", "funk", "eletrônica"] as const;
 export type DiscoveryGenre = typeof DISCOVERY_GENRES[number];
@@ -28,15 +29,9 @@ export const DISCOVERY_REGIONAL_SOURCE_URLS = [
   "https://www.weticket.com.br/?city=guaruja",
 ] as const;
 
-const GENRE_TERMS: Record<DiscoveryGenre, RegExp> = {
-  trap: /\btrap\b/i,
-  rap: /\brap\b|hip[ -]?hop/i,
-  funk: /\bfunk\b|baile funk/i,
-  "eletrônica": /m[uú]sica\s+eletr[oô]nica|\b(?:tech\s*house|deep\s*house|house|techno|trance|psytrance|progressive|edm|after)\b|\bsunset\s+eletr[oô]nico|\b(?:line[- ]?up|lineup)\b[^.!?]{0,100}\b(?:dj|djs)\b/i,
-};
 const DISCOVERY_CITY_PATTERNS: Array<[DiscoveryCity, RegExp]> = [
-  ["Guarujá", /guaruj[aá]/i],
-  ["Santos", /santos/i],
+  ["Guarujá", /(?:^|[\s,|(/-])guaruj[aá](?:\s*[-/,]\s*sp\b|\s*\|\s*|$)/i],
+  ["Santos", /(?:^|[\s,|(/-])santos(?:\s*[-/,]\s*sp\b|\s*\|\s*|$)/i],
 ];
 const OUT_OF_SCOPE_CITY_PATTERNS = [
   /praia\s+grande/i,
@@ -50,12 +45,9 @@ const OUT_OF_SCOPE_CITY_PATTERNS = [
   /s[aã]o\s+paulo/i,
   /rio\s+de\s+janeiro|\brio\b/i,
 ];
-const ADMINISTRATIVE_ELECTRONIC_TERMS = /ingressos?\s+eletr[oô]nicos?|ingresso\s+eletr[oô]nico|bilhete\s+eletr[oô]nico|documento\s+eletr[oô]nico|pagamento\s+eletr[oô]nico|meia[- ]entrada\s+eletr[oô]nica/gi;
-
 export function classifyDiscoveryGenres(input: { title?: string; subtitle?: string; lineup?: string; description?: string; tags?: string[] } | string): DiscoveryGenre[] {
-  const text = typeof input === "string" ? input : [input.title, input.subtitle, input.lineup, input.description, ...(input.tags ?? [])].filter(Boolean).join(" ");
-  const searchable = text.replace(ADMINISTRATIVE_ELECTRONIC_TERMS, " ");
-  return DISCOVERY_GENRES.filter(genre => GENRE_TERMS[genre].test(searchable));
+  const parts = typeof input === "string" ? input : [input.title, input.subtitle, input.lineup, input.description, ...(input.tags ?? [])];
+  return classifyCanonicalGenres(parts).filter((genre): genre is DiscoveryGenre => DISCOVERY_GENRES.includes(genre));
 }
 
 export function detectDiscoveryCity(text: string): DiscoveryCity | undefined {
@@ -92,7 +84,7 @@ function readStructuredLocation(record: Record<string, unknown>) {
     record.venue,
     record.venueName,
     location.name,
-  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0).join(" ");
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0).join(" | ");
 }
 
 export function isFutureDiscoveryDate(value: Date | string | undefined, now = new Date()) {
@@ -334,7 +326,9 @@ export async function approveGenreDiscoveryCandidate(id: number, addAsSource = f
   if (!candidate) return undefined;
   if (candidate.status === "rejected") throw new Error("Candidato descartado não pode ser aprovado");
   const category = candidate.matchedGenres.includes("funk") || candidate.matchedGenres.includes("eletrônica") ? "balada" : "evento_musical";
-  const genre = candidate.matchedGenres.includes("funk") ? "funk" : candidate.matchedGenres.includes("eletrônica") ? "house_eletronica" : "rap_trap";
+  const canonicalGenre = candidate.matchedGenres.find((genre): genre is DiscoveryGenre => DISCOVERY_GENRES.includes(genre as DiscoveryGenre));
+  const genre = canonicalGenre ? canonicalGenreToPersisted(canonicalGenre) : "";
+  if (!genre) throw new Error("Candidato sem gênero musical classificável");
   const saved = await saveEvent({ title: candidate.title, slug: `${candidate.platform}-${candidate.id}-${candidate.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 150)}`, description: candidate.description, eventDate: candidate.eventDate, locationName: candidate.venueNameRaw || candidate.city, address: null, neighborhood: null, formattedAddress: null, city: candidate.city, category, genre, priceCents: 0, priceNote: null, ticketStatus: "unknown", sourceUrl: candidate.canonicalUrl, sourceType: candidate.platform, imageUrl: candidate.flyerUrl, latitude: null, longitude: null, locationPrecision: "approximate", sourceHash: null, isPublished: 1, isArchived: 0 });
   if (addAsSource) {
     await db.insert(ingestionSources).values({ sourceKey: `discovery:${candidate.platform}:${candidate.id}`, name: candidate.title, kind: "public", url: candidate.canonicalUrl, isEnabled: 1 }).onConflictDoNothing({ target: ingestionSources.sourceKey });

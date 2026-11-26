@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, or, sql } from "drizzle-orm";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { Event, IngestionRun, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots, ingestionLeases, adminMagicLinks, monitoredBrands, MonitoredBrand, pushSubscriptions, pushDispatches, engagementEvents } from "../drizzle/schema";
+import { Event, IngestionRun, InsertEvent, InsertUser, events, users, appSettings, operationalAlerts, InsertOperationalAlert, OperationalAlert, eventFavorites, eventReminders, locationAliases, LocationAlias, ingestionSources, IngestionSource, ingestionSourceHandleAuditLogs, ingestionSourceActionAuditLogs, geocodingJobs, geocodingAuditLogs, ingestionPayloadCache, IngestionPayloadCache, apifyDailyUsage, rateLimitBuckets, apifyProcessedItems, eventPriceHistory, ingestionRuns, systemHealthTransitions, catalogSnapshots, ingestionLeases, adminMagicLinks, monitoredBrands, MonitoredBrand, pushSubscriptions, pushDispatches, engagementEvents, discoveredEventCandidates } from "../drizzle/schema";
 import { extractNeighborhood, geocodingAddressHash, normalizeLocationText } from "./location";
 import { ENV } from './_core/env';
 import { buildDailyTelemetrySeries, calculateSystemHealthStatus, normalizeObservabilityPeriod, summarizeTelemetryTrend } from "./observability";
@@ -1588,6 +1588,56 @@ export function fuzzyTitleSimilarity(left: string, right: string) {
 
 export function isFuzzyDuplicateEventForTest(left: Pick<InsertEvent, "title" | "eventDate" | "locationName" | "city">, right: Pick<InsertEvent, "title" | "eventDate" | "locationName" | "city">) {
   return left.city === right.city && saoPauloDateKey(left.eventDate) === saoPauloDateKey(right.eventDate) && normalizeLocationText(left.locationName) === normalizeLocationText(right.locationName) && fuzzyTitleSimilarity(left.title, right.title) >= 0.6;
+}
+
+export function normalizeEventIdentityForDuplicateReport(input: { title: string; eventDate: Date | string; locationName?: string | null; city?: string | null }) {
+  const normalizeIdentityText = (value: string) => normalizeLocationText(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return [
+    normalizeIdentityText(input.title),
+    saoPauloDateKey(new Date(input.eventDate)),
+    normalizeIdentityText(input.locationName ?? ""),
+    normalizeIdentityText(input.city ?? ""),
+  ].join("|");
+}
+
+export type ExactDuplicateDiagnosticRecord = {
+  table: "events" | "discoveredEventCandidates";
+  id: number;
+  title: string;
+  sourceUrl: string | null;
+  eventDate: Date;
+  locationName: string | null;
+  city: string;
+  status: string;
+};
+export type ExactDuplicateDiagnosticGroup = { key: string; count: number; records: ExactDuplicateDiagnosticRecord[] };
+export type ExactDuplicateDiagnosticReport = { sourceUrlGroups: ExactDuplicateDiagnosticGroup[]; identityGroups: ExactDuplicateDiagnosticGroup[]; scanned: number };
+
+export async function listExactDuplicateDiagnostics(limit = 100): Promise<ExactDuplicateDiagnosticReport> {
+  const db = await getDb();
+  if (!db) return { sourceUrlGroups: [], identityGroups: [], scanned: 0 };
+  const eventRows = await db.select({ id: events.id, title: events.title, sourceUrl: events.sourceUrl, eventDate: events.eventDate, locationName: events.locationName, city: events.city, isPublished: events.isPublished, isArchived: events.isArchived }).from(events);
+  const candidateRows = await db.select({ id: discoveredEventCandidates.id, title: discoveredEventCandidates.title, sourceUrl: discoveredEventCandidates.canonicalUrl, eventDate: discoveredEventCandidates.eventDate, locationName: discoveredEventCandidates.venueNameRaw, city: discoveredEventCandidates.city, status: discoveredEventCandidates.status }).from(discoveredEventCandidates);
+  const records: ExactDuplicateDiagnosticRecord[] = [
+    ...eventRows.map(row => ({ ...row, table: "events" as const, status: row.isArchived ? "archived" : row.isPublished ? "published" : "draft" })),
+    ...candidateRows.map(row => ({ ...row, table: "discoveredEventCandidates" as const, status: row.status })),
+  ];
+  const groupBy = (keyOf: (record: ExactDuplicateDiagnosticRecord) => string) => {
+    const groups = new Map<string, ExactDuplicateDiagnosticRecord[]>();
+    for (const record of records) {
+      const key = keyOf(record);
+      if (!key) continue;
+      const group = groups.get(key) ?? [];
+      group.push(record);
+      groups.set(key, group);
+    }
+    return Array.from(groups, ([key, group]) => ({ key, count: group.length, records: group })).filter(group => group.count > 1).slice(0, Math.min(100, Math.max(1, limit)));
+  };
+  return {
+    sourceUrlGroups: groupBy(record => normalizeDiscoveredSourceUrl(record.sourceUrl ?? "") ?? ""),
+    identityGroups: groupBy(record => normalizeEventIdentityForDuplicateReport(record)),
+    scanned: records.length,
+  };
 }
 
 export type PotentialEventCollision = {

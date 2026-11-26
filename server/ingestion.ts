@@ -8,6 +8,7 @@ import { parsePayloadJsonColumn } from "./json-contracts";
 import { shouldUseSandboxMocks } from "./ingestion-preview-settings";
 import type { MonitoredBrand } from "../drizzle/schema";
 import { sanitizeEventText } from "../shared/event-text";
+import { inferPersistedGenre } from "./genre-taxonomy";
 
 const DEFAULT_SOURCE_URLS = [
   "https://articket.com.br/e/6784/plants-happy-hour",
@@ -716,7 +717,7 @@ export function parseTicket360EventMetadata(html: string, url: string) {
   const imageUrl = extractTicket360Field(html, "image") || meta("og:image");
   const address = `${venue}${city ? `, ${city}` : ""}`;
   const searchable = normalizeText(`${title} ${venue} ${visibleText}`);
-  const genre = /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : "house_eletronica";
+  const genre = inferPersistedGenre([title, searchable, venue]);
   const category = /show|festival|concerto|banda/.test(searchable) ? "show" : "balada";
   if (!title || !eventDate || !venue || !city) return undefined;
   return { title: sanitizeEventText(title), summary: sanitizeEventText(visibleText.slice(0, 4_000)), eventDate, locationName: venue, address, city, category, genre, priceCents: 0, sourceUrl: url, imageUrl, latitude: "", longitude: "", text: sanitizeEventText(visibleText.slice(0, 16_000) ) };
@@ -763,8 +764,7 @@ function gandayaImageUrl(key: unknown) {
 function gandayaEventUrl(alias: unknown) { return typeof alias === "string" && alias.trim() ? `https://gandaya.dance/events/${encodeURIComponent(alias.trim())}` : ""; }
 function cleanPublicDescription(value: unknown) { return sanitizeEventText(String(value ?? "")).replace(/\s{2,}/g, " ").trim().slice(0, 4_000); }
 function inferGandayaGenre(title: string, description: string) {
-  const searchable = normalizeText(`${title} ${description}`);
-  return /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : /house|eletronic|eletrônica|dj|balada|festa|m[uú]sica|music|sunset/.test(searchable) ? "house_eletronica" : "";
+  return inferPersistedGenre([title, description]);
 }
 
 function isFutureEventValue(value: string, now = new Date()) {

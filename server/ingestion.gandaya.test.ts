@@ -7,7 +7,7 @@ describe("Gandaya public adapter", () => {
     const parsed = parseGandayaEventMetadata({
       alias: "plants-no-espaco-14",
       title: "Plants — Santos",
-      description: "**Uma noite especial de música e DJ**\n\nIngressos e line-up no local.",
+      description: "**Uma noite especial de música eletrônica**\n\nIngressos e line-up no local.",
       date: "2026-12-12T02:00:00.000Z",
       lowestTicketPrice: 45,
       imageKey: "flyer-123.png",
