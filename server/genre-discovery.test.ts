@@ -109,7 +109,13 @@ describe("Radar de descoberta por estilo", () => {
     const gandaya = ensureDiscoveryPlatformStat(stats, "public:gandaya");
     gandaya.apiStatus = "empty";
     gandaya.apiMessage = "Nenhum alias regional encontrado.";
-    expect(stats).toEqual([expect.objectContaining({ platform: "public:gandaya", apiStatus: "empty", apiMessage: expect.stringContaining("Nenhum alias") })]);
+    expect(stats).toEqual([expect.objectContaining({
+      platform: "public:gandaya",
+      apiStatus: "empty",
+      apiMessage: expect.stringContaining("Nenhum alias"),
+      funnel: { fetched: 0, parsed: 0, rejectedByCity: 0, rejectedByGenre: 0, rejectedByDate: 0, duplicate: 0, eligible: 0, persisted: 0, blocked: 0, empty: 0 },
+      state: "ok",
+    })]);
   });
 
   it("expande uma listagem Sympla sem tratar a própria listagem como evento", () => {
