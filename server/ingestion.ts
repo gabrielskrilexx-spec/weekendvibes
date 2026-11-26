@@ -1900,7 +1900,7 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
     return leftIsSympla - rightIsSympla;
   });
   const discovered = new Set([...crawlBases.filter(url => !isPublicCatalogUrl(url)), ...regionalArticketCandidates.regional.map(candidate => candidate.url)]);
-  const apifyStats: Array<{ sourceKey: string; urls: string[]; status: ApifyCatalogFallbackResult["status"]; attempted: boolean; message?: string; httpStatus?: number | null; retryable?: boolean }> = [];
+  const apifyStats: Array<{ sourceKey: string; urls: string[]; status: ApifyCatalogFallbackResult["status"]; attempted: boolean; message?: string; httpStatus?: number | null; finalUrl?: string | null; debugTitle?: string; cardsBeforeScroll?: number; cardsAfterScroll?: number; linksByDomain?: Record<string, number>; retryable?: boolean }> = [];
   let gandayaApiStatus: GandayaListingResult["status"] | undefined;
   let gandayaApiMessage: string | undefined;
   let gandayaDiagnostics: Omit<GandayaListingResult, "urls" | "status" | "message"> | undefined;
@@ -1912,7 +1912,7 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
     const fallback = await fetchApifyCatalogLinks(browserApifySymplaUrls, { ...options, actorId: exploratoryApifyActorId });
     for (const link of fallback.links) discovered.add(link);
     browserApifySymplaUrls.forEach(url => browserApifyCompleted.add(sanitizePublicSourceUrl(url)));
-    apifyStats.push({ sourceKey: "public:sympla", urls: browserApifySymplaUrls, status: fallback.status, attempted: fallback.attempted, message: fallback.message, httpStatus: fallback.httpStatus, retryable: fallback.retryable });
+    apifyStats.push({ sourceKey: "public:sympla", urls: browserApifySymplaUrls, status: fallback.status, attempted: fallback.attempted, message: fallback.message, httpStatus: fallback.httpStatus, finalUrl: fallback.finalUrl, debugTitle: fallback.debugTitle, cardsBeforeScroll: fallback.cardsBeforeScroll, cardsAfterScroll: fallback.cardsAfterScroll, linksByDomain: fallback.linksByDomain, retryable: fallback.retryable });
   }
   if (options.exploratoryApify && bases.some(url => publicSourceKey(url) === "public:gandaya")) {
     const gandayaListing = await fetchGandayaRegionalEventLinks(options);
@@ -1969,7 +1969,7 @@ export async function discoverCandidatePages(options: IngestionPipelineOptions =
     if (extractedLinks.length === 0 && apifyEligible && !browserApifyCompleted.has(sanitizePublicSourceUrl(baseUrl)) && !isExploratoryNonSymplaCatalog) {
       const fallback = await fetchApifyCatalogLinks([baseUrl], options);
       for (const link of fallback.links) discovered.add(link);
-      apifyStats.push({ sourceKey: publicSourceKey(baseUrl), urls: [baseUrl], status: fallback.status, attempted: fallback.attempted, message: fallback.message, httpStatus: fallback.httpStatus, retryable: fallback.retryable });
+      apifyStats.push({ sourceKey: publicSourceKey(baseUrl), urls: [baseUrl], status: fallback.status, attempted: fallback.attempted, message: fallback.message, httpStatus: fallback.httpStatus, finalUrl: fallback.finalUrl, debugTitle: fallback.debugTitle, cardsBeforeScroll: fallback.cardsBeforeScroll, cardsAfterScroll: fallback.cardsAfterScroll, linksByDomain: fallback.linksByDomain, retryable: fallback.retryable });
     }
     if (!page) continue;
     if (publicSourceKey(baseUrl) === "public:gandaya") {

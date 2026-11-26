@@ -22,10 +22,10 @@ function createResponse(): FakeResponse {
   return response;
 }
 
-function invokeScheduledHealth(req: FakeRequest, res: FakeResponse) {
+async function invokeScheduledHealth(req: FakeRequest, res: FakeResponse) {
   let nextCalled = false;
   const next: NextFunction = () => { nextCalled = true; };
-  requireInternalCron(req as never, res as never, next);
+  await requireInternalCron(req as never, res as never, next);
   if (nextCalled) scheduledHealthHandler(req as never, res as never);
   return res;
 }
@@ -42,22 +42,22 @@ describe("scheduled runtime environment", () => {
     vi.restoreAllMocks();
   });
 
-  it("responde diretamente ao endpoint agendado sem rede nem cookie de sessão", () => {
+  it("responde diretamente ao endpoint agendado sem rede nem cookie de sessão", async () => {
     expect(process.env.SCHEDULED_TASK_ENDPOINT_BASE).toBe("https://scheduled-test.invalid");
-    const response = invokeScheduledHealth({ headers: {} }, createResponse());
+    const response = await invokeScheduledHealth({ headers: {} }, createResponse());
     expect(response.statusCode).toBe(401);
     expect(response.body).toEqual({ ok: false, error: "unauthorized" });
 
-    const authenticatedResponse = invokeScheduledHealth({ headers: { "x-cron-secret": process.env.INTERNAL_CRON_SECRET } }, createResponse());
+    const authenticatedResponse = await invokeScheduledHealth({ headers: { "x-cron-secret": process.env.INTERNAL_CRON_SECRET } }, createResponse());
     expect(authenticatedResponse.headers["content-type"]).toContain("application/json");
     expect(authenticatedResponse.statusCode).toBe(200);
     expect(authenticatedResponse.body).toEqual(expect.objectContaining({ ok: true, service: "weekendvibes-api", checkedAt: expect.any(String) }));
   });
 
-  it("aceita o segredo de máquina configurado no callback de saúde cron", () => {
+  it("aceita o segredo de máquina configurado no callback de saúde cron", async () => {
     expect(process.env.SCHEDULED_TASK_ENDPOINT_BASE).toBeTruthy();
     expect(process.env.INTERNAL_CRON_SECRET).toBeTruthy();
-    const response = invokeScheduledHealth({ headers: { "x-cron-secret": process.env.INTERNAL_CRON_SECRET } }, createResponse());
+    const response = await invokeScheduledHealth({ headers: { "x-cron-secret": process.env.INTERNAL_CRON_SECRET } }, createResponse());
     expect(response.headers["content-type"]).toContain("application/json");
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual(expect.objectContaining({ ok: true }));

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { operationalAlertFingerprint, recordOperationalAlert, resolveOperationalAlert, resolveAllOperationalAlerts, purgeResolvedOperationalAlerts } from "./db";
+import { listOperationalAlerts, operationalAlertFingerprint, recordOperationalAlert, resolveOperationalAlert, resolveAllOperationalAlerts, purgeResolvedOperationalAlerts } from "./db";
 
 describe("operational alerts", () => {
   it("gera fingerprint estável por integração e mensagem normalizada", () => {
@@ -16,6 +16,23 @@ describe("operational alerts", () => {
 
     expect(result).toEqual(expect.objectContaining({ integration: "openai", fingerprint: expect.any(String), isResolved: 0 }));
     expect(onDuplicateKeyUpdate).toHaveBeenCalledWith(expect.objectContaining({ set: expect.objectContaining({ isResolved: 0 }) }));
+  });
+
+  it("retorna runId sanitizado e preserva null nos alertas listados", async () => {
+    const rows = [
+      { id: 146, alertType: "ingestion_run_timeout", severity: "CRITICAL", title: "Run expirado", message: "timeout_exceeded_2h", runId: "146", isResolved: 0, createdAt: new Date("2026-11-26T10:00:00Z"), updatedAt: new Date("2026-11-26T10:00:00Z") },
+      { id: 147, alertType: "partial", severity: "WARNING", title: "Coleta parcial", message: "uma URL falhou", runId: null, isResolved: 0, createdAt: new Date("2026-11-26T09:00:00Z"), updatedAt: new Date("2026-11-26T09:00:00Z") },
+    ];
+    const limit = vi.fn().mockResolvedValue(rows);
+    const orderBy = vi.fn().mockReturnValue({ limit });
+    const where = vi.fn().mockReturnValue({ orderBy });
+    const from = vi.fn().mockReturnValue({ where });
+    const fakeDb = { select: vi.fn().mockReturnValue({ from }) } as never;
+
+    await expect(listOperationalAlerts(10, fakeDb)).resolves.toEqual([
+      expect.objectContaining({ runId: "146", isResolved: false }),
+      expect.objectContaining({ runId: null, isResolved: false }),
+    ]);
   });
 
   it("resolve um alerta pelo id para uso exclusivo do painel administrativo", async () => {
