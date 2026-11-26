@@ -1325,7 +1325,7 @@ export const appRouter = router({
   operationalAlerts: router({
     list: adminOnly
       .input(z.object({ limit: z.number().int().positive().max(100).default(25) }).strict())
-      .output(z.array(z.object({ id: z.number().int().positive(), alertType: z.string(), severity: z.enum(["INFO", "WARNING", "CRITICAL"]), title: z.string(), message: z.string(), isResolved: z.boolean(), createdAt: z.string().datetime(), updatedAt: z.string().datetime() }).strict()).max(100))
+      .output(z.array(z.object({ id: z.number().int().positive(), alertType: z.string(), severity: z.enum(["INFO", "WARNING", "CRITICAL"]), title: z.string(), message: z.string(), runId: z.string().nullable(), isResolved: z.boolean(), createdAt: z.string().datetime(), updatedAt: z.string().datetime() }).strict()).max(100))
       .query(({ input }) => listOperationalAlerts(input.limit)),
     resolve: adminOnly
       .input(z.object({ id: z.number().int().positive() }))

@@ -26,17 +26,18 @@ export function hasValidVercelCronSecret(req: Pick<Request, "headers">): boolean
   return configuredBytes.length === receivedBytes.length && timingSafeEqual(configuredBytes, receivedBytes);
 }
 
-function continueAfterCronAuth(next: NextFunction) {
-  void reconcileExpiredIngestionRuns().then(result => {
+async function continueAfterCronAuth(next: NextFunction) {
+  try {
+    const result = await reconcileExpiredIngestionRuns();
     if (result.reconciledCount > 0) console.info("[CronAuth] stale ingestion runs reconciled", { count: result.reconciledCount, runIds: result.runIds });
-  }).catch(error => {
+  } catch (error) {
     // A maintenance failure must never turn authentication into an outage.
     console.warn("[CronAuth] stale-run sweeper skipped", { error: error instanceof Error ? error.message : "unknown_error" });
-  });
+  }
   return next();
 }
 
-export function requireVercelCron(req: Request, res: Response, next: NextFunction) {
+export async function requireVercelCron(req: Request, res: Response, next: NextFunction) {
   if (!hasValidVercelCronSecret(req)) {
     console.warn("[CronAuth] Vercel Cron authentication rejected", { reason: "invalid_or_missing_secret" });
     return res.status(401).json({ ok: false, error: "unauthorized" });
@@ -51,7 +52,7 @@ export function cronAuthMode(req: Pick<Request, "headers">): "machine" | "sessio
 export const cronSecretHeaderName = CRON_SECRET_HEADER;
 
 /** Guard for machine-to-machine callbacks; session cookies are intentionally not accepted. */
-export function requireInternalCron(req: Request, res: Response, next: NextFunction) {
+export async function requireInternalCron(req: Request, res: Response, next: NextFunction) {
   if (!hasValidInternalCronSecret(req)) {
     console.warn("[CronAuth] M2M authentication rejected", { mode: "header", reason: "invalid_or_missing_secret" });
     return res.status(401).json({ ok: false, error: "unauthorized" });
