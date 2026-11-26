@@ -15,6 +15,8 @@ const reportFunction = reportStart >= 0
 describe("listIngestionReport — contrato somente leitura", () => {
   it("não importa nem dispara alertas, webhooks ou escritas durante a leitura", () => {
     expect(reportFunction).toContain("export async function listIngestionReport");
+    expect(reportFunction).not.toContain("ensureOperationalSchemaCompatibility");
+    expect(reportFunction).not.toMatch(/CREATE TABLE|ALTER TABLE|\.execute\(/i);
     expect(reportFunction).not.toMatch(/handleIngestionFailureAlert|notifyPerformanceDegradationWebhook|notifyConsecutiveFailureWebhook/);
     expect(reportFunction).not.toMatch(/\.update\(|\.insert\(|\.delete\(|recordOperationalAlert\(/);
   });

@@ -27,12 +27,14 @@ describe("operational alerts", () => {
     const orderBy = vi.fn().mockReturnValue({ limit });
     const where = vi.fn().mockReturnValue({ orderBy });
     const from = vi.fn().mockReturnValue({ where });
-    const fakeDb = { select: vi.fn().mockReturnValue({ from }) } as never;
+    const execute = vi.fn(() => { throw new Error("DDL must never execute during alert reads"); });
+    const fakeDb = { select: vi.fn().mockReturnValue({ from }), execute } as never;
 
     await expect(listOperationalAlerts(10, fakeDb)).resolves.toEqual([
       expect.objectContaining({ runId: "146", isResolved: false }),
       expect.objectContaining({ runId: null, isResolved: false }),
     ]);
+    expect(execute).not.toHaveBeenCalled();
   });
 
   it("resolve um alerta pelo id para uso exclusivo do painel administrativo", async () => {

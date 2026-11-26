@@ -15,7 +15,12 @@ const mocks = vi.hoisted(() => ({
   reportError: null as unknown,
   reportIsError: false,
   reportIsLoading: false,
+  apifyUsageIsError: false,
+  apifyUsageIsLoading: false,
   apifyUsageData: { dateKey: "2026-09-19", requestCount: 1, dailyLimit: 3, remaining: 2, isLimitReached: false, nextReleaseAt: "2026-09-20T03:00:00.000Z", persistence: true },
+  geocodingIsError: false,
+  geocodingIsLoading: false,
+  geocodingData: { pending: 0, processing: 0, succeeded: 0, failed: 0 },
   brandMonitoringData: [
     { id: 1, name: "Nosso After", slug: "nosso-after", platforms: ["Instagram", "Bilheterias itinerantes"], cities: ["Guarujá", "Santos"], matchTerms: ["nossoafterguaruja"], isActive: true, editionsDetected: 0, rescrapes: 0, latestEditionDate: null, lastDetectedAt: null },
     { id: 2, name: "Plants Santos", slug: "plants-santos", platforms: ["Sympla", "Ingresse"], cities: ["Santos"], matchTerms: ["Plants Santos"], isActive: true, editionsDetected: 2, rescrapes: 1, latestEditionDate: "2026-10-30T22:00:00.000Z", lastDetectedAt: "2026-10-16T03:00:00.000Z" },
@@ -58,9 +63,9 @@ vi.mock("@/lib/trpc", () => ({
     ingestionReports: {
       summary: { useQuery: (input: unknown) => { mocks.summaryInput = input; return { data: mocks.reportIsError || mocks.reportIsLoading ? undefined : latestReportData, error: mocks.reportError, isError: mocks.reportIsError, isLoading: mocks.reportIsLoading, isFetching: false, refetch: mocks.reportRefetch }; } },
       brandMonitoring: { useQuery: () => ({ data: mocks.brandMonitoringData, isLoading: false, isError: false, refetch: vi.fn() }) },
-      apifyDailyUsage: { useQuery: () => ({ data: mocks.apifyUsageData, isLoading: false, isError: false, refetch: vi.fn() }) },
+      apifyDailyUsage: { useQuery: () => ({ data: mocks.apifyUsageIsError || mocks.apifyUsageIsLoading ? undefined : mocks.apifyUsageData, isLoading: mocks.apifyUsageIsLoading, isError: mocks.apifyUsageIsError, refetch: vi.fn() }) },
       setApifyDailyLimit: { useMutation: (options: { onSuccess?: (result: { dailyLimit: number }) => void }) => ({ isPending: false, mutate: vi.fn((input: { dailyLimit: number }) => options.onSuccess?.({ dailyLimit: input.dailyLimit })) }) },
-      geocoding: { useQuery: () => ({ data: { pending: 0, processing: 0, succeeded: 0, failed: 0 }, refetch: vi.fn() }) },
+      geocoding: { useQuery: () => ({ data: mocks.geocodingIsError || mocks.geocodingIsLoading ? undefined : mocks.geocodingData, isLoading: mocks.geocodingIsLoading, isError: mocks.geocodingIsError, refetch: vi.fn() }) },
       geocodeNow: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
       reprocess: { useMutation: (options: typeof mutationOptions) => { mutationOptions = options; return { ...mutationState, mutate: mocks.mutate }; } },
     },
@@ -82,6 +87,11 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     mocks.reportError = null;
     mocks.reportIsError = false;
     mocks.reportIsLoading = false;
+    mocks.apifyUsageIsError = false;
+    mocks.apifyUsageIsLoading = false;
+    mocks.geocodingIsError = false;
+    mocks.geocodingIsLoading = false;
+    mocks.geocodingData = { pending: 0, processing: 0, succeeded: 0, failed: 0 };
     mocks.apifyUsageData = { dateKey: "2026-09-19", requestCount: 1, dailyLimit: 3, remaining: 2, isLimitReached: false, nextReleaseAt: "2026-09-20T03:00:00.000Z", persistence: true };
     mocks.brandMonitoringData = [
       { id: 1, name: "Nosso After", slug: "nosso-after", platforms: ["Instagram", "Bilheterias itinerantes"], cities: ["Guarujá", "Santos"], matchTerms: ["nossoafterguaruja"], isActive: true, editionsDetected: 0, rescrapes: 0, latestEditionDate: null, lastDetectedAt: null },
@@ -428,6 +438,47 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     expect(markup).toContain("Limite atingido");
     expect(markup).toContain("Nova liberação à meia-noite de Brasília");
     expect(markup).toContain("Bloqueado até a virada");
+  });
+  it("não exibe zeros para Apify enquanto carrega ou falha", async () => {
+    mocks.apifyUsageIsLoading = true;
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    let markup = JSON.stringify(tree!.toJSON());
+    expect(markup).toContain("Consultando…");
+    expect(markup).not.toContain("0 de 0 requisições");
+
+    mocks.apifyUsageIsLoading = false;
+    mocks.apifyUsageIsError = true;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    markup = JSON.stringify(tree!.toJSON());
+    expect(markup).toContain("Aviso: não foi possível consultar o consumo da Apify agora.");
+    expect(markup).toContain('"—"');
+    expect(markup).not.toContain("0 de 0 requisições");
+  });
+  it("não exibe zeros para geocodificação enquanto carrega ou falha", async () => {
+    mocks.geocodingIsLoading = true;
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    let markup = JSON.stringify(tree!.toJSON());
+    expect(markup).toContain("Consultando a fila de geocodificação…");
+    expect(markup).toContain("—");
+
+    mocks.geocodingIsLoading = false;
+    mocks.geocodingIsError = true;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    markup = JSON.stringify(tree!.toJSON());
+    expect(markup).toContain("Aviso: não foi possível consultar a fila de geocodificação agora.");
+    expect(markup).toContain("—");
+  });
+  it("preserva zeros legítimos quando Apify e geocodificação respondem com sucesso", async () => {
+    mocks.apifyUsageData = { dateKey: "2026-09-19", requestCount: 0, dailyLimit: 3, remaining: 3, isLimitReached: false, nextReleaseAt: "2026-09-20T03:00:00.000Z", persistence: true };
+    mocks.geocodingData = { pending: 0, processing: 0, succeeded: 0, failed: 0 };
+    let tree: ReturnType<typeof create>;
+    await act(async () => { tree = create(<AdminReportsPanel />); });
+    const markup = JSON.stringify(tree!.toJSON());
+    expect(markup).toContain("0 de 3 requisições");
+    expect(markup).toContain("Pendentes:");
+    expect(markup).toContain("Concluídos:");
   });
 });
 

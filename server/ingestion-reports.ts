@@ -13,7 +13,7 @@ import {
   classifyCriticalMetaReason,
   sendCriticalMetaAlert,
 } from "./meta-alert-webhook";
-import { ensureOperationalSchemaCompatibility, getDatabaseErrorLogContext, getDb, recordIngestionSourceReportSummary, recordOperationalAlert, toPostgresDateParameter } from "./db";
+import { getDatabaseErrorLogContext, getDb, recordIngestionSourceReportSummary, recordOperationalAlert, toPostgresDateParameter } from "./db";
 import { buildIngestionSourceReportSummaries } from "./ingestion-source-report";
 import { registerBackgroundTask } from "./background-tasks";
 import {
@@ -1799,7 +1799,6 @@ export async function listIngestionReport(
       message: "O banco de dados do relatório operacional está indisponível. Tente novamente em instantes.",
     });
   }
-  await ensureOperationalSchemaCompatibility(db);
   const safeSize = Math.min(Math.max(size, 1), 50);
   const periodDays = filters.periodDays ?? 7;
   const reportDiagnostics: string[] = [];
