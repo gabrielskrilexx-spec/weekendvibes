@@ -13,7 +13,7 @@ import {
   classifyCriticalMetaReason,
   sendCriticalMetaAlert,
 } from "./meta-alert-webhook";
-import { getDatabaseErrorLogContext, getDb, recordIngestionSourceReportSummary, recordOperationalAlert, toPostgresDateParameter } from "./db";
+import { getDatabaseErrorLogContext, getDb, recordIngestionSourceReportSummary, recordOperationalAlert, toPostgresDateParameter, toSafeIsoDate } from "./db";
 import { buildIngestionSourceReportSummaries } from "./ingestion-source-report";
 import { registerBackgroundTask } from "./background-tasks";
 import {
@@ -138,11 +138,7 @@ function safeReportError(value: unknown) {
     .slice(0, 240);
 }
 
-export function toSafeIsoDate(value: Date | string | null | undefined) {
-  if (value == null || value === "") return null;
-  const date = value instanceof Date ? new Date(value.getTime()) : new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
-}
+export { toSafeIsoDate } from "./db";
 
 type ReportStageResult<T> = { value: T; diagnostic: string | null };
 

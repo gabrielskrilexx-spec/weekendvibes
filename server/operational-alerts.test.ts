@@ -37,6 +37,27 @@ describe("operational alerts", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  it("serializa datas como Date, string ISO, null ou inválida sem lançar TypeError", async () => {
+    const rows = [
+      { id: 201, alertType: "date", severity: "INFO", title: "Date", message: "date", runId: null, isResolved: 0, createdAt: new Date("2026-11-26T10:00:00.000Z"), updatedAt: new Date("2026-11-26T10:01:00.000Z") },
+      { id: 202, alertType: "string", severity: "INFO", title: "String", message: "string", runId: null, isResolved: 0, createdAt: "2026-11-26T11:00:00.000Z", updatedAt: "2026-11-26T11:01:00.000Z" },
+      { id: 203, alertType: "null", severity: "INFO", title: "Null", message: "null", runId: null, isResolved: 0, createdAt: null, updatedAt: undefined },
+      { id: 204, alertType: "invalid", severity: "INFO", title: "Invalid", message: "invalid", runId: null, isResolved: 0, createdAt: "not-a-date", updatedAt: "also-not-a-date" },
+    ];
+    const limit = vi.fn().mockResolvedValue(rows);
+    const orderBy = vi.fn().mockReturnValue({ limit });
+    const where = vi.fn().mockReturnValue({ orderBy });
+    const from = vi.fn().mockReturnValue({ where });
+    const fakeDb = { select: vi.fn().mockReturnValue({ from }) } as never;
+
+    await expect(listOperationalAlerts(10, fakeDb)).resolves.toEqual([
+      expect.objectContaining({ id: 201, createdAt: "2026-11-26T10:00:00.000Z", updatedAt: "2026-11-26T10:01:00.000Z" }),
+      expect.objectContaining({ id: 202, createdAt: "2026-11-26T11:00:00.000Z", updatedAt: "2026-11-26T11:01:00.000Z" }),
+      expect.objectContaining({ id: 203, createdAt: null, updatedAt: null }),
+      expect.objectContaining({ id: 204, createdAt: null, updatedAt: null }),
+    ]);
+  });
+
   it("resolve um alerta pelo id para uso exclusivo do painel administrativo", async () => {
     const updateWhere = vi.fn().mockResolvedValue(undefined);
     const updateSet = vi.fn().mockReturnValue({ where: updateWhere });

@@ -18,6 +18,12 @@ import { normalizeDiscoveredSourceUrl, resolveDiscoveredSourceMatch } from "../s
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
+export function toSafeIsoDate(value: Date | string | null | undefined) {
+  if (value == null || value === "") return null;
+  const date = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
 export function throwDatabaseUnavailable(operation = "administrative query"): never {
   console.warn("[Database] unavailable", { operation });
   throw new Error("database_unavailable");
@@ -488,7 +494,7 @@ export async function listOperationalAlerts(limit = 25, dbOverride?: Awaited<Ret
   if (!db) throwDatabaseUnavailable();
   const cutoff = toPostgresDateParameter(new Date(Date.now() - 24 * 60 * 60 * 1000), "alerts_cutoff");
   const rows = await db.select({ id: operationalAlerts.id, alertType: operationalAlerts.alertType, severity: operationalAlerts.severity, title: operationalAlerts.title, message: operationalAlerts.message, runId: operationalAlerts.runId, isResolved: operationalAlerts.isResolved, createdAt: operationalAlerts.createdAt, updatedAt: operationalAlerts.updatedAt }).from(operationalAlerts).where(and(eq(operationalAlerts.isResolved, 0), gte(operationalAlerts.createdAt, cutoff))).orderBy(desc(operationalAlerts.createdAt)).limit(Math.min(100, Math.max(1, Math.trunc(limit))));
-  return rows.map(row => ({ id: row.id, alertType: row.alertType, severity: row.severity, title: row.title, message: row.message, runId: row.runId ?? null, isResolved: row.isResolved === 1, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() }));
+  return rows.map(row => ({ id: row.id, alertType: row.alertType, severity: row.severity, title: row.title, message: row.message, runId: row.runId ?? null, isResolved: row.isResolved === 1, createdAt: toSafeIsoDate(row.createdAt), updatedAt: toSafeIsoDate(row.updatedAt) }));
 }
 
 export async function resolveOperationalAlert(id: number, dbOverride?: Awaited<ReturnType<typeof getDb>>) {
