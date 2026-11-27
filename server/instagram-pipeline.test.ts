@@ -3,7 +3,7 @@ import { eq, or } from "drizzle-orm";
 import { ingestionSources } from "../drizzle/schema";
 import * as dbModule from "./db";
 import { getDb } from "./db";
-import { extractDiscoverableInstagramLinks } from "./instagram-pipeline";
+import { extractDiscoverableInstagramLinks, discoverMonitoredBrandEventLinks } from "./instagram-pipeline";
 import { selectInstagramApifyTargets } from "./instagram-pipeline";
 import { isMetaInvalidUserError, createStructuredEventRejection, fetchInstagramPosts, fetchInstagramPostsDetailed, getInstagramSessionGeneration, isInstagramTransportFailure, isMetaCredentialFailure, isMetaPermissionFailure, extractMetaGraphErrorMessage, normalizeStructuredEventDate, fetchInstagramStories, fetchApifyStoriesAndHighlights, getApifySyncTimeoutMs, getApifyActorMaxRuntimeSecs, hasApprovedAgendaText, hasRecentApifySignal, hasRegionalHashtag, INSTAGRAM_TARGETS, getInstagramTargetCity, resolveInstagramEventCity, isWithinInstagramLookback, summarizeStructuredRejections, validateStructuredInstagramEvent, buildInstagramScraperPayload, buildInstagramStoriesScraperPayload, isAgendaHighlightTitle, normalizeInstagramMediaItem, normalizeInstagramMediaPayload, createMeuLugarSandboxStoryMock, extractOcrText, buildOcrAuditEntries, shouldExtractInstagramMediaOcr, resolveInstagramVisualUrl, extractStructuredEventsForTest, limitInstagramStoriesForCost, INSTAGRAM_OCR_CONCURRENCY, validateMetaBusinessDiscoveryProfile, decodeInstagramRedirectUrl, extractInstagramRedirectedLinks, extractInstagramEventLink, persistInstagramCoverImage } from "./instagram-pipeline";
 
@@ -79,6 +79,19 @@ describe("Instagram weekend pipeline", () => {
   });
   it("extrai apenas links públicos suportados e os deduplica", () => {
     expect(extractDiscoverableInstagramLinks("Ingressos: https://www.sympla.com.br/evento/festa/123. https://www.sympla.com.br/evento/festa/123#lote https://instagram.com/p/abc https://example.com/fora")).toEqual(["https://www.sympla.com.br/evento/festa/123"]);
+  });
+
+  it("estrutura links de evento da marca via texto e sticker, sem criar permalink de perfil", () => {
+    const links = discoverMonitoredBrandEventLinks([
+      {
+        ownerUsername: "@nossoafterguaruja",
+        mediaType: "story",
+        caption: "Nosso After — ingressos https://www.ingresse.com/nosso-after-after-oficial-da-txiii-med-unoeste/?utm_source=instagram&fbclid=tracking",
+        linkUrls: [{ url: "https://www.ingresse.com/nosso-after-after-oficial-da-txiii-med-unoeste/?utm_medium=story" }],
+      },
+      { ownerUsername: "outroperfil", mediaType: "story", caption: "https://www.ingresse.com/evento-fora-da-marca/" },
+    ], [{ slug: "nosso-after", name: "Nosso After", cities: ["Guarujá", "Santos"], platforms: ["Instagram", "Bilheterias itinerantes"], matchTerms: ["Nosso After", "nossoafterguaruja"] }]);
+    expect(links).toEqual([{ canonicalUrl: "https://www.ingresse.com/nosso-after-after-oficial-da-txiii-med-unoeste", username: "nossoafterguaruja", sourceKey: "instagram:nossoafterguaruja", brandName: "Nosso After" }]);
   });
 
   it("prioriza sticker/CTA nos Stories e recua para o perfil quando não há link externo", () => {

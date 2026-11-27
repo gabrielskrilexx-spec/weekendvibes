@@ -297,7 +297,7 @@ function monitoredBrandSupportsSource(brand: MonitoredBrandRule, sourceKey?: str
   });
 }
 
-export function getMonitoredPublicBrand(value: string, sourceKey?: string, brands: MonitoredBrandRule[] = []) {
+export function getMonitoredPublicBrand(value: string, sourceKey?: string, brands: ReadonlyArray<MonitoredBrandRule> = []) {
   const candidate = String(value ?? "");
   const normalizedCandidate = normalizeSlug(candidate);
   return brands.find(brand =>
@@ -309,23 +309,23 @@ export function getMonitoredPublicBrand(value: string, sourceKey?: string, brand
   );
 }
 
-export function getTrackedPublicBrand(value: string, sourceKey?: string, brands: MonitoredBrandRule[] = []) {
+export function getTrackedPublicBrand(value: string, sourceKey?: string, brands: ReadonlyArray<MonitoredBrandRule> = []) {
   const candidate = String(value ?? "");
   const monitored = getMonitoredPublicBrand(candidate, sourceKey, brands);
   if (monitored) return monitored.name;
   return LEGACY_TRACKED_PUBLIC_BRANDS.find(item => (!sourceKey || item.sourceKey === sourceKey) && item.pattern.test(candidate))?.brand;
 }
 
-export function matchesTrackedPublicBrand(value: string, sourceKey?: string, brands: MonitoredBrandRule[] = []) {
+export function matchesTrackedPublicBrand(value: string, sourceKey?: string, brands: ReadonlyArray<MonitoredBrandRule> = []) {
   return Boolean(getTrackedPublicBrand(value, sourceKey, brands));
 }
 
 /** A monitored brand is a valid target even when the event location is itinerant. */
-export function matchesPublicTarget(value: string, sourceKey: string | undefined, aliases: string[], brands: MonitoredBrandRule[] = []) {
+export function matchesPublicTarget(value: string, sourceKey: string | undefined, aliases: string[], brands: ReadonlyArray<MonitoredBrandRule> = []) {
   return containsTargetVenue(value, aliases) || matchesTrackedPublicBrand(value, sourceKey, brands);
 }
 
-export function buildPublicEventIdentity(sourceKey: string, title: string, eventDate: Date | string, sourceUrl: string, brands: MonitoredBrandRule[] = []) {
+export function buildPublicEventIdentity(sourceKey: string, title: string, eventDate: Date | string, sourceUrl: string, brands: ReadonlyArray<MonitoredBrandRule> = []) {
   const day = new Date(eventDate).toISOString().slice(0, 10);
   const brand = getTrackedPublicBrand(`${title} ${sourceUrl}`, sourceKey, brands);
   const articketId = sourceKey === "public:articket" ? sanitizePublicSourceUrl(sourceUrl).match(/\/e\/(\d+)(?:\/|$)/i)?.[1] : undefined;
@@ -2256,7 +2256,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
       continue;
     }
     try { assertEventDateIsCurrentOrFuture(date, new Date(), String(event.title)); } catch { filteredByReason.pastEvent += 1; rejectedEvents.push({ sourceKey, reason: "pastEvent" }); continue; }
-    const sourceUrl = String(event.sourceUrl);
+    const sourceUrl = sanitizePublicSourceUrl(String(event.sourceUrl)) || String(event.sourceUrl).trim();
     const fuzzyDuplicate = acceptedEvents.some(previous => areFuzzyDuplicateEvents(previous, { title: String(event.title), eventDate: date, city }));
     if (fuzzyDuplicate) { duplicates += 1; duplicateSourceKeys.push(sourceKey); continue; }
     acceptedEvents.push({ title: String(event.title), eventDate: date, city, sourceKey });

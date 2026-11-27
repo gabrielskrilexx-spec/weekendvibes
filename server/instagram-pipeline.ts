@@ -344,17 +344,10 @@ function normalizeInstagramTimestamp(value: unknown) {
 }
 
 export async function persistDiscoverableInstagramLinks(posts: ReadonlyArray<InstagramPost>) {
-  const discovered = new Map<string, string | undefined>();
-  for (const post of posts) {
-    const username = post.ownerUsername ?? post.username;
-    const text = [post.caption, post.text, post.ocrText].filter(Boolean).join("\n");
-    for (const rawUrl of extractDiscoverableInstagramLinks(text)) {
-      const url = normalizeDiscoveredSourceUrl(rawUrl);
-      if (url) discovered.set(url, username);
-    }
-  }
-  const sources = await Promise.all(Array.from(discovered, ([url, username]) => upsertDiscoveredInstagramLinkSource({ url, username })));
-  return { discovered: sources.length, sources };
+  const brands = await listActiveMonitoredBrands();
+  const discovered = discoverMonitoredBrandEventLinks(posts, brands);
+  const sources = await Promise.all(discovered.map(link => upsertDiscoveredInstagramLinkSource({ url: link.canonicalUrl, username: link.username })));
+  return { discovered: sources.length, sources, brands: Array.from(new Set(discovered.map(link => link.brandName))) };
 }
 
 export function limitInstagramStoriesForCost(posts: InstagramPost[], now = new Date()) {
@@ -751,6 +744,36 @@ export function extractInstagramEventLink(post: InstagramPost, text = "") {
     return stickerUrls[0] ?? textTicketUrls[0] ?? (post.ownerUsername || post.username ? `https://www.instagram.com/${String(post.ownerUsername ?? post.username).replace(/^@/, "")}/` : postUrl(post));
   }
   return textTicketUrls[0] ?? stickerUrls[0] ?? postUrl(post);
+}
+export type MonitoredBrandEventLink = {
+  canonicalUrl: string;
+  username: string;
+  sourceKey: string;
+  brandName: string;
+};
+/** Discover explicit ticketing links without ever falling back to a profile permalink. */
+export function discoverMonitoredBrandEventLinks(
+  posts: ReadonlyArray<InstagramPost>,
+  brands: ReadonlyArray<{ slug: string; name: string; cities: string[]; platforms: string[]; matchTerms: string[] }>,
+) {
+  const discovered = new Map<string, MonitoredBrandEventLink>();
+  for (const post of posts) {
+    const username = String(post.ownerUsername ?? post.username ?? "").replace(/^@+/, "").trim().toLowerCase();
+    if (!username) continue;
+    const sourceKey = post.sourceKey || `instagram:${username}`;
+    const rawText = [post.caption, post.text, post.ocrText].filter(Boolean).join("\n");
+    const brand = getMonitoredPublicBrand(`${username} ${rawText}`, sourceKey, brands);
+    if (!brand) continue;
+    const stickerLinks = collectExternalUrls([post.linkUrls, post.stickers, post.externalUrl, post.callToAction])
+      .map(value => decodeInstagramRedirectUrl(value) ?? value)
+      .filter(isExternalInstagramLink);
+    for (const rawUrl of [...stickerLinks, ...extractDiscoverableInstagramLinks(rawText)]) {
+      const canonicalUrl = normalizeDiscoveredSourceUrl(rawUrl);
+      if (!canonicalUrl || discovered.has(canonicalUrl)) continue;
+      discovered.set(canonicalUrl, { canonicalUrl, username, sourceKey, brandName: brand.name });
+    }
+  }
+  return Array.from(discovered.values());
 }
 
 function normalizeVenueMatch(value: string) {
