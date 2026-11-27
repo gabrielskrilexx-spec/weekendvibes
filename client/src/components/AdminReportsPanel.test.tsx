@@ -2,7 +2,7 @@ import React from "react";
 import { act, create } from "react-test-renderer";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import AdminReportsPanel, { buildRunsCsvFilename, exportRunsCsvForTest, isNewVersionAvailable } from "./AdminReportsPanel";
+import AdminReportsPanel, { buildRunsCsvFilename, exportRunsCsvForTest, filterFreshnessRowsForDisplay, isNewVersionAvailable } from "./AdminReportsPanel";
 
 const mocks = vi.hoisted(() => ({
   mutate: vi.fn(),
@@ -113,6 +113,16 @@ describe("AdminReportsPanel — ingestão manual Instagram", () => {
     expect(isNewVersionAvailable("CURRENT", "CURRENT")).toBe(false);
     expect(isNewVersionAvailable("CURRENT", "NEXT")).toBe(true);
     expect(isNewVersionAvailable("CURRENT", null)).toBe(false);
+  });
+
+  it("oculta apenas fontes pontuais nunca sincronizadas e preserva recorrentes e críticas", () => {
+    const result = filterFreshnessRowsForDisplay([
+      { sourceKey: "public:instagram-expired", name: "Link avulso vencido", kind: "public", state: "never", expectedMinutes: 2880, lastSuccessAt: null, lastEventAt: null },
+      { sourceKey: "public:ingresse", name: "Feed geral Ingresse", kind: "public", state: "never", expectedMinutes: 1440, lastSuccessAt: null, lastEventAt: null },
+      { sourceKey: "public:instagram-active", name: "Canal monitorado", kind: "public", state: "critical", expectedMinutes: 2880, lastSuccessAt: null, lastEventAt: null },
+    ]);
+    expect(result.hiddenCount).toBe(1);
+    expect(result.rows.map(row => row.sourceKey)).toEqual(["public:ingresse", "public:instagram-active"]);
   });
 
   it("exibe o aviso visual quando o manifesto detecta uma versão nova", async () => {
