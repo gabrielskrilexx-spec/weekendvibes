@@ -647,7 +647,7 @@ export function parseZigEventMetadata(html: string, url: string) {
   const priceCents = readPriceCents(offers.price ?? offers.lowPrice ?? offers.minPrice) || readPriceCents(sourceText.match(/R\$\s*[\d.,]+/i)?.[0] ?? "");
   const imageUrl = meta("og:image");
   const searchable = normalizeText(`${title} ${String(jsonLd?.description ?? "")} ${sourceText} ${locationName}`);
-  const genre = /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : /house|eletronic|eletrônica|dj|balada|festa|m[uú]sica|music|sunset/.test(searchable) ? "house_eletronica" : "";
+  const genre = inferPersistedGenre([title, sourceText, locationName]);
   const category = /show|festival|concerto|banda/.test(searchable) ? "show" : /balada|festa|dj|boate|reveillon|sunset|open\s+bar/.test(searchable) ? "balada" : genre ? "evento_musical" : "";
   if (!title || !eventDate || !city) return undefined;
   return { title: sanitizeEventText(title), summary: sanitizeEventText(sourceText.slice(0, 4_000)), eventDate, locationName, address: street, city, category, genre, priceCents, sourceUrl: url, imageUrl, latitude: "", longitude: "", text: sanitizeEventText(sourceText.slice(0, 16_000)) };
@@ -676,7 +676,7 @@ export function parseZigApiEventPayload(payload: unknown, url: string) {
   const imageUrl = firstText(images.banner, images.thumbnail, event.image, event.imageUrl);
   const sourceUrl = firstText(event.url) || url;
   const searchable = normalizeText(`${title} ${description} ${locationName} ${address}`);
-  const genre = /funk/.test(searchable) ? "rap_trap" : /rap|trap/.test(searchable) ? "rap_trap" : /house|eletronic|eletrônica|techno|trance|dj|balada|festa|music|sunset/.test(searchable) ? "house_eletronica" : "";
+  const genre = inferPersistedGenre([title, description, locationName, address]);
   const category = /show|festival|concerto|banda/.test(searchable) ? "show" : /balada|festa|dj|boate|reveillon|sunset|open\s+bar/.test(searchable) ? "balada" : genre ? "evento_musical" : "";
   if (!title || !eventDate || !locationName || !city) return undefined;
   return { title: sanitizeEventText(title), summary: sanitizeEventText(description.slice(0, 4_000)), eventDate, locationName, address: sanitizeEventText(address), city, category, genre, priceCents: 0, sourceUrl, imageUrl: /^https?:\/\//i.test(imageUrl) ? imageUrl : "", latitude: firstText(location.latitude), longitude: firstText(location.longitude), text: sanitizeEventText(`${title} ${description} ${locationName} ${address} ${city}`.slice(0, 16_000)) };
@@ -955,7 +955,7 @@ export function parseParqueValongoEventMetadata(html: string, url: string) {
   const city = typeof address.addressLocality === "string" && address.addressLocality.trim() ? address.addressLocality.trim() : /santos/i.test(visibleText) ? "Santos" : "";
   const addressLine = typeof address.streetAddress === "string" ? address.streetAddress : "Rua Antônio Prado, s/nº, Centro Histórico";
   const searchable = normalizeText(`${title} ${visibleText}`);
-  const genre = /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : /show|m[uú]sica|festival|dj|concerto/.test(searchable) ? "house_eletronica" : "";
+  const genre = inferPersistedGenre([title, visibleText]);
   const category = /show|festival|concerto|m[uú]sica|dj/.test(searchable) ? "evento_musical" : "";
   if (title && eventDate && city === "Santos" && genre && category) {
     return { title, summary: visibleText.slice(0, 4_000), eventDate, locationName, address: addressLine, city, category, genre, priceCents: 0, sourceUrl: url, imageUrl: meta("og:image"), text: visibleText.slice(0, 16_000) };
@@ -976,7 +976,7 @@ export function parseParqueValongoEventMetadata(html: string, url: string) {
     ?? candidate.find("[data-date]").first().attr("data-date")
     ?? "";
   const fallbackSearchable = normalizeText(`${fallbackTitle} ${candidateText}`);
-  const fallbackGenre = /funk/.test(fallbackSearchable) ? "funk" : /samba|pagode/.test(fallbackSearchable) ? "samba_pagode" : /rap|trap/.test(fallbackSearchable) ? "rap_trap" : /show|m[uú]sica|festival|dj|concerto/.test(fallbackSearchable) ? "house_eletronica" : "";
+  const fallbackGenre = inferPersistedGenre([fallbackTitle, candidateText]);
   const fallbackCategory = /show|festival|concerto|m[uú]sica|dj/.test(fallbackSearchable) ? "evento_musical" : "";
   if (!fallbackTitle || !fallbackDate || !/^\d{4}-\d{2}-\d{2}T/.test(fallbackDate) || !/santos|parque valongo|arcos do valongo/i.test(candidateText) || !fallbackGenre || !fallbackCategory) return undefined;
   return { title: fallbackTitle, summary: candidateText.slice(0, 4_000), eventDate: fallbackDate, locationName: /arcos do valongo/i.test(candidateText) ? "Arcos do Valongo" : "Parque Valongo", address: "Rua Antônio Prado, s/nº, Centro Histórico", city: "Santos", category: fallbackCategory, genre: fallbackGenre, priceCents: 0, sourceUrl: url, imageUrl: meta("og:image"), text: candidateText.slice(0, 16_000) };
@@ -1078,7 +1078,7 @@ export function parseWeTicketEventMetadata(html: string, url: string) {
   const priceMatch = visibleText.match(/r\$\s*([\d.]+(?:,\d{2})?)/i);
   const priceCents = readPriceCents(offers?.price ?? offers?.lowPrice) || (priceMatch ? Math.round(Number(priceMatch[1].replace(/\./g, "").replace(",", ".")) * 100) : 0);
   const searchable = normalizeText(`${title} ${visibleText}`);
-  const genre = /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : "house_eletronica";
+  const genre = inferPersistedGenre([title, visibleText]);
   const category = /show|festival|concerto|banda/.test(searchable) ? "show" : "balada";
   if (!title || !eventDate || !locationName || !city) return undefined;
   return { title, summary: visibleText.slice(0, 4_000), eventDate, locationName, address: street, city, category, genre, priceCents, sourceUrl: url, imageUrl: meta("og:image"), text: visibleText.slice(0, 16_000) };
@@ -1128,7 +1128,7 @@ export function parseSymplaEventMetadata(html: string, url: string) {
   const detail = typeof state?.strippedDetail === "string" ? state.strippedDetail : typeof state?.detail === "string" ? stripHtml(state.detail) : typeof jsonLd?.description === "string" ? stripHtml(jsonLd.description) : meta("og:description");
   const coordinates = address.geolocation ?? { latitude: jsonGeo.latitude, longitude: jsonGeo.longitude };
   const searchable = normalizeText(`${title} ${detail} ${locationName}`);
-  const genre = /\bfunk\b/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : /house|eletronic|dj|balada|festa/.test(searchable) ? "house_eletronica" : "";
+  const genre = inferPersistedGenre([title, detail, locationName]);
   const category = /show|festival|concerto|banda/.test(searchable) ? "show" : /balada|festa|dj|boate/.test(searchable) ? "balada" : genre ? "evento_musical" : "";
   const priceMatch = `${visibleText} ${detail}`.match(/r\$\s*([\d.]+(?:,\d{2})?)/i);
   const priceCents = readPriceCents(jsonOffers?.price ?? jsonOffers?.lowPrice) || (priceMatch ? Math.round(Number(priceMatch[1].replace(/\./g, "").replace(",", ".")) * 100) : 0);
@@ -1220,7 +1220,8 @@ export function parseBlackPassCatalogEvent(event: BlackPassCatalogEvent) {
   const priceCents = typeof rawPrice === "number" ? Math.round(rawPrice * 100) : typeof rawPrice === "string" && rawPrice.trim() ? Math.round(Number(rawPrice.replace(/[^0-9,.-]/g, "").replace(",", ".")) * 100) : 0;
   if (!event.id || !title || !dateTime || !locationName) return undefined;
   const sourceUrl = blackPassEventUrl(event.id);
-  return { title, summary: title, eventDate: dateTime, locationName, address, city, category: "balada", genre: "house_eletronica", priceCents, sourceUrl, imageUrl, latitude: latitude ?? "", longitude: longitude ?? "", text: [title, locationName, address, city, dateTime].filter(Boolean).join(" ") };
+  const genre = inferPersistedGenre([title, locationName, address]);
+  return { title, summary: title, eventDate: dateTime, locationName, address, city, category: "balada", genre, priceCents, sourceUrl, imageUrl, latitude: latitude ?? "", longitude: longitude ?? "", text: [title, locationName, address, city, dateTime].filter(Boolean).join(" ") };
 }
 
 function parseBlackPassCatalogPayload(payload: unknown): BlackPassCatalogEvent[] {
@@ -1317,7 +1318,7 @@ export function parseArticketEventMetadata(html: string, url: string) {
   if (!parsed) return undefined;
   if (!parsed.title.trim() || !parsed.eventDate.trim() || !parsed.locationName.trim() || !parsed.city.trim()) return undefined;
   const searchable = normalizeText(`${parsed.title} ${parsed.text} ${parsed.locationName}`);
-  const genre = /funk/.test(searchable) ? "funk" : /samba|pagode/.test(searchable) ? "samba_pagode" : /rap|trap/.test(searchable) ? "rap_trap" : /show|festival|m[uú]sica|dj|festa|balada|sertanejo|arrocha|pagode|halloween|open bar|plants/.test(searchable) ? "house_eletronica" : "";
+  const genre = inferPersistedGenre([parsed.title, parsed.text, parsed.locationName]);
   const category = /show|festival|concerto|banda/.test(searchable) ? "show" : /samba|pagode/.test(searchable) ? "evento_musical" : genre ? "balada" : "";
   return { ...parsed, summary: parsed.text.slice(0, 4_000), category, genre };
 }
@@ -1395,7 +1396,8 @@ export function parseIngresseEventPayload(payload: Record<string, unknown>, url:
   const longitude = firstText(coordinates.lon, coordinates.lng, coordinates.longitude);
   const purchaseUrl = firstText(payload.externalLink, payload.ticketUrl, event.url) || url;
   if (!title || !dateTime || !placeName) return undefined;
-  return { title, summary: description, eventDate: dateTime, locationName: placeName, address, city, category: "balada", genre: "house_eletronica", priceCents: 0, sourceUrl: purchaseUrl, imageUrl, latitude, longitude };
+  const genre = inferPersistedGenre([title, description, placeName, address]);
+  return { title, summary: description, eventDate: dateTime, locationName: placeName, address, city, category: "balada", genre, priceCents: 0, sourceUrl: purchaseUrl, imageUrl, latitude, longitude };
 }
 
 export async function fetchIngresseEventApi(url: string, cacheStore: IngresseCacheStore = { read: getIngestionPayloadCache, write: saveIngestionPayloadCache }, options: { dryRun?: boolean; signal?: AbortSignal } = {}) {
@@ -2218,7 +2220,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
   const structured = apiStructuredEvents.length > 0 ? { choices: [{ message: { content: JSON.stringify({ events: apiStructuredEvents }) } }] } : await invokeLLM({
     model: "gpt-4o-mini",
     messages: [
-      { role: "system", content: `Extraia somente eventos públicos de música, shows ou baladas nos locais oficiais Vallum Garden, Moby Dick, Ativa House, Casa 412, Verilonguinho, Meu Lugar, Goat Club, Laroc Club Guarujá, Lucky Scope, Curvão Surf House, Guarujá Golf Club, Praia Verde Beach Club, Praia Verde, Casa Grande Hotel Resort, Casa Grande Hotel, Praiô, Flamingos, Projac Bar, Boteco Almare, Dolores Restaurante e Bar, Arena Club, Yellow House, Arena Jequitimar, Parque Valongo, Armazém 3, Blue Med Convention Center ou Santos Convention Center, localizados exclusivamente em Santos ou Guarujá. Ignore eventos passados, cidades diferentes, locais fora dessa allowlist e eventos de gastronomia, esporte, teatro ou exposição sem música. Retorne somente JSON no schema. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Se o gênero não puder ser inferido com segurança, descarte o evento. Use o SOURCE_URL correspondente como sourceUrl e IMAGE_URL quando houver.${monitoredBrandInstructions}` },
+      { role: "system", content: `Extraia somente eventos públicos de música, shows ou baladas nos locais oficiais Vallum Garden, Moby Dick, Ativa House, Casa 412, Verilonguinho, Meu Lugar, Goat Club, Laroc Club Guarujá, Lucky Scope, Curvão Surf House, Guarujá Golf Club, Praia Verde Beach Club, Praia Verde, Casa Grande Hotel Resort, Casa Grande Hotel, Praiô, Flamingos, Projac Bar, Boteco Almare, Dolores Restaurante e Bar, Arena Club, Yellow House, Arena Jequitimar, Parque Valongo, Armazém 3, Blue Med Convention Center ou Santos Convention Center, localizados exclusivamente em Santos ou Guarujá. Ignore eventos passados, cidades diferentes, locais fora dessa allowlist e eventos de gastronomia, esporte, teatro ou exposição sem música. Retorne somente JSON no schema. Normalize category para show, balada ou evento_musical e genre exclusivamente para funk, house_eletronica ou rap_trap. Exija evidência musical explícita no título, descrição, atrações, lineup ou tags; para house_eletronica, aceite somente sinais explícitos como música eletrônica, house, tech house, afro house, deep house, techno, trance, psytrance, EDM, drum and bass ou DJ set. Nunca classifique por local, festa, balada, sunset, open bar, música genérica ou evento sem gênero. Samba, pagode, sertanejo, rock, MPB e outros gêneros fora do escopo devem ser descartados. Se o gênero não puder ser inferido com segurança, descarte o evento. Use o SOURCE_URL correspondente como sourceUrl e IMAGE_URL quando houver.${monitoredBrandInstructions}` },
       { role: "user", content: rawText },
     ],
     response_format: { type: "json_schema", json_schema: { name: "event_batch", strict: true, schema: { type: "object", properties: { events: { type: "array", items: { type: "object", properties: { title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, eventDateEstimated: { type: "boolean" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string" }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "rap_trap"] }, priceCents: { type: "integer" }, sourceUrl: { type: "string" }, imageUrl: { type: "string" }, latitude: { type: "string" }, longitude: { type: "string" } }, required: ["title", "summary", "eventDate", "eventDateEstimated", "locationName", "address", "city", "category", "genre", "priceCents", "sourceUrl", "imageUrl", "latitude", "longitude"], additionalProperties: false } } }, required: ["events"], additionalProperties: false } } },

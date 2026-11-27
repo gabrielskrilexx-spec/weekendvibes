@@ -135,7 +135,7 @@ describe("adapters de ticketeiras oficiais", () => {
       name: "Festa House no GOAT CLUB", logoUrl: "https://images.sympla.com.br/event.jpg",
       startDateMultiFormat: { ISO8601: "2030-09-22T22:00:00-03:00" },
       eventsAddress: { name: "GOAT CLUB", address: "Rua Example", addressNum: "100", city: "Santos", state: "SP", geolocation: { latitude: -23.93, longitude: -46.33 } },
-      strippedDetail: "DJ e música house. Ingressos a partir de R$ 80,00",
+      strippedDetail: "DJ set de tech house e música eletrônica. Ingressos a partir de R$ 80,00",
     } } } } } };
     const html = `<meta property="og:title" content="Festa House no GOAT CLUB"><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(state)}</script>`;
     expect(parseSymplaEventMetadata(html, "https://www.sympla.com.br/evento/festa-house/123")).toMatchObject({ title: "Festa House no GOAT CLUB", eventDate: "2030-09-22T22:00:00-03:00", locationName: "GOAT CLUB", city: "Santos", genre: "house_eletronica", priceCents: 8000, sourceUrl: "https://www.sympla.com.br/evento/festa-house/123" });
@@ -175,7 +175,7 @@ describe("adapters de ticketeiras oficiais", () => {
   });
 
   it("normaliza evento musical estruturado do Parque Valongo", () => {
-    const html = `<script type="application/ld+json">${JSON.stringify({ "@type": "Event", name: "Festival de Música no Parque Valongo", startDate: "2030-10-12T18:00:00-03:00", location: { name: "Parque Valongo", address: { addressLocality: "Santos", streetAddress: "Rua Antônio Prado, s/nº" } } })}</script>`;
+    const html = `<script type="application/ld+json">${JSON.stringify({ "@type": "Event", name: "Festival de Música no Parque Valongo", description: "Festival de música eletrônica com DJ set", startDate: "2030-10-12T18:00:00-03:00", location: { name: "Parque Valongo", address: { addressLocality: "Santos", streetAddress: "Rua Antônio Prado, s/nº" } } })}</script><p>Festival de música eletrônica com DJ set</p>`;
     expect(parseParqueValongoEventMetadata(html, "https://www.turismosantos.com.br/pt-br/eventos/parque-valongo-musica")).toMatchObject({ title: "Festival de Música no Parque Valongo", city: "Santos", locationName: "Parque Valongo", genre: "house_eletronica" });
     expect(PARQUE_VALONGO_FETCH_TIMEOUT_MS).toBe(20_000);
   });
@@ -203,7 +203,7 @@ describe("adapters de ticketeiras oficiais", () => {
   it("normaliza evento Articket associado ao produtor Eventos Litoral", () => {
     const html = `<script type="application/ld+json">${JSON.stringify({ "@type": "Event", name: "Feijuca no Arcos", startDate: "2030-11-28T20:00:00-03:00", location: { name: "Arcos do Valongo", address: { addressLocality: "Santos", streetAddress: "Rua Antônio Prado, s/nº" } }, offers: { price: "50.00" } })}</script><meta property="og:image" content="https://cdn.example/feijuca.jpg"><main>Feijuca no Arcos Santos samba pagode</main>`;
     expect(containsTargetVenue("Arcos do Valongo, Santos", ["arcos do valongo"])).toBe(true);
-    expect(parseArticketEventMetadata(html, "https://articket.com.br/e/7163/feijuca-no-arcos-tiee")).toMatchObject({ title: "Feijuca no Arcos", eventDate: "2030-11-28T20:00:00-03:00", locationName: "Arcos do Valongo", city: "Santos", priceCents: 5000, category: "evento_musical", genre: "samba_pagode" });
+    expect(parseArticketEventMetadata(html, "https://articket.com.br/e/7163/feijuca-no-arcos-tiee")).toMatchObject({ title: "Feijuca no Arcos", eventDate: "2030-11-28T20:00:00-03:00", locationName: "Arcos do Valongo", city: "Santos", priceCents: 5000, category: "evento_musical", genre: "" });
     expect(publicSourceKey("https://articket.com.br/e/7163/feijuca-no-arcos-tiee")).toBe("public:articket");
   });
   it("captura dinamicamente a virada de lote da página Articket", () => {
@@ -211,7 +211,7 @@ describe("adapters de ticketeiras oficiais", () => {
     expect(parseArticketEventMetadata(html, "https://articket.com.br/e/7160/o-encontro")).toMatchObject({ title: "O Encontro — Edição Sunset", priceCents: 7500, priceNote: "2º Lote — Ingresso inteiro", locationName: "Parque Valongo", city: "Santos" });
   });
   it("classifica Sub - Plants e corrige Verilonguinho para Santos", () => {
-    const html = `<script type="application/ld+json">${JSON.stringify({ "@type": "Event", name: "Sub - Plants | Halloween", startDate: "2026-10-23T23:00:00-03:00", location: { name: "Verilonguinho", address: { addressLocality: "São Paulo", streetAddress: "Rua do Comércio, 72" } }, offers: { price: "70.00" } })}</script><main>Sub - Plants Halloween Plants Santos Verilonguinho Santos open bar Halloween</main>`;
+    const html = `<script type="application/ld+json">${JSON.stringify({ "@type": "Event", name: "Sub - Plants | Halloween", startDate: "2026-10-23T23:00:00-03:00", location: { name: "Verilonguinho", address: { addressLocality: "São Paulo", streetAddress: "Rua do Comércio, 72" } }, offers: { price: "70.00" } })}</script><main>Sub - Plants Halloween Plants Santos Verilonguinho Santos open bar Halloween, DJ set de música eletrônica</main>`;
     expect(parseArticketEventMetadata(html, "https://articket.com.br/e/7358/sub-plants-halloween")).toMatchObject({ locationName: "Verilonguinho", city: "Santos", category: "balada", genre: "house_eletronica", priceCents: 7000 });
   });
   it("formata o slug Articket como nome provisório legível", () => {

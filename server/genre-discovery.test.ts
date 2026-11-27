@@ -4,7 +4,7 @@ import { buildApifyCatalogPayload, extractEmbeddedPublicEventUrls, extractPublic
 
 describe("Radar de descoberta por estilo", () => {
   it("classifica todos os gêneros que aparecem no conjunto de textos", () => {
-    expect(classifyDiscoveryGenres({ title: "Trap & Rap", description: "Baile Funk com DJ e house eletrônica" })).toEqual(["trap", "rap", "funk", "eletrônica"]);
+    expect(classifyDiscoveryGenres({ title: "Trap & Rap", description: "Baile Funk com DJ set de tech house e música eletrônica" })).toEqual(["trap", "rap", "funk", "eletrônica"]);
   });
 
   it("aceita exclusivamente Santos e Guarujá", () => {
@@ -23,7 +23,7 @@ describe("Radar de descoberta por estilo", () => {
   it("normaliza URL e registra os gêneros musicais reais no candidato", () => {
     const candidate = pageToDiscoveryCandidate({
       url: "https://www.sympla.com.br/evento/trap-rap-santos/123?utm_source=foo",
-      text: "Trap Rap Santos; funk e house eletrônica, próximo sábado",
+      text: "Trap Rap Santos; funk e tech house com música eletrônica, próximo sábado",
       imageUrl: "https://img.example/flyer.jpg",
       structured: { title: "Trap Rap Santos", startDate: "2026-12-05T23:00:00-03:00", city: "Santos", locationName: "Arena" },
     }, new Date("2026-11-24T12:00:00.000Z"));
