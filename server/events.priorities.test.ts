@@ -12,7 +12,7 @@ describe("prioridades altas de eventos", () => {
   it("aceita filtros combináveis incluindo preço, data e horário", async () => {
     const result = await appRouter.createCaller(guestContext).events.list({
       city: "Santos",
-      genre: "samba_pagode",
+      genre: "funk",
       venue: "Meu Lugar",
       date: "2026-08-15",
       minPriceCents: 0,

@@ -14,7 +14,7 @@ const days = [{ label: "Todos", value: "" }, { label: "Sexta", value: "sexta" },
 const quickFilters = [{ label: "Todos", value: "todos" }, { label: "Hoje", value: "hoje" }, { label: "Fim de semana", value: "fim-de-semana" }, { label: "Santos", value: "santos" }, { label: "Guarujá", value: "guaruja" }] as const;
 const cities = ["Todas", "Santos", "Guarujá"];
 const categories = ["Todas", "show", "balada", "evento_musical"];
-const genres = [{ label: "Todas as vibes", value: "" }, { label: "Funk", value: "funk" }, { label: "House/Eletrônica", value: "house_eletronica" }, { label: "Samba/Pagode", value: "samba_pagode" }, { label: "Rap/Trap", value: "rap_trap" }];
+const genres = [{ label: "Todas as vibes", value: "" }, { label: "Funk", value: "funk" }, { label: "House/Eletrônica", value: "house_eletronica" }, { label: "Rap/Trap", value: "rap_trap" }];
 
 function saoPauloDateKey(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
@@ -87,7 +87,7 @@ export default function Home() {
     ...quickRange,
     city: quickFilter === "santos" ? "Santos" : quickFilter === "guaruja" ? "Guarujá" : city === "Santos" || city === "Guarujá" ? city : undefined,
     category: category === "show" || category === "balada" || category === "evento_musical" ? category : undefined,
-    genre: genre === "funk" || genre === "house_eletronica" || genre === "samba_pagode" || genre === "rap_trap" ? genre : undefined,
+    genre: genre === "funk" || genre === "house_eletronica" || genre === "rap_trap" ? genre : undefined,
     venue: activeVenues.find(item => item.slug === venue)?.query,
     size: 40,
   }, { retry: 1, refetchOnWindowFocus: false, refetchOnMount: "always", refetchInterval: 60_000 });

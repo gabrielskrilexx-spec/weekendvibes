@@ -1457,7 +1457,7 @@ export type PublicPage = {
 };
 
 export type OneOffEventOverrides = {
-  genreOverride?: "funk" | "house_eletronica" | "samba_pagode" | "rap_trap";
+  genreOverride?: "funk" | "house_eletronica" | "rap_trap";
   cityOverride?: "Santos" | "Guarujá";
 };
 
@@ -2221,7 +2221,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
       { role: "system", content: `Extraia somente eventos públicos de música, shows ou baladas nos locais oficiais Vallum Garden, Moby Dick, Ativa House, Casa 412, Verilonguinho, Meu Lugar, Goat Club, Laroc Club Guarujá, Lucky Scope, Curvão Surf House, Guarujá Golf Club, Praia Verde Beach Club, Praia Verde, Casa Grande Hotel Resort, Casa Grande Hotel, Praiô, Flamingos, Projac Bar, Boteco Almare, Dolores Restaurante e Bar, Arena Club, Yellow House, Arena Jequitimar, Parque Valongo, Armazém 3, Blue Med Convention Center ou Santos Convention Center, localizados exclusivamente em Santos ou Guarujá. Ignore eventos passados, cidades diferentes, locais fora dessa allowlist e eventos de gastronomia, esporte, teatro ou exposição sem música. Retorne somente JSON no schema. Normalize category para show, balada ou evento_musical e genre para funk, house_eletronica, samba_pagode ou rap_trap. Se o gênero não puder ser inferido com segurança, descarte o evento. Use o SOURCE_URL correspondente como sourceUrl e IMAGE_URL quando houver.${monitoredBrandInstructions}` },
       { role: "user", content: rawText },
     ],
-    response_format: { type: "json_schema", json_schema: { name: "event_batch", strict: true, schema: { type: "object", properties: { events: { type: "array", items: { type: "object", properties: { title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, eventDateEstimated: { type: "boolean" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string" }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "samba_pagode", "rap_trap"] }, priceCents: { type: "integer" }, sourceUrl: { type: "string" }, imageUrl: { type: "string" }, latitude: { type: "string" }, longitude: { type: "string" } }, required: ["title", "summary", "eventDate", "eventDateEstimated", "locationName", "address", "city", "category", "genre", "priceCents", "sourceUrl", "imageUrl", "latitude", "longitude"], additionalProperties: false } } }, required: ["events"], additionalProperties: false } } },
+    response_format: { type: "json_schema", json_schema: { name: "event_batch", strict: true, schema: { type: "object", properties: { events: { type: "array", items: { type: "object", properties: { title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, eventDateEstimated: { type: "boolean" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string" }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "rap_trap"] }, priceCents: { type: "integer" }, sourceUrl: { type: "string" }, imageUrl: { type: "string" }, latitude: { type: "string" }, longitude: { type: "string" } }, required: ["title", "summary", "eventDate", "eventDateEstimated", "locationName", "address", "city", "category", "genre", "priceCents", "sourceUrl", "imageUrl", "latitude", "longitude"], additionalProperties: false } } }, required: ["events"], additionalProperties: false } } },
   });
 
   const payload = JSON.parse(String(structured.choices?.[0]?.message?.content ?? "{\"events\":[]}")) as { events: Array<Record<string, string | number | boolean>> };
@@ -2248,7 +2248,7 @@ export async function runIngestionPipeline(options: IngestionPipelineOptions = {
     const eventBrand = getMonitoredPublicBrand(`${String(event.title)} ${String(event.summary ?? "")} ${String(event.sourceUrl ?? "")}`, sourceKey, activeBrands);
     const brandCityMatches = Boolean(eventBrand?.cities.some(brandCity => normalizeText(brandCity) === normalizeText(city)));
     const validCity = sourceKey === "public:gandaya" ? GANDAYA_REGIONAL_CITIES.some(allowed => normalizeText(allowed) === normalizeText(city)) : city === "Santos" || city === "Guarujá";
-    if (Number.isNaN(date.getTime()) || !validCity || (!matchesTargetVenue(`${locationName} ${address}`) && !brandCityMatches && sourceKey !== "public:gandaya") || !["show", "balada", "evento_musical"].includes(category) || !["funk", "house_eletronica", "samba_pagode", "rap_trap"].includes(genre)) {
+    if (Number.isNaN(date.getTime()) || !validCity || (!matchesTargetVenue(`${locationName} ${address}`) && !brandCityMatches && sourceKey !== "public:gandaya") || !["show", "balada", "evento_musical"].includes(category) || !["funk", "house_eletronica", "rap_trap"].includes(genre)) {
       filteredByReason.invalidStructuredEvent += 1;
       rejectedEvents.push({ sourceKey, reason: "invalidStructuredEvent" });
       continue;

@@ -14,3 +14,16 @@ describe("filterEventsForPublicFeed", () => {
     expect(result[0]).toMatchObject({ city: "Santos", category: "show", genre: "funk" });
   });
 });
+
+describe("escopo estrito de cidade e gênero", () => {
+  it("aceita somente Santos/Guarujá e os gêneros persistidos canônicos", async () => {
+    const rows = [
+      { city: "Santos", category: "show", genre: "funk", locationName: "Arena", priceCents: 0, eventDate: new Date() },
+      { city: "Guarujá", category: "show", genre: "rap_trap", locationName: "Arena", priceCents: 0, eventDate: new Date() },
+      { city: "Santos Dumont", category: "show", genre: "funk", locationName: "Rua", priceCents: 0, eventDate: new Date() },
+      { city: "São Vicente", category: "show", genre: "funk", locationName: "Rua", priceCents: 0, eventDate: new Date() },
+      { city: "Santos", category: "show", genre: "samba_pagode", locationName: "Arena", priceCents: 0, eventDate: new Date() },
+    ];
+    expect(filterEventsForPublicFeed(rows as any, {})).toHaveLength(2);
+  });
+});

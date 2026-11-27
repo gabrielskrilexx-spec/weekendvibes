@@ -9,6 +9,7 @@ import { allowSourceAttempt, registerSourceFailure, registerSourceSuccess } from
 import { persistManualReviewEvents, type ManualReviewEventInput } from "./manual-review";
 import { storagePut } from "./storage";
 import { normalizeDiscoveredSourceUrl } from "../shared/source-url";
+import { TARGET_CITIES, PERSISTED_GENRES, isAllowedCity, isAllowedPersistedGenre } from "../shared/domain";
 
 const META_GRAPH_BASE_URL = "https://graph.facebook.com/v26.0";
 export const DEFAULT_META_GRAPH_FETCH_TIMEOUT_MS = 8_000;
@@ -500,7 +501,7 @@ export type StructuredEvent = {
   address: string;
   city: "Santos" | "Guarujá";
   category: "show" | "balada" | "evento_musical";
-  genre: "funk" | "house_eletronica" | "samba_pagode" | "rap_trap";
+  genre: "funk" | "house_eletronica" | "rap_trap";
   priceCents: number;
   imageUrl: string;
   sourceUrl: string;
@@ -534,9 +535,9 @@ export type FilteredInstagramStory = {
   status: "pending" | "approved";
 };
 
-const ALLOWED_CITIES = new Set(["Santos", "Guarujá"]);
+const ALLOWED_CITIES = new Set(TARGET_CITIES);
 const ALLOWED_CATEGORIES = new Set(["show", "balada", "evento_musical"]);
-const ALLOWED_GENRES = new Set(["funk", "house_eletronica", "samba_pagode", "rap_trap"]);
+const ALLOWED_GENRES = new Set(PERSISTED_GENRES);
 
 function eventDiagnosticKey(event: Partial<StructuredEvent>, index: number) {
   return crypto.createHash("sha256").update(`${event.sourceUrl ?? ""}|${event.eventDate ?? ""}|${event.title ?? ""}|${index}`).digest("hex").slice(0, 16);
@@ -589,7 +590,7 @@ export function isInstagramDraftCandidate(event: Partial<StructuredEvent>, reaso
   return typeof event.title === "string" && event.title.trim().length > 0
     && typeof event.eventDate === "string" && !Number.isNaN(new Date(event.eventDate).getTime())
     && typeof event.locationName === "string" && event.locationName.trim().length > 0
-    && ALLOWED_CITIES.has(String(event.city));
+    && isAllowedCity(event.city);
 }
 
 export function createStructuredEventRejection(event: Partial<StructuredEvent>, index: number, reasons: StructuredRejectionReason[]): StructuredEventRejection {
@@ -613,11 +614,11 @@ export function validateStructuredInstagramEvent(event: Partial<StructuredEvent>
   const parsedDate = new Date(String(event.eventDate ?? ""));
   if (Number.isNaN(parsedDate.getTime())) reasons.push("invalid_date");
   else if (eventCalendarDate(event.eventDate, parsedDate) < saoPauloCalendarDate(now)) reasons.push("past_event");
-  if (!ALLOWED_CITIES.has(String(event.city))) reasons.push("outside_target_venue");
+  if (!isAllowedCity(event.city)) reasons.push("outside_target_venue");
   if (!allowConfiguredBrandVenue && !containsTargetVenue(`${String(event.locationName ?? "")} ${String(event.address ?? "")}`, activeAliases)) reasons.push("outside_target_venue");
   if (typeof event.sourceUrl !== "string" || !isValidInstagramSourceUrl(event.sourceUrl)) reasons.push("invalid_source_url");
   if (!ALLOWED_CATEGORIES.has(String(event.category))) reasons.push("invalid_category");
-  if (!ALLOWED_GENRES.has(String(event.genre))) reasons.push("invalid_genre");
+  if (!isAllowedPersistedGenre(event.genre)) reasons.push("invalid_genre");
   return Array.from(new Set(reasons));
 }
 
@@ -1317,7 +1318,7 @@ async function processWithConcurrency<TItem, TResult>(items: TItem[], worker: (i
 }
 const STRUCTURED_EVENT_RESPONSE_FORMAT = { type: "json_schema", json_schema: { name: "instagram_weekend_events", strict: true, schema: {
   type: "object", properties: { events: { type: "array", items: { type: "object", properties: {
-    title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string", enum: ["Santos", "Guarujá"] }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "samba_pagode", "rap_trap"] }, priceCents: { type: "integer" }, imageUrl: { type: "string" }, sourceUrl: { type: "string" },
+    title: { type: "string" }, summary: { type: "string" }, eventDate: { type: "string" }, locationName: { type: "string" }, address: { type: "string" }, city: { type: "string", enum: ["Santos", "Guarujá"] }, category: { type: "string", enum: ["show", "balada", "evento_musical"] }, genre: { type: "string", enum: ["funk", "house_eletronica", "rap_trap"] }, priceCents: { type: "integer" }, imageUrl: { type: "string" }, sourceUrl: { type: "string" },
   }, required: ["title", "summary", "eventDate", "locationName", "address", "city", "category", "genre", "priceCents", "imageUrl", "sourceUrl"], additionalProperties: false } } }, required: ["events"], additionalProperties: false,
 } } } as const;
 

@@ -236,7 +236,7 @@ const eventInput = z.object({
   city: z.enum(["Santos", "Guarujá"]),
   category: z.enum(["show", "balada", "evento_musical"]),
   genre: z
-    .enum(["funk", "house_eletronica", "samba_pagode", "rap_trap"])
+    .enum(["funk", "house_eletronica", "rap_trap"])
     .optional(),
   priceCents: z.number().int().min(0).default(0),
   sourceUrl: z
@@ -1597,7 +1597,7 @@ export const appRouter = router({
             city: z.enum(["Santos", "Guarujá"]).optional(),
             category: z.enum(["show", "balada", "evento_musical"]).optional(),
             genre: z
-              .enum(["funk", "house_eletronica", "samba_pagode", "rap_trap"])
+              .enum(["funk", "house_eletronica", "rap_trap"])
               .optional(),
             venue: safeFilter(180),
             neighborhood: safeFilter(120),
@@ -1710,8 +1710,8 @@ export const appRouter = router({
         genreOverride: z.preprocess(value => {
           if (typeof value !== "string") return value;
           const normalized = value.trim().toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-          return ({ funk: "funk", house: "house_eletronica", house_eletronica: "house_eletronica", eletronica: "house_eletronica", samba: "samba_pagode", samba_pagode: "samba_pagode", pagode: "samba_pagode", rap: "rap_trap", trap: "rap_trap", rap_trap: "rap_trap" } as Record<string, string>)[normalized] ?? value;
-        }, z.enum(["funk", "house_eletronica", "samba_pagode", "rap_trap"])).optional(),
+          return ({ funk: "funk", house: "house_eletronica", house_eletronica: "house_eletronica", eletronica: "house_eletronica", rap: "rap_trap", trap: "rap_trap", rap_trap: "rap_trap" } as Record<string, string>)[normalized] ?? value;
+        }, z.enum(["funk", "house_eletronica", "rap_trap"])).optional(),
         cityOverride: z.enum(["Santos", "Guarujá"]).optional(),
         publishImmediately: z.boolean().default(true),
       }).strict())
@@ -1832,7 +1832,7 @@ export const appRouter = router({
             city: z.string(),
             category: z.enum(["show", "balada", "evento_musical"]),
             genre: z
-              .enum(["funk", "house_eletronica", "samba_pagode", "rap_trap"])
+              .enum(["funk", "house_eletronica", "rap_trap"])
               .optional(),
             priceCents: z.number().int(),
           })
@@ -1872,7 +1872,6 @@ export const appRouter = router({
                     enum: [
                       "funk",
                       "house_eletronica",
-                      "samba_pagode",
                       "rap_trap",
                     ],
                   },

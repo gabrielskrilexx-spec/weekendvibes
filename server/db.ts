@@ -9,6 +9,7 @@ import { buildDailyTelemetrySeries, calculateSystemHealthStatus, normalizeObserv
 import { upsert } from "./pg-upsert";
 import { serializePayloadJson } from "./json-contracts";
 import type { CircuitState, FailureCategory } from "../shared/domain";
+import { TARGET_CITIES, PERSISTED_GENRES, isAllowedCity, isAllowedPersistedGenre } from "../shared/domain";
 import { sanitizeEventText } from "../shared/event-text";
 import { isVenueCoverAsset, resolveVenueCoverFallback } from "../shared/event-media";
 import { selectRelatedEvents } from "../shared/related-events";
@@ -448,11 +449,11 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-export const ALLOWED_CITIES = ["Santos", "Guarujá", "São Vicente", "Praia Grande", "Cubatão"] as const;
+export const ALLOWED_CITIES = TARGET_CITIES;
 export const INSTAGRAM_AGENDA_SOURCE_TYPE = "instagram_agenda_weekend" as const;
 export const WEEKLY_AGENDA_SOURCE_TYPES = [INSTAGRAM_AGENDA_SOURCE_TYPE, "ingresse"] as const;
 export const MUSICAL_CATEGORIES = ["show", "balada", "evento_musical"] as const;
-export const MUSICAL_GENRES = ["funk", "house_eletronica", "samba_pagode", "rap_trap"] as const;
+export const MUSICAL_GENRES = PERSISTED_GENRES;
 
 export function isRecentInstagramAgendaEvent(event: Pick<Event, "sourceType" | "isPublished" | "isArchived" | "updatedAt" | "eventDate">, now = new Date(), lookbackDays = 5) {
   const updatedAt = new Date(event.updatedAt);
@@ -1513,7 +1514,7 @@ export function isPublicEventRecord(event: Pick<Event, "isArchived" | "isPublish
 }
 
 export function filterEventsForPublicFeed<T extends Pick<Event, "city" | "category" | "genre" | "priceCents" | "eventDate" | "locationName"> & Partial<Pick<Event, "address" | "isArchived" | "isPublished">>>(items: T[], filters: { city?: string; category?: string; genre?: string; venue?: string; maxPriceCents?: number }) {
-  return items.filter(event => ((event.isArchived === undefined && event.isPublished === undefined) || isPublicEventRecord(event as Pick<Event, "isArchived" | "isPublished">)) && ALLOWED_CITIES.includes(event.city as typeof ALLOWED_CITIES[number]) && MUSICAL_CATEGORIES.includes(event.category as typeof MUSICAL_CATEGORIES[number]) && (!filters.city || filters.city === "Todas" || event.city === filters.city) && (!filters.category || filters.category === "Todas" || event.category === filters.category) && (!filters.genre || event.genre === filters.genre) && (!filters.venue || event.locationName.toLowerCase().includes(filters.venue.toLowerCase()) || (event.address?.toLowerCase().includes(filters.venue.toLowerCase()) ?? false)) && (filters.maxPriceCents === undefined || event.priceCents <= filters.maxPriceCents));
+  return items.filter(event => ((event.isArchived === undefined && event.isPublished === undefined) || isPublicEventRecord(event as Pick<Event, "isArchived" | "isPublished">)) && isAllowedCity(event.city) && isAllowedPersistedGenre(event.genre) && MUSICAL_CATEGORIES.includes(event.category as typeof MUSICAL_CATEGORIES[number]) && (!filters.city || filters.city === "Todas" || event.city === filters.city) && (!filters.category || filters.category === "Todas" || event.category === filters.category) && (!filters.genre || event.genre === filters.genre) && (!filters.venue || event.locationName.toLowerCase().includes(filters.venue.toLowerCase()) || (event.address?.toLowerCase().includes(filters.venue.toLowerCase()) ?? false)) && (filters.maxPriceCents === undefined || event.priceCents <= filters.maxPriceCents));
 }
 
 
@@ -1887,7 +1888,8 @@ export async function saveEvent(data: InsertEvent) {
     description: sanitizeEventText(normalizedLocation.description),
     imageUrl: durableImageUrl || incomingImageUrl || resolveVenueCoverFallback(normalizedLocation),
   };
-  if (!ALLOWED_CITIES.includes(normalized.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos na Baixada Santista");
+  if (!isAllowedCity(normalized.city)) throw new Error("WeekendVibes aceita apenas Santos ou Guarujá");
+  if (normalized.genre != null && !isAllowedPersistedGenre(normalized.genre)) throw new Error("Gênero fora da taxonomia permitida");
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const stableSourceUrl = isArticketEvent(normalized);
@@ -1958,7 +1960,8 @@ export async function backfillRemoteEventCovers(input: { limit?: number; dryRun?
 
 export async function updateEvent(id: number, input: Partial<InsertEvent>) {
   if (!Number.isInteger(id) || id <= 0) throw new Error("ID de evento inválido");
-  if (input.city && !ALLOWED_CITIES.includes(input.city as typeof ALLOWED_CITIES[number])) throw new Error("WeekendVibes aceita apenas eventos na Baixada Santista");
+  if (input.city && !isAllowedCity(input.city)) throw new Error("WeekendVibes aceita apenas Santos ou Guarujá");
+  if (input.genre != null && !isAllowedPersistedGenre(input.genre)) throw new Error("Gênero fora da taxonomia permitida");
   if (input.eventDate) assertEventDateIsCurrentOrFuture(input.eventDate, new Date(), input.title);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");

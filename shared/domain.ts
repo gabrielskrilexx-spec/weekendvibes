@@ -32,6 +32,18 @@ export type FailureCategory = (typeof FailureCategory)[keyof typeof FailureCateg
 
 export const JsonContractVersion = 1 as const;
 
+/** Escopo canônico do catálogo; consumidores não devem manter listas locais. */
+export const TARGET_CITIES = ["Santos", "Guarujá"] as const;
+export type TargetCity = (typeof TARGET_CITIES)[number];
+export const PERSISTED_GENRES = ["funk", "house_eletronica", "rap_trap"] as const;
+export type PersistedGenre = (typeof PERSISTED_GENRES)[number];
+export function isAllowedCity(value: unknown): value is TargetCity {
+  return typeof value === "string" && (TARGET_CITIES as readonly string[]).includes(value);
+}
+export function isAllowedPersistedGenre(value: unknown): value is PersistedGenre {
+  return typeof value === "string" && (PERSISTED_GENRES as readonly string[]).includes(value);
+}
+
 export type TelemetryPoint = {
   date: string;
   waf: number;
