@@ -104,6 +104,18 @@ vi.mock("./db", () => ({
   listOperationalAlerts: maintenanceMocks.listOperationalAlerts,
   getDatabaseErrorDiagnostic: maintenanceMocks.getDatabaseErrorDiagnostic,
   getDatabaseErrorLogContext: maintenanceMocks.getDatabaseErrorLogContext,
+  listExactDuplicateDiagnostics: vi.fn().mockResolvedValue({
+    scanned: 2,
+    sourceUrlGroups: [{
+      key: "https://example.test/evento",
+      count: 2,
+      records: [
+        { table: "events", id: 1, title: "Evento", sourceUrl: "https://example.test/evento", eventDate: new Date("2026-12-01T22:00:00.000Z"), locationName: "Local", city: "Santos", status: "published" },
+        { table: "discoveredEventCandidates", id: 2, title: "Evento", sourceUrl: "https://example.test/evento", eventDate: new Date("2026-12-01T22:00:00.000Z"), locationName: "Local", city: "Santos", status: "pending" },
+      ],
+    }],
+    identityGroups: [],
+  }),
 }));
 vi.mock("./manual-ingestion", () => ({
   runIngestionSourceChunk: maintenanceMocks.runIngestionSourceChunk,
@@ -291,5 +303,11 @@ describe("admin transport contracts", () => {
         status,
       })
     ).not.toThrow();
+  });
+
+  it("serializa datas ISO no diagnóstico de duplicidades", async () => {
+    const result = await appRouter.createCaller(adminContext).collisionReview.diagnostics({ limit: 100 });
+    expect(result.sourceUrlGroups[0]?.records[0]?.eventDate).toBe("2026-12-01T22:00:00.000Z");
+    expect(result.sourceUrlGroups[0]?.records[1]?.eventDate).toBe("2026-12-01T22:00:00.000Z");
   });
 });

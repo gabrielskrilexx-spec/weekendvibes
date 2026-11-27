@@ -1170,10 +1170,14 @@ export const appRouter = router({
       .input(z.object({ limit: z.number().int().min(1).max(100).optional() }).optional())
       .output(z.object({
         scanned: z.number().int().nonnegative(),
-        sourceUrlGroups: z.array(z.object({ key: z.string(), count: z.number().int().min(2), records: z.array(z.object({ table: z.enum(["events", "discoveredEventCandidates"]), id: z.number().int().positive(), title: z.string(), sourceUrl: z.string().nullable(), eventDate: z.coerce.date(), locationName: z.string().nullable(), city: z.string(), status: z.string() }).strict()) }).strict()),
-        identityGroups: z.array(z.object({ key: z.string(), count: z.number().int().min(2), records: z.array(z.object({ table: z.enum(["events", "discoveredEventCandidates"]), id: z.number().int().positive(), title: z.string(), sourceUrl: z.string().nullable(), eventDate: z.coerce.date(), locationName: z.string().nullable(), city: z.string(), status: z.string() }).strict()) }).strict()),
+        sourceUrlGroups: z.array(z.object({ key: z.string(), count: z.number().int().min(2), records: z.array(z.object({ table: z.enum(["events", "discoveredEventCandidates"]), id: z.number().int().positive(), title: z.string(), sourceUrl: z.string().nullable(), eventDate: z.string().datetime(), locationName: z.string().nullable(), city: z.string(), status: z.string() }).strict()) }).strict()),
+        identityGroups: z.array(z.object({ key: z.string(), count: z.number().int().min(2), records: z.array(z.object({ table: z.enum(["events", "discoveredEventCandidates"]), id: z.number().int().positive(), title: z.string(), sourceUrl: z.string().nullable(), eventDate: z.string().datetime(), locationName: z.string().nullable(), city: z.string(), status: z.string() }).strict()) }).strict()),
       }).strict())
-      .query(({ input }) => listExactDuplicateDiagnostics(input?.limit ?? 100)),
+      .query(async ({ input }) => normalizeJsonForTransport(await listExactDuplicateDiagnostics(input?.limit ?? 100)) as unknown as {
+        scanned: number;
+        sourceUrlGroups: Array<{ key: string; count: number; records: Array<{ table: "events" | "discoveredEventCandidates"; id: number; title: string; sourceUrl: string | null; eventDate: string; locationName: string | null; city: string; status: string }> }>;
+        identityGroups: Array<{ key: string; count: number; records: Array<{ table: "events" | "discoveredEventCandidates"; id: number; title: string; sourceUrl: string | null; eventDate: string; locationName: string | null; city: string; status: string }> }>;
+      }),
     resolveMany: adminOnly
       .input(
         z.object({ ids: z.array(z.number().int().positive()).min(1).max(100) })
