@@ -116,8 +116,41 @@ describe("Gandaya public adapter", () => {
         urls: ["https://gandaya.dance/events/sorry-project-46c6", "https://gandaya.dance/events/baile-guaruja"],
         listingCount: 3,
         regionalFiltered: 1,
+        truncated: false,
         status: "succeeded",
       });
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
+  });
+
+  it("marca truncamento quando a quinta página ainda informa cursor seguinte", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/events/list")) {
+        const page = Number(new URL(url).searchParams.get("cursor")?.replace("cursor-", "") ?? "0");
+        return new Response(JSON.stringify({
+          data: [{ alias: "evento-santos", title: "Evento Santos" }],
+          pagination: { hasMore: true, nextCursor: `cursor-${page + 1}` },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify({
+        alias: "evento-santos",
+        title: "Evento Santos",
+        date: { startDate: "2099-12-05T01:00:00.000Z" },
+        location: { name: "Arena Club", address: "Santos - SP", city: "Santos" },
+        description: "Funk",
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(fetchGandayaRegionalEventLinks()).resolves.toMatchObject({
+        listingCount: 1,
+        detailsAttempted: 1,
+        truncated: true,
+      });
+      expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("/events/list"))).toHaveLength(5);
     } finally {
       vi.stubGlobal("fetch", originalFetch);
     }
